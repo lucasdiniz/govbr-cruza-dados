@@ -1,0 +1,12 @@
+.env
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+*.txt
+*.csv
+*.json
+.claude/

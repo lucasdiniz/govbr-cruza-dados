@@ -1,0 +1,70 @@
+-- Tabelas do PNCP (Portal Nacional de Contratações Públicas)
+-- Fonte: pncp/*.json, pncp_contratos/*.json
+
+DROP TABLE IF EXISTS pncp_contrato CASCADE;
+DROP TABLE IF EXISTS pncp_contratacao CASCADE;
+
+CREATE TABLE pncp_contratacao (
+    numero_controle_pncp     VARCHAR(50) PRIMARY KEY,
+    cnpj_orgao               CHAR(14),
+    orgao_razao_social       VARCHAR(200),
+    poder                    CHAR(1),
+    esfera                   CHAR(1),
+    uf                       CHAR(2),
+    municipio_nome           VARCHAR(200),
+    municipio_ibge           INT,
+    codigo_unidade           VARCHAR(30),
+    nome_unidade             VARCHAR(200),
+    ano_compra               SMALLINT,
+    sequencial_compra        INT,
+    numero_compra            VARCHAR(50),
+    processo                 VARCHAR(50),
+    objeto                   TEXT,
+    modalidade_id            SMALLINT,
+    modalidade_nome          VARCHAR(100),
+    modo_disputa_nome        VARCHAR(100),
+    situacao_nome            VARCHAR(100),
+    amparo_legal             VARCHAR(200),
+    srp                      BOOLEAN,
+    valor_estimado           DECIMAL(15,2),
+    valor_homologado         DECIMAL(15,2),
+    dt_abertura_proposta     TIMESTAMP,
+    dt_encerramento_proposta TIMESTAMP,
+    dt_publicacao_pncp       DATE,
+    dt_atualizacao           TIMESTAMP
+);
+
+CREATE TABLE pncp_contrato (
+    numero_controle_pncp        VARCHAR(50) PRIMARY KEY,
+    numero_controle_contratacao VARCHAR(50),
+    cnpj_orgao                  CHAR(14),
+    orgao_razao_social          VARCHAR(200),
+    poder                       CHAR(1),
+    esfera                      CHAR(1),
+    uf                          CHAR(2),
+    municipio_nome              VARCHAR(200),
+    municipio_ibge              INT,
+    codigo_unidade              VARCHAR(30),
+    nome_unidade                VARCHAR(200),
+    tipo_contrato               VARCHAR(100),
+    categoria_processo          VARCHAR(100),
+    tipo_pessoa_fornecedor      VARCHAR(2),
+    ni_fornecedor               VARCHAR(30),
+    nome_fornecedor             VARCHAR(200),
+    pais_fornecedor             VARCHAR(10),
+    receita                     BOOLEAN,
+    objeto                      TEXT,
+    processo                    VARCHAR(50),
+    valor_inicial               DECIMAL(15,2),
+    valor_global                DECIMAL(15,2),
+    valor_acumulado             DECIMAL(15,2),
+    valor_parcela               DECIMAL(15,2),
+    num_parcelas                INT,
+    ano_contrato                SMALLINT,
+    sequencial_contrato         INT,
+    dt_assinatura               DATE,
+    dt_vigencia_inicio          DATE,
+    dt_vigencia_fim             DATE,
+    dt_publicacao_pncp          TIMESTAMP,
+    dt_atualizacao              TIMESTAMP
+);

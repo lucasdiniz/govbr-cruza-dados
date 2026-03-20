@@ -1,0 +1,17 @@
+[project]
+name = "govbr-cruza-dados"
+version = "0.1.0"
+description = "ETL pipeline para cruzamento de dados abertos do governo federal brasileiro"
+requires-python = ">=3.10"
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "ijson>=3.2",
+    "python-dotenv>=1.0",
+    "tqdm>=4.66",
+]
+
+[project.scripts]
+govbr-etl = "etl.run_all:main"
+
+[tool.setuptools.packages.find]
+include = ["etl*"]
