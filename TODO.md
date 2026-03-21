@@ -7,6 +7,25 @@
 - [ ] Rodar as 42 queries de fraude e verificar resultados
 - [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
 
+## Log
+
+### 2026-03-21 (sessao 3)
+- Verificado PGFN: 39.9M registros, 0 datas NULL, sem duplicatas reais (mesmo numero_inscricao = PRINCIPAL + CORRESPONSAVEL)
+- Criado indice idx_pgfn_inscricao em pgfn_divida(numero_inscricao)
+- Limpeza disco: removido 45GB de dados duplicados do C: (ja estavam em G:\govbr-dados-brutos). Disco C: 75GB livres agora
+- DATA_DIR ja apontava para G:\govbr-dados-brutos no .env
+- [EM ANDAMENTO] Rodando etl.15_normalizar (CPF/CNPJ norm em ~70M rows)
+
+### 2026-03-21 (sessao 2)
+- Recuperado dados orphaned: _stg_estab +4.7M, _stg_pgfn +12.1M
+- Fix regex f-string: \d{2} → \d{{2}} em 07_pgfn, 06_cpgf, 05_emendas
+- Recarga completa PGFN (39.9M, 100% datas) e emenda_convenio (80k, 100% datas)
+- ETL + carga Bolsa Familia: 20.9M registros
+- ETL + carga TSE Prestacao de Contas: receitas 2.3M + despesas 6M
+- Fix extracao incompleta prestacao_contas_2024.zip (25 UFs faltando)
+- Queries de fraude TSE (Q33-Q37) e Bolsa Familia (Q38-Q42)
+- Estabelecimentos: 69.8M registros (inclui staging recuperada)
+
 ## Concluido (2026-03-21)
 - [x] Recuperar dados orphaned das staging tables (_stg_estab +4.7M, _stg_pgfn +12.1M)
 - [x] Fix: regex em f-strings quebrava datas (\d{2} → \d{{2}} em 07_pgfn, 06_cpgf, 05_emendas)
