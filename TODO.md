@@ -1,8 +1,9 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [EM BACKGROUND] `python -m etl.15_normalizar` — task b2fepkow7, no UPDATE pgfn 40M. Inclui indices. Idempotente (pode retomar)
-- [EM BACKGROUND] Queries Q01-Q37 + Q41 — task birzwqzuf, salvando CSVs em resultados/. Pulou Q38/Q39/Q40/Q42
+- [EM BACKGROUND] `python -m etl.15_normalizar` — PID 9244, no UPDATE pgfn 40M. Inclui indices. Idempotente (pode retomar)
+- [EM BACKGROUND] tmp_run_partial.py (Q01-Q37 + Q41) — PID 12632, salvando CSVs em resultados/. Pulou Q38/Q39/Q40/Q42
+- [EM BACKGROUND] tmp_run_q39.py — PID 20960, versão antiga da Q39 (pode matar: taskkill /PID 20960 /F)
 - [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
 - [ ] Rodar Q38/Q39/Q40/Q42 (dependem de 15_normalizar terminar)
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
