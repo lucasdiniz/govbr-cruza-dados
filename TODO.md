@@ -1,13 +1,14 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [EM BACKGROUND] `python -m etl.15_normalizar` — PID 9244, no UPDATE pgfn 40M. Inclui indices. Idempotente (pode retomar)
-- [EM BACKGROUND] tmp_run_partial.py (Q01-Q37 + Q41) — PID 12632, salvando CSVs em resultados/. Pulou Q38/Q39/Q40/Q42
-- [MORTO] tmp_run_q39.py — PID 20960 morto. Reexecutar Q39 apos 15_normalizar
+- [EM BACKGROUND] `python -m etl.15_normalizar` — PID 9244. Cria colunas cpf_digitos/cpf_cnpj_norm + ~25 indices. Idempotente. Checar: tasklist | grep 9244
+- [EM BACKGROUND] tmp_run_partial.py (Q01-Q37 + Q41) — PID 12632. Salvando CSVs em resultados/. Checar: tasklist | grep 12632
+- [EM BACKGROUND] tmp_run_q39.py — PID desconhecido (relancado com REGEXP_REPLACE inline, sem depender de normalizar)
 - [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
-- [ ] Rodar Q38/Q39/Q40/Q42 (dependem de 15_normalizar terminar)
+- [ ] Quando 15_normalizar terminar: rodar Q38/Q40/Q42 (`python -m etl.run_queries --query Q38` etc)
+- [ ] Quando 15_normalizar terminar: atualizar queries BF para usar colunas desnormalizadas (cpf_digitos em vez de REGEXP_REPLACE) — codigo ja esta em git mas foi revertido temporariamente para rodar sem normalizar
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
-- [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados) — user logou no github
+- [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados) — user ja logou no github
 - [ ] Limpar tmp_run_q39.py e tmp_run_partial.py apos uso
 
 ## Log
