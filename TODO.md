@@ -1,57 +1,38 @@
 # TODO - govbr-cruza-dados
 
-## Em andamento (processos rodando)
-- [ ] Estabelecimentos 1-9 carregando (~30M restantes, rodando ha horas)
-- [ ] PGFN recarga com datas corrigidas (40M registros)
-- [ ] Viagens 2020-2022, 2025-2026 carregando
-
-## Pendente (executar quando processos terminarem)
+## Pendente
 - [ ] Rodar `python -m etl.15_normalizar` (normalizar CPF/CNPJ para JOINs)
+- [ ] Rodar `python -m etl.16_tse` (candidatos + bens 2020/2022/2024)
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
-- [ ] Validar contagens finais de todas as tabelas
-- [ ] Rodar as 32 queries de fraude e verificar resultados
+- [ ] Rodar as 42 queries de fraude e verificar resultados
+- [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
 
-## Dados faltando (cobertura temporal 2020+)
-- [x] CPGF 2020 (12 meses) — carregado
-- [x] Viagens 2020-2022, 2025-2026 — carregando
-- [x] SIAPE 202602 (mais recente) — carregado
-- [ ] Verificar se Estabelecimentos0 do G:/ tem o mesmo conteudo que o do C:/
+## Concluido (2026-03-21)
+- [x] Recuperar dados orphaned das staging tables (_stg_estab +4.7M, _stg_pgfn +12.1M)
+- [x] Fix: regex em f-strings quebrava datas (\d{2} → \d{{2}} em 07_pgfn, 06_cpgf, 05_emendas)
+- [x] Recarga completa PGFN com datas corrigidas (39.9M, 100% com data)
+- [x] Recarga emenda_convenio com datas corrigidas (80k, 100% com data)
+- [x] ETL + carga Bolsa Familia (20.9M registros, fev/2024)
+- [x] ETL + carga TSE Prestacao de Contas 2022+2024 (receitas: 2.3M, despesas: 6M)
+- [x] Fix: extração incompleta prestacao_contas_2024.zip (25 UFs faltando)
+- [x] Queries de fraude para TSE (Q33-Q37) e Bolsa Familia (Q38-Q42)
+- [x] Estabelecimentos: 69.8M registros (inclui staging recuperada)
 
-## Proxima iteracao: novas fontes de dados
-- [ ] TSE Candidatos 2020-2024 (cadastro + patrimonio declarado + prestacao de contas)
-  - URL: https://dadosabertos.tse.jus.br/dataset/candidatos-2024
-  - Valor: cruzar patrimonio declarado com contratos de empresas do candidato
-- [ ] Pessoas Expostas Politicamente (PEP)
-  - URL: portaldatransparencia.gov.br/download-de-dados/pep (deu 403, tentar novamente)
-  - Valor: PEP que e socio de fornecedora do governo
-- [ ] Favorecidos PJ - Portal da Transparencia
-  - Encontrado no dados.gov.br
-  - Valor: todas as PJs que recebem pagamentos federais
-- [ ] Notas Fiscais Eletronicas
-  - URL: portaldatransparencia.gov.br/download-de-dados/notas-fiscais
-  - Valor: superfaturamento, notas para empresas fantasma
-- [ ] Bolsa Familia / Novo Bolsa Familia - Pagamentos
-  - URL: portaldatransparencia.gov.br/download-de-dados
-  - Valor: servidor ou socio de empresa recebendo BF indevidamente
-- [ ] Explorar catalogo completo do dados.gov.br via API (chave: salva no .env)
+## Proxima iteracao: novas fontes
+- [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente
+- [ ] Favorecidos PJ - Portal da Transparencia (dados.gov.br)
+- [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br)
+- [ ] Explorar catalogo completo do dados.gov.br via API (chave no .env)
 
 ## Melhorias tecnicas
-- [ ] Otimizar _staging_copy do RFB (csv.reader Python e muito lento para 13GB)
-  - Alternativa: usar COPY direto com QUOTE '"' e tratar erros por arquivo
-- [ ] Adicionar script de validacao (compara wc -l dos CSVs com COUNT(*) das tabelas)
-- [ ] Criar script para atualizar dados incrementalmente (nao recarregar tudo)
-- [ ] Trocar senha do PostgreSQL (Gemini teve acesso via historico de conversa)
-- [ ] Configurar max_wal_size no PostgreSQL (checkpoints muito frequentes nos logs)
-
-## GitHub
-- [ ] Resetar senha do GitHub e fazer push
-  - Repo: github.com/lucasdiniz/govbr-cruza-dados
-  - 7 commits prontos para push
-- [ ] Adicionar .env ao .gitignore (ja esta, verificar)
-- [ ] Remover chave API do dados.gov.br do historico de conversa (salvar em .env)
+- [ ] Otimizar _staging_copy do RFB (csv.reader Python lento para 13GB)
+- [ ] Script de validacao (wc -l CSVs vs COUNT(*) tabelas)
+- [ ] Script de atualizacao incremental
+- [ ] Trocar senha do PostgreSQL (exposta em historicos de conversa)
+- [ ] Configurar max_wal_size no PostgreSQL
 
 ## Qualidade dos dados
-- [ ] 101 registros de empresa com natureza_juridica corrompida (dados desalinhados por ; no CSV)
-- [ ] CPGF: 25% das transacoes sem data (sigiloso) — normal, nao e bug
-- [ ] Formato de CNPJ inconsistente entre fontes — resolvido com 15_normalizar
-- [ ] Estabelecimentos: so Estab0 carregou do C:/, restante do G:/ quando .env mudou
+- [ ] 101 registros de empresa com natureza_juridica corrompida
+- [ ] CPGF: 25% transacoes sem data (sigiloso) — normal, nao e bug
+- [ ] Recarregar CPGF com regex corrigida (pode ganhar mais datas)
+- [ ] Estabelecimentos: conferir se 69.8M bate com total esperado
