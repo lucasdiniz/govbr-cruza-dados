@@ -1,8 +1,7 @@
 -- Tabelas do TSE (Tribunal Superior Eleitoral)
 -- Fonte: dadosabertos.tse.jus.br
 
-DROP TABLE IF EXISTS tse_despesa_candidato CASCADE;
-DROP TABLE IF EXISTS tse_receita_candidato CASCADE;
+-- NÃO dropar tse_receita/despesa_candidato aqui — são criadas pelo schema 18
 DROP TABLE IF EXISTS tse_bem_candidato CASCADE;
 DROP TABLE IF EXISTS tse_candidato CASCADE;
 
