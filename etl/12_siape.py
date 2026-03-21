@@ -71,10 +71,14 @@ def _staging_load(conn, staging, n_cols, filepath):
 
 
 def load_cadastro(conn):
-    """Carrega 202402_Cadastro.csv -> siape_cadastro."""
-    filepath = SIAPE_DIR / "202402_Cadastro.csv"
+    """Carrega *_Cadastro.csv -> siape_cadastro (pega o mais recente)."""
+    files = sorted(SIAPE_DIR.glob("*_Cadastro.csv"))
+    if not files:
+        print("    AVISO: Nenhum arquivo *_Cadastro.csv encontrado.")
+        return
+    filepath = files[-1]  # Mais recente
+    print(f"    Usando: {filepath.name}")
     if not filepath.exists():
-        print("    AVISO: 202402_Cadastro.csv nao encontrado.")
         return
 
     staging = "_stg_siape_cad"
@@ -129,11 +133,13 @@ def load_cadastro(conn):
 
 
 def load_remuneracao(conn):
-    """Carrega 202402_Remuneracao.csv -> siape_remuneracao."""
-    filepath = SIAPE_DIR / "202402_Remuneracao.csv"
-    if not filepath.exists():
-        print("    AVISO: 202402_Remuneracao.csv nao encontrado.")
+    """Carrega *_Remuneracao.csv -> siape_remuneracao (pega o mais recente)."""
+    files = sorted(SIAPE_DIR.glob("*_Remuneracao.csv"))
+    if not files:
+        print("    AVISO: Nenhum arquivo *_Remuneracao.csv encontrado.")
         return
+    filepath = files[-1]
+    print(f"    Usando: {filepath.name}")
 
     staging = "_stg_siape_rem"
     print("    Carregando Remuneracao SIAPE...")
