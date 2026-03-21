@@ -1,19 +1,143 @@
-"""Normaliza identificadores (CPF/CNPJ) para facilitar JOINs entre tabelas.
+"""Normaliza identificadores e cria índices otimizados para queries de fraude.
 
-Cria colunas _norm com apenas digitos e indices parciais.
-EXECUTAR APOS a carga completa (sem INSERTs ativos).
+Executa cada statement separadamente para não perder progresso se interromper.
+Usa WHERE col IS NULL para ser idempotente (pode retomar de onde parou).
+CREATE INDEX CONCURRENTLY requer autocommit.
+
+EXECUTAR APÓS a carga completa (sem INSERTs ativos).
 """
 
-from etl.db import get_conn, execute_sql_file
+import time
+
+from etl.db import get_conn
+
+
+def _exec(conn, desc, sql, autocommit=False):
+    """Executa um statement com log de progresso."""
+    print(f"  {desc}...", end=" ", flush=True)
+    t0 = time.time()
+    try:
+        if autocommit:
+            old = conn.autocommit
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.autocommit = old
+        else:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        elapsed = time.time() - t0
+        print(f"OK ({elapsed:.1f}s)")
+    except Exception as e:
+        if not autocommit:
+            conn.rollback()
+        err = str(e).strip().split("\n")[0]
+        print(f"ERRO: {err}")
 
 
 def run():
     conn = get_conn()
     try:
-        print("  Normalizando identificadores...")
-        print("  (pode demorar ~10-20min para tabelas grandes como PGFN e socio)")
-        execute_sql_file(conn, "15_normalizar_ids.sql")
-        print("  Normalizacao concluida.")
+        print("  === Fase 1: Colunas desnormalizadas (CPF/CNPJ apenas dígitos) ===")
+
+        # PGFN (40M rows)
+        _exec(conn, "pgfn_divida: ADD cpf_cnpj_norm",
+              "ALTER TABLE pgfn_divida ADD COLUMN IF NOT EXISTS cpf_cnpj_norm TEXT")
+        _exec(conn, "pgfn_divida: UPDATE cpf_cnpj_norm (40M rows, pode demorar)",
+              "UPDATE pgfn_divida SET cpf_cnpj_norm = REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g') WHERE cpf_cnpj_norm IS NULL")
+
+        # Sócio (27M rows)
+        _exec(conn, "socio: ADD cpf_cnpj_norm",
+              "ALTER TABLE socio ADD COLUMN IF NOT EXISTS cpf_cnpj_norm TEXT")
+        _exec(conn, "socio: UPDATE cpf_cnpj_norm (27M rows, pode demorar)",
+              "UPDATE socio SET cpf_cnpj_norm = REGEXP_REPLACE(cpf_cnpj_socio, '[^0-9]', '', 'g') WHERE cpf_cnpj_norm IS NULL AND cpf_cnpj_socio IS NOT NULL")
+
+        # Bolsa Família (21M rows)
+        _exec(conn, "bolsa_familia: ADD cpf_digitos",
+              "ALTER TABLE bolsa_familia ADD COLUMN IF NOT EXISTS cpf_digitos TEXT")
+        _exec(conn, "bolsa_familia: UPDATE cpf_digitos (21M rows)",
+              "UPDATE bolsa_familia SET cpf_digitos = REGEXP_REPLACE(cpf_favorecido, '[^0-9]', '', 'g') WHERE cpf_digitos IS NULL AND cpf_favorecido IS NOT NULL AND cpf_favorecido != ''")
+
+        # SIAPE (617k rows)
+        _exec(conn, "siape_cadastro: ADD cpf_digitos",
+              "ALTER TABLE siape_cadastro ADD COLUMN IF NOT EXISTS cpf_digitos TEXT")
+        _exec(conn, "siape_cadastro: UPDATE cpf_digitos",
+              "UPDATE siape_cadastro SET cpf_digitos = REGEXP_REPLACE(cpf, '[^0-9]', '', 'g') WHERE cpf_digitos IS NULL AND cpf IS NOT NULL")
+
+        # CPGF (725k rows)
+        _exec(conn, "cpgf_transacao: ADD cpf_portador_digitos",
+              "ALTER TABLE cpgf_transacao ADD COLUMN IF NOT EXISTS cpf_portador_digitos TEXT")
+        _exec(conn, "cpgf_transacao: UPDATE cpf_portador_digitos",
+              "UPDATE cpgf_transacao SET cpf_portador_digitos = REGEXP_REPLACE(cpf_portador, '[^0-9]', '', 'g') WHERE cpf_portador_digitos IS NULL AND cpf_portador IS NOT NULL AND cpf_portador != ''")
+
+        # Sanções (pequenas)
+        for tbl in ["ceis_sancao", "cnep_sancao", "ceaf_expulsao"]:
+            _exec(conn, f"{tbl}: ADD cpf_cnpj_norm",
+                  f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS cpf_cnpj_norm TEXT")
+            _exec(conn, f"{tbl}: UPDATE cpf_cnpj_norm",
+                  f"UPDATE {tbl} SET cpf_cnpj_norm = REGEXP_REPLACE(cpf_cnpj_sancionado, '[^0-9]', '', 'g') WHERE cpf_cnpj_norm IS NULL")
+
+        _exec(conn, "acordo_leniencia: ADD cnpj_norm",
+              "ALTER TABLE acordo_leniencia ADD COLUMN IF NOT EXISTS cnpj_norm TEXT")
+        _exec(conn, "acordo_leniencia: UPDATE cnpj_norm",
+              "UPDATE acordo_leniencia SET cnpj_norm = REGEXP_REPLACE(cnpj_sancionado, '[^0-9]', '', 'g') WHERE cnpj_norm IS NULL")
+
+        # Viagem (3.9M rows)
+        _exec(conn, "viagem: ADD cpf_viajante_digitos",
+              "ALTER TABLE viagem ADD COLUMN IF NOT EXISTS cpf_viajante_digitos TEXT")
+        _exec(conn, "viagem: UPDATE cpf_viajante_digitos",
+              "UPDATE viagem SET cpf_viajante_digitos = REGEXP_REPLACE(cpf_viajante, '[^0-9]', '', 'g') WHERE cpf_viajante_digitos IS NULL AND cpf_viajante IS NOT NULL")
+
+        # PNCP cnpj_basico_fornecedor
+        _exec(conn, "pncp_contrato: ADD cnpj_basico_fornecedor",
+              "ALTER TABLE pncp_contrato ADD COLUMN IF NOT EXISTS cnpj_basico_fornecedor TEXT")
+        _exec(conn, "pncp_contrato: UPDATE cnpj_basico_fornecedor",
+              "UPDATE pncp_contrato SET cnpj_basico_fornecedor = LEFT(REGEXP_REPLACE(ni_fornecedor, '[^0-9]', '', 'g'), 8) WHERE cnpj_basico_fornecedor IS NULL AND ni_fornecedor IS NOT NULL AND LENGTH(ni_fornecedor) >= 8")
+
+        # Emenda favorecido cnpj_basico
+        _exec(conn, "emenda_favorecido: ADD cnpj_basico_favorecido",
+              "ALTER TABLE emenda_favorecido ADD COLUMN IF NOT EXISTS cnpj_basico_favorecido TEXT")
+        _exec(conn, "emenda_favorecido: UPDATE cnpj_basico_favorecido",
+              "UPDATE emenda_favorecido SET cnpj_basico_favorecido = LEFT(codigo_favorecido, 8) WHERE cnpj_basico_favorecido IS NULL AND codigo_favorecido IS NOT NULL AND LENGTH(codigo_favorecido) >= 8")
+
+        print("\n  === Fase 2: Índices em colunas desnormalizadas ===")
+
+        _exec(conn, "idx pgfn_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_norm ON pgfn_divida(cpf_cnpj_norm)", autocommit=True)
+        _exec(conn, "idx socio_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_socio_norm ON socio(cpf_cnpj_norm) WHERE cpf_cnpj_norm IS NOT NULL AND cpf_cnpj_norm != '000000'", autocommit=True)
+        _exec(conn, "idx bf_cpf_digitos", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bf_cpf_digitos ON bolsa_familia(cpf_digitos)", autocommit=True)
+        _exec(conn, "idx siape_cpf_digitos", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_siape_cpf_digitos ON siape_cadastro(cpf_digitos)", autocommit=True)
+        _exec(conn, "idx cpgf_portador_digitos", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_portador_digitos ON cpgf_transacao(cpf_portador_digitos)", autocommit=True)
+        _exec(conn, "idx ceis_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceis_norm ON ceis_sancao(cpf_cnpj_norm)", autocommit=True)
+        _exec(conn, "idx cnep_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cnep_norm ON cnep_sancao(cpf_cnpj_norm)", autocommit=True)
+        _exec(conn, "idx ceaf_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceaf_norm ON ceaf_expulsao(cpf_cnpj_norm)", autocommit=True)
+        _exec(conn, "idx acordo_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_acordo_norm ON acordo_leniencia(cnpj_norm)", autocommit=True)
+        _exec(conn, "idx viagem_digitos", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_cpf_digitos ON viagem(cpf_viajante_digitos)", autocommit=True)
+        _exec(conn, "idx pncp_cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pnpc_contrato_cnpj_basico ON pncp_contrato(cnpj_basico_fornecedor)", autocommit=True)
+        _exec(conn, "idx emfav_cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_emfav_cnpj_basico ON emenda_favorecido(cnpj_basico_favorecido)", autocommit=True)
+
+        print("\n  === Fase 3: Índices funcionais para queries ===")
+
+        _exec(conn, "idx pncp LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_forn_left8 ON pncp_contrato (LEFT(ni_fornecedor, 8))", autocommit=True)
+        _exec(conn, "idx emfav LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_emfav_favorecido_left8 ON emenda_favorecido (LEFT(codigo_favorecido, 8))", autocommit=True)
+        _exec(conn, "idx cpgf fav LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_favorecido_left8 ON cpgf_transacao (LEFT(cnpj_cpf_favorecido, 8))", autocommit=True)
+        _exec(conn, "idx bndes LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bndes_cnpj_left8 ON bndes_contrato (LEFT(cnpj, 8))", autocommit=True)
+        _exec(conn, "idx pgfn LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_cpf_cnpj_left8 ON pgfn_divida (LEFT(cpf_cnpj, 8))", autocommit=True)
+
+        _exec(conn, "idx bf UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bf_nome_upper ON bolsa_familia (UPPER(TRIM(nm_favorecido)))", autocommit=True)
+        _exec(conn, "idx socio UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_socio_nome_upper ON socio (UPPER(TRIM(nome)))", autocommit=True)
+        _exec(conn, "idx siape UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_siape_nome_upper ON siape_cadastro (UPPER(TRIM(nome)))", autocommit=True)
+        _exec(conn, "idx cpgf UPPER portador", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_portador_nome_upper ON cpgf_transacao (UPPER(TRIM(nome_portador)))", autocommit=True)
+
+        print("\n  === Fase 4: Índices de datas e compostos ===")
+
+        _exec(conn, "idx pncp dt_assinatura", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_dt_assinatura ON pncp_contrato (dt_assinatura)", autocommit=True)
+        _exec(conn, "idx cpgf dt_transacao", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_dt_transacao ON cpgf_transacao (dt_transacao)", autocommit=True)
+        _exec(conn, "idx viagem dt_inicio", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_dt_inicio ON viagem (dt_inicio)", autocommit=True)
+        _exec(conn, "idx estab matriz ativa", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_ativa ON estabelecimento (cnpj_basico) WHERE cnpj_ordem = '0001' AND situacao_cadastral = '2'", autocommit=True)
+
+        print("\n  Normalização e índices concluídos.")
+
     finally:
         conn.close()
 

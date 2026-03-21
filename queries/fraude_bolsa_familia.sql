@@ -6,53 +6,63 @@
 -- Q38: Servidor federal recebendo Bolsa Familia
 -- Detecta: fraude — servidor publico com renda nao deveria receber BF
 -- Match por nome + 6 dígitos centrais do CPF + UF
+-- Requer: etl.15_normalizar (cpf_digitos em bolsa_familia e siape_cadastro)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
-       sc.nome AS nome_servidor, sc.cpf_servidor, sc.org_exercicio,
+       sc.nome AS nome_servidor, sc.cpf, sc.org_exercicio,
        sr.remuneracao_basica
 FROM bolsa_familia bf
 JOIN siape_cadastro sc ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(sc.nome))
-    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
-      = REGEXP_REPLACE(sc.cpf, '[^0-9]', '', 'g')
+    AND bf.cpf_digitos = sc.cpf_digitos
 LEFT JOIN siape_remuneracao sr ON sr.id_servidor_portal = sc.id_servidor_portal
 WHERE bf.uf = sc.uf_exercicio
-  AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
+  AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
 ORDER BY sr.remuneracao_basica DESC NULLS LAST
 LIMIT 500;
 
--- Q39: Sócio de empresa recebendo Bolsa Familia
--- Detecta: pessoa com participação societária em empresa comercial não deveria receber BF
+-- Q39: Sócio de empresa ativa recebendo Bolsa Familia
+-- Detecta: pessoa com participação societária em empresa comercial ativa não deveria receber BF
 -- Match por nome + 6 dígitos centrais do CPF (ambas fontes mascaram CPF)
--- Exclui associações, cooperativas, produtores rurais, condominios (sócio não implica renda)
--- Resultado: 59.168 casos (2026-03-21)
+-- Filtra: apenas empresas ativas (situacao_cadastral=2), exclui associações/cooperativas/etc
+-- Requer: etl.15_normalizar (cpf_digitos em bolsa_familia, cpf_cnpj_norm em socio)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
-       s.nome AS nome_socio, s.cnpj_basico,
-       e.razao_social, e.porte, e.natureza_juridica
+       est.cnpj_completo,
+       e.razao_social, e.capital_social,
+       CASE e.porte
+           WHEN 1 THEN 'Nao informado'
+           WHEN 3 THEN 'Micro/Pequena'
+           WHEN 5 THEN 'Demais (media/grande)'
+           ELSE 'Porte ' || e.porte
+       END AS porte,
+       dnj.descricao AS natureza_juridica
 FROM bolsa_familia bf
 JOIN socio s ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(s.nome))
-    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
-      = REGEXP_REPLACE(s.cpf_cnpj_socio, '[^0-9]', '', 'g')
+    AND bf.cpf_digitos = s.cpf_cnpj_norm
     AND s.tipo_socio = 2  -- pessoa fisica
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
+JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
+    AND est.cnpj_ordem = '0001'  -- matriz
+    AND est.situacao_cadastral = '2'  -- ativa
+LEFT JOIN dom_natureza_juridica dnj ON dnj.codigo = e.natureza_juridica
 WHERE e.porte IN (3, 5)  -- medio ou grande porte
-  AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
+  AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
   AND e.natureza_juridica NOT IN ('3999', '4090', '4120', '3085', '3069', '3220')
-ORDER BY e.porte DESC, bf.nm_favorecido
+ORDER BY e.capital_social DESC NULLS LAST
 LIMIT 500;
 
 -- Q40: Beneficiário Bolsa Familia que também recebe CPGF (cartão corporativo)
 -- Detecta: uso indevido — mesma pessoa recebendo benefício social e usando cartão do governo
 -- Match por nome + 6 dígitos centrais do CPF
+-- Requer: etl.15_normalizar (cpf_digitos em bolsa_familia, cpf_portador_digitos em cpgf)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
        ct.nome_portador, ct.cpf_portador,
        COUNT(*) AS qtd_transacoes_cpgf,
        SUM(ct.valor_transacao) AS total_cpgf
 FROM bolsa_familia bf
 JOIN cpgf_transacao ct ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(ct.nome_portador))
-    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
-      = REGEXP_REPLACE(ct.cpf_portador, '[^0-9]', '', 'g')
-WHERE bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
+    AND bf.cpf_digitos = ct.cpf_portador_digitos
+WHERE bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
 GROUP BY bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
          ct.nome_portador, ct.cpf_portador
 ORDER BY total_cpgf DESC
