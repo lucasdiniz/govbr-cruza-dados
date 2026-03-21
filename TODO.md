@@ -2,7 +2,7 @@
 
 ## Pendente
 - [EM BACKGROUND] `python -m etl.15_normalizar` — PID 9244. Normalizacao avancando: PGFN (40M) concluido, agora em socio (27M). Checar: tasklist | grep 9244
-- [EM BACKGROUND] tmp_run_partial.py (Q01-Q37 + Q41) — PID 12632. Salvando CSVs em resultados/. Checar: tasklist | grep 12632
+- [PARADO] tmp_run_partial.py — parado para re-executar com UF/municipio nas queries
 - [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
 - [x] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
 - [ ] Quando 15_normalizar terminar: rodar Q38/Q40/Q42 (`python -m etl.run_queries --query Q38` etc)
@@ -17,7 +17,17 @@
 - Normalização progrediu: PGFN (40M rows) concluido, avançou para socio (27M rows)
 - Matou Q39 duplicada que competia por recursos + limpou shells residuais do psql
 - Atualizado README com todas as 15+ fontes e 42 queries
-- Push para GitHub
+- Push para GitHub: https://github.com/lucasdiniz/govbr-cruza-dados
+- Fix Q15: adicionado filtro temporal em CPGF (dt_transacao > dt_situacao) e emenda (TO_DATE(ano_mes) > dt_situacao)
+- Fix Q15: corrigido formato ano_mes (YYYYMM, não YYYY/MM)
+- Q15 re-executada: 1.470 resultados (empresas inativas recebendo pagamentos apos baixa)
+- Criada pasta relatorios/ para investigacoes baseadas nos resultados das queries
+- 4 relatorios de investigacao: Campina Grande (pejotizacao medicos), Conceicao, Imaculada, Sao Bento (empresas fachada)
+- Detectado deadlock: query sancoes do partial runner bloqueava ALTER TABLE do normalizer por ~53min. Cancelada query para liberar
+- Normalização avancou: PGFN OK, socio OK, agora em viagem/pncp_contrato (tabelas menores)
+- Adicionado UF/municipio em 15 queries (Q03,Q04,Q07,Q10,Q11,Q15,Q18,Q21,Q22,Q25,Q26,Q27,Q28,Q33,Q36,Q37)
+- Fonte decidida caso a caso: orgao contratante (pc.uf) para contratos PNCP, sede da empresa (est.uf) para queries societarias, ambos para Q03
+- Partial runner (PID 12632) parado para re-executar queries com UF/municipio apos normalizacao
 
 ### 2026-03-21 (sessao 3)
 - Verificado PGFN: 39.9M registros, 0 datas NULL, sem duplicatas reais (mesmo numero_inscricao = PRINCIPAL + CORRESPONSAVEL)

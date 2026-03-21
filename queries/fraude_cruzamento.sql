@@ -48,24 +48,24 @@ ORDER BY total_renuncia DESC;
 
 -- Q15: Empresa inativa que recebe pagamentos
 WITH empresas_inativas AS (
-    SELECT cnpj_completo, cnpj_basico, situacao_cadastral, dt_situacao
+    SELECT cnpj_completo, cnpj_basico, uf, municipio, situacao_cadastral, dt_situacao
     FROM estabelecimento
     WHERE situacao_cadastral IN (3, 4, 8)
 )
-SELECT ei.cnpj_completo, ei.situacao_cadastral, ei.dt_situacao,
+SELECT ei.cnpj_completo, ei.uf, ei.municipio, ei.situacao_cadastral, ei.dt_situacao,
        'PNCP' AS fonte, pc.objeto AS detalhe, pc.valor_global AS valor, pc.dt_assinatura AS data
 FROM empresas_inativas ei
 JOIN pncp_contrato pc ON pc.ni_fornecedor = ei.cnpj_completo
   AND pc.dt_assinatura > ei.dt_situacao
 UNION ALL
-SELECT ei.cnpj_completo, ei.situacao_cadastral, ei.dt_situacao,
+SELECT ei.cnpj_completo, ei.uf, ei.municipio, ei.situacao_cadastral, ei.dt_situacao,
        'EMENDA', ef.nome_autor, ef.valor_recebido,
        TO_DATE(ef.ano_mes, 'YYYYMM') AS data
 FROM empresas_inativas ei
 JOIN emenda_favorecido ef ON ef.codigo_favorecido = ei.cnpj_completo
   AND TO_DATE(ef.ano_mes, 'YYYYMM') > ei.dt_situacao
 UNION ALL
-SELECT ei.cnpj_completo, ei.situacao_cadastral, ei.dt_situacao,
+SELECT ei.cnpj_completo, ei.uf, ei.municipio, ei.situacao_cadastral, ei.dt_situacao,
        'CPGF', ct.nome_portador, ct.valor_transacao, ct.dt_transacao
 FROM empresas_inativas ei
 JOIN cpgf_transacao ct ON ct.cnpj_cpf_favorecido = ei.cnpj_completo

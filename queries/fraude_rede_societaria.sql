@@ -37,9 +37,12 @@ ORDER BY total_pncp + total_emendas + total_bndes DESC;
 -- Q18: Sócios laranjas (faixa etária extrema em empresas fornecedoras)
 SELECT s.nome, s.cpf_cnpj_socio, s.faixa_etaria,
        e.razao_social, e.capital_social,
+       est.uf AS uf_empresa, est.municipio AS municipio_empresa,
        pc.valor_global, pc.objeto
 FROM socio s
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
+LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
+  AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
 WHERE s.faixa_etaria IN (1, 2, 9)
   AND s.tipo_socio = 2

@@ -13,20 +13,25 @@ ORDER BY total_gasto DESC;
 -- Q10: Portador de cartão que é sócio de empresa fornecedora
 SELECT ct.nome_portador, ct.cpf_portador,
        s.cnpj_basico, e.razao_social,
+       est.uf AS uf_empresa, est.municipio AS municipio_empresa,
        SUM(ct.valor_transacao) AS gasto_cartao,
        COUNT(*) AS transacoes
 FROM cpgf_transacao ct
 JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(ct.cpf_portador, 4, 6) || '%'
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
+LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
+  AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 WHERE ct.valor_transacao > 0
   AND SUBSTRING(ct.cpf_portador, 4, 6) != '000000'
-GROUP BY ct.nome_portador, ct.cpf_portador, s.cnpj_basico, e.razao_social
+GROUP BY ct.nome_portador, ct.cpf_portador, s.cnpj_basico, e.razao_social,
+         est.uf, est.municipio
 HAVING SUM(ct.valor_transacao) > 10000
 ORDER BY gasto_cartao DESC;
 
 -- Q11: Favorecido do CPGF é empresa inativa ou recém-criada
 SELECT ct.cnpj_cpf_favorecido, ct.nome_favorecido,
+       est.uf, est.municipio,
        est.situacao_cadastral, est.dt_inicio_atividade,
        SUM(ct.valor_transacao) AS total_recebido,
        COUNT(*) AS transacoes
@@ -35,7 +40,7 @@ JOIN estabelecimento est ON est.cnpj_completo = ct.cnpj_cpf_favorecido
 WHERE est.situacao_cadastral IN (3, 4, 8)
    OR (ct.dt_transacao - est.dt_inicio_atividade) < 90
 GROUP BY ct.cnpj_cpf_favorecido, ct.nome_favorecido,
-         est.situacao_cadastral, est.dt_inicio_atividade
+         est.uf, est.municipio, est.situacao_cadastral, est.dt_inicio_atividade
 ORDER BY total_recebido DESC;
 
 -- Q19: Fracionamento de despesa (valores logo abaixo de limites)

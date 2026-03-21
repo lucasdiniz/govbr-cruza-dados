@@ -1,6 +1,7 @@
 -- Q21: Servidor federal que é sócio de empresa fornecedora do seu próprio órgão
 SELECT sc.nome, sc.cpf, sc.org_exercicio, sc.descricao_cargo,
        s.cnpj_basico, e.razao_social,
+       pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
        pc.objeto, pc.valor_global, pc.cnpj_orgao
 FROM siape_cadastro sc
 JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(sc.cpf, 5, 6) || '%'
@@ -17,6 +18,7 @@ LIMIT 20;
 SELECT sc.nome, sc.cpf, sc.org_exercicio,
        ct.cnpj_cpf_favorecido, ct.nome_favorecido,
        s.cnpj_basico, e.razao_social,
+       est.uf AS uf_empresa, est.municipio AS municipio_empresa,
        SUM(ct.valor_transacao) AS total_gasto
 FROM siape_cadastro sc
 JOIN cpgf_transacao ct ON SUBSTRING(sc.cpf, 5, 6) = SUBSTRING(ct.cpf_portador, 5, 6)
@@ -24,10 +26,12 @@ JOIN cpgf_transacao ct ON SUBSTRING(sc.cpf, 5, 6) = SUBSTRING(ct.cpf_portador, 5
 JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(sc.cpf, 5, 6) || '%'
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
+LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
+  AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 WHERE LEFT(ct.cnpj_cpf_favorecido, 8) = s.cnpj_basico
 GROUP BY sc.nome, sc.cpf, sc.org_exercicio,
          ct.cnpj_cpf_favorecido, ct.nome_favorecido,
-         s.cnpj_basico, e.razao_social
+         s.cnpj_basico, e.razao_social, est.uf, est.municipio
 ORDER BY total_gasto DESC;
 
 -- Q23: Servidores com remuneração acima do teto constitucional

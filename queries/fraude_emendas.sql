@@ -15,6 +15,7 @@ ORDER BY total_emenda DESC;
 -- Q07: Emenda direciona recurso para empresa com dívida ativa
 SELECT ef.nome_autor, ef.codigo_emenda,
        ef.nome_favorecido, ef.codigo_favorecido,
+       ef.uf_favorecido, ef.municipio_favorecido,
        SUM(ef.valor_recebido) AS total_emenda,
        pgfn.valor_consolidado AS divida_ativa,
        pgfn.tipo_situacao_inscricao
@@ -22,7 +23,8 @@ FROM emenda_favorecido ef
 JOIN pgfn_divida pgfn ON pgfn.cpf_cnpj = ef.codigo_favorecido
 WHERE pgfn.tipo_situacao_inscricao = 'EM COBRANCA'
 GROUP BY ef.nome_autor, ef.codigo_emenda, ef.nome_favorecido,
-         ef.codigo_favorecido, pgfn.valor_consolidado, pgfn.tipo_situacao_inscricao
+         ef.codigo_favorecido, ef.uf_favorecido, ef.municipio_favorecido,
+         pgfn.valor_consolidado, pgfn.tipo_situacao_inscricao
 ORDER BY total_emenda DESC;
 
 -- Q08: Concentração: mesmo autor beneficia repetidamente o mesmo favorecido

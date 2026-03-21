@@ -5,8 +5,9 @@
 
 -- Q33: Candidato que é sócio de empresa fornecedora do governo
 -- Detecta: conflito de interesse — político com participação em empresa que recebe contratos
-SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.ano_eleicao,
+SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
        s.cnpj_basico, e.razao_social,
+       pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
        COUNT(DISTINCT pc.numero_controle_pncp) AS qtd_contratos,
        SUM(pc.valor_global) AS total_contratos
 FROM tse_candidato tc
@@ -14,8 +15,8 @@ JOIN socio s ON s.cpf_cnpj_socio = tc.cpf
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
 WHERE tc.cpf IS NOT NULL AND tc.cpf NOT IN ('-1', '-4', '')
-GROUP BY tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.ano_eleicao,
-         s.cnpj_basico, e.razao_social
+GROUP BY tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
+         s.cnpj_basico, e.razao_social, pc.uf, pc.municipio_nome
 HAVING SUM(pc.valor_global) > 100000
 ORDER BY total_contratos DESC;
 
@@ -65,7 +66,7 @@ LIMIT 200;
 
 -- Q36: Candidato com sanção ativa (CEIS/CNEP) ainda concorrendo
 -- Detecta: candidato que deveria estar impedido
-SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.ano_eleicao,
+SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
        tc.ds_situacao_candidatura,
        cs.tipo_sancao, cs.fundamentacao, cs.orgao_sancionador,
        cs.dt_inicio_sancao, cs.dt_fim_sancao
@@ -77,7 +78,7 @@ ORDER BY tc.ano_eleicao DESC, tc.nm_candidato;
 
 -- Q37: Candidato que recebeu emendas parlamentares para empresas onde é sócio
 -- Detecta: auto-benefício via emendas
-SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido,
+SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf,
        s.cnpj_basico, e.razao_social,
        ef.nome_autor AS autor_emenda,
        SUM(ef.valor_recebido) AS total_emendas

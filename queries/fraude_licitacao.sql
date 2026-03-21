@@ -27,7 +27,10 @@ HAVING COUNT(DISTINCT pc.numero_controle_pncp) > 1
 ORDER BY valor_total DESC;
 
 -- Q03: Empresa-fachada: criada recentemente, ganha grande contrato
-SELECT e.razao_social, est.cnpj_completo, est.dt_inicio_atividade,
+SELECT e.razao_social, est.cnpj_completo,
+       est.uf AS uf_empresa, est.municipio AS municipio_empresa,
+       pc.uf AS uf_orgao, pc.municipio_nome AS municipio_orgao,
+       est.dt_inicio_atividade,
        e.capital_social, pc.objeto, pc.valor_global, pc.dt_assinatura,
        (pc.dt_assinatura - est.dt_inicio_atividade) AS dias_ate_contrato
 FROM pncp_contrato pc
@@ -42,6 +45,7 @@ ORDER BY dias_ate_contrato ASC;
 -- Q04: Devedor PGFN que continua recebendo contratos
 SELECT pgfn.nome_devedor, pgfn.cpf_cnpj, pgfn.valor_consolidado,
        pgfn.tipo_situacao_inscricao,
+       pc.uf AS uf_orgao, pc.municipio_nome AS municipio_orgao,
        pc.objeto, pc.valor_global, pc.dt_assinatura
 FROM pgfn_divida pgfn
 JOIN pncp_contrato pc ON pc.ni_fornecedor = pgfn.cpf_cnpj
