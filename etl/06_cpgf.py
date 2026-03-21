@@ -12,9 +12,11 @@ from etl.db import get_conn, table_count
 def run():
     conn = get_conn()
     try:
-        files = sorted(DATA_DIR.glob("cpgf_*.csv"))
+        # Busca em DATA_DIR/cpgf_*.csv (legado) e DATA_DIR/cpgf/*.csv (novo)
+        files = sorted(DATA_DIR.glob("cpgf_*.csv")) + sorted((DATA_DIR / "cpgf").glob("*.csv"))
+        files = sorted(set(files))  # deduplica
         if not files:
-            print("    AVISO: Nenhum arquivo cpgf_*.csv encontrado.")
+            print("    AVISO: Nenhum arquivo CPGF encontrado.")
             return
 
         staging = "_stg_cpgf"

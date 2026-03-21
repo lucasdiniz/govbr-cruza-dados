@@ -8,17 +8,21 @@ def main():
     start = time.time()
 
     phases = [
+        ("Fase 0: Download de dados brutos", "etl.00_download"),
         ("Fase 1: Schema", "etl.01_schema"),
-        ("Fase 2: Domínio", "etl.02_dominio"),
-        ("Fase 3: RFB (Empresas, Estabelecimentos, Sócios, Simples)", "etl.03_rfb"),
+        ("Fase 2: Dominio", "etl.02_dominio"),
+        ("Fase 3: RFB (Empresas, Estabelecimentos, Socios, Simples)", "etl.03_rfb"),
         ("Fase 4.1-4.2: PNCP", "etl.04_pncp"),
         ("Fase 4.3-4.5: Emendas", "etl.05_emendas"),
         ("Fase 4.6: CPGF", "etl.06_cpgf"),
         ("Fase 4.7-4.8+5.2: Complementar (BNDES, Holdings, ComprasNet)", "etl.09_complementar"),
         ("Fase 5.1: PGFN", "etl.07_pgfn"),
-        ("Fase 5.3: Renúncias Fiscais", "etl.08_renuncias"),
-        ("Fase 6: Índices", "etl.10_indices"),
+        ("Fase 5.3: Renuncias Fiscais", "etl.08_renuncias"),
+        ("Fase 6: Indices", "etl.10_indices"),
         ("Fase 7: Entity Resolution (Pessoa)", "etl.11_pessoa"),
+        ("Fase 8: SIAPE (Servidores)", "etl.12_siape"),
+        ("Fase 9: Sancoes (CEIS/CNEP/CEAF/Acordos)", "etl.13_sancoes"),
+        ("Fase 10: Viagens a Servico", "etl.14_viagens"),
     ]
 
     # Permite rodar fase específica: python -m etl.run_all 3
