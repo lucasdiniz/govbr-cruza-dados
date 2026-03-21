@@ -3,7 +3,7 @@
 ## Pendente
 - [ ] Criar indices otimizados para queries (`sql/19_indices_queries.sql`)
 - [ ] Retomar `python -m etl.15_normalizar` (PARADO na sessao 3 — faltam PGFN 40M e socio 27M)
-- [ ] Rodar `python -m etl.16_tse` (candidatos + bens 2020/2022/2024)
+- [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
 - [ ] Rodar as 42 queries de fraude (`python -m etl.run_queries`) e verificar resultados
 - [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
@@ -25,6 +25,7 @@
 - Queries BF atualizadas para usar colunas desnormalizadas (cpf_digitos) em vez de REGEXP_REPLACE inline
 - Q39 agora filtra apenas empresas ativas + mostra CNPJ completo + porte/NJ por extenso
 - PARADO Q39 — recriar depois de rodar 15_normalizar
+- TSE candidatos + bens carregados: 2.1M candidatos + 4M bens (2020/2022/2024)
 
 ### 2026-03-21 (sessao 2)
 - Recuperado dados orphaned: _stg_estab +4.7M, _stg_pgfn +12.1M
