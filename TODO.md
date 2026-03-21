@@ -1,10 +1,11 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] Rodar `python -m etl.15_normalizar` (normalizar CPF/CNPJ para JOINs)
+- [ ] Criar indices otimizados para queries (`sql/19_indices_queries.sql`)
+- [ ] Retomar `python -m etl.15_normalizar` (PARADO na sessao 3 — faltam PGFN 40M e socio 27M)
 - [ ] Rodar `python -m etl.16_tse` (candidatos + bens 2020/2022/2024)
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
-- [ ] Rodar as 42 queries de fraude e verificar resultados
+- [ ] Rodar as 42 queries de fraude (`python -m etl.run_queries`) e verificar resultados
 - [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
 
 ## Log
@@ -14,10 +15,16 @@
 - Criado indice idx_pgfn_inscricao em pgfn_divida(numero_inscricao)
 - Limpeza disco: removido 45GB de dados duplicados do C: (ja estavam em G:\govbr-dados-brutos). Disco C: 75GB livres agora
 - DATA_DIR ja apontava para G:\govbr-dados-brutos no .env
-- [EM ANDAMENTO] Rodando etl.15_normalizar (CPF/CNPJ norm em ~70M rows)
+- PARADO etl.15_normalizar — interrompido para varredura de indices. Precisa retomar
 - Q39 testada: 59.168 socios de empresas comerciais recebendo Bolsa Familia (match nome + 6 digitos CPF)
 - Refinada queries BF (Q38/Q39/Q40): adicionado match por digitos centrais CPF + exclusao de associacoes/cooperativas
 - Fix: removido DROP de tse_receita/despesa do schema 16 (evita perder 8.3M registros do ETL 18)
+- Criado etl/run_queries.py — exporta resultados das 42 queries para CSV em resultados/
+- Varredura de indices: criado sql/19_indices_queries.sql com ~20 indices (LEFT8, UPPER/TRIM, cpf_digitos, datas)
+- Reescrito etl/15_normalizar.py: execucao por statement (idempotente), inclui novos indices + colunas BF/SIAPE/CPGF
+- Queries BF atualizadas para usar colunas desnormalizadas (cpf_digitos) em vez de REGEXP_REPLACE inline
+- Q39 agora filtra apenas empresas ativas + mostra CNPJ completo + porte/NJ por extenso
+- PARADO Q39 — recriar depois de rodar 15_normalizar
 
 ### 2026-03-21 (sessao 2)
 - Recuperado dados orphaned: _stg_estab +4.7M, _stg_pgfn +12.1M
