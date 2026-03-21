@@ -1,12 +1,13 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] Criar indices otimizados para queries (`sql/19_indices_queries.sql`)
-- [ ] Retomar `python -m etl.15_normalizar` (PARADO na sessao 3 — faltam PGFN 40M e socio 27M)
+- [EM BACKGROUND] `python -m etl.15_normalizar` — task b2fepkow7, no UPDATE pgfn 40M. Inclui indices. Idempotente (pode retomar)
+- [EM BACKGROUND] Queries Q01-Q37 + Q41 — task birzwqzuf, salvando CSVs em resultados/. Pulou Q38/Q39/Q40/Q42
 - [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
+- [ ] Rodar Q38/Q39/Q40/Q42 (dependem de 15_normalizar terminar)
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
-- [ ] Rodar as 42 queries de fraude (`python -m etl.run_queries`) e verificar resultados
-- [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
+- [ ] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados) — user logou no github
+- [ ] Limpar tmp_run_q39.py e tmp_run_partial.py apos uso
 
 ## Log
 
