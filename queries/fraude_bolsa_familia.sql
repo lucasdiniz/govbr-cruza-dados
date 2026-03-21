@@ -5,41 +5,51 @@
 
 -- Q38: Servidor federal recebendo Bolsa Familia
 -- Detecta: fraude — servidor publico com renda nao deveria receber BF
--- NOTA: CPF do BF é mascarado (***.159.172-**), match por nome + UF
+-- Match por nome + 6 dígitos centrais do CPF + UF
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
        sc.nome AS nome_servidor, sc.cpf_servidor, sc.org_exercicio,
        sr.remuneracao_basica
 FROM bolsa_familia bf
 JOIN siape_cadastro sc ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(sc.nome))
-LEFT JOIN siape_remuneracao sr ON sr.id_servidor = sc.id_servidor
+    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
+      = REGEXP_REPLACE(sc.cpf, '[^0-9]', '', 'g')
+LEFT JOIN siape_remuneracao sr ON sr.id_servidor_portal = sc.id_servidor_portal
 WHERE bf.uf = sc.uf_exercicio
+  AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
 ORDER BY sr.remuneracao_basica DESC NULLS LAST
 LIMIT 500;
 
 -- Q39: Sócio de empresa recebendo Bolsa Familia
 -- Detecta: pessoa com participação societária não deveria receber BF
--- Match por nome (CPF mascarado no BF)
+-- Match por nome + 6 dígitos centrais do CPF (ambas fontes mascaram CPF)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
        s.nome AS nome_socio, s.cnpj_basico,
        e.razao_social, e.porte
 FROM bolsa_familia bf
 JOIN socio s ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(s.nome))
+    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
+      = REGEXP_REPLACE(s.cpf_cnpj_socio, '[^0-9]', '', 'g')
     AND s.tipo_socio = 2  -- pessoa fisica
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 WHERE e.porte IN (3, 5)  -- medio ou grande porte
+  AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
 ORDER BY e.porte DESC, bf.nm_favorecido
 LIMIT 500;
 
 -- Q40: Beneficiário Bolsa Familia que também recebe CPGF (cartão corporativo)
 -- Detecta: uso indevido — mesma pessoa recebendo benefício social e usando cartão do governo
+-- Match por nome + 6 dígitos centrais do CPF
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
        ct.nome_portador, ct.cpf_portador,
        COUNT(*) AS qtd_transacoes_cpgf,
        SUM(ct.valor_transacao) AS total_cpgf
 FROM bolsa_familia bf
 JOIN cpgf_transacao ct ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(ct.nome_portador))
+    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
+      = REGEXP_REPLACE(ct.cpf_portador, '[^0-9]', '', 'g')
+WHERE bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
 GROUP BY bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
          ct.nome_portador, ct.cpf_portador
 ORDER BY total_cpgf DESC
