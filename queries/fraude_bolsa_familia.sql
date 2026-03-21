@@ -21,12 +21,14 @@ ORDER BY sr.remuneracao_basica DESC NULLS LAST
 LIMIT 500;
 
 -- Q39: Sócio de empresa recebendo Bolsa Familia
--- Detecta: pessoa com participação societária não deveria receber BF
+-- Detecta: pessoa com participação societária em empresa comercial não deveria receber BF
 -- Match por nome + 6 dígitos centrais do CPF (ambas fontes mascaram CPF)
+-- Exclui associações, cooperativas, produtores rurais, condominios (sócio não implica renda)
+-- Resultado: 59.168 casos (2026-03-21)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
        s.nome AS nome_socio, s.cnpj_basico,
-       e.razao_social, e.porte
+       e.razao_social, e.porte, e.natureza_juridica
 FROM bolsa_familia bf
 JOIN socio s ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(s.nome))
     AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
@@ -35,6 +37,7 @@ JOIN socio s ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 WHERE e.porte IN (3, 5)  -- medio ou grande porte
   AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
+  AND e.natureza_juridica NOT IN ('3999', '4090', '4120', '3085', '3069', '3220')
 ORDER BY e.porte DESC, bf.nm_favorecido
 LIMIT 500;
 

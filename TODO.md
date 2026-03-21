@@ -15,6 +15,9 @@
 - Limpeza disco: removido 45GB de dados duplicados do C: (ja estavam em G:\govbr-dados-brutos). Disco C: 75GB livres agora
 - DATA_DIR ja apontava para G:\govbr-dados-brutos no .env
 - [EM ANDAMENTO] Rodando etl.15_normalizar (CPF/CNPJ norm em ~70M rows)
+- Q39 testada: 59.168 socios de empresas comerciais recebendo Bolsa Familia (match nome + 6 digitos CPF)
+- Refinada queries BF (Q38/Q39/Q40): adicionado match por digitos centrais CPF + exclusao de associacoes/cooperativas
+- Fix: removido DROP de tse_receita/despesa do schema 16 (evita perder 8.3M registros do ETL 18)
 
 ### 2026-03-21 (sessao 2)
 - Recuperado dados orphaned: _stg_estab +4.7M, _stg_pgfn +12.1M
