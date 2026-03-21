@@ -23,6 +23,10 @@ def main():
         ("Fase 8: SIAPE (Servidores)", "etl.12_siape"),
         ("Fase 9: Sancoes (CEIS/CNEP/CEAF/Acordos)", "etl.13_sancoes"),
         ("Fase 10: Viagens a Servico", "etl.14_viagens"),
+        ("Fase 11: TSE Candidatos e Bens", "etl.16_tse"),
+        ("Fase 12: Bolsa Familia", "etl.17_bolsa_familia"),
+        ("Fase 13: TSE Prestacao de Contas", "etl.18_tse_prestacao"),
+        ("Fase 14: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
     ]
 
     # Permite rodar fase específica: python -m etl.run_all 3

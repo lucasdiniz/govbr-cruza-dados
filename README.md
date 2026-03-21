@@ -50,7 +50,7 @@ Carrega ~40GB de dados de **15+ fontes publicas** num banco PostgreSQL (~285M re
 ```bash
 # 1. Configurar
 cp .env.example .env
-# Editar .env com credenciais do PostgreSQL
+# Editar .env com credenciais do PostgreSQL e DATA_DIR
 
 # 2. Instalar
 pip install -e .
@@ -58,20 +58,25 @@ pip install -e .
 # 3. Subir PostgreSQL (ou usar um existente)
 docker compose up -d
 
-# 4. Rodar ETL completo (~2-3h)
+# 4. Rodar ETL completo (19 fases, ~4-6h dependendo do disco)
 python -m etl.run_all
 
 # 5. Rodar fase especifica (ex: so fase 4 = PNCP)
 python -m etl.run_all 4
+
+# 6. Exportar resultados das queries de fraude
+python -m etl.run_queries              # todas as 42 queries
+python -m etl.run_queries --query Q03  # query especifica
 ```
 
 ## Estrutura
 
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Scripts de carga por fonte de dados (15+ fontes)
+etl/           Scripts de carga por fonte de dados (19 fases, 15+ fontes)
 queries/       42 queries SQL prontas para investigacao de fraudes
 resultados/    CSVs com resultados das queries (gitignored)
+relatorios/    Investigacoes baseadas nos resultados (Markdown)
 ```
 
 ## Fontes de dados
@@ -88,10 +93,19 @@ Os dados brutos devem ser baixados separadamente dos portais oficiais:
 
 ## Entity Resolution
 
-CPFs aparecem mascarados na maioria das bases (`***.456.789-**`). O sistema usa uma abordagem probabilistica para resolver identidades:
+CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte:
 
-- Tabela `pessoa` sem constraint UNIQUE (aceita possiveis duplicatas)
-- Tabela `pessoa_merge` com scores de confianca por metodo de match
+| Fonte | Formato | Exemplo |
+|-------|---------|---------|
+| Bolsa Familia / SIAPE / CPGF | `***.456.789-**` | 6 digitos centrais visiveis |
+| Socio (RFB) | `***456789**` | 6 digitos centrais, sem pontuacao |
+| PGFN | `XXX456.789XX` | 6 digitos centrais, formato proprio |
+| CEIS/CNEP | `12345678901` | CPF completo (raro) |
+
+O pipeline normaliza automaticamente (fase 14) criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo JOINs por igualdade direta entre fontes. Match por **nome + 6 digitos CPF** virtualmente elimina falsos positivos.
+
+Complementarmente:
+- Tabela `pessoa` com entity resolution probabilistica
 - Fuzzy matching via `pg_trgm` para nomes similares
 
 ## Licenca
