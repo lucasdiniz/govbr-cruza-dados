@@ -108,7 +108,7 @@ def load_convenios(conn):
             SELECT
                 TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6),
-                CASE WHEN TRIM(c7) ~ '^\d{2}/\d{2}/\d{4}$' THEN safe_to_date(TRIM(c7), 'DD/MM/YYYY') ELSE NULL END,
+                CASE WHEN TRIM(c7) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$' THEN safe_to_date(TRIM(c7), 'DD/MM/YYYY') ELSE NULL END,
                 TRIM(c8), TRIM(c9), TRIM(c10),
                 CASE WHEN TRIM(c11) = '' THEN NULL
                      ELSE CAST(REPLACE(REPLACE(TRIM(c11), '.', ''), ',', '.') AS NUMERIC)
