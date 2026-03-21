@@ -60,10 +60,10 @@ JOIN pncp_contrato pc ON pc.ni_fornecedor = ei.cnpj_completo
 UNION ALL
 SELECT ei.cnpj_completo, ei.situacao_cadastral, ei.dt_situacao,
        'EMENDA', ef.nome_autor, ef.valor_recebido,
-       TO_DATE(ef.ano_mes, 'YYYY/MM') AS data
+       TO_DATE(ef.ano_mes, 'YYYYMM') AS data
 FROM empresas_inativas ei
 JOIN emenda_favorecido ef ON ef.codigo_favorecido = ei.cnpj_completo
-  AND TO_DATE(ef.ano_mes, 'YYYY/MM') > ei.dt_situacao
+  AND TO_DATE(ef.ano_mes, 'YYYYMM') > ei.dt_situacao
 UNION ALL
 SELECT ei.cnpj_completo, ei.situacao_cadastral, ei.dt_situacao,
        'CPGF', ct.nome_portador, ct.valor_transacao, ct.dt_transacao
