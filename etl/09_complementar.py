@@ -47,7 +47,7 @@ def load_bndes(conn):
             SELECT
                 TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6),
-                CASE WHEN TRIM(c7) ~ '^\d{2}/\d{2}/\d{4}$' THEN safe_to_date(TRIM(c7), 'DD/MM/YYYY') ELSE NULL END,
+                safe_to_date(TRIM(c7), 'YYYY-MM-DD'),
                 CASE WHEN TRIM(c8) = '' THEN NULL
                      ELSE CAST(REPLACE(REPLACE(TRIM(c8), '.', ''), ',', '.') AS NUMERIC) END,
                 CASE WHEN TRIM(c9) = '' THEN NULL
@@ -157,10 +157,10 @@ def load_comprasnet(conn):
                 TRIM(c14), TRIM(c15), TRIM(c16), TRIM(c17), TRIM(c18),
                 TRIM(c19), TRIM(c20), TRIM(c21), TRIM(c22), TRIM(c23),
                 TRIM(c24), TRIM(c25), TRIM(c26), TRIM(c27),
-                CASE WHEN TRIM(c28) ~ '^\d{4}-\d{2}-\d{2}$' THEN safe_to_date(TRIM(c28), 'YYYY-MM-DD') ELSE NULL END,
-                CASE WHEN TRIM(c29) ~ '^\d{4}-\d{2}-\d{2}$' THEN safe_to_date(TRIM(c29), 'YYYY-MM-DD') ELSE NULL END,
-                CASE WHEN TRIM(c30) ~ '^\d{4}-\d{2}-\d{2}$' THEN safe_to_date(TRIM(c30), 'YYYY-MM-DD') ELSE NULL END,
-                CASE WHEN TRIM(c31) ~ '^\d{4}-\d{2}-\d{2}$' THEN safe_to_date(TRIM(c31), 'YYYY-MM-DD') ELSE NULL END,
+                safe_to_date(TRIM(c28), 'YYYY-MM-DD'),
+                safe_to_date(TRIM(c29), 'YYYY-MM-DD'),
+                safe_to_date(TRIM(c30), 'YYYY-MM-DD'),
+                safe_to_date(TRIM(c31), 'YYYY-MM-DD'),
                 CASE WHEN TRIM(c32) = '' THEN NULL ELSE CAST(TRIM(c32) AS NUMERIC) END,
                 CASE WHEN TRIM(c33) = '' THEN NULL ELSE CAST(TRIM(c33) AS NUMERIC) END,
                 CASE WHEN TRIM(c34) ~ '^\d+$' THEN CAST(TRIM(c34) AS INT) ELSE NULL END,
