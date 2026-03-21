@@ -4,9 +4,9 @@ SELECT s.nome, s.cpf_cnpj_socio,
        COUNT(DISTINCT pc.numero_controle_pncp) AS qtd_contratos,
        SUM(pc.valor_global) AS total_contratos
 FROM socio s
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE s.tipo_socio = 2
-  AND s.cpf_cnpj_socio NOT IN ('***000000**', '')
+  AND s.cpf_cnpj_norm IS NOT NULL AND s.cpf_cnpj_norm != '000000'
 GROUP BY s.nome, s.cpf_cnpj_socio
 HAVING COUNT(DISTINCT s.cnpj_basico) >= 3
 ORDER BY total_contratos DESC;
@@ -43,7 +43,7 @@ FROM socio s
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE s.faixa_etaria IN (1, 2, 9)
   AND s.tipo_socio = 2
   AND pc.valor_global > 100000

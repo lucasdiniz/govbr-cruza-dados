@@ -5,7 +5,7 @@ SELECT cs.nome_sancionado, cs.cpf_cnpj_sancionado,
        pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
        pc.objeto, pc.valor_global, pc.dt_assinatura, pc.cnpj_orgao
 FROM ceis_sancao cs
-JOIN pncp_contrato pc ON REGEXP_REPLACE(cs.cpf_cnpj_sancionado, '[^0-9]', '', 'g') = pc.ni_fornecedor
+JOIN pncp_contrato pc ON cs.cpf_cnpj_norm = pc.ni_fornecedor
 WHERE (cs.dt_final_sancao IS NULL OR pc.dt_assinatura <= cs.dt_final_sancao)
   AND pc.dt_assinatura >= cs.dt_inicio_sancao
 ORDER BY pc.valor_global DESC
@@ -18,7 +18,7 @@ SELECT cn.nome_sancionado, cn.cpf_cnpj_sancionado,
        ef.uf_favorecido, ef.municipio_favorecido,
        ef.valor_recebido
 FROM cnep_sancao cn
-JOIN emenda_favorecido ef ON REGEXP_REPLACE(cn.cpf_cnpj_sancionado, '[^0-9]', '', 'g') = ef.codigo_favorecido
+JOIN emenda_favorecido ef ON cn.cpf_cnpj_norm = ef.codigo_favorecido
 ORDER BY ef.valor_recebido DESC
 LIMIT 20;
 
@@ -28,12 +28,12 @@ SELECT ce.nome_sancionado, ce.cpf_cnpj_sancionado,
        s.cnpj_basico, e.razao_social, s.qualificacao,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa
 FROM ceaf_expulsao ce
-JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(REGEXP_REPLACE(ce.cpf_cnpj_sancionado, '[^0-9]', '', 'g'), 4, 6) || '%'
+JOIN socio s ON ce.cpf_cnpj_norm = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
-WHERE SUBSTRING(REGEXP_REPLACE(ce.cpf_cnpj_sancionado, '[^0-9]', '', 'g'), 4, 6) != '000000'
+WHERE ce.cpf_cnpj_norm IS NOT NULL AND ce.cpf_cnpj_norm != '000000'
 ORDER BY ce.dt_inicio_sancao DESC
 LIMIT 20;
 
@@ -43,7 +43,7 @@ SELECT al.razao_social_rfb, al.cnpj_sancionado,
        pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
        pc.objeto, pc.valor_global, pc.dt_assinatura
 FROM acordo_leniencia al
-JOIN pncp_contrato pc ON REGEXP_REPLACE(al.cnpj_sancionado, '[^0-9]', '', 'g') = pc.ni_fornecedor
+JOIN pncp_contrato pc ON al.cnpj_norm = pc.ni_fornecedor
 WHERE pc.dt_assinatura > al.dt_inicio_acordo
 ORDER BY pc.valor_global DESC
 LIMIT 20;

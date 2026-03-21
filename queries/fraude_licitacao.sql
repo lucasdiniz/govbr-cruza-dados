@@ -21,7 +21,7 @@ FROM socio s1
 JOIN socio s2 ON s1.cpf_cnpj_socio = s2.cpf_cnpj_socio
   AND s1.cnpj_basico < s2.cnpj_basico
   AND s1.cpf_cnpj_socio NOT IN ('***000000**', '')
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) IN (s1.cnpj_basico, s2.cnpj_basico)
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor IN (s1.cnpj_basico, s2.cnpj_basico)
 GROUP BY s1.cnpj_basico, s2.cnpj_basico, s1.nome, s1.cpf_cnpj_socio
 HAVING COUNT(DISTINCT pc.numero_controle_pncp) > 1
 ORDER BY valor_total DESC;

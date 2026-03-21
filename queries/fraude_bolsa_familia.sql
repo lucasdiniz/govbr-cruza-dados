@@ -37,8 +37,7 @@ SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        dnj.descricao AS natureza_juridica
 FROM bolsa_familia bf
 JOIN socio s ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(s.nome))
-    AND REGEXP_REPLACE(bf.cpf_favorecido, '[^0-9]', '', 'g')
-      = REGEXP_REPLACE(s.cpf_cnpj_socio, '[^0-9]', '', 'g')
+    AND bf.cpf_digitos = s.cpf_cnpj_norm
     AND s.tipo_socio = 2  -- pessoa fisica
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
@@ -46,7 +45,7 @@ JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.situacao_cadastral = '2'  -- ativa
 LEFT JOIN dom_natureza_juridica dnj ON dnj.codigo = e.natureza_juridica
 WHERE e.porte IN (3, 5)  -- medio ou grande porte
-  AND bf.cpf_favorecido IS NOT NULL AND bf.cpf_favorecido != ''
+  AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
   AND e.natureza_juridica NOT IN ('3999', '4090', '4120', '3085', '3069', '3220')
 ORDER BY e.capital_social DESC NULLS LAST
 LIMIT 500;

@@ -4,12 +4,12 @@ SELECT sc.nome, sc.cpf, sc.org_exercicio, sc.descricao_cargo,
        pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
        pc.objeto, pc.valor_global, pc.cnpj_orgao
 FROM siape_cadastro sc
-JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(sc.cpf, 5, 6) || '%'
+JOIN socio s ON sc.cpf_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
-  AND SUBSTRING(sc.cpf, 5, 6) != '000000'
+  AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos != '000000'
   AND pc.valor_global > 10000
 ORDER BY pc.valor_global DESC
 LIMIT 20;
@@ -21,9 +21,9 @@ SELECT sc.nome, sc.cpf, sc.org_exercicio,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa,
        SUM(ct.valor_transacao) AS total_gasto
 FROM siape_cadastro sc
-JOIN cpgf_transacao ct ON SUBSTRING(sc.cpf, 5, 6) = SUBSTRING(ct.cpf_portador, 5, 6)
-  AND SUBSTRING(sc.cpf, 5, 6) != '000000'
-JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(sc.cpf, 5, 6) || '%'
+JOIN cpgf_transacao ct ON sc.cpf_digitos = ct.cpf_portador_digitos
+  AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos != '000000'
+JOIN socio s ON sc.cpf_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico

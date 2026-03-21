@@ -13,7 +13,7 @@ SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_ele
 FROM tse_candidato tc
 JOIN socio s ON s.cpf_cnpj_socio = tc.cpf
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE tc.cpf IS NOT NULL AND tc.cpf NOT IN ('-1', '-4', '')
 GROUP BY tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
          s.cnpj_basico, e.razao_social, pc.uf, pc.municipio_nome

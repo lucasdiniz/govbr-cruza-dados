@@ -5,8 +5,11 @@
 - [PARADO] tmp_run_partial.py — parado para re-executar com UF/municipio nas queries
 - [x] Rodar `python -m etl.16_tse` — tse_candidato: 2.1M, tse_bem_candidato: 4M (2020/2022/2024)
 - [x] Push para GitHub (repo: github.com/lucasdiniz/govbr-cruza-dados)
-- [ ] Quando 15_normalizar terminar: rodar Q38/Q40/Q42 (`python -m etl.run_queries --query Q38` etc)
-- [ ] Quando 15_normalizar terminar: atualizar queries BF para usar colunas desnormalizadas (cpf_digitos em vez de REGEXP_REPLACE) — codigo ja esta em git mas foi revertido temporariamente para rodar sem normalizar
+- [ ] Quando 15_normalizar terminar: re-executar TODAS as queries (`python -m etl.run_queries`) com colunas normalizadas + UF/municipio
+- [ ] Fix: pgfn_divida.cpf_cnpj_norm com 39.9M nulls — re-executar normalizacao para esta tabela
+- [ ] Fix: emenda_favorecido.cnpj_basico_favorecido quebrado para PF (LEFT de CPF mascarado → '***.433.'). Filtrar por LENGTH >= 14 ou tipo_favorecido
+- [ ] Fix: ceis_sancao/cnep_sancao tem CPF completo (11 digitos) — preservar cpf_cnpj_norm atual + criar cpf_digitos_6 com 6 centrais para match com socio
+- [ ] Apos fixes acima: atualizar Q06, Q24, Q37 para usar colunas normalizadas
 - [ ] Recriar views materializadas (`sql/12_views.sql`) apos normalizacao
 - [ ] Limpar tmp_run_q39.py e tmp_run_partial.py apos uso
 
@@ -28,6 +31,10 @@
 - Adicionado UF/municipio em 15 queries (Q03,Q04,Q07,Q10,Q11,Q15,Q18,Q21,Q22,Q25,Q26,Q27,Q28,Q33,Q36,Q37)
 - Fonte decidida caso a caso: orgao contratante (pc.uf) para contratos PNCP, sede da empresa (est.uf) para queries societarias, ambos para Q03
 - Partial runner (PID 12632) parado para re-executar queries com UF/municipio apos normalizacao
+- Queries otimizadas: REGEXP_REPLACE/SUBSTRING/LIKE → colunas normalizadas (cpf_digitos, cpf_cnpj_norm, cnpj_basico_fornecedor)
+- Queries modificadas: Q02,Q10,Q16,Q18,Q21,Q22,Q25,Q26,Q27,Q28,Q29,Q32,Q33,Q39
+- Pendente otimizacao: Q06,Q24,Q37 (dependem de fix em emenda_favorecido/ceis/cnep)
+- Verificacao normalizacao: pgfn 39.9M nulls, emenda PF quebrado, ceis/cnep tem CPF completo (preservar)
 
 ### 2026-03-21 (sessao 3)
 - Verificado PGFN: 39.9M registros, 0 datas NULL, sem duplicatas reais (mesmo numero_inscricao = PRINCIPAL + CORRESPONSAVEL)

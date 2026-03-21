@@ -17,13 +17,13 @@ SELECT ct.nome_portador, ct.cpf_portador,
        SUM(ct.valor_transacao) AS gasto_cartao,
        COUNT(*) AS transacoes
 FROM cpgf_transacao ct
-JOIN socio s ON s.cpf_cnpj_socio LIKE '%' || SUBSTRING(ct.cpf_portador, 4, 6) || '%'
+JOIN socio s ON ct.cpf_portador_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 WHERE ct.valor_transacao > 0
-  AND SUBSTRING(ct.cpf_portador, 4, 6) != '000000'
+  AND ct.cpf_portador_digitos IS NOT NULL AND ct.cpf_portador_digitos != '000000'
 GROUP BY ct.nome_portador, ct.cpf_portador, s.cnpj_basico, e.razao_social,
          est.uf, est.municipio
 HAVING SUM(ct.valor_transacao) > 10000
