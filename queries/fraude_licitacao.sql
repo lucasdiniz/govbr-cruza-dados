@@ -13,18 +13,30 @@ JOIN holding_vinculo h2 ON h2.cnpj_subsidiaria = c2.ni_fornecedor
 JOIN pncp_contratacao cc ON cc.numero_controle_pncp = c1.numero_controle_contratacao;
 
 -- Q02: Empresas com sócios em comum ganhando contratos do mesmo órgão
-SELECT s1.cnpj_basico AS emp1, s2.cnpj_basico AS emp2,
-       s1.nome AS socio_comum, s1.cpf_cnpj_socio,
-       COUNT(DISTINCT pc.numero_controle_pncp) AS contratos_mesmo_orgao,
-       SUM(pc.valor_global) AS valor_total
-FROM socio s1
-JOIN socio s2 ON s1.cpf_cnpj_socio = s2.cpf_cnpj_socio
-  AND s1.cnpj_basico < s2.cnpj_basico
-  AND s1.cpf_cnpj_socio NOT IN ('***000000**', '')
-JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor IN (s1.cnpj_basico, s2.cnpj_basico)
-GROUP BY s1.cnpj_basico, s2.cnpj_basico, s1.nome, s1.cpf_cnpj_socio
-HAVING COUNT(DISTINCT pc.numero_controle_pncp) > 1
-ORDER BY valor_total DESC;
+-- Filtra apenas sócios PF que são fornecedores PNCP para evitar explosão combinatória
+WITH socios_fornecedores AS (
+    SELECT DISTINCT s.cnpj_basico, s.cpf_cnpj_socio, s.nome
+    FROM socio s
+    JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
+    WHERE s.tipo_socio = 2
+      AND s.cpf_cnpj_norm IS NOT NULL AND s.cpf_cnpj_norm NOT IN ('000000', '')
+)
+SELECT sf1.cnpj_basico AS emp1, e1.razao_social AS razao1,
+       sf2.cnpj_basico AS emp2, e2.razao_social AS razao2,
+       sf1.nome AS socio_comum, sf1.cpf_cnpj_socio,
+       pc_agg.contratos, pc_agg.valor_total
+FROM socios_fornecedores sf1
+JOIN socios_fornecedores sf2 ON sf1.cpf_cnpj_socio = sf2.cpf_cnpj_socio
+  AND sf1.cnpj_basico < sf2.cnpj_basico
+LEFT JOIN empresa e1 ON e1.cnpj_basico = sf1.cnpj_basico
+LEFT JOIN empresa e2 ON e2.cnpj_basico = sf2.cnpj_basico
+CROSS JOIN LATERAL (
+    SELECT COUNT(*) AS contratos, SUM(valor_global) AS valor_total
+    FROM pncp_contrato pc
+    WHERE pc.cnpj_basico_fornecedor IN (sf1.cnpj_basico, sf2.cnpj_basico)
+) pc_agg
+WHERE pc_agg.contratos > 1
+ORDER BY pc_agg.valor_total DESC;
 
 -- Q03: Empresa-fachada: criada recentemente, ganha grande contrato
 SELECT e.razao_social, est.cnpj_completo,

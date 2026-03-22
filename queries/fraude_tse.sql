@@ -68,8 +68,8 @@ LIMIT 200;
 -- Detecta: candidato que deveria estar impedido
 SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
        tc.ds_situacao_candidatura,
-       cs.tipo_sancao, cs.fundamentacao, cs.orgao_sancionador,
-       cs.dt_inicio_sancao, cs.dt_fim_sancao
+       cs.categoria_sancao, cs.codigo_sancao, cs.orgao_sancionador,
+       cs.dt_inicio_sancao, cs.dt_final_sancao
 FROM tse_candidato tc
 JOIN socio s ON s.cpf_cnpj_socio = tc.cpf
 JOIN ceis_sancao cs ON LEFT(cs.cpf_cnpj_sancionado, 8) = s.cnpj_basico

@@ -1,19 +1,27 @@
--- Q06: Favorecido de emenda que também recebe contratos PNCP via mesmo sócio
-SELECT ef.nome_autor, ef.codigo_emenda, ef.tipo_emenda,
-       ef.nome_favorecido, ef.codigo_favorecido,
-       ef.uf_favorecido, ef.municipio_favorecido,
-       SUM(ef.valor_recebido) AS total_emenda,
-       s.nome AS socio,
-       pc.ni_fornecedor, SUM(pc.valor_global) AS total_contratos
-FROM emenda_favorecido ef
-JOIN socio s ON ef.cnpj_basico_favorecido = s.cnpj_basico
-JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
-WHERE ef.cnpj_basico_favorecido IS NOT NULL
-GROUP BY ef.nome_autor, ef.codigo_emenda, ef.tipo_emenda,
-         ef.nome_favorecido, ef.codigo_favorecido, ef.uf_favorecido, ef.municipio_favorecido,
-         s.nome, pc.ni_fornecedor
-HAVING SUM(ef.valor_recebido) > 100000
-ORDER BY total_emenda DESC;
+-- Q06: Favorecido de emenda que também recebe contratos PNCP (mesma empresa)
+-- Primeiro agrega emendas e contratos por cnpj_basico, depois junta
+SELECT ef_agg.nome_autor, ef_agg.nome_favorecido, ef_agg.codigo_favorecido,
+       ef_agg.uf_favorecido, ef_agg.municipio_favorecido,
+       ef_agg.total_emenda, ef_agg.qtd_emendas,
+       pc_agg.total_contratos, pc_agg.qtd_contratos
+FROM (
+    SELECT cnpj_basico_favorecido, nome_autor, nome_favorecido, codigo_favorecido,
+           uf_favorecido, municipio_favorecido,
+           SUM(valor_recebido) AS total_emenda, COUNT(*) AS qtd_emendas
+    FROM emenda_favorecido
+    WHERE cnpj_basico_favorecido IS NOT NULL
+    GROUP BY cnpj_basico_favorecido, nome_autor, nome_favorecido, codigo_favorecido,
+             uf_favorecido, municipio_favorecido
+    HAVING SUM(valor_recebido) > 100000
+) ef_agg
+JOIN (
+    SELECT cnpj_basico_fornecedor,
+           SUM(valor_global) AS total_contratos, COUNT(*) AS qtd_contratos
+    FROM pncp_contrato
+    WHERE cnpj_basico_fornecedor IS NOT NULL
+    GROUP BY cnpj_basico_fornecedor
+) pc_agg ON pc_agg.cnpj_basico_fornecedor = ef_agg.cnpj_basico_favorecido
+ORDER BY ef_agg.total_emenda DESC;
 
 -- Q07: Emenda direciona recurso para empresa com dívida ativa
 SELECT ef.nome_autor, ef.codigo_emenda,

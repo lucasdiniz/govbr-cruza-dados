@@ -1,13 +1,14 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [EM BACKGROUND] Fix pgfn_divida.cpf_cnpj_norm — UPDATE 39.9M rows, ~5h rodando (PID 16664)
+- [x] Fix pgfn_divida.cpf_cnpj_norm — 39.9M rows normalizadas em ~6h06min
 - [x] Fix emenda_favorecido: cnpj_basico_favorecido limpo — PJ 576k OK, PF/outros NULL. Script usa regex ^[0-9]+$
 - [x] Fix ceis_sancao/cnep_sancao: cpf_digitos_6 criado (9.032 + 32 rows) + indices criados
-- [ ] Atualizar Q06, Q24, Q37 para usar colunas normalizadas
-- [ ] Re-executar TODAS as queries (`python -m etl.run_queries`) — apos todos os fixes
+- [x] Atualizar Q06, Q24, Q37 para usar colunas normalizadas
+- [x] Re-executar TODAS as 42 queries — 42/42 OK, 338k+ resultados
 - [ ] Recriar views materializadas (`sql/12_views.sql`)
 - [ ] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
+- [ ] Considerar SET work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files enormes)
 
 ## Estado do banco (~285M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
@@ -55,6 +56,18 @@ Pendente otimizacao: Q06, Q24, Q37 (dependem de fix emenda/ceis/cnep)
 - Fix emenda concluido: PJ 576k com cnpj_basico, PF/outros 221k limpos (NULL)
 - Fix ceis/cnep concluido: cpf_digitos_6 = SUBSTRING(cpf_cnpj_norm, 4, 6) para CPFs 11 dig. ceis 9.032 + cnep 32 rows + 2 indices
 - 15_normalizar.py atualizado com ambos os fixes (regex para emenda, cpf_digitos_6 para ceis/cnep)
+- PGFN normalizacao concluida: 39.9M rows em ~6h06min (22012s). 100% com cpf_cnpj_norm
+- Queries Q06/Q24/Q37 atualizadas para usar colunas normalizadas + UF/municipio
+- Commit + push: 658cc8a
+- 42 queries executadas: 36 OK, 6 falharam (Q02/Q06 disco cheio, Q13/Q17 alias, Q36 coluna, Q38 coluna)
+- Fix Q38: remuneracao_basica → remuneracao_basica_bruta
+- Fix Q13/Q17: alias no ORDER BY → expressao completa
+- Fix Q36: tipo_sancao/dt_fim_sancao → categoria_sancao/dt_final_sancao
+- Fix Q02: otimizada com CTE socios_fornecedores (filtra antes do self-join). 233k resultados em 204s
+- Fix Q06: eliminado JOIN via socio (causava 236B rows estimados). Agrega por cnpj_basico separado. 31k resultados em 10s
+- work_mem = 512MB necessario para Q02/Q06 (default 4MB causa temp files >24GB)
+- Q19 reescrita: limites legais dinamicos por data (Decretos 9.412/18 a 12.807/25), faixa 60-100% do limite vigente + faixa fixa 700-999. 12.4k resultados
+- Re-executadas 6 queries corrigidas: 42/42 OK
 
 ### 2026-03-21 (sessao 4)
 - Verificado processos background: normalizar (PID 9244) e partial runner (PID 12632) rodando OK

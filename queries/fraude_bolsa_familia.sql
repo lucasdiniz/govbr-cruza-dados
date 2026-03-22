@@ -10,14 +10,14 @@
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.nm_municipio,
        bf.valor_parcela,
        sc.nome AS nome_servidor, sc.cpf, sc.org_exercicio,
-       sr.remuneracao_basica
+       sr.remuneracao_basica_bruta
 FROM bolsa_familia bf
 JOIN siape_cadastro sc ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(sc.nome))
     AND bf.cpf_digitos = sc.cpf_digitos
 LEFT JOIN siape_remuneracao sr ON sr.id_servidor_portal = sc.id_servidor_portal
 WHERE bf.uf = sc.uf_exercicio
   AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
-ORDER BY sr.remuneracao_basica DESC NULLS LAST
+ORDER BY sr.remuneracao_basica_bruta DESC NULLS LAST
 LIMIT 500;
 
 -- Q39: Sócio de empresa ativa recebendo Bolsa Familia

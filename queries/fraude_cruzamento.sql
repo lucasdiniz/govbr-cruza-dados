@@ -29,7 +29,7 @@ FROM comprasnet_contrato cc
 JOIN pncp_contrato pc ON pc.ni_fornecedor = cc.fornecedor_cnpj_cpf
 GROUP BY cc.fornecedor_cnpj_cpf, cc.fornecedor_nome
 HAVING COUNT(DISTINCT cc.id_comprasnet) + COUNT(DISTINCT pc.numero_controle_pncp) > 20
-ORDER BY qtd_comprasnet + qtd_pncp DESC;
+ORDER BY COUNT(DISTINCT cc.id_comprasnet) + COUNT(DISTINCT pc.numero_controle_pncp) DESC;
 
 -- Q14: Empresa com renúncia fiscal milionária que é fornecedora do governo
 SELECT rf.cnpj, rf.razao_social,

@@ -32,7 +32,7 @@ LEFT JOIN (
 ) b ON LEFT(hv.cnpj_subsidiaria, 8) = b.cnpj8
 GROUP BY hv.holding_razao_social, hv.holding_cnpj
 HAVING SUM(COALESCE(pncp_val,0) + COALESCE(emenda_val,0) + COALESCE(bndes_val,0)) > 1000000
-ORDER BY total_pncp + total_emendas + total_bndes DESC;
+ORDER BY SUM(COALESCE(pncp_val,0) + COALESCE(emenda_val,0) + COALESCE(bndes_val,0)) DESC;
 
 -- Q18: Sócios laranjas (faixa etária extrema em empresas fornecedoras)
 SELECT s.nome, s.cpf_cnpj_socio, s.faixa_etaria,
