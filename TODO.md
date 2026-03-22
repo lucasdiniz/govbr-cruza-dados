@@ -61,20 +61,27 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 
 ### 2026-03-22 (sessao 7)
 - Nova fonte: TCE-PB dados consolidados (despesas, servidores, licitacoes, receitas) 2018-2026
-- Analise dos 4 ZIPs: despesas (434k empenhos, 237 municipios, CNPJ completo), servidores (262k, CPF mascarado), licitacoes (8.9k, so vencedores), receitas (31k)
 - URL pattern: https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/{cat}/{cat}-{ano}.zip
-- Adicionado download_tce_pb() ao etl/00_download.py com suporte a --anos
-- Download 2018-2026 iniciado (~2GB total), destino G:\govbr-dados-brutos\tce_pb
-- Planejado schema/ETL/normalizacao/queries (Q59-Q68) no TODO
+- Download completo: 36 arquivos, ~2GB, adicionado download_tce_pb() ao 00_download.py
+- Schema criado: sql/19_schema_tce_pb.sql (4 tabelas, campos TEXT para descritivos longos)
+- ETL criado: etl/19_tce_pb.py (--only, --anos, --no-schema) — parsing CSV br (;, UTF-8 BOM, virgula decimal)
+- Dados carregados: despesa 15.8M, servidor 21.7M, licitacao 310k, receita 1.2M = 39M registros
+- Normalizacao adicionada ao 15_normalizar.py (Fases 5-6): cnpj_basico, cpf_digitos_6, nome_upper, ano + 9 indices
+- Normalizacao TCE-PB rodando em background (UPDATE 15.8M cnpj_basico + 21.7M cpf/nome + indices)
 - Q53 concluida: 14.020 resultados (capital social minimo ganhando contratos alto valor)
+- Propostas 16 queries TCE-PB: Q59-Q68 + Q70-Q77 (priorizadas: Q70 empresa inativa, Q71 mesmo endereco, Q72 doador-prefeito, Q74 servidor+BF, Q77 fracionamento, Q59 servidor-socio)
+- Investigado dados.pb.gov.br: encontrados datasets pagamento (estadual, CPF/CNPJ), liquidacao, convenios. App JSF dificulta discovery
+- Investigado SAGRES API: requer token do TCE (email suportesagres@tce.pb.gov.br), valor marginal vs CSVs ja baixados
+- Commit ae07d0a: pipeline TCE-PB completa
 
 ### Handoff proxima sessao
-- Download TCE-PB pode estar rodando. Verificar G:\govbr-dados-brutos\tce_pb\
-- Download itens PNCP em andamento (~128k/3M). Verificar G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
-- Proximos passos TCE-PB: criar schemas SQL, ETL Python, normalizar, criar indices
-- Proximos passos PNCP: quando download concluir, rodar ETL (python -m etl.04b_pncp_itens)
-- Implementar queries Q45-Q58 (superfaturamento) e Q59-Q68 (TCE-PB)
-- Foco principal: investigar superfaturamento municipal/estadual PB
+- Normalizacao TCE-PB pode estar rodando. Verificar: SELECT cnpj_basico FROM tce_pb_despesa LIMIT 1 (se NULL, ainda nao rodou)
+- Se normalizacao nao completou: rodar python -c "import importlib; mod=importlib.import_module('etl.15_normalizar'); ..." (ver sessao 7 no historico)
+- Download itens PNCP em andamento (~128k/3M). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- PRIORIDADE: implementar queries TCE-PB priorizadas (Q70, Q71, Q72, Q74, Q77, Q59) — todas funcionam com dados ja no banco
+- Tambem pendente: queries superfaturamento Q45-Q58, rodar Q02 melhorada (CSV)
+- dados.pb.gov.br: considerar baixar pagamento estadual (17k-80k/mes, tem CPF/CNPJ) e convenios
+- Foco principal: investigar fraude municipal/estadual PB usando cruzamentos TCE-PB × RFB × TSE × PGFN × sancoes
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
@@ -247,11 +254,33 @@ Total: ~2GB comprimido, 237 municipios PB
 - [ ] Q67: Fornecedor com PGFN divida ativa recebendo pagamento municipal (empresa em debito com a Uniao)
 - [ ] Q68: Licitacao TCE-PB com proponente unico (competicao ficticia) — dados tem CPF/CNPJ completo
 
+### Queries alto valor (Q70-Q77) — priorizadas
+- [ ] Q70: Empresa inativa/baixada recebendo pagamento municipal — tce_pb_despesa × estabelecimento (situacao_cadastral != '02'). Irregularidade objetiva
+- [ ] Q71: Fornecedores com mesmo endereco comercial recebendo no mesmo municipio — tce_pb_despesa × estabelecimento (logradouro+numero+municipio). Detector de empresas fachada
+- [ ] Q72: Doador de campanha → prefeito eleito → pagamento municipal — tce_pb_despesa × tse_receita (doador=CNPJ) × tse_candidato (PREFEITO ELEITO no municipio). Quid pro quo direto
+- [ ] Q74: Servidor municipal recebendo Bolsa Familia — tce_pb_servidor × bolsa_familia via cpf_digitos_6. Fraude BF ou servidor fantasma
+- [ ] Q77: Fracionamento de despesa — mesmo credor + mesmo elemento_despesa + mesma UG + mesmo mes, multiplos empenhos pequenos que somados excedem limite dispensa
+- [ ] Q59: Servidor municipal socio de fornecedor do mesmo municipio — tce_pb_servidor × socio (cpf_digitos_6 + nome) × tce_pb_despesa (cnpj). Conflito de interesses direto
+
+## Portal dados.pb.gov.br — Dados estaduais PB (investigar)
+API: https://dados.pb.gov.br:443/getcsv?nome={dataset}&exercicio={ano}&mes={mes}
+Datasets encontrados:
+- **pagamento** (ALTO VALOR): pagamentos estaduais com CPF/CNPJ credor, nome, valor, data. ~17k-80k/mes (2025). Param: mes=
+- **liquidacao**: liquidacoes estaduais com numero empenho, valor, data NF. Param: mes=
+- **convenios** (MEDIO VALOR): convenios estado-municipios com CNPJ, objetivo, valores. ~1.2k/ano. Param: mes_inicio= mes_fim=
+- **dotacao**: dotacao orcamentaria estadual. Param: mes=
+- Tabelas de referencia: funcao, fonte_recurso, modalidade_licitacao, grupo_financeiro, situacao_empenho, item_despesa, tipo_credito
+- NAO encontrados: empenhos, contratos, aditivos, diarias, folha detalhada (nomes internos desconhecidos, app JSF dificulta discovery)
+- SAGRES API (sagrescaptura.tce.pb.gov.br): requer token do TCE, email suportesagres@tce.pb.gov.br
+Avaliacao: pagamento estadual adiciona valor (dados do ESTADO, nao municipal). Convenios util para rastrear repasses estado→municipio. Prioridade media — focar primeiro nas queries TCE-PB.
+
 ## Proxima iteracao: novas fontes
 - [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente
 - [ ] Favorecidos PJ - Portal da Transparencia (dados.gov.br)
 - [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br) — util como benchmark de preco federal, nao cobre municipal
 - [ ] Explorar catalogo completo do dados.gov.br via API (chave no .env)
+- [ ] dados.pb.gov.br: baixar pagamento estadual (2018-2026) e convenios — CPF/CNPJ credor disponivel
+- [ ] Solicitar token SAGRES: email suportesagres@tce.pb.gov.br
 
 ## Melhorias tecnicas
 - [ ] Otimizar _staging_copy do RFB (csv.reader Python lento para 13GB)
