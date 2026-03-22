@@ -53,6 +53,20 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 - Criado sql/03b_schema_pncp_itens.sql: tabela pncp_item (8 indices incluindo trigram para busca textual)
 - Criado etl/04b_pncp_itens.py: ETL itens JSON → PostgreSQL
 - Pendente: normalizar pncp_item.unidade_medida (mapear variacoes tipo "UNIDADE (UN)"/"UND"/"UN" → padrao unico) e descricao (remover HTML tags, UPPER). Precisa amostrar unidades primeiro
+- Implementadas 4 novas queries de superfaturamento: Q43 (7.080), Q44 (6.211), Q51 (2.171), Q53 (rodando)
+- Q02 melhorada: filtro CNAE utilidades publicas (35xx-37xx) removeu ~3k falsos positivos (230k → de 233k)
+- Decidido NAO excluir fundacoes de apoio (NJ 3034/3069) da Q02 — podem ser usadas em esquemas reais
+- Download PNCP itens em andamento: ~106k de 3M contratacoes processadas (~3.5%)
+
+### Handoff proxima sessao
+- Download itens PNCP pode ainda estar rodando (python -m etl.download_pncp --only itens --workers 30). Verificar G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- Se download concluido: rodar ETL (python -m etl.04b_pncp_itens) para carregar itens no banco
+- Verificar resultado Q53 (capital social minimo) — pode ter terminado
+- Rodar Q02 melhorada: python -m etl.run_queries --query Q02
+- Normalizar pncp_item: amostrar unidade_medida, criar mapeamento, adicionar descricao_norm (strip HTML, UPPER)
+- Continuar implementando queries Q45-Q58 do TODO
+- Queries contrato-nivel com dados existentes: Q43-Q44-Q51-Q53 prontas, faltam Q45 (fracionamento licitacao)
+- Foco principal: investigar superfaturamento municipal/estadual
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica

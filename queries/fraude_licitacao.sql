@@ -14,12 +14,18 @@ JOIN pncp_contratacao cc ON cc.numero_controle_pncp = c1.numero_controle_contrat
 
 -- Q02: Empresas com sócios em comum ganhando contratos do mesmo órgão
 -- Filtra apenas sócios PF que são fornecedores PNCP para evitar explosão combinatória
+-- Exclui utilidades públicas (CNAE 35xx-37xx: energia, água, esgoto/resíduos)
+-- para evitar falsos positivos de monopólios estatais (ver relatorio_falsos_positivos_pb.md)
 WITH socios_fornecedores AS (
     SELECT DISTINCT s.cnpj_basico, s.cpf_cnpj_socio, s.nome
     FROM socio s
     JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
+    JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico AND est.matriz_filial = 1
     WHERE s.tipo_socio = 2
       AND s.cpf_cnpj_norm IS NOT NULL AND s.cpf_cnpj_norm NOT IN ('000000', '')
+      AND est.cnae_principal NOT LIKE '35%'  -- energia
+      AND est.cnae_principal NOT LIKE '36%'  -- agua/esgoto
+      AND est.cnae_principal NOT LIKE '37%'  -- esgoto/residuos
 )
 SELECT sf1.cnpj_basico AS emp1, e1.razao_social AS razao1,
        sf2.cnpj_basico AS emp2, e2.razao_social AS razao2,
