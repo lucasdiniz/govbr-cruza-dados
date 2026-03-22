@@ -2,8 +2,8 @@
 
 ## Pendente
 - [ ] Recriar views materializadas (`sql/12_views.sql`)
-- [ ] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
-- [ ] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
+- [x] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
+- [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 
 ## Estado do banco (~285M registros)
@@ -38,6 +38,10 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 - run_queries.py: `python -m etl.run_queries` (todas) ou `--query Q19` (especifica)
 
 ## Log
+
+### 2026-03-22 (sessao 6)
+- Limpeza: removidos tmp_run_q39.py, tmp_run_partial.py, tmp_analysis.sql
+- work_mem configurado permanente: 512MB no postgresql.conf + pg_reload_conf(). Queries pesadas nao precisam mais de SET manual
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
