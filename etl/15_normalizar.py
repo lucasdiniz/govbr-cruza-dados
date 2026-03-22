@@ -78,6 +78,15 @@ def run():
             _exec(conn, f"{tbl}: UPDATE cpf_cnpj_norm",
                   f"UPDATE {tbl} SET cpf_cnpj_norm = REGEXP_REPLACE(cpf_cnpj_sancionado, '[^0-9]', '', 'g') WHERE cpf_cnpj_norm IS NULL")
 
+        # CEIS/CNEP: coluna extra com 6 dígitos centrais do CPF para match com sócio
+        # cpf_cnpj_norm preserva CPF completo (11 dig) / CNPJ (14 dig)
+        # cpf_digitos_6 extrai apenas os 6 centrais (posição 4-9) de CPFs com 11 dígitos
+        for tbl in ["ceis_sancao", "cnep_sancao"]:
+            _exec(conn, f"{tbl}: ADD cpf_digitos_6",
+                  f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS cpf_digitos_6 TEXT")
+            _exec(conn, f"{tbl}: UPDATE cpf_digitos_6 (6 centrais do CPF)",
+                  f"UPDATE {tbl} SET cpf_digitos_6 = SUBSTRING(cpf_cnpj_norm, 4, 6) WHERE cpf_digitos_6 IS NULL AND LENGTH(cpf_cnpj_norm) = 11")
+
         _exec(conn, "acordo_leniencia: ADD cnpj_norm",
               "ALTER TABLE acordo_leniencia ADD COLUMN IF NOT EXISTS cnpj_norm TEXT")
         _exec(conn, "acordo_leniencia: UPDATE cnpj_norm",
@@ -95,11 +104,13 @@ def run():
         _exec(conn, "pncp_contrato: UPDATE cnpj_basico_fornecedor",
               "UPDATE pncp_contrato SET cnpj_basico_fornecedor = LEFT(REGEXP_REPLACE(ni_fornecedor, '[^0-9]', '', 'g'), 8) WHERE cnpj_basico_fornecedor IS NULL AND ni_fornecedor IS NOT NULL AND LENGTH(ni_fornecedor) >= 8")
 
-        # Emenda favorecido cnpj_basico
+        # Emenda favorecido cnpj_basico (somente CNPJ puro digitos — PF tem CPF mascarado com */-,  LEFT(8) gera lixo)
         _exec(conn, "emenda_favorecido: ADD cnpj_basico_favorecido",
               "ALTER TABLE emenda_favorecido ADD COLUMN IF NOT EXISTS cnpj_basico_favorecido TEXT")
-        _exec(conn, "emenda_favorecido: UPDATE cnpj_basico_favorecido",
-              "UPDATE emenda_favorecido SET cnpj_basico_favorecido = LEFT(codigo_favorecido, 8) WHERE cnpj_basico_favorecido IS NULL AND codigo_favorecido IS NOT NULL AND LENGTH(codigo_favorecido) >= 8")
+        _exec(conn, "emenda_favorecido: UPDATE cnpj_basico_favorecido (CNPJ only)",
+              "UPDATE emenda_favorecido SET cnpj_basico_favorecido = LEFT(codigo_favorecido, 8) WHERE cnpj_basico_favorecido IS NULL AND codigo_favorecido IS NOT NULL AND codigo_favorecido ~ '^[0-9]+$'")
+        _exec(conn, "emenda_favorecido: LIMPAR cnpj_basico_favorecido quebrado (non-CNPJ)",
+              "UPDATE emenda_favorecido SET cnpj_basico_favorecido = NULL WHERE codigo_favorecido ~ '[^0-9]' AND cnpj_basico_favorecido IS NOT NULL")
 
         print("\n  === Fase 2: Índices em colunas desnormalizadas ===")
 
@@ -111,6 +122,8 @@ def run():
         _exec(conn, "idx ceis_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceis_norm ON ceis_sancao(cpf_cnpj_norm)", autocommit=True)
         _exec(conn, "idx cnep_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cnep_norm ON cnep_sancao(cpf_cnpj_norm)", autocommit=True)
         _exec(conn, "idx ceaf_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceaf_norm ON ceaf_expulsao(cpf_cnpj_norm)", autocommit=True)
+        _exec(conn, "idx ceis_digitos6", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceis_cpf_digitos_6 ON ceis_sancao(cpf_digitos_6) WHERE cpf_digitos_6 IS NOT NULL", autocommit=True)
+        _exec(conn, "idx cnep_digitos6", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cnep_cpf_digitos_6 ON cnep_sancao(cpf_digitos_6) WHERE cpf_digitos_6 IS NOT NULL", autocommit=True)
         _exec(conn, "idx acordo_norm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_acordo_norm ON acordo_leniencia(cnpj_norm)", autocommit=True)
         _exec(conn, "idx viagem_digitos", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_cpf_digitos ON viagem(cpf_viajante_digitos)", autocommit=True)
         _exec(conn, "idx pncp_cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pnpc_contrato_cnpj_basico ON pncp_contrato(cnpj_basico_fornecedor)", autocommit=True)

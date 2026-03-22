@@ -1,11 +1,11 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [EM BACKGROUND] Fix pgfn_divida.cpf_cnpj_norm — UPDATE 39.9M rows rodando agora
-- [ ] Re-executar TODAS as queries (`python -m etl.run_queries`) — queries agora usam colunas normalizadas + UF/municipio
-- [ ] Fix: emenda_favorecido.cnpj_basico_favorecido quebrado para PF (LEFT de CPF mascarado → '***.433.'). Filtrar por LENGTH >= 14 ou tipo_favorecido
-- [ ] Fix: ceis_sancao/cnep_sancao tem CPF completo (11 digitos) — preservar cpf_cnpj_norm atual + criar cpf_digitos_6 com 6 centrais para match com socio
-- [ ] Apos fixes acima: atualizar Q06, Q24, Q37 para usar colunas normalizadas
+- [EM BACKGROUND] Fix pgfn_divida.cpf_cnpj_norm — UPDATE 39.9M rows, ~5h rodando (PID 16664)
+- [x] Fix emenda_favorecido: cnpj_basico_favorecido limpo — PJ 576k OK, PF/outros NULL. Script usa regex ^[0-9]+$
+- [x] Fix ceis_sancao/cnep_sancao: cpf_digitos_6 criado (9.032 + 32 rows) + indices criados
+- [ ] Atualizar Q06, Q24, Q37 para usar colunas normalizadas
+- [ ] Re-executar TODAS as queries (`python -m etl.run_queries`) — apos todos os fixes
 - [ ] Recriar views materializadas (`sql/12_views.sql`)
 - [ ] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
 
@@ -42,6 +42,19 @@ Q03, Q04, Q07, Q10, Q11, Q15, Q18, Q21, Q22, Q25, Q26, Q27, Q28, Q33, Q36, Q37
 Pendente otimizacao: Q06, Q24, Q37 (dependem de fix emenda/ceis/cnep)
 
 ## Log
+
+### 2026-03-21 (sessao 5)
+- Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
+- Preparado fix emenda_favorecido no 15_normalizar.py: UPDATE filtra tipo_favorecido='Pessoa Juridica' + limpa 218k PF com cnpj_basico lixo
+- Preparado fix ceis/cnep no 15_normalizar.py: nova coluna cpf_digitos_6 = SUBSTRING(cpf_cnpj_norm, 4, 6) para CPFs 11 digitos
+- Verificado fixes: emenda PF tem lixo confirmado (***.630. etc), ceis match com socio via 6 digitos funciona (testado)
+- ceis: 9.032 CPFs + 13.513 CNPJs, cnep: 32 CPFs + 1.550 CNPJs
+- Fixes emenda + ceis/cnep rodando em paralelo com PGFN (tabelas diferentes, sem conflito)
+- Fix emenda: primeiro UPDATE limpou demais (tipo_favorecido com acento nao matchou string literal). Corrigido com regex codigo_favorecido ~ '[^0-9]'
+- Fix emenda: segundo problema — CPF mascarado ***.053.502-** tem LENGTH=14 igual CNPJ. Filtro final: codigo_favorecido ~ '^[0-9]+$'
+- Fix emenda concluido: PJ 576k com cnpj_basico, PF/outros 221k limpos (NULL)
+- Fix ceis/cnep concluido: cpf_digitos_6 = SUBSTRING(cpf_cnpj_norm, 4, 6) para CPFs 11 dig. ceis 9.032 + cnep 32 rows + 2 indices
+- 15_normalizar.py atualizado com ambos os fixes (regex para emenda, cpf_digitos_6 para ceis/cnep)
 
 ### 2026-03-21 (sessao 4)
 - Verificado processos background: normalizar (PID 9244) e partial runner (PID 12632) rodando OK

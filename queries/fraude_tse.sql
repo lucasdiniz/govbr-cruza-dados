@@ -81,13 +81,16 @@ ORDER BY tc.ano_eleicao DESC, tc.nm_candidato;
 SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf,
        s.cnpj_basico, e.razao_social,
        ef.nome_autor AS autor_emenda,
+       ef.uf_favorecido, ef.municipio_favorecido,
        SUM(ef.valor_recebido) AS total_emendas
 FROM tse_candidato tc
 JOIN socio s ON s.cpf_cnpj_socio = tc.cpf
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN emenda_favorecido ef ON LEFT(ef.codigo_favorecido, 8) = s.cnpj_basico
+JOIN emenda_favorecido ef ON ef.cnpj_basico_favorecido = s.cnpj_basico
 WHERE tc.cpf IS NOT NULL AND tc.cpf NOT IN ('-1', '-4', '')
-GROUP BY tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido,
-         s.cnpj_basico, e.razao_social, ef.nome_autor
+  AND ef.cnpj_basico_favorecido IS NOT NULL
+GROUP BY tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf,
+         s.cnpj_basico, e.razao_social, ef.nome_autor,
+         ef.uf_favorecido, ef.municipio_favorecido
 HAVING SUM(ef.valor_recebido) > 100000
 ORDER BY total_emendas DESC;

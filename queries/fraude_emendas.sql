@@ -1,14 +1,17 @@
 -- Q06: Favorecido de emenda que também recebe contratos PNCP via mesmo sócio
 SELECT ef.nome_autor, ef.codigo_emenda, ef.tipo_emenda,
        ef.nome_favorecido, ef.codigo_favorecido,
+       ef.uf_favorecido, ef.municipio_favorecido,
        SUM(ef.valor_recebido) AS total_emenda,
        s.nome AS socio,
        pc.ni_fornecedor, SUM(pc.valor_global) AS total_contratos
 FROM emenda_favorecido ef
-JOIN socio s ON LEFT(ef.codigo_favorecido, 8) = s.cnpj_basico
-JOIN pncp_contrato pc ON LEFT(pc.ni_fornecedor, 8) = s.cnpj_basico
+JOIN socio s ON ef.cnpj_basico_favorecido = s.cnpj_basico
+JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
+WHERE ef.cnpj_basico_favorecido IS NOT NULL
 GROUP BY ef.nome_autor, ef.codigo_emenda, ef.tipo_emenda,
-         ef.nome_favorecido, ef.codigo_favorecido, s.nome, pc.ni_fornecedor
+         ef.nome_favorecido, ef.codigo_favorecido, ef.uf_favorecido, ef.municipio_favorecido,
+         s.nome, pc.ni_fornecedor
 HAVING SUM(ef.valor_recebido) > 100000
 ORDER BY total_emenda DESC;
 

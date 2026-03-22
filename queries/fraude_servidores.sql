@@ -47,14 +47,17 @@ ORDER BY total_bruto DESC
 LIMIT 20;
 
 -- Q24: Servidor favorecido por emenda parlamentar
+-- Match por nome + 6 dígitos centrais do CPF (emenda PF tem CPF mascarado)
 SELECT sc.nome, sc.cpf, sc.org_exercicio, sc.descricao_cargo,
+       sc.uf_exercicio,
        ef.nome_autor, ef.codigo_emenda,
        ef.valor_recebido, ef.nome_favorecido
 FROM siape_cadastro sc
-JOIN emenda_favorecido ef ON ef.codigo_favorecido LIKE '%' || SUBSTRING(sc.cpf, 5, 6) || '%'
-  AND ef.tipo_favorecido ILIKE '%FISICA%'
-  AND SUBSTRING(sc.cpf, 5, 6) != '000000'
+JOIN emenda_favorecido ef ON UPPER(TRIM(sc.nome)) = UPPER(TRIM(ef.nome_favorecido))
+  AND sc.cpf_digitos = REGEXP_REPLACE(ef.codigo_favorecido, '[^0-9]', '', 'g')
+  AND ef.tipo_favorecido = 'Pessoa Fisica'
 WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
+  AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos <> ''
   AND ef.valor_recebido > 10000
 ORDER BY ef.valor_recebido DESC
-LIMIT 20;
+LIMIT 500;
