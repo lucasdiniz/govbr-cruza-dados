@@ -30,3 +30,9 @@ Extração oriunda primariamente do arquivo `q03_empresa_fachada_criada_recentem
    - `resultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
 2. **Tribunal de Contas do Estado da Paraíba (TCE-PB):** Histórico de auditorias e alertas sobre o uso de dispensas emergenciais e `carretas da saúde`. [Acesse o TCE-PB](https://tce.pb.gov.br)
 3. **Diário Oficial dos Municípios:** Publicação das inexigibilidades e contratos de Imaculada.
+
+
+## Fontes e Refer?ncias
+1. **Arquivos Locais de Extra??o:** 
+esultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv
+2. **Tribunal de Contas do Estado da Para?ba (TCE-PB):** Alertas sobre o uso de dispensas emergenciais e "carretas da sa?de". [Acessar Alerta do TCE-PB](https://tce.pb.gov.br/noticias/tce-alerta-prefeituras-sobre-uso-de-carretas-da-saude)

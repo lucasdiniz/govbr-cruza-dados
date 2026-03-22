@@ -12,7 +12,7 @@
 - tse_candidato: 2.1M, tse_bem_candidato: 4M, tse_receita: 2.3M, tse_despesa: 6M
 - cpgf_transacao: 645k, emenda_favorecido: 1.2M, bndes_contrato: ~100k
 - PostgreSQL: localhost, user=govbr, db=govbr
-- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~25GB livres
+- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~83GB livres
 - GitHub: https://github.com/lucasdiniz/govbr-cruza-dados (public)
 
 ## Normalizacao (etl.15_normalizar) — COMPLETA
@@ -42,6 +42,17 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 ### 2026-03-22 (sessao 6)
 - Limpeza: removidos tmp_run_q39.py, tmp_run_partial.py, tmp_analysis.sql
 - work_mem configurado permanente: 512MB no postgresql.conf + pg_reload_conf(). Queries pesadas nao precisam mais de SET manual
+- Planejamento superfaturamento: 16 novas queries propostas (Q43-Q58), melhorias Q02 (filtro CNAE/NJ falsos positivos)
+- Mapeamento API PNCP: endpoints descobertos e testados:
+  - Itens: GET /api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens
+  - Resultados: GET /api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens/{num}/resultados
+  - API publica nao expoe propostas/concorrentes perdedores, apenas vencedores
+- Criado etl/download_pncp.py: download paralelo de itens PNCP via API REST (checkpoint, retomavel, --workers)
+- Atualizado etl/00_download.py com referencia ao novo script
+- Download itens PNCP iniciado: ~3M contratacoes, 30 workers, ~18h estimado, destino G:\govbr-dados-brutos\pncp_itens
+- Criado sql/03b_schema_pncp_itens.sql: tabela pncp_item (8 indices incluindo trigram para busca textual)
+- Criado etl/04b_pncp_itens.py: ETL itens JSON → PostgreSQL
+- Pendente: normalizar pncp_item.unidade_medida (mapear variacoes tipo "UNIDADE (UN)"/"UND"/"UN" → padrao unico) e descricao (remover HTML tags, UPPER). Precisa amostrar unidades primeiro
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
@@ -128,10 +139,47 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 - Queries de fraude TSE (Q33-Q37) e Bolsa Familia (Q38-Q42)
 - Estabelecimentos: 69.8M registros (inclui staging recuperada)
 
+## Superfaturamento em licitacoes (foco municipal/estadual)
+- [ ] Download itens PNCP via API (endpoint /contratacoes/{id}/itens) — ~30M itens estimados, ~10-15GB JSON, salvar em G:\govbr-dados-brutos\pncp_itens
+- [ ] ETL itens PNCP: schema pncp_item (descricao, qtd, unidade, valor_unitario_estimado, valor_unitario_homologado, cnpj_orgao, etc)
+- [ ] Download propostas/resultados PNCP via API (endpoint /contratacoes/{id}/propostas) — ~10-15M registros, ~3-5GB JSON, salvar em G:\govbr-dados-brutos\pncp_propostas
+- [ ] ETL propostas PNCP: schema pncp_proposta (cnpj_licitante, nome, valor_proposta, classificacao, situacao, motivo_desclassificacao)
+- [ ] Queries contrato-nivel (dados existentes): sobrepreco estimado vs homologado, aditivos suspeitos, outliers por objeto, concentracao+preco alto, dispensa inflada
+- [ ] Queries item-nivel (apos ETL itens): comparacao preco unitario entre municipios, desvio da mediana por item
+- [ ] Queries propostas (apos ETL propostas): licitacao dirigida, cover bidding, cartel rotativo, desclassificacao seletiva, licitacao deserta fabricada
+
+## Novas queries propostas (Q43-Q58)
+### Superfaturamento / Sobrepreco (dados atuais)
+- [ ] Q43: Sobrepreco direto — valor_homologado >> valor_estimado na mesma contratacao
+- [ ] Q44: Aditivos suspeitos — valor_global >> valor_inicial (contrato inflado pos-assinatura)
+- [ ] Q45: Fracionamento de licitacao — mesmo orgao+objeto fragmentado em multiplos contratos abaixo do teto de dispensa
+### Padroes temporais
+- [ ] Q46: Queima de orcamento — contratos concentrados em nov-dez (final do exercicio fiscal)
+- [ ] Q47: Contratos assinados em finais de semana/feriados (urgencia fabricada)
+- [ ] Q48: Pico de contratos pre-eleicao no municipio do candidato
+### Padroes geograficos
+- [ ] Q49: Fornecedor de outro estado ganhando contrato municipal (por que nao contratar local?)
+- [ ] Q50: Multiplos fornecedores do mesmo endereco/municipio ganhando contratos no mesmo orgao (laranja)
+### Manipulacao de modalidade
+- [ ] Q51: Orgao com proporcao anormal de dispensas vs licitacoes competitivas
+- [ ] Q52: Mesmo orgao+objeto similar fragmentado em contratos abaixo do teto (duplica Q45 — consolidar)
+### Perfil do fornecedor
+- [ ] Q53: Capital social minimo ganhando contratos de alto valor
+- [ ] Q54: CNAE incompativel com objeto do contrato (padaria ganha contrato de TI)
+- [ ] Q55: Empresa fenix — criada recentemente + socio de empresa sancionada CEIS/CNEP
+### Conexoes politicas (aprofundamento)
+- [ ] Q56: Doador de campanha ganha contrato no municipio do candidato eleito (quid pro quo geografico)
+- [ ] Q57: Ciclo emenda → empresa → doacao TSE de volta ao parlamentar
+### Rede societaria
+- [ ] Q58: Multiplos fornecedores com mesmo endereco comercial (fachada compartilhando sede)
+### Melhorias em queries existentes (baseado em relatorio falsos positivos PB)
+- [ ] Q02: Adicionar filtro white-list CNAE de utilidades publicas (agua, energia, gas) para evitar falsos positivos de monopolios estatais
+- [ ] Q02: Adicionar filtro natureza juridica para fundacoes de apoio a ensino superior
+
 ## Proxima iteracao: novas fontes
 - [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente
 - [ ] Favorecidos PJ - Portal da Transparencia (dados.gov.br)
-- [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br)
+- [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br) — util como benchmark de preco federal, nao cobre municipal
 - [ ] Explorar catalogo completo do dados.gov.br via API (chave no .env)
 
 ## Melhorias tecnicas

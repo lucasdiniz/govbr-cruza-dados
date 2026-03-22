@@ -150,8 +150,10 @@ def download_rfb():
 
 def download_pncp():
     """PNCP - licitacoes e contratos."""
-    # PNCP requer crawling da API REST, nao tem download bulk
-    print("  PNCP: dados originais do br-acc (crawling via API)")
+    # Contratacoes e contratos: dados originais do br-acc (JSON pre-baixado)
+    print("  PNCP contratacoes/contratos: dados originais do br-acc")
+    # Itens e resultados: baixar via API (requer contratacoes ja carregadas no banco)
+    print("  PNCP itens/resultados: usar 'python -m etl.download_pncp'")
 
 
 def download_renuncias():

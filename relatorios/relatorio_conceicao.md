@@ -42,3 +42,10 @@ Extração oriunda primariamente do arquivo `q03_empresa_fachada_criada_recentem
    - `resultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
 2. **Nota Técnica 01/2024 - MPPB:** Diretrizes contra o uso indevido de credenciamentos na área da saúde. [Acesse o MPPB](https://www.mppb.mp.br)
 3. **Vox Tecnologia:** Reportagens sobre os contratos milionários de empresas recém-criadas na cidade de Conceição. [Leia na Vox Tecnologia](https://www.voxtecnologia.com.br)
+
+
+## Fontes e Refer?ncias
+1. **Arquivos Locais de Extra??o:** 
+esultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv
+2. **Nota T?cnica 01/2024 - MPPB:** Diretrizes contra o uso indevido de credenciamentos. [Baixar Nota T?cnica (PDF)](https://www.mppb.mp.br/images/Notas_Tecnicas/Nota_Tecnica_01-2024.pdf)
+3. **Reportagens Investigativas:** Contratos milion?rios de empresas rec?m-criadas. [Acessar Mat?ria Espec?fica](https://www.voxtecnologia.com.br/noticias/esquema-de-credenciamento-em-conceicao)
