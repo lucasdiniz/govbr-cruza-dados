@@ -1,14 +1,10 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [x] Fix pgfn_divida.cpf_cnpj_norm — 39.9M rows normalizadas em ~6h06min
-- [x] Fix emenda_favorecido: cnpj_basico_favorecido limpo — PJ 576k OK, PF/outros NULL. Script usa regex ^[0-9]+$
-- [x] Fix ceis_sancao/cnep_sancao: cpf_digitos_6 criado (9.032 + 32 rows) + indices criados
-- [x] Atualizar Q06, Q24, Q37 para usar colunas normalizadas
-- [x] Re-executar TODAS as 42 queries — 42/42 OK, 338k+ resultados
 - [ ] Recriar views materializadas (`sql/12_views.sql`)
 - [ ] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
-- [ ] Considerar SET work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files enormes)
+- [ ] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
+- [ ] Continuar relatorios de investigacao (foco Paraiba)
 
 ## Estado do banco (~285M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
@@ -16,35 +12,34 @@
 - tse_candidato: 2.1M, tse_bem_candidato: 4M, tse_receita: 2.3M, tse_despesa: 6M
 - cpgf_transacao: 645k, emenda_favorecido: 1.2M, bndes_contrato: ~100k
 - PostgreSQL: localhost, user=govbr, db=govbr
-- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: 75GB livres
+- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~25GB livres
 - GitHub: https://github.com/lucasdiniz/govbr-cruza-dados (public)
 
-## Normalizacao (etl.15_normalizar)
-Colunas desnormalizadas + ~25 indices criados. Status:
-- [x] socio.cpf_cnpj_norm (6 digitos) — 27M rows OK
-- [x] bolsa_familia.cpf_digitos (6 digitos) — 21M rows OK
-- [x] siape_cadastro.cpf_digitos (6 digitos) — OK
-- [x] cpgf_transacao.cpf_portador_digitos (6 digitos) — OK
-- [x] ceaf_expulsao.cpf_cnpj_norm (6 digitos, CPF mascarado) — OK
-- [x] viagem.cpf_viajante_digitos (6 digitos) — OK
+## Normalizacao (etl.15_normalizar) — COMPLETA
+Todas as colunas desnormalizadas + ~27 indices criados. Tudo OK:
+- [x] pgfn_divida.cpf_cnpj_norm — 39.9M rows (CPF 6dig + CNPJ 14dig misturados)
+- [x] socio.cpf_cnpj_norm (6 digitos) — 27M rows
+- [x] bolsa_familia.cpf_digitos (6 digitos) — 21M rows
+- [x] siape_cadastro.cpf_digitos, cpgf_transacao.cpf_portador_digitos, ceaf_expulsao.cpf_cnpj_norm, viagem.cpf_viajante_digitos — OK
 - [x] pncp_contrato.cnpj_basico_fornecedor (8 digitos) — OK
-- [x] emenda_favorecido.cnpj_basico_favorecido (8 digitos, MAS quebrado para PF)
-- [x] ceis_sancao.cpf_cnpj_norm (CPF completo 11 dig / CNPJ 14 dig — preservar!)
-- [x] cnep_sancao.cpf_cnpj_norm (idem)
+- [x] emenda_favorecido.cnpj_basico_favorecido — somente CNPJ puro (regex ^[0-9]+$), PF/outros = NULL
+- [x] ceis_sancao.cpf_cnpj_norm (CPF completo 11 dig / CNPJ 14 dig) + cpf_digitos_6 (6 centrais) — 9.032 CPFs
+- [x] cnep_sancao.cpf_cnpj_norm (idem) + cpf_digitos_6 — 32 CPFs
 - [x] acordo_leniencia.cnpj_norm — OK
-- [EM BACKGROUND] pgfn_divida.cpf_cnpj_norm — 39.9M rows, rodando agora
-- [x] Todos os indices das fases 2-4 criados
+- [x] Todos os indices das fases 2-4 criados + idx_ceis/cnep_cpf_digitos_6
 
-## Queries otimizadas (sessao 4)
-14 queries migradas de REGEXP_REPLACE/SUBSTRING/LIKE para colunas normalizadas indexadas:
-Q02, Q10, Q16, Q18, Q21, Q22, Q25, Q26, Q27, Q28, Q29, Q32, Q33, Q39
-15 queries com UF/municipio adicionado:
-Q03, Q04, Q07, Q10, Q11, Q15, Q18, Q21, Q22, Q25, Q26, Q27, Q28, Q33, Q36, Q37
-Pendente otimizacao: Q06, Q24, Q37 (dependem de fix emenda/ceis/cnep)
+## Queries — 42/42 funcionando
+Todas as queries migradas para colunas normalizadas indexadas. Status:
+- 17 queries otimizadas: Q02,Q06,Q10,Q16,Q18,Q21,Q22,Q24,Q25,Q26,Q27,Q28,Q29,Q32,Q33,Q37,Q39
+- 15+ queries com UF/municipio: Q03,Q04,Q06,Q07,Q10,Q11,Q15,Q18,Q21,Q22,Q24,Q25,Q26,Q27,Q28,Q33,Q36,Q37
+- Q19 reescrita com limites legais dinamicos por decreto (2018-2026), faixa 60-100% + R$700-999 fixo, granularidade dia+mes
+- Q02 otimizada com CTE (evita self-join 27M x 27M), Q06 otimizada sem JOIN intermediario
+- Queries pesadas precisam SET work_mem = '512MB' (Q02, Q06, Q10, Q15)
+- run_queries.py: `python -m etl.run_queries` (todas) ou `--query Q19` (especifica)
 
 ## Log
 
-### 2026-03-21 (sessao 5)
+### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
 - Preparado fix emenda_favorecido no 15_normalizar.py: UPDATE filtra tipo_favorecido='Pessoa Juridica' + limpa 218k PF com cnpj_basico lixo
 - Preparado fix ceis/cnep no 15_normalizar.py: nova coluna cpf_digitos_6 = SUBSTRING(cpf_cnpj_norm, 4, 6) para CPFs 11 digitos
@@ -66,8 +61,15 @@ Pendente otimizacao: Q06, Q24, Q37 (dependem de fix emenda/ceis/cnep)
 - Fix Q02: otimizada com CTE socios_fornecedores (filtra antes do self-join). 233k resultados em 204s
 - Fix Q06: eliminado JOIN via socio (causava 236B rows estimados). Agrega por cnpj_basico separado. 31k resultados em 10s
 - work_mem = 512MB necessario para Q02/Q06 (default 4MB causa temp files >24GB)
-- Q19 reescrita: limites legais dinamicos por data (Decretos 9.412/18 a 12.807/25), faixa 60-100% do limite vigente + faixa fixa 700-999. 12.4k resultados
+- Q19 reescrita com limites legais dinamicos por decreto:
+  - Pequeno vulto: R$800 (2018) → R$880 (Decreto 9.412/18) → R$10k (Lei 14.133/21) → R$13.098 (Decreto 12.807/25)
+  - Dispensa: R$17.6k → R$50k → R$65.492
+  - Faixa 60-100% do limite vigente na data da transacao + faixa fixa R$700-999
+  - Granularidade dia (>=3 transacoes) e mes (>=2 transacoes) por portador+favorecido
+  - 12.478 resultados: 11.183 abaixo_1k, 1.285 pronto_pgto, 10 dispensa
 - Re-executadas 6 queries corrigidas: 42/42 OK
+- Commit + push: 777e2b8
+- Licao: psql no bash do Windows tem problemas com encoding UTF-8 (acentos). Usar SET client_encoding TO 'WIN1252' ou evitar strings com acento em queries via bash
 
 ### 2026-03-21 (sessao 4)
 - Verificado processos background: normalizar (PID 9244) e partial runner (PID 12632) rodando OK
