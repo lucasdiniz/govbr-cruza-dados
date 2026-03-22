@@ -6,11 +6,12 @@
 - [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 
-## Estado do banco (~285M registros)
+## Estado do banco (~324M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
-- pgfn_divida: 39.9M, bolsa_familia: 20.9M, viagem: 3.9M, pncp_contrato: 3.7M
-- tse_candidato: 2.1M, tse_bem_candidato: 4M, tse_receita: 2.3M, tse_despesa: 6M
-- cpgf_transacao: 645k, emenda_favorecido: 1.2M, bndes_contrato: ~100k
+- tce_pb_servidor: 21.7M, pgfn_divida: 39.9M, bolsa_familia: 20.9M, tce_pb_despesa: 15.8M
+- tse_despesa: 6M, tse_bem_candidato: 4M, viagem: 3.9M, pncp_contrato: 3.7M
+- tse_candidato: 2.1M, tse_receita: 2.3M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
+- cpgf_transacao: 645k, tce_pb_licitacao: 310k, bndes_contrato: ~100k
 - PostgreSQL: localhost, user=govbr, db=govbr
 - Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~83GB livres
 - GitHub: https://github.com/lucasdiniz/govbr-cruza-dados (public)
@@ -58,15 +59,22 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 - Decidido NAO excluir fundacoes de apoio (NJ 3034/3069) da Q02 — podem ser usadas em esquemas reais
 - Download PNCP itens em andamento: ~106k de 3M contratacoes processadas (~3.5%)
 
+### 2026-03-22 (sessao 7)
+- Nova fonte: TCE-PB dados consolidados (despesas, servidores, licitacoes, receitas) 2018-2026
+- Analise dos 4 ZIPs: despesas (434k empenhos, 237 municipios, CNPJ completo), servidores (262k, CPF mascarado), licitacoes (8.9k, so vencedores), receitas (31k)
+- URL pattern: https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/{cat}/{cat}-{ano}.zip
+- Adicionado download_tce_pb() ao etl/00_download.py com suporte a --anos
+- Download 2018-2026 iniciado (~2GB total), destino G:\govbr-dados-brutos\tce_pb
+- Planejado schema/ETL/normalizacao/queries (Q59-Q68) no TODO
+- Q53 concluida: 14.020 resultados (capital social minimo ganhando contratos alto valor)
+
 ### Handoff proxima sessao
-- Download itens PNCP pode ainda estar rodando (python -m etl.download_pncp --only itens --workers 30). Verificar G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
-- Se download concluido: rodar ETL (python -m etl.04b_pncp_itens) para carregar itens no banco
-- Verificar resultado Q53 (capital social minimo) — pode ter terminado
-- Rodar Q02 melhorada: python -m etl.run_queries --query Q02
-- Normalizar pncp_item: amostrar unidade_medida, criar mapeamento, adicionar descricao_norm (strip HTML, UPPER)
-- Continuar implementando queries Q45-Q58 do TODO
-- Queries contrato-nivel com dados existentes: Q43-Q44-Q51-Q53 prontas, faltam Q45 (fracionamento licitacao)
-- Foco principal: investigar superfaturamento municipal/estadual
+- Download TCE-PB pode estar rodando. Verificar G:\govbr-dados-brutos\tce_pb\
+- Download itens PNCP em andamento (~128k/3M). Verificar G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- Proximos passos TCE-PB: criar schemas SQL, ETL Python, normalizar, criar indices
+- Proximos passos PNCP: quando download concluir, rodar ETL (python -m etl.04b_pncp_itens)
+- Implementar queries Q45-Q58 (superfaturamento) e Q59-Q68 (TCE-PB)
+- Foco principal: investigar superfaturamento municipal/estadual PB
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
@@ -189,6 +197,55 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 ### Melhorias em queries existentes (baseado em relatorio falsos positivos PB)
 - [ ] Q02: Adicionar filtro white-list CNAE de utilidades publicas (agua, energia, gas) para evitar falsos positivos de monopolios estatais
 - [ ] Q02: Adicionar filtro natureza juridica para fundacoes de apoio a ensino superior
+
+## TCE-PB — Dados Consolidados (nova fonte)
+Fonte: https://dados-abertos.tce.pb.gov.br/dados-consolidados
+URL: https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/{cat}/{cat}-{ano}.zip
+Categorias: despesas, servidores, licitacoes, receitas (2018-2026)
+Total: ~2GB comprimido, 237 municipios PB
+
+### Download
+- [x] Download TCE-PB: `python -m etl.00_download --only tce_pb` (36 arquivos, ~2GB, 4 categorias × 9 anos)
+- [ ] Verificar integridade: contar linhas CSVs extraidos vs esperado
+
+### Schema + ETL
+- [x] Schema tce_pb_despesa, tce_pb_servidor, tce_pb_licitacao, tce_pb_receita (sql/19_schema_tce_pb.sql)
+- [x] ETL despesas: 15.8M registros (2018-2026)
+- [x] ETL servidores: 21.7M registros (2018-2026)
+- [x] ETL licitacoes: 310k registros (2018-2026)
+- [x] ETL receitas: 1.2M registros (2018-2026)
+- [x] Formato: CSV ; separador, UTF-8 BOM, virgula decimal. ETL: etl/19_tce_pb.py
+
+### Normalizacao
+- [ ] tce_pb_despesa.cnpj_basico — LEFT(cpf_cnpj, 8) para CNPJ (LENGTH=14), JOIN com empresa/socio/pncp_contrato
+- [ ] tce_pb_servidor.cpf_digitos_6 — REGEXP_REPLACE para extrair 6 centrais do CPF mascarado (***.944.474-** → 944474), JOIN com socio/bolsa_familia
+- [ ] tce_pb_servidor.nome_upper — UPPER(TRIM(nome_servidor)) para match textual com socio.nome_socio
+- [ ] tce_pb_licitacao.cnpj_basico_proponente — LEFT(cpf_cnpj_proponente, 8) quando LENGTH=14 (CNPJ), JOIN com empresa/socio
+- [ ] tce_pb_licitacao.cpf_digitos_proponente — 6 centrais quando LENGTH=11 (CPF), JOIN com socio/bolsa_familia
+- [ ] tce_pb_despesa.ano — EXTRACT(YEAR FROM data_empenho) para queries temporais
+
+### Indices (alem dos basicos ja criados no ETL)
+- [ ] idx_tce_desp_cnpj_basico — tce_pb_despesa(cnpj_basico) para JOIN empresa
+- [ ] idx_tce_desp_ano — tce_pb_despesa(ano) para queries temporais (Q46/Q66 queima orcamento)
+- [ ] idx_tce_desp_modalidade — tce_pb_despesa(modalidade_licitacao) para filtrar "Sem Licitacao"
+- [ ] idx_tce_desp_funcao — tce_pb_despesa(codigo_funcao) para analise por area
+- [ ] idx_tce_desp_mun_cnpj — tce_pb_despesa(municipio, cpf_cnpj) para concentracao fornecedor por municipio
+- [ ] idx_tce_serv_cpf_dig6 — tce_pb_servidor(cpf_digitos_6) para JOIN socio
+- [ ] idx_tce_serv_nome_upper — tce_pb_servidor(nome_upper) para match textual
+- [ ] idx_tce_lic_cnpj_basico — tce_pb_licitacao(cnpj_basico_proponente) para JOIN empresa
+- [ ] idx_tce_lic_objeto_trgm — tce_pb_licitacao USING gin(objeto_licitacao gin_trgm_ops) para busca textual
+
+### Queries possiveis (Q59-Q68)
+- [ ] Q59: Servidor municipal que eh socio de empresa fornecedora do mesmo municipio (cruzamento tce_pb_servidor × socio × tce_pb_despesa)
+- [ ] Q60: Fornecedor recebendo pagamentos "Sem Licitacao" em multiplos municipios PB
+- [ ] Q61: Divergencia empenhado vs pago — empenhos com valor_pago muito menor que empenhado (anulacao parcial, possivel superfaturamento corrigido)
+- [ ] Q62: Mesmo fornecedor ganhando licitacao + recebendo empenhos em todos os 237 municipios (cartel estadual)
+- [ ] Q63: Servidor municipal com salario alto + socio de empresa (conflito de interesses)
+- [ ] Q64: Cruzamento tce_pb_despesa × pncp_contrato — verificar se valores batem (empenho vs contrato)
+- [ ] Q65: Fornecedor sancionado (CEIS/CNEP) recebendo pagamento municipal
+- [ ] Q66: Empenhos concentrados em dez (queima de orcamento municipal) — complementa Q46 com dado real de pagamento
+- [ ] Q67: Fornecedor com PGFN divida ativa recebendo pagamento municipal (empresa em debito com a Uniao)
+- [ ] Q68: Licitacao TCE-PB com proponente unico (competicao ficticia) — dados tem CPF/CNPJ completo
 
 ## Proxima iteracao: novas fontes
 - [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente

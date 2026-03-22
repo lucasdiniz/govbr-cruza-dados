@@ -163,6 +163,25 @@ def download_renuncias():
     print("  Renuncias: dados originais do br-acc (sem download automatizado)")
 
 
+def download_tce_pb(anos=None):
+    """TCE-PB - Dados consolidados (despesas, servidores, licitacoes, receitas)."""
+    if anos is None:
+        anos = range(2018, 2027)
+    dest = DATA_DIR / "tce_pb"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    TCE_BASE = "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados"
+    categorias = ["despesas", "servidores", "licitacoes", "receitas"]
+
+    print("  TCE-PB:")
+    for cat in categorias:
+        for ano in anos:
+            url = f"{TCE_BASE}/{cat}/{cat}-{ano}.zip"
+            zip_path = dest / f"{cat}-{ano}.zip"
+            if _download(url, zip_path):
+                _unzip(zip_path, dest)
+
+
 def download_complementar():
     """BNDES, Holdings, ComprasNet."""
     print("  BNDES: dados originais do br-acc (download manual via dadosabertos.bndes.gov.br)")
@@ -182,6 +201,7 @@ DOWNLOADERS = {
     "rfb": download_rfb,
     "pncp": download_pncp,
     "renuncias": download_renuncias,
+    "tce_pb": download_tce_pb,
     "complementar": download_complementar,
 }
 
@@ -216,7 +236,7 @@ def run():
 
         fn = DOWNLOADERS[source]
         # Passar anos se a funcao aceita
-        if anos and source in ("cpgf", "viagens"):
+        if anos and source in ("cpgf", "viagens", "tce_pb"):
             fn(anos=anos)
         elif source == "siape" and anos:
             fn(meses=[f"{a}01" for a in anos])

@@ -149,6 +149,50 @@ def run():
         _exec(conn, "idx viagem dt_inicio", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_dt_inicio ON viagem (dt_inicio)", autocommit=True)
         _exec(conn, "idx estab matriz ativa", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_ativa ON estabelecimento (cnpj_basico) WHERE cnpj_ordem = '0001' AND situacao_cadastral = '2'", autocommit=True)
 
+        print("\n  === Fase 5: TCE-PB normalização ===")
+
+        # tce_pb_despesa: cnpj_basico (8 dig) para JOINs
+        _exec(conn, "tce_desp: ADD cnpj_basico",
+              "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "tce_desp: UPDATE cnpj_basico",
+              "UPDATE tce_pb_despesa SET cnpj_basico = LEFT(cpf_cnpj, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpf_cnpj) = 14")
+        _exec(conn, "tce_desp: ADD ano",
+              "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS ano SMALLINT")
+        _exec(conn, "tce_desp: UPDATE ano",
+              "UPDATE tce_pb_despesa SET ano = EXTRACT(YEAR FROM data_empenho)::SMALLINT WHERE ano IS NULL AND data_empenho IS NOT NULL")
+
+        # tce_pb_servidor: cpf_digitos_6 (6 centrais do CPF mascarado)
+        _exec(conn, "tce_serv: ADD cpf_digitos_6",
+              "ALTER TABLE tce_pb_servidor ADD COLUMN IF NOT EXISTS cpf_digitos_6 VARCHAR(6)")
+        _exec(conn, "tce_serv: UPDATE cpf_digitos_6",
+              "UPDATE tce_pb_servidor SET cpf_digitos_6 = REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g') WHERE cpf_digitos_6 IS NULL AND cpf_cnpj LIKE '***%'")
+        _exec(conn, "tce_serv: ADD nome_upper",
+              "ALTER TABLE tce_pb_servidor ADD COLUMN IF NOT EXISTS nome_upper TEXT")
+        _exec(conn, "tce_serv: UPDATE nome_upper",
+              "UPDATE tce_pb_servidor SET nome_upper = UPPER(TRIM(nome_servidor)) WHERE nome_upper IS NULL AND nome_servidor IS NOT NULL")
+
+        # tce_pb_licitacao: cnpj_basico e cpf_digitos para proponentes
+        _exec(conn, "tce_lic: ADD cnpj_basico_proponente",
+              "ALTER TABLE tce_pb_licitacao ADD COLUMN IF NOT EXISTS cnpj_basico_proponente VARCHAR(8)")
+        _exec(conn, "tce_lic: UPDATE cnpj_basico_proponente",
+              "UPDATE tce_pb_licitacao SET cnpj_basico_proponente = LEFT(cpf_cnpj_proponente, 8) WHERE cnpj_basico_proponente IS NULL AND LENGTH(cpf_cnpj_proponente) >= 14")
+        _exec(conn, "tce_lic: ADD cpf_digitos_proponente",
+              "ALTER TABLE tce_pb_licitacao ADD COLUMN IF NOT EXISTS cpf_digitos_proponente VARCHAR(6)")
+        _exec(conn, "tce_lic: UPDATE cpf_digitos_proponente",
+              "UPDATE tce_pb_licitacao SET cpf_digitos_proponente = SUBSTRING(cpf_cnpj_proponente, 4, 6) WHERE cpf_digitos_proponente IS NULL AND LENGTH(cpf_cnpj_proponente) = 11")
+
+        print("\n  === Fase 6: TCE-PB índices ===")
+
+        _exec(conn, "idx tce_desp cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_cnpj_basico ON tce_pb_despesa(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx tce_desp ano", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_ano ON tce_pb_despesa(ano)", autocommit=True)
+        _exec(conn, "idx tce_desp modalidade_lic", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_modalidade_lic ON tce_pb_despesa(modalidade_licitacao)", autocommit=True)
+        _exec(conn, "idx tce_desp funcao", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_funcao ON tce_pb_despesa(codigo_funcao)", autocommit=True)
+        _exec(conn, "idx tce_desp mun+cnpj", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_mun_cnpj ON tce_pb_despesa(municipio, cpf_cnpj)", autocommit=True)
+        _exec(conn, "idx tce_serv cpf_dig6", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_serv_cpf_dig6 ON tce_pb_servidor(cpf_digitos_6)", autocommit=True)
+        _exec(conn, "idx tce_serv nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_serv_nome_upper ON tce_pb_servidor(nome_upper)", autocommit=True)
+        _exec(conn, "idx tce_lic cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_lic_cnpj_basico ON tce_pb_licitacao(cnpj_basico_proponente)", autocommit=True)
+        _exec(conn, "idx tce_lic objeto trgm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_lic_objeto_trgm ON tce_pb_licitacao USING gin(objeto_licitacao gin_trgm_ops)", autocommit=True)
+
         print("\n  Normalização e índices concluídos.")
 
     finally:
