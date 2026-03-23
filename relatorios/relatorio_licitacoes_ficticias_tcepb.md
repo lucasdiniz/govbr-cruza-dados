@@ -23,7 +23,11 @@ O algoritmo também provou que a base de dados oficial do estado (Sagres/TCE) en
 * **O Material Elétrico de 16 Bilhões (Nova Palmeira/PB):** O município informou no sistema do TCE que a empresa *JSA COMÉRCIO E SERVIÇOS LTDA* foi a única participante e vencedora de um pregão para material elétrico no valor de **R$ 16.389.998.361,00** (Dezesseis bilhões de reais). 
 * **O Combustível de 768 Milhões (Monteiro/PB):** A prefeitura informou que a *Lucas & Saraiva Comercio de Combustiveis Ltda* ganhou, sozinha, um pregão de **R$ 768.200.000,00**.
 
-**Conclusão sobre as Anomalias:** Esses valores são claramente erros humanos (o operador da prefeitura digitou o valor sem usar a vírgula para os centavos, ou incluiu códigos de barras no campo de valor). Contudo, o fato da auditoria sistêmica do TCE-PB não possuir um filtro que bloqueie uma prefeitura de 5 mil habitantes de cadastrar uma licitação de 16 Bilhões com apenas um concorrente prova que o controle interno atual é reativo e analógico, dependendo de ferramentas modernas como o `govbr-cruza-dados` para limpar o ruído.
+**Conclusão sobre as Anomalias:** Esses valores são claramente erros humanos. Contudo, o fato da auditoria sistêmica do TCE-PB não possuir um filtro que bloqueie uma prefeitura de 5 mil habitantes de cadastrar uma licitação de 16 Bilhões com apenas um concorrente prova que o controle interno atual é reativo e analógico.
+
+## 4. Análise de Fontes Abertas (OSINT) e Mídia
+Realizamos uma busca aprofundada no Google sobre as megalicitações do "Complexo Viário Altiplano" vencidas por consórcios únicos, bem como sobre os erros bilionários lançados pelas prefeituras do interior no sistema Sagres.
+* **Status:** Trata-se de uma **Detecção Precoce** do algoritmo. Até o fechamento deste relatório, não foram encontradas matérias jornalísticas ou inquéritos abertos do MPPB/TCE questionando ativamente a "Concorrência Zero" nessas obras específicas dos viadutos ou os erros crassos de digitação das prefeituras. Nossos dados estão à frente da fiscalização oficial atual.
 
 ## Fontes e Referências
 1. **Dados de Licitações Oficiais (Viadutos JP):** Consulta de andamento de licitações na Prefeitura de João Pessoa. [Portal de Compras - JP](https://transparencia.joaopessoa.pb.gov.br/licitacoes/)

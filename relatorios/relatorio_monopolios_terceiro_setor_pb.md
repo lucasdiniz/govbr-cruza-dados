@@ -21,8 +21,14 @@ Embora repasses para hospitais filantrópicos sejam comuns (o Instituto administ
 * **A Irregularidade:** O cruzamento com a folha de pagamento (DadosPB/TCE) provou que ela é uma **Servidora Municipal Inativa** (Técnico de Comunicação Social) da Prefeitura de João Pessoa. 
 * **Análise de Risco:** A presença de servidores (ativos ou inativos) do próprio município nas diretorias de entidades que recebem milhões em subvenções e repasses da prefeitura fere o princípio da impessoalidade. É uma brecha clássica usada para a "terceirização" de mão de obra (burlando concursos públicos) ou para o uso político da estrutura filantrópica por grupos estabelecidos na capital.
 
-## 4. Conclusão
-O terceiro setor na Paraíba (OSs e fundações privadas) opera como uma administração paralela que movimenta centenas de milhões de reais com regras de contratação muito mais afrouxadas que a Lei de Licitações (Lei 14.133/21). O domínio do Instituto Walfredo Guedes sobre 158 cidades, atrelado a membros ligados à prefeitura da capital, exige auditoria imediata sobre a efetiva prestação dos serviços conveniados no interior e a folha de pagamento "oculta" do instituto.
+## 4. Análise de Fontes Abertas (OSINT) e Mídia
+Realizamos uma busca aprofundada no Google e em portais de controle sobre o Instituto Walfredo Guedes Pereira. Os fatos levantados pela nossa base de dados já repercutem em investigações ativas:
+* **Condenação no TCU (Acórdão 1060/2020):** O Tribunal de Contas da União investigou o instituto por uma parceria irregular com a Prefeitura de João Pessoa. O instituto foi flagrado utilizando espaço físico e **40 máquinas de hemodiálise públicas** de graça, sem licitação, em troca de descontos na tabela SUS.
+* **Fiscalização do CRM-PB:** O Conselho Regional de Medicina já notificou o hospital gerido pelo instituto por atuar com escalas médicas incompletas e falta de insumos básicos de contraste.
+* **Os Negócios Privados da Diretora:** A pesquisa revelou que a diretora Maria Gerlane Carneiro Cavalcanti (servidora municipal flagrada no nosso cruzamento) também é dona do "Pistache Restaurante", que ironicamente também já faturou dispensas de licitação de órgãos públicos como a Assembleia Legislativa (ALPB).
+
+## 5. Conclusão
+O terceiro setor na Paraíba (OSs e fundações privadas) opera como uma administração paralela que movimenta centenas de milhões de reais com regras de contratação muito mais afrouxadas que a Lei de Licitações (Lei 14.133/21). O domínio do Instituto Walfredo Guedes sobre 158 cidades, atrelado a membros ligados à prefeitura da capital, exige auditoria imediata sobre a efetiva prestação dos serviços conveniados no interior e a folha de pagamento oculta do instituto.
 
 ## Fontes e Referências
 1. **Dados Cadastrais do Terceiro Setor (OSINT):** Quadro de Sócios e Administradores do Instituto Walfredo Guedes Pereira. [Acesse os Dados Abertos (CNPJ Biz)](https://cnpj.biz/09124165000140)
