@@ -142,7 +142,7 @@ GROUP BY d.municipio, pc.orgao_razao_social, pc.cnpj_orgao,
          pc.nome_fornecedor, pc.ni_fornecedor, pc.objeto,
          pc.valor_global, pc.dt_assinatura, pc.dt_vigencia_fim
 HAVING ABS(SUM(d.valor_pago) - pc.valor_global) > pc.valor_global * 0.25
-ORDER BY ABS(diferenca) DESC
+ORDER BY ABS(SUM(d.valor_pago) - pc.valor_global) DESC
 LIMIT 500;
 
 -- Q65: Fornecedor sancionado (CEIS/CNEP) recebendo pagamento municipal
@@ -241,7 +241,7 @@ SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
            WHEN '8' THEN 'Baixada'
            ELSE 'Situação ' || est.situacao_cadastral
        END AS desc_situacao,
-       est.dt_situacao_cadastral,
+       est.dt_situacao,
        e.razao_social,
        SUM(d.valor_pago) AS total_pago,
        COUNT(*) AS qtd_empenhos,
@@ -254,9 +254,9 @@ JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL
   AND d.valor_pago > 0
-  AND d.data_empenho > est.dt_situacao_cadastral
+  AND d.data_empenho > est.dt_situacao
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
-         est.situacao_cadastral, est.dt_situacao_cadastral, e.razao_social
+         est.situacao_cadastral, est.dt_situacao, e.razao_social
 HAVING SUM(d.valor_pago) > 10000
 ORDER BY total_pago DESC;
 
@@ -291,27 +291,27 @@ ORDER BY qtd_empresas DESC, total_pago_conjunto DESC;
 -- pagamentos do município onde ele foi eleito
 -- Match: CNPJ doador = CNPJ credor, município = município do prefeito eleito
 SELECT tc.nm_candidato AS prefeito,
-       tc.sg_ue AS cod_municipio_tse,
+       tc.nm_ue AS municipio_tse,
        d.municipio,
-       tr.nr_cnpj_prestador_conta AS cnpj_campanha,
-       tr.nm_doador, tr.nr_cpf_cnpj_doador AS cnpj_doador,
+       tr.nr_cnpj_prestador AS cnpj_campanha,
+       tr.nm_doador, tr.cpf_cnpj_doador AS cnpj_doador,
        tr.vr_receita AS valor_doacao,
        tr.ds_receita AS desc_doacao,
        SUM(d.valor_pago) AS total_recebido_municipio,
        COUNT(*) AS qtd_empenhos
 FROM tse_candidato tc
-JOIN tse_receita tr ON tr.sq_prestador_conta = tc.sq_candidato
-    AND tr.nr_cpf_cnpj_doador IS NOT NULL
-    AND LENGTH(tr.nr_cpf_cnpj_doador) >= 14
-JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.nr_cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
+JOIN tse_receita_candidato tr ON tr.sq_candidato = tc.sq_candidato
+    AND tr.cpf_cnpj_doador IS NOT NULL
+    AND LENGTH(tr.cpf_cnpj_doador) >= 14
+JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
 WHERE tc.ds_cargo = 'PREFEITO'
   AND tc.ds_sit_tot_turno IN ('ELEITO', 'ELEITO POR MÉDIA', 'ELEITO POR QP')
   AND tc.sg_uf = 'PB'
   AND UPPER(TRIM(d.municipio)) = UPPER(TRIM(tc.nm_ue))
   AND d.ano >= CAST(tc.ano_eleicao AS INT)
   AND d.valor_pago > 0
-GROUP BY tc.nm_candidato, tc.sg_ue, d.municipio,
-         tr.nr_cnpj_prestador_conta, tr.nm_doador, tr.nr_cpf_cnpj_doador,
+GROUP BY tc.nm_candidato, tc.nm_ue, d.municipio,
+         tr.nr_cnpj_prestador, tr.nm_doador, tr.cpf_cnpj_doador,
          tr.vr_receita, tr.ds_receita
 ORDER BY total_recebido_municipio DESC
 LIMIT 500;

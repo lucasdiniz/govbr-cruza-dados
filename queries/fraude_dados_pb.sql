@@ -10,7 +10,7 @@
 
 -- Q78: Auto-contratação — PF que recebe do estado é sócio de empresa que também recebe
 -- Detecta: pessoa física recebe pagamento estadual E é sócio de PJ que também recebe.
--- CPF completo (11 dig) do pb_pagamento permite match exato com socio (sem falso positivo).
+-- Match por cpf_digitos_6 + nome_upper (socio tem CPF mascarado, não dá match exato).
 -- Indica possível conflito de interesses ou empresa de fachada.
 SELECT pf.nome_credor AS nome_pf,
        pf.cpfcnpj_credor AS cpf_pf,
@@ -23,8 +23,10 @@ SELECT pf.nome_credor AS nome_pf,
        pj_agg.total_recebido_pj,
        pj_agg.qtd_pagamentos_pj
 FROM pb_pagamento pf
-JOIN socio s ON pf.cpfcnpj_credor = s.cpf_cnpj_norm
+JOIN socio s ON pf.cpf_digitos_6 = s.cpf_cnpj_norm
     AND s.tipo_socio = 2
+    AND pf.nome_upper = UPPER(TRIM(s.nome))
+    AND pf.cpf_digitos_6 IS NOT NULL
     AND LENGTH(pf.cpfcnpj_credor) = 11
     AND pf.cpfcnpj_credor NOT LIKE '***%'
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
@@ -40,7 +42,7 @@ JOIN LATERAL (
 GROUP BY pf.nome_credor, pf.cpfcnpj_credor,
          s.qualificacao, e.razao_social, est.cnpj_completo,
          e.capital_social, pj_agg.total_recebido_pj, pj_agg.qtd_pagamentos_pj
-ORDER BY total_recebido_pf + pj_agg.total_recebido_pj DESC
+ORDER BY SUM(pf.valor_pagamento) + pj_agg.total_recebido_pj DESC
 LIMIT 500;
 
 -- Q79: Credor PF do estado é candidato ou doador TSE
@@ -53,7 +55,7 @@ SELECT pp.nome_credor, pp.cpfcnpj_credor AS cpf_credor,
        tc.ano_eleicao, tc.ds_sit_tot_turno,
        tc.nm_ue AS municipio_candidatura
 FROM pb_pagamento pp
-JOIN tse_candidato tc ON pp.cpfcnpj_credor = REGEXP_REPLACE(tc.nr_cpf_candidato, '[^0-9]', '', 'g')
+JOIN tse_candidato tc ON pp.cpfcnpj_credor = tc.cpf
 WHERE LENGTH(pp.cpfcnpj_credor) = 11
   AND pp.cpfcnpj_credor NOT LIKE '***%'
   AND pp.valor_pagamento > 0
@@ -145,31 +147,39 @@ ORDER BY total_recebido_estado DESC
 LIMIT 500;
 
 -- Q83: Empresa dominante — recebe do estado E de municípios via cnpj_basico
--- Detecta empresas com presença em AMBOS os níveis: pagamentos estaduais (dados.pb)
+-- Detecta empresas com presença em AMBOS os níveis: empenhos estaduais (pb_empenho)
 -- E despesas municipais (TCE-PB). Possível cartel com influência em todo o estado.
+-- pb_pagamento é 99% PF (CPF); pb_empenho tem 666k com CNPJ → 9.8k CNPJs em comum com TCE-PB.
+WITH pb_agg AS (
+    SELECT cnpj_basico,
+           SUM(valor_empenho) AS total_estado,
+           COUNT(*) AS qtd_empenhos_estado
+    FROM pb_empenho
+    WHERE cnpj_basico IS NOT NULL
+    GROUP BY cnpj_basico
+    HAVING SUM(valor_empenho) > 100000
+),
+tce_agg AS (
+    SELECT cnpj_basico,
+           SUM(valor_pago) AS total_municipal,
+           COUNT(DISTINCT municipio) AS qtd_municipios,
+           COUNT(*) AS qtd_empenhos_municipal
+    FROM tce_pb_despesa
+    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
+    GROUP BY cnpj_basico
+    HAVING SUM(valor_pago) > 100000
+)
 SELECT e.razao_social, e.cnpj_basico, est.cnpj_completo,
        e.capital_social,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa,
-       pb_agg.total_estado, pb_agg.qtd_pagamentos_estado,
-       tce_agg.total_municipal, tce_agg.qtd_municipios, tce_agg.qtd_empenhos_municipal,
-       pb_agg.total_estado + tce_agg.total_municipal AS total_combinado
-FROM empresa e
-JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
+       pb.total_estado, pb.qtd_empenhos_estado,
+       tce.total_municipal, tce.qtd_municipios, tce.qtd_empenhos_municipal,
+       pb.total_estado + tce.total_municipal AS total_combinado
+FROM pb_agg pb
+JOIN tce_agg tce ON tce.cnpj_basico = pb.cnpj_basico
+JOIN empresa e ON e.cnpj_basico = pb.cnpj_basico
+JOIN estabelecimento est ON est.cnpj_basico = pb.cnpj_basico
     AND est.cnpj_ordem = '0001'
-JOIN LATERAL (
-    SELECT SUM(pp.valor_pagamento) AS total_estado,
-           COUNT(*) AS qtd_pagamentos_estado
-    FROM pb_pagamento pp
-    WHERE pp.cnpj_basico = e.cnpj_basico
-) pb_agg ON pb_agg.total_estado > 100000
-JOIN LATERAL (
-    SELECT SUM(d.valor_pago) AS total_municipal,
-           COUNT(DISTINCT d.municipio) AS qtd_municipios,
-           COUNT(*) AS qtd_empenhos_municipal
-    FROM tce_pb_despesa d
-    WHERE d.cnpj_basico = e.cnpj_basico
-      AND d.valor_pago > 0
-) tce_agg ON tce_agg.total_municipal > 100000
 ORDER BY total_combinado DESC
 LIMIT 500;
 
@@ -188,7 +198,7 @@ SELECT pc.nome_contratado, pc.cpfcnpj_contratado,
            WHEN '8' THEN 'Baixada'
            ELSE 'Situação ' || est.situacao_cadastral
        END AS desc_situacao,
-       est.dt_situacao_cadastral,
+       est.dt_situacao,
        e.razao_social
 FROM pb_contrato pc
 JOIN estabelecimento est ON est.cnpj_basico = pc.cnpj_basico

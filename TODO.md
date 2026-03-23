@@ -5,7 +5,7 @@
   - 6 MVs: mv_empresa_governo (360° empresa), mv_pessoa_pb (CPF completo), mv_municipio_pb_risco (score município), mv_servidor_pb_risco (servidor+flags), mv_empresa_pb (foco PB), mv_rede_pb (grafo conexões)
   - 2 views de risco: v_risk_score_empresa, v_risk_score_pb (ranking unificado empresa+servidor+PF)
   - Estimativa: ~5-9GB disco, ~45-60min refresh
-- [ ] Analisar resultados das 70 queries (rodando em background)
+- [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 - [x] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
 - [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
@@ -45,7 +45,8 @@ Queries Q01-Q53 migradas para colunas normalizadas indexadas. Status:
 - Queries pesadas precisam SET work_mem = '512MB' (Q02, Q06, Q10, Q15)
 - run_queries.py: `python -m etl.run_queries` (todas) ou `--query Q19` (especifica)
 - NOVAS queries/fraude_tce_pb.sql: Q59-Q68, Q70-Q72, Q74, Q77 (14 queries TCE-PB municipais)
-- NOVAS queries/fraude_dados_pb.sql: Q78-Q91 (14 queries dados.pb estaduais, CPF completo)
+- NOVAS queries/fraude_dados_pb.sql: Q78-Q91 (14 queries dados.pb estaduais)
+- Total: 75 queries implementadas, 764k resultados. Destaques PB: Q59 32k servidores-socios, Q60 9.3k sem licitacao, Q83 500 empresas dominantes
 
 ## Log
 
@@ -111,15 +112,38 @@ Queries Q01-Q53 migradas para colunas normalizadas indexadas. Status:
 - 70 queries rodando em background (run_queries.py)
 - Commit 61b194f: 28 novas queries
 
+### 2026-03-23 (sessao 10)
+- Corrigido dt_situacao_cadastral → dt_situacao em Q70 e Q84 (coluna nao existia no estabelecimento)
+- Corrigido Q64: ORDER BY ABS(diferenca) → ORDER BY ABS(SUM(...)) (alias nao valido em ORDER com GROUP BY)
+- Corrigido Q72: tse_receita → tse_receita_candidato, colunas nr_cpf_cnpj_doador → cpf_cnpj_doador, sg_ue → nm_ue
+- Corrigido Q78: JOIN socio por cpf_cnpj_norm (11dig) impossivel (socio tem 6dig mascarado) → cpf_digitos_6 + nome_upper
+- Corrigido Q79: tc.nr_cpf_candidato → tc.cpf (coluna real em tse_candidato)
+- Corrigido Q83: LATERAL JOINs sobre 66M empresas → CTEs pre-agregadas; pb_pagamento (99% PF) → pb_empenho (666k CNPJs)
+- Descoberta: pb_pagamento tem 3.67M CPFs numericos 11dig + 188k mascarados + 276 CNPJs. Quase todo PF!
+- Cancelada query orphaned (PID 6796, 7h rodando) da sessao anterior
+- Todas 75 queries executadas com sucesso. 764k resultados totais
+- Destaques novas queries PB:
+  - Q59: 32.094 servidores municipais socios de fornecedoras (MAIOR achado!)
+  - Q60: 9.322 fornecedores sem licitacao em 5+ municipios
+  - Q62: 1.670 cartel estadual (mesmo fornecedor 10+ municipios)
+  - Q70: 1.328 empresas inativas recebendo pagamento municipal
+  - Q84: 760 contratadas estaduais inativas
+  - Q65: 514 sancionados CEIS recebendo de municipios
+  - Q83: 500 empresas dominantes estado+municipio
+  - Q87: 500 socios de contratada estadual = servidor municipal
+  - Q86: 108 fornecedores saude sancionados
+- Queries com 0 resultados: Q64, Q66, Q72, Q78, Q80-82, Q85 — threshold alto ou dados nao cruzam
+
 ### Handoff proxima sessao
-- Queries rodando em background — verificar resultados em resultados/
-- Download itens PNCP em andamento (~1.1M/3M, ~37%). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- 75 queries completas em resultados/ (764k resultados)
+- Download itens PNCP possivelmente concluido. Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
 - PROXIMOS PASSOS:
-  1. Analisar resultados das 70 queries (verificar tempos, erros, contagens)
-  2. Implementar views materializadas (plano em .claude/plans/twinkling-puzzling-giraffe.md)
+  1. Implementar views materializadas (plano em .claude/plans/twinkling-puzzling-giraffe.md)
+  2. Investigar queries com 0 resultados — ajustar thresholds ou JOINs
   3. Queries superfaturamento Q45-Q58
   4. Apos PNCP download: ETL pncp_itens
-- Foco principal: implementar views materializadas + risk scoring, analisar resultados queries PB
+  5. Relatorios de investigacao focados nos achados PB
+- Foco principal: implementar views materializadas + risk scoring
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
