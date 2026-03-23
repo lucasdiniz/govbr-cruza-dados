@@ -6,7 +6,7 @@ Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, vol
 
 ## O que faz
 
-Carrega ~40GB de dados de **18+ fontes publicas** num banco PostgreSQL (~330M registros) e cruza tudo pelo CNPJ/CPF para encontrar padroes suspeitos:
+Carrega ~100GB de dados de **18+ fontes publicas** num banco PostgreSQL (~336M registros, 186GB) e cruza tudo pelo CNPJ/CPF para encontrar padroes suspeitos:
 
 - **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
 - **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
@@ -27,7 +27,7 @@ Carrega ~40GB de dados de **18+ fontes publicas** num banco PostgreSQL (~330M re
 
 ## Queries de investigacao
 
-42+ queries prontas organizadas em 10 categorias:
+75 queries prontas organizadas em 11 categorias (764k resultados):
 
 | Categoria | Queries | Exemplos |
 |---|---|---|
@@ -38,9 +38,10 @@ Carrega ~40GB de dados de **18+ fontes publicas** num banco PostgreSQL (~330M re
 | **Cruzamento multi-fonte** | Q27-Q32 | Empresa que recebe BNDES + contratos + emendas, empresa inativa recebendo pagamentos |
 | **Fraude eleitoral (TSE)** | Q33-Q37 | Doacao de empresa com divida ativa, candidato que recebe e gasta com mesma empresa, patrimonio incompativel |
 | **Bolsa Familia** | Q38-Q42 | Servidor federal recebendo BF, socio de empresa ativa recebendo BF, candidato com patrimonio recebendo BF |
-| **Superfaturamento** | Q43-Q58 | Preco unitario muito acima da mediana, fornecedor unico repetido |
-| **TCE-PB / dados.pb** | Q59-Q77 | Servidor socio de fornecedor, empresa inativa recebendo pagamento estadual, fracionamento de despesa municipal |
-| **Padroes temporais** | transversal | Picos de emendas em anos eleitorais, fornecedor dominante num orgao |
+| **Superfaturamento** | Q43-Q53 | Sobrepreco valor homologado vs estimado, aditivos suspeitos, dispensas anormais, capital social minimo |
+| **TCE-PB municipal** | Q59-Q77 | Servidor socio de fornecedor (32k), cartel estadual, empresa inativa, sancionado CEIS, fracionamento |
+| **dados.pb estadual** | Q78-Q91 | Auto-contratacao PF/PJ, credor=candidato TSE, empresa dominante estado+municipio, saude sancionado |
+| **Padroes temporais** | transversal | Picos de emendas em anos eleitorais, queima de orcamento dezembro |
 
 ## Stack
 
@@ -69,7 +70,7 @@ python -m etl.run_all
 python -m etl.run_all 4
 
 # 6. Exportar resultados das queries de fraude
-python -m etl.run_queries              # todas as 42 queries
+python -m etl.run_queries              # todas as 75 queries
 python -m etl.run_queries --query Q03  # query especifica
 ```
 
@@ -78,7 +79,7 @@ python -m etl.run_queries --query Q03  # query especifica
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
 etl/           Scripts de carga por fonte de dados (20 fases, 18+ fontes)
-queries/       42+ queries SQL prontas para investigacao de fraudes
+queries/       75 queries SQL prontas para investigacao de fraudes
 resultados/    CSVs com resultados das queries (gitignored)
 relatorios/    Investigacoes baseadas nos resultados (Markdown)
 ```
@@ -113,9 +114,7 @@ CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte
 
 O pipeline normaliza automaticamente (fase 14) criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo JOINs por igualdade direta entre fontes. Match por **nome + 6 digitos CPF** virtualmente elimina falsos positivos.
 
-Complementarmente:
-- Tabela `pessoa` com entity resolution probabilistica
-- Fuzzy matching via `pg_trgm` para nomes similares
+Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio × servidor × bolsa familia) virtualmente elimina falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), match exato por CPF 11 digitos.
 
 ## Licenca
 

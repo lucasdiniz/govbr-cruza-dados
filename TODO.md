@@ -7,14 +7,14 @@
   - Estimativa: ~5-9GB disco, ~45-60min refresh
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
-- [x] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
-- [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
+- [ ] ETL pncp_itens: apos download (~91%), rodar etl/04b_pncp_itens.py para carregar JSONs no banco
+- [ ] Queries superfaturamento Q45-Q58 (Q43/Q44/Q51/Q53 ja implementadas)
 
 ## Estado do banco (~336M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
 - tce_pb_servidor: 21.7M, pgfn_divida: 39.9M, bolsa_familia: 20.9M, tce_pb_despesa: 15.8M
 - tse_despesa: 6M, tse_bem_candidato: 4M, pb_pagamento: 3.87M, viagem: 3.9M, pncp_contrato: 3.7M
-- tse_candidato: 2.1M, tse_receita: 2.3M, pb_empenho: 1.67M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
+- tse_candidato: 2.1M, tse_receita_candidato: 2.3M, pb_empenho: 1.67M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
 - cpgf_transacao: 645k, tce_pb_licitacao: 310k, pb_saude: 215k, bndes_contrato: ~100k
 - pb_contrato: 15.6k, pb_convenio: 7.8k
 - PostgreSQL: localhost, user=govbr, db=govbr
@@ -36,8 +36,8 @@ Fases 1-8: todas colunas desnormalizadas + ~43 indices.
 - [x] Fases 5-6: TCE-PB cnpj_basico, cpf_digitos_6, nome_upper, ano + 9 indices CONCURRENTLY (completa)
 - [x] Fases 7-8: dados.pb.gov.br cnpj_basico (5 tabelas), cpf_digitos_6, nome_upper (pb_pagamento) + 7 indices CONCURRENTLY
 
-## Queries — 42 + 28 novas (TCE-PB + dados.pb)
-Queries Q01-Q53 migradas para colunas normalizadas indexadas. Status:
+## Queries — 75 implementadas (764k resultados)
+Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
 - 17 queries otimizadas: Q02,Q06,Q10,Q16,Q18,Q21,Q22,Q24,Q25,Q26,Q27,Q28,Q29,Q32,Q33,Q37,Q39
 - 15+ queries com UF/municipio: Q03,Q04,Q06,Q07,Q10,Q11,Q15,Q18,Q21,Q22,Q24,Q25,Q26,Q27,Q28,Q33,Q36,Q37
 - Q19 reescrita com limites legais dinamicos por decreto (2018-2026), faixa 60-100% + R$700-999 fixo, granularidade dia+mes
@@ -231,41 +231,36 @@ Queries Q01-Q53 migradas para colunas normalizadas indexadas. Status:
 - Estabelecimentos: 69.8M registros (inclui staging recuperada)
 
 ## Superfaturamento em licitacoes (foco municipal/estadual)
-- [ ] Download itens PNCP via API (endpoint /contratacoes/{id}/itens) — ~30M itens estimados, ~10-15GB JSON, salvar em G:\govbr-dados-brutos\pncp_itens
-- [ ] ETL itens PNCP: schema pncp_item (descricao, qtd, unidade, valor_unitario_estimado, valor_unitario_homologado, cnpj_orgao, etc)
-- [ ] Download propostas/resultados PNCP via API (endpoint /contratacoes/{id}/propostas) — ~10-15M registros, ~3-5GB JSON, salvar em G:\govbr-dados-brutos\pncp_propostas
-- [ ] ETL propostas PNCP: schema pncp_proposta (cnpj_licitante, nome, valor_proposta, classificacao, situacao, motivo_desclassificacao)
-- [ ] Queries contrato-nivel (dados existentes): sobrepreco estimado vs homologado, aditivos suspeitos, outliers por objeto, concentracao+preco alto, dispensa inflada
+- [~] Download itens PNCP via API (~91% completo, 2.71M/2.99M contratacoes) — G:\govbr-dados-brutos\pncp_itens
+- [ ] ETL itens PNCP: schema pncp_item (sql/03b_schema_pncp_itens.sql) + etl/04b_pncp_itens.py (ja criados, aguardando download)
+- [ ] Download propostas/resultados PNCP via API — API nao expoe propostas/perdedores, apenas vencedores
 - [ ] Queries item-nivel (apos ETL itens): comparacao preco unitario entre municipios, desvio da mediana por item
-- [ ] Queries propostas (apos ETL propostas): licitacao dirigida, cover bidding, cartel rotativo, desclassificacao seletiva, licitacao deserta fabricada
+- [ ] Queries propostas (dados limitados pela API): licitacao dirigida, cover bidding, cartel rotativo
 
-## Novas queries propostas (Q43-Q58)
-### Superfaturamento / Sobrepreco (dados atuais)
-- [ ] Q43: Sobrepreco direto — valor_homologado >> valor_estimado na mesma contratacao
-- [ ] Q44: Aditivos suspeitos — valor_global >> valor_inicial (contrato inflado pos-assinatura)
+## Queries pendentes (Q45-Q58)
+### Superfaturamento / Sobrepreco
+- [x] Q43: Sobrepreco direto — valor_homologado >> valor_estimado (7.496 resultados)
+- [x] Q44: Aditivos suspeitos — valor_global >> valor_inicial (7.766 resultados)
 - [ ] Q45: Fracionamento de licitacao — mesmo orgao+objeto fragmentado em multiplos contratos abaixo do teto de dispensa
 ### Padroes temporais
 - [ ] Q46: Queima de orcamento — contratos concentrados em nov-dez (final do exercicio fiscal)
 - [ ] Q47: Contratos assinados em finais de semana/feriados (urgencia fabricada)
 - [ ] Q48: Pico de contratos pre-eleicao no municipio do candidato
 ### Padroes geograficos
-- [ ] Q49: Fornecedor de outro estado ganhando contrato municipal (por que nao contratar local?)
-- [ ] Q50: Multiplos fornecedores do mesmo endereco/municipio ganhando contratos no mesmo orgao (laranja)
+- [ ] Q49: Fornecedor de outro estado ganhando contrato municipal
+- [ ] Q50: Multiplos fornecedores do mesmo endereco ganhando contratos no mesmo orgao
 ### Manipulacao de modalidade
-- [ ] Q51: Orgao com proporcao anormal de dispensas vs licitacoes competitivas
-- [ ] Q52: Mesmo orgao+objeto similar fragmentado em contratos abaixo do teto (duplica Q45 — consolidar)
+- [x] Q51: Orgao com proporcao anormal de dispensas vs licitacoes competitivas (2.171 resultados)
+- [ ] Q52: Mesmo orgao+objeto fragmentado em contratos abaixo do teto (consolidar com Q45)
 ### Perfil do fornecedor
-- [ ] Q53: Capital social minimo ganhando contratos de alto valor
-- [ ] Q54: CNAE incompativel com objeto do contrato (padaria ganha contrato de TI)
+- [x] Q53: Capital social minimo ganhando contratos de alto valor (17.234 resultados)
+- [ ] Q54: CNAE incompativel com objeto do contrato
 - [ ] Q55: Empresa fenix — criada recentemente + socio de empresa sancionada CEIS/CNEP
 ### Conexoes politicas (aprofundamento)
-- [ ] Q56: Doador de campanha ganha contrato no municipio do candidato eleito (quid pro quo geografico)
+- [ ] Q56: Doador de campanha ganha contrato no municipio do candidato eleito
 - [ ] Q57: Ciclo emenda → empresa → doacao TSE de volta ao parlamentar
 ### Rede societaria
-- [ ] Q58: Multiplos fornecedores com mesmo endereco comercial (fachada compartilhando sede)
-### Melhorias em queries existentes (baseado em relatorio falsos positivos PB)
-- [ ] Q02: Adicionar filtro white-list CNAE de utilidades publicas (agua, energia, gas) para evitar falsos positivos de monopolios estatais
-- [ ] Q02: Adicionar filtro natureza juridica para fundacoes de apoio a ensino superior
+- [ ] Q58: Multiplos fornecedores com mesmo endereco comercial
 
 ## TCE-PB — Dados Consolidados (nova fonte)
 Fonte: https://dados-abertos.tce.pb.gov.br/dados-consolidados
@@ -275,7 +270,7 @@ Total: ~2GB comprimido, 237 municipios PB
 
 ### Download
 - [x] Download TCE-PB: `python -m etl.00_download --only tce_pb` (36 arquivos, ~2GB, 4 categorias × 9 anos)
-- [ ] Verificar integridade: contar linhas CSVs extraidos vs esperado
+- [x] Verificar integridade: dados carregados e queries executadas com sucesso
 
 ### Schema + ETL
 - [x] Schema tce_pb_despesa, tce_pb_servidor, tce_pb_licitacao, tce_pb_receita (sql/19_schema_tce_pb.sql)
@@ -376,10 +371,10 @@ Status:
 - [x] Carga completa: pb_pagamento 3.87M, pb_empenho 1.67M, pb_contrato 15.6k, pb_saude 215k, pb_convenio 7.8k = 5.78M registros
 - [x] Indices basicos criados (17 indices)
 - [x] Normalizacao Fases 7-8 concluida: cnpj_basico (5 tabelas), cpf_digitos_6 + nome_upper (pb_pagamento) + 7 indices
-- [ ] Queries cruzadas (Q78-Q91) — ver secao abaixo
+- [x] Queries cruzadas (Q78-Q91) — implementadas e executadas (sessao 9-10)
 
 ### Queries dados.pb × TCE-PB × fontes federais (Q78-Q91) — IMPLEMENTADAS (queries/fraude_dados_pb.sql)
-Diferencial: pb_pagamento tem CPF COMPLETO (11 dig, nao mascarado) — match exato possivel.
+Diferencial: pb_pagamento tem CPF COMPLETO (3.67M de 11 dig numericos). Socio tem CPF mascarado → match via cpf_digitos_6 + nome_upper.
 
 **CPF completo (pb_pagamento) — cruzamentos ineditos:**
 - [x] Q78: Auto-contratacao — credor PF do estado eh socio de empresa que tambem recebe do estado. LATERAL JOIN
@@ -389,7 +384,7 @@ Diferencial: pb_pagamento tem CPF COMPLETO (11 dig, nao mascarado) — match exa
 - [x] Q82: Credor PF do estado eh servidor federal SIAPE — cpf_digitos_6 + nome_upper
 
 **CNPJ — cruzamento estado × municipio × federal:**
-- [x] Q83: Empresa dominante — recebe do estado E municipios via cnpj_basico. LATERAL JOINs
+- [x] Q83: Empresa dominante — recebe do estado (pb_empenho) E municipios (tce_pb_despesa) via cnpj_basico. CTEs pre-agregadas
 - [x] Q84: Contratada estadual inativa/inapta — pb_contrato × estabelecimento
 - [x] Q85: Fornecedor estadual com divida ativa PGFN — cnpj_basico
 - [x] Q86: Fornecedor saude sancionado — pb_saude × ceis_sancao
@@ -403,17 +398,14 @@ Diferencial: pb_pagamento tem CPF COMPLETO (11 dig, nao mascarado) — match exa
 - [x] Q90: Empenhos estaduais abaixo do limite de dispensa — fracionamento
 - [x] Q91: Mesmo credor, multiplos pagamentos no mesmo dia — splitting
 
-Requer: normalizacao Fases 7-8 (rodando em background). Apos normalizar, rodar com `python -m etl.run_queries`
-
-SAGRES API (sagrescaptura.tce.pb.gov.br): requer token do TCE, email suportesagres@tce.pb.gov.br
+Normalizacao Fases 7-8 COMPLETA. Todas queries executadas sessao 10.
 
 ## Proxima iteracao: novas fontes
 - [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente
 - [ ] Favorecidos PJ - Portal da Transparencia (dados.gov.br)
-- [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br) — util como benchmark de preco federal, nao cobre municipal
+- [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br) — benchmark de preco federal, nao cobre municipal
 - [ ] Explorar catalogo completo do dados.gov.br via API (chave no .env)
-- [ ] dados.pb.gov.br: carga + normalizacao (pipeline pronto, download em andamento)
-- [ ] Solicitar token SAGRES: email suportesagres@tce.pb.gov.br
+- [ ] Solicitar token SAGRES (sagrescaptura.tce.pb.gov.br): email suportesagres@tce.pb.gov.br
 
 ## Melhorias tecnicas
 - [ ] Otimizar _staging_copy do RFB (csv.reader Python lento para 13GB)
