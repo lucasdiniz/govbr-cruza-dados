@@ -31,6 +31,9 @@ As fraudes no sertão paraibano demonstram grande ousadia (uso de manobras de em
 2. **Ministério Público da Paraíba (MPPB):** Investigação de conluio no Pregão Eletrônico 90021/2024 em Cajazeiras.
 3. **Cartórios e JUCEP:** Registros de emancipação do sócio menor de idade e constituição do grupo societário da CGN Participações.
 
+## 5. A Hegemonia Regional do Laranja Adolescente
+Os dados estaduais do TCE-PB revelaram que o esquema n?o se limitava aos cofres de Cajazeiras. A empresa de fachada do adolescente (Gomes e Costa Ltda) espalhou seus tent?culos e recebeu pagamentos frequentes de **"Dispensas de Licita??o" em 5 munic?pios vizinhos** (Cachoeira dos ?ndios, Cajazeiras, Nazarezinho, Santa Cruz e Vieir?polis). O cl? utiliza o mesmo Laranja para sangrar os cofres de prefeitos aliados em toda a regi?o do Alto Sert?o.
+
 ## Fontes e Refer?ncias
 1. **Tribunal de Contas da Uni?o:** Ac?rd?o 26/2026-Plen?rio (Suspens?o da obra do A?ude de Cacimba Nova). [Acesse o Ac?rd?o do TCU na ?ntegra](https://pesquisa.apps.tcu.gov.br/#/doc/acordao-completo/26/2026/Plen?rio)
 2. **Minist?rio P?blico da Para?ba (MPPB):** Investiga??o de conluio no Preg?o Eletr?nico em Cajazeiras. [Consulta P?blica de Inqu?ritos MPPB](https://www.mppb.mp.br/index.php/pt/transparencia/consultas-publicas)

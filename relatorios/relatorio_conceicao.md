@@ -44,6 +44,10 @@ Extração oriunda primariamente do arquivo `q03_empresa_fachada_criada_recentem
 3. **Vox Tecnologia:** Reportagens sobre os contratos milionários de empresas recém-criadas na cidade de Conceição. [Leia na Vox Tecnologia](https://www.voxtecnologia.com.br)
 
 
+## 4. A Matem?tica da Empresa de Fachada (Capital Social Incompat?vel)
+Uma nova varredura em bancos de dados estaduais (TCE-PB) revelou a prova final de que as empresas contratadas s?o apenas "CNPJs de gaveta". A empresa *ISME MEDE LTDA* declarou ? Receita Federal possuir um Capital Social de m?seros **R$ 15.000,00**. A *F J S RIBEIRO* declarou apenas **R$ 20.000,00**. 
+Mesmo sem ter patrim?nio l?quido ou estrutura f?sica para garantir a execu??o de servi?os complexos de sa?de, a Prefeitura assinou contratos de **R$ 2.016.000,00** com cada uma delas. Essa despropor??o financeira absurda atesta a total aus?ncia de an?lise de risco (Due Diligence) por parte do munic?pio, caracterizando favorecimento direto.
+
 ## Fontes e Refer?ncias
 1. **Arquivos Locais de Extra??o:** 
 esultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv

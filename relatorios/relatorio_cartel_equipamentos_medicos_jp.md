@@ -26,6 +26,7 @@ A participação de empresas sob controle comum em um mesmo lote ou licitação 
 
 * **Alerta dos Tribunais (TCE):** Cortes de contas (como TCE-BA e TCE-RN) já emitiram pareceres desfavoráveis em auditorias envolvendo a dupla (VMI e Alfa Med), citando exatamente o risco de conluio quando essas empresas atuam juntas para esvaziar a concorrência e manter os preços altos nos pregões de prefeituras.
 * **Saúde na Paraíba:** O estado é alvo frequente de desmantelamento de esquemas similares (como nas Operações "Festa no Terreiro" e "Saulus"), onde o uso de empresas do mesmo grupo para forjar pesquisas de preço (orçamentos) e propostas de pregão é a espinha dorsal de desvios na saúde pública.
+* **A Hegemonia no Interior da Paraíba (Novo Achado TCE-PB):** O esquema de loteamento de licitações não se restringiu à capital. O cruzamento de dados com bases do TCE-PB revelou que a *ALFA MED SISTEMAS MEDICOS LTDA* pulverizou sua atuação e venceu licitações em **24 municípios diferentes** do estado, faturando mais de R$ 5,3 milhões no interior paraibano. A Prime Holding utiliza suas subsidiárias para estabelecer um verdadeiro monopólio regional no fornecimento de equipamentos de Raio-X.
 
 ## 4. Conclusão
 O cruzamento de dados de `Bid Rigging` funcionou com precisão cirúrgica. A identificação de concorrência ilusória entre subsidiárias da *Prime Holding* em compras de Raio-X pela prefeitura de João Pessoa é um forte indício de superfaturamento por ausência de competição real, configurando fraude à licitação.

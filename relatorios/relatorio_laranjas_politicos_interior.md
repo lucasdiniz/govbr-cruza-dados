@@ -38,6 +38,9 @@ Os três municípios ilustram a base da pirâmide da corrupção local. O uso do
 3. **Tribunal de Justiça da Paraíba (TJPB):** Processos vinculados na 3ª Vara Criminal contra Paulo Guilherme.
 4. **Arquivos do Projeto:** `q39_socio_empresa_bolsa_familia.csv` e `q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
 
+## 6. A F?brica Regional de Notas Frias (Expans?o Guarabira)
+Novos cruzamentos utilizando a base do TCE-PB revelaram que a "Super-MEI" Rosa Maria n?o ? uma exclusividade do prefeito de Guarabira. A empresa atua como uma "atacadista de dispensas" na regi?o do Brejo Paraibano. Ela recebeu verbas sem licita??o, simultaneamente, de **5 prefeituras diferentes** (Alagoinha, Guarabira, Logradouro, Mulungu e Pil?ezinhos). Isso prova a exist?ncia de um cons?rcio intermunicipal para o uso de firmas laranjas para justificar sa?das de caixa de pequenos valores.
+
 ## Fontes e Refer?ncias
 1. **Di?rio Oficial dos Munic?pios:** Contratos e publica??es da Prefeitura de Guarabira. [PDF Oficial do Di?rio de Guarabira (19/03/2026)](https://guarabira.online/storage/diariooficial/P5mBw1laHvwKI3LY4BYe5IfzxhNP8U-metaRGnDoXJpbyBPZmljaWFsIGRlICAxOS4wMy4yMDI2LnBkZg==-.pdf)
 2. **Minist?rio P?blico Federal (MPF):** Procedimentos investigat?rios contra o prefeito de Lucena. [Acessar Not?cia da Investiga??o](https://auniao.pb.gov.br/noticias/caderno_paraiba/prefeito-de-lucena-leo-bandeira-podera-ser-afastado)

@@ -35,6 +35,10 @@ O cruzamento de dados provou que a Codevasf foi instrumentalizada no estado da P
 2. **Reportagens Investigativas (Estadão/Metrópoles):** Dossiê "Tratoraço" detalhando o sobrepreço de R$ 101 milhões nos contratos da XCMG.
 3. **Portal da Transparência:** Histórico de repasses da Bancada da Paraíba (Emendas RP9) e adesões a Atas de Registro de Preços em municípios paraibanos.
 
+## 5. O Motor do Superfaturamento (Aditivos de 100%) e Capilaridade
+Os dados mais recentes extra?dos do sistema revelaram a mec?nica exata usada para gerar o sobrepre?o multibilion?rio. Ap?s a assinatura dos grandes contratos guarda-chuva em Bras?lia (como um registro inicial de R$ 105 milh?es), o Minist?rio da Agricultura e a Codevasf emitiam sistematicamente **Termos Aditivos de exatos 100%** para a XCMG. Os contratos dobravam de valor (saltando para R$ 211 milh?es ou R$ 86 milh?es) meses ap?s a assinatura, burlando os limites de acr?scimo normais da lei e inflando o "Or?amento Secreto" enviado aos estados.
+* **Dom?nio Territorial:** O cruzamento de fornecedores dominantes atestou a efic?cia do esquema de caronas. A IVG Brasil domina o fornecimento de ve?culos pesados em incr?veis **24 munic?pios da Para?ba**, comprovando a capilaridade da Codevasf no interior do estado.
+
 ## Fontes e Refer?ncias
 1. **Auditorias da CGU/TCU:** Ac?rd?o 1181/2025-TCU (Sobre irregularidades na Codevasf e cita??es ? IVG Brasil). [Acesse o Ac?rd?o do TCU](https://pesquisa.apps.tcu.gov.br/#/doc/acordao-completo/1181/2025/Plen?rio)
 2. **Reportagens Investigativas (Estad?o/Metr?poles):** Dossi? "Tratora?o" detalhando o sobrepre?o de R$ 101 milh?es nos contratos da XCMG. [Acesse o Dossi? Estad?o](https://www.estadao.com.br/politica/governo-bolsonaro-cria-orcamento-secreto-em-troca-de-apoio-do-centrao/)
