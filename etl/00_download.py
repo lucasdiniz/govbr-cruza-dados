@@ -182,6 +182,81 @@ def download_tce_pb(anos=None):
                 _unzip(zip_path, dest)
 
 
+def download_dados_pb(anos=None):
+    """dados.pb.gov.br - Dados estaduais PB (pagamento, empenho, contratos, saude, convenios)."""
+    if anos is None:
+        anos = range(2018, 2027)
+    dest = DATA_DIR / "dados_pb"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    from urllib.request import urlopen
+    from urllib.error import URLError, HTTPError
+
+    PB_BASE = "https://dados.pb.gov.br:443/getcsv"
+
+    # Datasets mensais
+    monthly = [
+        ("pagamento", "pagamento"),
+        ("empenho_original", "empenho"),
+        ("pagamentos_gestao_pactuada_saude", "saude"),
+    ]
+
+    print("  dados.pb.gov.br:")
+    for api_nome, file_prefix in monthly:
+        for ano in anos:
+            for mes in range(1, 13):
+                fname = f"{file_prefix}_{ano}_{mes:02d}.csv"
+                fpath = dest / fname
+                if fpath.exists() and fpath.stat().st_size > 100:
+                    continue
+                url = f"{PB_BASE}?nome={api_nome}&exercicio={ano}&mes={mes}"
+                try:
+                    resp = urlopen(url, timeout=120)
+                    data = resp.read()
+                    if len(data) > 100:
+                        with open(fpath, "wb") as f:
+                            f.write(data)
+                        print(f"    [ok] {fname} ({len(data)/1024:.0f}KB)")
+                    else:
+                        print(f"    [vazio] {fname}")
+                except (URLError, HTTPError):
+                    print(f"    [erro] {fname}")
+
+    # Contratos (por ano, sem mes)
+    for ano in anos:
+        fname = f"contratos_{ano}.csv"
+        fpath = dest / fname
+        if fpath.exists() and fpath.stat().st_size > 100:
+            continue
+        url = f"{PB_BASE}?nome=contratos&exercicio={ano}"
+        try:
+            resp = urlopen(url, timeout=120)
+            data = resp.read()
+            if len(data) > 100:
+                with open(fpath, "wb") as f:
+                    f.write(data)
+                print(f"    [ok] {fname} ({len(data)/1024:.0f}KB)")
+        except (URLError, HTTPError):
+            pass
+
+    # Convenios (por ano)
+    for ano in anos:
+        fname = f"convenios_{ano}.csv"
+        fpath = dest / fname
+        if fpath.exists() and fpath.stat().st_size > 100:
+            continue
+        url = f"{PB_BASE}?nome=convenios&exercicio={ano}&mes_inicio=1&mes_fim=12"
+        try:
+            resp = urlopen(url, timeout=120)
+            data = resp.read()
+            if len(data) > 100:
+                with open(fpath, "wb") as f:
+                    f.write(data)
+                print(f"    [ok] {fname} ({len(data)/1024:.0f}KB)")
+        except (URLError, HTTPError):
+            pass
+
+
 def download_complementar():
     """BNDES, Holdings, ComprasNet."""
     print("  BNDES: dados originais do br-acc (download manual via dadosabertos.bndes.gov.br)")
@@ -202,6 +277,7 @@ DOWNLOADERS = {
     "pncp": download_pncp,
     "renuncias": download_renuncias,
     "tce_pb": download_tce_pb,
+    "dados_pb": download_dados_pb,
     "complementar": download_complementar,
 }
 
@@ -236,7 +312,7 @@ def run():
 
         fn = DOWNLOADERS[source]
         # Passar anos se a funcao aceita
-        if anos and source in ("cpgf", "viagens", "tce_pb"):
+        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb"):
             fn(anos=anos)
         elif source == "siape" and anos:
             fn(meses=[f"{a}01" for a in anos])

@@ -6,9 +6,11 @@ Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, vol
 
 ## O que faz
 
-Carrega ~40GB de dados de **15+ fontes publicas** num banco PostgreSQL (~285M registros) e cruza tudo pelo CNPJ/CPF para encontrar padroes suspeitos:
+Carrega ~40GB de dados de **18+ fontes publicas** num banco PostgreSQL (~330M registros) e cruza tudo pelo CNPJ/CPF para encontrar padroes suspeitos:
 
 - **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
+- **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
+- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude e convenios estaduais PB (~7.8M registros)
 - **PNCP** - licitacoes e contratos publicos (3M contratacoes, 3.7M contratos)
 - **Emendas Parlamentares** - Tesouro + TransfereGov (1.2M registros)
 - **CPGF** - cartao corporativo do governo (645k transacoes)
@@ -25,7 +27,7 @@ Carrega ~40GB de dados de **15+ fontes publicas** num banco PostgreSQL (~285M re
 
 ## Queries de investigacao
 
-42 queries prontas organizadas em 8 categorias:
+42+ queries prontas organizadas em 10 categorias:
 
 | Categoria | Queries | Exemplos |
 |---|---|---|
@@ -36,6 +38,8 @@ Carrega ~40GB de dados de **15+ fontes publicas** num banco PostgreSQL (~285M re
 | **Cruzamento multi-fonte** | Q27-Q32 | Empresa que recebe BNDES + contratos + emendas, empresa inativa recebendo pagamentos |
 | **Fraude eleitoral (TSE)** | Q33-Q37 | Doacao de empresa com divida ativa, candidato que recebe e gasta com mesma empresa, patrimonio incompativel |
 | **Bolsa Familia** | Q38-Q42 | Servidor federal recebendo BF, socio de empresa ativa recebendo BF, candidato com patrimonio recebendo BF |
+| **Superfaturamento** | Q43-Q58 | Preco unitario muito acima da mediana, fornecedor unico repetido |
+| **TCE-PB / dados.pb** | Q59-Q77 | Servidor socio de fornecedor, empresa inativa recebendo pagamento estadual, fracionamento de despesa municipal |
 | **Padroes temporais** | transversal | Picos de emendas em anos eleitorais, fornecedor dominante num orgao |
 
 ## Stack
@@ -73,8 +77,8 @@ python -m etl.run_queries --query Q03  # query especifica
 
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Scripts de carga por fonte de dados (19 fases, 15+ fontes)
-queries/       42 queries SQL prontas para investigacao de fraudes
+etl/           Scripts de carga por fonte de dados (20 fases, 18+ fontes)
+queries/       42+ queries SQL prontas para investigacao de fraudes
 resultados/    CSVs com resultados das queries (gitignored)
 relatorios/    Investigacoes baseadas nos resultados (Markdown)
 ```
@@ -90,6 +94,8 @@ Os dados brutos devem ser baixados separadamente dos portais oficiais:
 - [BNDES](https://dadosabertos.bndes.gov.br/)
 - [TSE - Prestacao de Contas](https://dadosabertos.tse.jus.br/)
 - [Bolsa Familia / SIAPE / CPGF / Viagens / Sancoes](https://portaldatransparencia.gov.br/download-de-dados)
+- [TCE-PB - Dados Consolidados](https://dados-abertos.tce.pb.gov.br/dados-consolidados) (despesas, servidores, licitacoes, receitas municipais PB)
+- [dados.pb.gov.br](https://dados.pb.gov.br/app/) (pagamentos, empenhos, contratos estaduais PB)
 
 ## Entity Resolution
 
@@ -101,6 +107,9 @@ CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte
 | Socio (RFB) | `***456789**` | 6 digitos centrais, sem pontuacao |
 | PGFN | `XXX456.789XX` | 6 digitos centrais, formato proprio |
 | CEIS/CNEP | `12345678901` | CPF completo (raro) |
+| TCE-PB servidores | `***.456.789-**` | 6 digitos centrais |
+| dados.pb.gov.br pagamento | `00045678901` | CPF **completo** (11 digitos) |
+| dados.pb.gov.br empenho PF | `***456***` | CPF mascarado (3 digitos centrais) |
 
 O pipeline normaliza automaticamente (fase 14) criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo JOINs por igualdade direta entre fontes. Match por **nome + 6 digitos CPF** virtualmente elimina falsos positivos.
 

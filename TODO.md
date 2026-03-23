@@ -74,14 +74,28 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 - Investigado SAGRES API: requer token do TCE (email suportesagres@tce.pb.gov.br), valor marginal vs CSVs ja baixados
 - Commit ae07d0a: pipeline TCE-PB completa
 
+### 2026-03-22 (sessao 8)
+- Investigacao aprofundada dados.pb.gov.br: discovery completo via JSF AJAX (40+ datasets mapeados)
+- Tecnica: POST com datasetZip_input={ID} + CSRF token para extrair nomes API reais
+- Datasets de alto valor identificados e volumes estimados:
+  - pagamento (CPF completo + CNPJ): ~5M registros (2018-2026, ~50k/mes)
+  - empenho_original (41 cols, CNPJ PJ, modalidade licitacao): ~2.3M registros
+  - contratos (CNPJ contratado, objeto, valor): ~11k (2020-2023)
+  - pagamentos_gestao_pactuada_saude (CNPJ credor, NF): ~50k
+  - convenios (CNPJ convenente): ~9k
+- Dados 2026 ja disponiveis em: pagamento, empenho, diarias, convenios, saude
+- Complementar ao TCE-PB: estado vs municipios, CPF completo vs mascarado
+- Total estimado: ~7.8M novos registros
+- TODO atualizado com mapeamento completo (IDs JSF, parametros, volumes, cruzamentos)
+
 ### Handoff proxima sessao
 - Normalizacao TCE-PB pode estar rodando. Verificar: SELECT cnpj_basico FROM tce_pb_despesa LIMIT 1 (se NULL, ainda nao rodou)
-- Se normalizacao nao completou: rodar python -c "import importlib; mod=importlib.import_module('etl.15_normalizar'); ..." (ver sessao 7 no historico)
 - Download itens PNCP em andamento (~128k/3M). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
-- PRIORIDADE: implementar queries TCE-PB priorizadas (Q70, Q71, Q72, Q74, Q77, Q59) — todas funcionam com dados ja no banco
-- Tambem pendente: queries superfaturamento Q45-Q58, rodar Q02 melhorada (CSV)
-- dados.pb.gov.br: considerar baixar pagamento estadual (17k-80k/mes, tem CPF/CNPJ) e convenios
-- Foco principal: investigar fraude municipal/estadual PB usando cruzamentos TCE-PB × RFB × TSE × PGFN × sancoes
+- PROXIMOS PASSOS:
+  1. Implementar pipeline dados.pb.gov.br (download + schema + ETL para 5 datasets, ~7.8M registros)
+  2. Implementar queries TCE-PB priorizadas (Q70, Q71, Q72, Q74, Q77, Q59)
+  3. Queries superfaturamento Q45-Q58, rodar Q02 melhorada (CSV)
+- Foco principal: investigar fraude municipal/estadual PB usando cruzamentos TCE-PB × dados.pb × RFB × TSE × PGFN × sancoes
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
@@ -262,24 +276,83 @@ Total: ~2GB comprimido, 237 municipios PB
 - [ ] Q77: Fracionamento de despesa — mesmo credor + mesmo elemento_despesa + mesma UG + mesmo mes, multiplos empenhos pequenos que somados excedem limite dispensa
 - [ ] Q59: Servidor municipal socio de fornecedor do mesmo municipio — tce_pb_servidor × socio (cpf_digitos_6 + nome) × tce_pb_despesa (cnpj). Conflito de interesses direto
 
-## Portal dados.pb.gov.br — Dados estaduais PB (investigar)
+## Portal dados.pb.gov.br — Dados estaduais PB
 API: https://dados.pb.gov.br:443/getcsv?nome={dataset}&exercicio={ano}&mes={mes}
-Datasets encontrados:
-- **pagamento** (ALTO VALOR): pagamentos estaduais com CPF/CNPJ credor, nome, valor, data. ~17k-80k/mes (2025). Param: mes=
-- **liquidacao**: liquidacoes estaduais com numero empenho, valor, data NF. Param: mes=
-- **convenios** (MEDIO VALOR): convenios estado-municipios com CNPJ, objetivo, valores. ~1.2k/ano. Param: mes_inicio= mes_fim=
-- **dotacao**: dotacao orcamentaria estadual. Param: mes=
-- Tabelas de referencia: funcao, fonte_recurso, modalidade_licitacao, grupo_financeiro, situacao_empenho, item_despesa, tipo_credito
-- NAO encontrados: empenhos, contratos, aditivos, diarias, folha detalhada (nomes internos desconhecidos, app JSF dificulta discovery)
-- SAGRES API (sagrescaptura.tce.pb.gov.br): requer token do TCE, email suportesagres@tce.pb.gov.br
-Avaliacao: pagamento estadual adiciona valor (dados do ESTADO, nao municipal). Convenios util para rastrear repasses estado→municipio. Prioridade media — focar primeiro nas queries TCE-PB.
+Dados do GOVERNO DO ESTADO (complementa TCE-PB que cobre 237 municipios).
+Exercicios disponiveis: 2000-2026 (varia por dataset). Formato: CSV com ; separador, valores decimais com ponto.
+
+### Mapeamento completo dos datasets (ID JSF → nome API)
+Discovery via JSF AJAX (POST com datasetZip_input={ID}):
+
+**SIAF (alto valor):**
+- **pagamento** (ID=4): Autorizacoes de pagamento estaduais. 13 cols. CPF COMPLETO + CNPJ credor, nome, valor, data. ~50k/mes. Param: mes=
+  - Volume: ~5M registros (2018-2026, ~550k/ano). Dados 2026 disponiveis (jan=15.5k)
+  - Cruzamentos: CPF completo → socio, PGFN, TSE, CEIS/CNEP, BF. CNPJ → empresa RFB inativa/inapta
+- **empenho_original** (ID=1): Notas de empenho. 41 cols. CNPJ completo (PJ), CPF mascarado (PF), modalidade licitacao, motivo dispensa, numero contrato, historico, dados diarias (destino, datas). Param: mes=
+  - Volume: ~2.3M registros (2018-2026, ~250k/ano). Alguns meses sem dados (gaps). Dados 2026 disponiveis (jan=7.2k)
+  - Cruzamentos: cnpj_basico → empresa + socio. Modalidade × valor → fracionamento
+- **Diarias** (ID=5): Empenhos de diarias. Mesma estrutura do empenho_original. CPF mascarado. Param: mes=
+  - Volume: ~2k/mes. Dados 2026 disponiveis (jan=2.2k)
+- empenho_suplementacao (ID=8), empenho_anulacao (ID=9), pagamento_anulacao (ID=40): Valor medio (padroes empenha-anula-reempenha)
+- liquidacaodespesa (ID=107), liquidacaodespesadescontos (ID=108): Sem CPF/CNPJ direto
+- receitas_execucao (ID=3), receitas_previsao (ID=2): Sem CPF/CNPJ
+
+**SIGA (alto valor):**
+- **contratos** (ID=35): Contratos estaduais. 20 cols. CNPJ/CPF contratado, nome, objeto, valor, processo licitatorio, gestor, municipio. Param: exercicio= (sem mes)
+  - Volume: ~11k registros (2020-2023 disponiveis; 2024-2026 sem dados ainda)
+  - Cruzamentos: CNPJ contratado → empresa RFB (ativa?), socio (servidor socio?), PGFN, CEIS
+- **convenios** (ID=37): Convenios estado-municipios. 16 cols. CNPJ convenente, objetivo, valores concedente/contrapartida, vigencia, URL documento. Param: mes_inicio= mes_fim=
+  - Volume: ~9k registros (2018-2026, ~1k/ano). Dados 2026 disponiveis (187)
+- aditivos_contrato (ID=38): Aditivos de contrato. 12 cols. Sem CPF/CNPJ direto (JOIN via CODIGO_CONTRATO). Param: mes_inicio= mes_fim=
+- aditivos_convenio (ID=39): Aditivos de convenio. 13 cols. Sem CPF/CNPJ direto. Param: mes_inicio= mes_fim=
+
+**Saude/Educacao:**
+- **pagamentos_gestao_pactuada_saude** (ID=104): Pagamentos organizacoes sociais saude. 15 cols. CNPJ credor, nome, valor, nota fiscal, categoria despesa. Param: mes=
+  - Volume: ~50k registros. Setor saude propenso a fraude
+- pagamentos_gestao_pactuada_educacao (ID=105): Idem educacao. Vazio em 2025, dados 2026 disponiveis (jan=461)
+
+**CGE:**
+- dotacao (ID=46): Dotacao orcamentaria. 15 cols. Sem CPF/CNPJ. Param: mes=
+- liquidacao (ID=48): Liquidacoes CGE. 27 cols. Sem CPF/CNPJ. Param: mes=
+- tipo_modalidade_pagamento (ID=45): Tabela referencia
+
+**FOPAG:**
+- resumo_folha (ID=42): Resumo folha pagamento. Vazio/sem dados
+
+**DADOS-PB (tabelas referencia):**
+- acao (ID=22), categoria_economica_despesa (ID=23), dispensa_licitacao (ID=24), elemento_despesa (ID=25)
+- funcao (ID=26), grupo_natureza_despesa (ID=27), item_despesa (ID=28), modalidade_aplicacao_despesa (ID=29)
+- modalidade_licitacao (ID=30), programa_dadospb (ID=31), subfuncao_dadospb (ID=32)
+- unidade_gestora_dadospb (ID=33), unidade_orcamentaria_dadospb (ID=34), tipos_de_orcamento (ID=65)
+
+**Referencia SIAF:**
+- grupo_financeiro (ID=44), situacao_empenho (ID=51), tipos_documento (ID=52), tipo_credito (ID=54), tipo_movimentacao_orcamentaria (ID=49)
+
+### Pipeline dados.pb.gov.br — estimativa total ~7.8M registros, ~1.8GB
+Arquivos criados:
+- sql/20_schema_dados_pb.sql — 5 tabelas: pb_pagamento, pb_empenho, pb_contrato, pb_saude, pb_convenio
+- etl/20_dados_pb.py — ETL completo (--only, --anos, --no-schema), download+cache em G:\govbr-dados-brutos\dados_pb\
+- etl/00_download.py — download_dados_pb() adicionado ao orquestrador
+- etl/15_normalizar.py — Fases 7-8 (cnpj_basico, cpf_digitos_6, nome_upper + 7 indices CONCURRENTLY)
+
+Status:
+- [x] Schema SQL (sql/20_schema_dados_pb.sql)
+- [x] ETL criado (etl/20_dados_pb.py) — staging COPY + limpeza CPF/CNPJ inline
+- [x] Download automatizado (etl/00_download.py) — cache local, skip se existe
+- [x] Normalizacao adicionada (15_normalizar.py Fases 7-8)
+- [ ] Download em andamento (python -m etl.00_download --only dados_pb)
+- [ ] Carga no banco (python -m etl.20_dados_pb)
+- [ ] Normalizacao (python -m etl.15_normalizar) — rodar Fases 7-8
+- [ ] Queries cruzadas com dados existentes
+
+SAGRES API (sagrescaptura.tce.pb.gov.br): requer token do TCE, email suportesagres@tce.pb.gov.br
 
 ## Proxima iteracao: novas fontes
 - [ ] Pessoas Expostas Politicamente (PEP) — deu 403, tentar novamente
 - [ ] Favorecidos PJ - Portal da Transparencia (dados.gov.br)
 - [ ] Notas Fiscais Eletronicas (portaldatransparencia.gov.br) — util como benchmark de preco federal, nao cobre municipal
 - [ ] Explorar catalogo completo do dados.gov.br via API (chave no .env)
-- [ ] dados.pb.gov.br: baixar pagamento estadual (2018-2026) e convenios — CPF/CNPJ credor disponivel
+- [ ] dados.pb.gov.br: carga + normalizacao (pipeline pronto, download em andamento)
 - [ ] Solicitar token SAGRES: email suportesagres@tce.pb.gov.br
 
 ## Melhorias tecnicas

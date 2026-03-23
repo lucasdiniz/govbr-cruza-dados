@@ -193,6 +193,56 @@ def run():
         _exec(conn, "idx tce_lic cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_lic_cnpj_basico ON tce_pb_licitacao(cnpj_basico_proponente)", autocommit=True)
         _exec(conn, "idx tce_lic objeto trgm", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_lic_objeto_trgm ON tce_pb_licitacao USING gin(objeto_licitacao gin_trgm_ops)", autocommit=True)
 
+        print("\n  === Fase 7: dados.pb.gov.br normalização ===")
+
+        # pb_pagamento: cpfcnpj_credor ja limpo no ETL. Adicionar cnpj_basico e cpf_digitos_6
+        _exec(conn, "pb_pag: ADD cnpj_basico",
+              "ALTER TABLE pb_pagamento ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_pag: UPDATE cnpj_basico",
+              "UPDATE pb_pagamento SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14")
+        _exec(conn, "pb_pag: ADD cpf_digitos_6",
+              "ALTER TABLE pb_pagamento ADD COLUMN IF NOT EXISTS cpf_digitos_6 VARCHAR(6)")
+        _exec(conn, "pb_pag: UPDATE cpf_digitos_6",
+              "UPDATE pb_pagamento SET cpf_digitos_6 = SUBSTRING(cpfcnpj_credor, 4, 6) WHERE cpf_digitos_6 IS NULL AND LENGTH(cpfcnpj_credor) = 11 AND cpfcnpj_credor NOT LIKE '***%'")
+        _exec(conn, "pb_pag: ADD nome_upper",
+              "ALTER TABLE pb_pagamento ADD COLUMN IF NOT EXISTS nome_upper TEXT")
+        _exec(conn, "pb_pag: UPDATE nome_upper",
+              "UPDATE pb_pagamento SET nome_upper = UPPER(TRIM(nome_credor)) WHERE nome_upper IS NULL AND nome_credor IS NOT NULL")
+
+        # pb_empenho: cnpj_basico (PJ) — CPF mascarado com *** nao tem digitos uteis
+        _exec(conn, "pb_emp: ADD cnpj_basico",
+              "ALTER TABLE pb_empenho ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_emp: UPDATE cnpj_basico",
+              "UPDATE pb_empenho SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+
+        # pb_contrato: cnpj_basico
+        _exec(conn, "pb_ctr: ADD cnpj_basico",
+              "ALTER TABLE pb_contrato ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_ctr: UPDATE cnpj_basico",
+              "UPDATE pb_contrato SET cnpj_basico = LEFT(cpfcnpj_contratado, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_contratado) = 14 AND cpfcnpj_contratado NOT LIKE '***%'")
+
+        # pb_saude: cnpj_basico
+        _exec(conn, "pb_saude: ADD cnpj_basico",
+              "ALTER TABLE pb_saude ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_saude: UPDATE cnpj_basico",
+              "UPDATE pb_saude SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14")
+
+        # pb_convenio: cnpj_basico
+        _exec(conn, "pb_conv: ADD cnpj_basico",
+              "ALTER TABLE pb_convenio ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_conv: UPDATE cnpj_basico",
+              "UPDATE pb_convenio SET cnpj_basico = LEFT(cnpj_convenente, 8) WHERE cnpj_basico IS NULL AND LENGTH(cnpj_convenente) = 14")
+
+        print("\n  === Fase 8: dados.pb.gov.br índices ===")
+
+        _exec(conn, "idx pb_pag cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_pag_cnpj_basico ON pb_pagamento(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_pag cpf_dig6", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_pag_cpf_dig6 ON pb_pagamento(cpf_digitos_6)", autocommit=True)
+        _exec(conn, "idx pb_pag nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_pag_nome_upper ON pb_pagamento(nome_upper)", autocommit=True)
+        _exec(conn, "idx pb_emp cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_cnpj_basico ON pb_empenho(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_ctr cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_ctr_cnpj_basico ON pb_contrato(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_saude cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_saude_cnpj_basico ON pb_saude(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_conv cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_conv_cnpj_basico ON pb_convenio(cnpj_basico)", autocommit=True)
+
         print("\n  Normalização e índices concluídos.")
 
     finally:
