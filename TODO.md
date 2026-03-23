@@ -133,17 +133,21 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
   - Q87: 500 socios de contratada estadual = servidor municipal
   - Q86: 108 fornecedores saude sancionados
 - Queries com 0 resultados: Q64, Q66, Q72, Q78, Q80-82, Q85 — threshold alto ou dados nao cruzam
+- Limpeza TODO/README: removidos itens stale, marcados Q43/Q44/Q51/Q53 como feitos, corrigido tse_receita→tse_receita_candidato, ~40GB→~100GB dados (186GB DB)
+- Download PNCP itens retomado (~91%, 2.71M/2.99M contratacoes)
 
 ### Handoff proxima sessao
-- 75 queries completas em resultados/ (764k resultados)
-- Download itens PNCP possivelmente concluido. Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- Git: main branch, commit 725b04f, pushed
+- DB: PostgreSQL localhost, user=govbr, db=govbr, 186GB, ~336M registros. Normalizacao Fases 1-8 completas
+- 75 queries completas em resultados/ (764k resultados). 8 queries com 0 resultados (ver acima)
+- Download PNCP itens em andamento (~91%). Verificar: `wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt` (2.99M = completo)
+- Plano views materializadas pronto em `.claude/plans/twinkling-puzzling-giraffe.md`
 - PROXIMOS PASSOS:
-  1. Implementar views materializadas (plano em .claude/plans/twinkling-puzzling-giraffe.md)
-  2. Investigar queries com 0 resultados — ajustar thresholds ou JOINs
-  3. Queries superfaturamento Q45-Q58
-  4. Apos PNCP download: ETL pncp_itens
-  5. Relatorios de investigacao focados nos achados PB
-- Foco principal: implementar views materializadas + risk scoring
+  1. Verificar se PNCP download completou → rodar ETL pncp_itens (etl/04b_pncp_itens.py)
+  2. Implementar views materializadas (6 MVs + 2 views risco em sql/12_views.sql)
+  3. Investigar queries com 0 resultados — ajustar thresholds ou JOINs
+  4. Queries superfaturamento Q45-Q58 (10 pendentes)
+  5. Relatorios de investigacao focados nos achados PB (Q59 32k, Q60 9.3k, Q83 500)
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
