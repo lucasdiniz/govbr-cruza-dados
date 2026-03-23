@@ -1,10 +1,14 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] Recriar views materializadas (`sql/12_views.sql`)
+- [ ] Implementar views materializadas (`sql/12_views.sql`) — plano completo em `.claude/plans/twinkling-puzzling-giraffe.md`
+  - 6 MVs: mv_empresa_governo (360° empresa), mv_pessoa_pb (CPF completo), mv_municipio_pb_risco (score município), mv_servidor_pb_risco (servidor+flags), mv_empresa_pb (foco PB), mv_rede_pb (grafo conexões)
+  - 2 views de risco: v_risk_score_empresa, v_risk_score_pb (ranking unificado empresa+servidor+PF)
+  - Estimativa: ~5-9GB disco, ~45-60min refresh
+- [ ] Analisar resultados das 70 queries (rodando em background)
+- [ ] Continuar relatorios de investigacao (foco Paraiba)
 - [x] Limpar tmp_run_q39.py, tmp_run_partial.py e tmp_analysis.sql
 - [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
-- [ ] Continuar relatorios de investigacao (foco Paraiba)
 
 ## Estado do banco (~336M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
@@ -101,17 +105,21 @@ Queries Q01-Q53 migradas para colunas normalizadas indexadas. Status:
   - Cross fontes: Q88 duplo vinculo, Q89 convenio, Q90 fracionamento, Q91 splitting
 - Download PNCP itens: ~1.1M/3M (~37%)
 - Total queries implementadas: 42 + 28 novas = 70
+- Planejamento views materializadas: 6 MVs + 2 views de risco (plano completo em .claude/plans/)
+  - mv_empresa_governo (360° empresa × 10 fontes), mv_pessoa_pb (CPF completo × 6 fontes), mv_municipio_pb_risco (score município), mv_servidor_pb_risco (servidor+flags), mv_empresa_pb (foco PB), mv_rede_pb (grafo conexões)
+  - v_risk_score_empresa + v_risk_score_pb (ranking unificado)
+- 70 queries rodando em background (run_queries.py)
+- Commit 61b194f: 28 novas queries
 
 ### Handoff proxima sessao
-- Rodar normalizacao Fases 7-8 (dados.pb.gov.br): python -c "import importlib; mod=importlib.import_module('etl.15_normalizar'); mod.run()"
-  - Vai fazer ADD COLUMN + UPDATE em 5 tabelas (maior: pb_pagamento 3.87M) + 7 indices CONCURRENTLY
-- Download itens PNCP em andamento (~128k/3M). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
+- Queries rodando em background — verificar resultados em resultados/
+- Download itens PNCP em andamento (~1.1M/3M, ~37%). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
 - PROXIMOS PASSOS:
-  1. Normalizar dados.pb (Fases 7-8) — ~30-60min
-  2. Implementar queries priorizadas: Q78 (auto-contratacao CPF), Q83 (empresa estado+municipio), Q84 (contratada inativa), Q88 (servidor mun=credor estadual), Q79 (credor=candidato TSE), Q85 (fornecedor PGFN)
-  3. Implementar queries TCE-PB: Q70 (empresa inativa), Q71 (mesmo endereco), Q72 (doador-prefeito), Q59 (servidor-socio)
-  4. Queries superfaturamento Q45-Q58
-- Foco principal: investigar fraude municipal/estadual PB usando cruzamentos TCE-PB × dados.pb × RFB × TSE × PGFN × sancoes
+  1. Analisar resultados das 70 queries (verificar tempos, erros, contagens)
+  2. Implementar views materializadas (plano em .claude/plans/twinkling-puzzling-giraffe.md)
+  3. Queries superfaturamento Q45-Q58
+  4. Apos PNCP download: ETL pncp_itens
+- Foco principal: implementar views materializadas + risk scoring, analisar resultados queries PB
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
