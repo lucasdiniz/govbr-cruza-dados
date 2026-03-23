@@ -6,18 +6,19 @@
 - [x] Configurar work_mem = '512MB' permanente no postgresql.conf (default 4MB causa temp files >24GB em Q02/Q06)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 
-## Estado do banco (~324M registros)
+## Estado do banco (~336M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
 - tce_pb_servidor: 21.7M, pgfn_divida: 39.9M, bolsa_familia: 20.9M, tce_pb_despesa: 15.8M
-- tse_despesa: 6M, tse_bem_candidato: 4M, viagem: 3.9M, pncp_contrato: 3.7M
-- tse_candidato: 2.1M, tse_receita: 2.3M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
-- cpgf_transacao: 645k, tce_pb_licitacao: 310k, bndes_contrato: ~100k
+- tse_despesa: 6M, tse_bem_candidato: 4M, pb_pagamento: 3.87M, viagem: 3.9M, pncp_contrato: 3.7M
+- tse_candidato: 2.1M, tse_receita: 2.3M, pb_empenho: 1.67M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
+- cpgf_transacao: 645k, tce_pb_licitacao: 310k, pb_saude: 215k, bndes_contrato: ~100k
+- pb_contrato: 15.6k, pb_convenio: 7.8k
 - PostgreSQL: localhost, user=govbr, db=govbr
 - Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~83GB livres
 - GitHub: https://github.com/lucasdiniz/govbr-cruza-dados (public)
 
-## Normalizacao (etl.15_normalizar) — COMPLETA
-Todas as colunas desnormalizadas + ~27 indices criados. Tudo OK:
+## Normalizacao (etl.15_normalizar) — Fases 1-6 COMPLETAS, 7-8 pendentes
+Fases 1-6: todas colunas desnormalizadas + ~36 indices. Fases 7-8 (dados.pb.gov.br) pendentes.
 - [x] pgfn_divida.cpf_cnpj_norm — 39.9M rows (CPF 6dig + CNPJ 14dig misturados)
 - [x] socio.cpf_cnpj_norm (6 digitos) — 27M rows
 - [x] bolsa_familia.cpf_digitos (6 digitos) — 21M rows
@@ -28,6 +29,8 @@ Todas as colunas desnormalizadas + ~27 indices criados. Tudo OK:
 - [x] cnep_sancao.cpf_cnpj_norm (idem) + cpf_digitos_6 — 32 CPFs
 - [x] acordo_leniencia.cnpj_norm — OK
 - [x] Todos os indices das fases 2-4 criados + idx_ceis/cnep_cpf_digitos_6
+- [x] Fases 5-6: TCE-PB cnpj_basico, cpf_digitos_6, nome_upper, ano + 9 indices CONCURRENTLY (completa)
+- [ ] Fases 7-8: dados.pb.gov.br cnpj_basico, cpf_digitos_6, nome_upper + 7 indices (pendente)
 
 ## Queries — 42/42 funcionando
 Todas as queries migradas para colunas normalizadas indexadas. Status:
@@ -77,24 +80,24 @@ Todas as queries migradas para colunas normalizadas indexadas. Status:
 ### 2026-03-22 (sessao 8)
 - Investigacao aprofundada dados.pb.gov.br: discovery completo via JSF AJAX (40+ datasets mapeados)
 - Tecnica: POST com datasetZip_input={ID} + CSRF token para extrair nomes API reais
-- Datasets de alto valor identificados e volumes estimados:
-  - pagamento (CPF completo + CNPJ): ~5M registros (2018-2026, ~50k/mes)
-  - empenho_original (41 cols, CNPJ PJ, modalidade licitacao): ~2.3M registros
-  - contratos (CNPJ contratado, objeto, valor): ~11k (2020-2023)
-  - pagamentos_gestao_pactuada_saude (CNPJ credor, NF): ~50k
-  - convenios (CNPJ convenente): ~9k
-- Dados 2026 ja disponiveis em: pagamento, empenho, diarias, convenios, saude
-- Complementar ao TCE-PB: estado vs municipios, CPF completo vs mascarado
-- Total estimado: ~7.8M novos registros
-- TODO atualizado com mapeamento completo (IDs JSF, parametros, volumes, cruzamentos)
+- Pipeline completo criado: sql/20_schema_dados_pb.sql + etl/20_dados_pb.py + download em 00_download.py + normalizacao Fases 7-8
+- Download completo: 262 arquivos, 1.6GB em G:\govbr-dados-brutos\dados_pb\
+- Carga completa: pb_pagamento 3.87M, pb_empenho 1.67M, pb_contrato 15.6k, pb_saude 215k, pb_convenio 7.8k = 5.78M registros
+- Fix encoding (errors='replace'), fix VARCHAR truncation (saude numero_documento, empenho schema inteiro)
+- Normalizacao TCE-PB (Fases 5-6) completou: cnpj_basico 33min, cpf_digitos_6 23min, nome_upper 30min + 9 indices 16min
+- 14 novas queries propostas (Q78-Q91) cruzando dados.pb × TCE-PB × fontes federais
+- Diferencial chave: pb_pagamento tem CPF COMPLETO (match exato com socio, TSE, CEIS, PGFN)
+- Commit dd88b45: pipeline dados.pb.gov.br completo
 
 ### Handoff proxima sessao
-- Normalizacao TCE-PB pode estar rodando. Verificar: SELECT cnpj_basico FROM tce_pb_despesa LIMIT 1 (se NULL, ainda nao rodou)
+- Rodar normalizacao Fases 7-8 (dados.pb.gov.br): python -c "import importlib; mod=importlib.import_module('etl.15_normalizar'); mod.run()"
+  - Vai fazer ADD COLUMN + UPDATE em 5 tabelas (maior: pb_pagamento 3.87M) + 7 indices CONCURRENTLY
 - Download itens PNCP em andamento (~128k/3M). Verificar wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt
 - PROXIMOS PASSOS:
-  1. Implementar pipeline dados.pb.gov.br (download + schema + ETL para 5 datasets, ~7.8M registros)
-  2. Implementar queries TCE-PB priorizadas (Q70, Q71, Q72, Q74, Q77, Q59)
-  3. Queries superfaturamento Q45-Q58, rodar Q02 melhorada (CSV)
+  1. Normalizar dados.pb (Fases 7-8) — ~30-60min
+  2. Implementar queries priorizadas: Q78 (auto-contratacao CPF), Q83 (empresa estado+municipio), Q84 (contratada inativa), Q88 (servidor mun=credor estadual), Q79 (credor=candidato TSE), Q85 (fornecedor PGFN)
+  3. Implementar queries TCE-PB: Q70 (empresa inativa), Q71 (mesmo endereco), Q72 (doador-prefeito), Q59 (servidor-socio)
+  4. Queries superfaturamento Q45-Q58
 - Foco principal: investigar fraude municipal/estadual PB usando cruzamentos TCE-PB × dados.pb × RFB × TSE × PGFN × sancoes
 
 ### 2026-03-22 (sessao 5)
@@ -237,24 +240,11 @@ Total: ~2GB comprimido, 237 municipios PB
 - [x] ETL receitas: 1.2M registros (2018-2026)
 - [x] Formato: CSV ; separador, UTF-8 BOM, virgula decimal. ETL: etl/19_tce_pb.py
 
-### Normalizacao
-- [ ] tce_pb_despesa.cnpj_basico — LEFT(cpf_cnpj, 8) para CNPJ (LENGTH=14), JOIN com empresa/socio/pncp_contrato
-- [ ] tce_pb_servidor.cpf_digitos_6 — REGEXP_REPLACE para extrair 6 centrais do CPF mascarado (***.944.474-** → 944474), JOIN com socio/bolsa_familia
-- [ ] tce_pb_servidor.nome_upper — UPPER(TRIM(nome_servidor)) para match textual com socio.nome_socio
-- [ ] tce_pb_licitacao.cnpj_basico_proponente — LEFT(cpf_cnpj_proponente, 8) quando LENGTH=14 (CNPJ), JOIN com empresa/socio
-- [ ] tce_pb_licitacao.cpf_digitos_proponente — 6 centrais quando LENGTH=11 (CPF), JOIN com socio/bolsa_familia
-- [ ] tce_pb_despesa.ano — EXTRACT(YEAR FROM data_empenho) para queries temporais
-
-### Indices (alem dos basicos ja criados no ETL)
-- [ ] idx_tce_desp_cnpj_basico — tce_pb_despesa(cnpj_basico) para JOIN empresa
-- [ ] idx_tce_desp_ano — tce_pb_despesa(ano) para queries temporais (Q46/Q66 queima orcamento)
-- [ ] idx_tce_desp_modalidade — tce_pb_despesa(modalidade_licitacao) para filtrar "Sem Licitacao"
-- [ ] idx_tce_desp_funcao — tce_pb_despesa(codigo_funcao) para analise por area
-- [ ] idx_tce_desp_mun_cnpj — tce_pb_despesa(municipio, cpf_cnpj) para concentracao fornecedor por municipio
-- [ ] idx_tce_serv_cpf_dig6 — tce_pb_servidor(cpf_digitos_6) para JOIN socio
-- [ ] idx_tce_serv_nome_upper — tce_pb_servidor(nome_upper) para match textual
-- [ ] idx_tce_lic_cnpj_basico — tce_pb_licitacao(cnpj_basico_proponente) para JOIN empresa
-- [ ] idx_tce_lic_objeto_trgm — tce_pb_licitacao USING gin(objeto_licitacao gin_trgm_ops) para busca textual
+### Normalizacao — COMPLETA (Fases 5-6, ~1.5h)
+- [x] tce_pb_despesa.cnpj_basico (15.8M, 33min) + ano (1.7min)
+- [x] tce_pb_servidor.cpf_digitos_6 (21.7M, 23min) + nome_upper (30min)
+- [x] tce_pb_licitacao.cnpj_basico_proponente + cpf_digitos_proponente (310k, <1min)
+- [x] 9 indices CONCURRENTLY criados (~16min total)
 
 ### Queries possiveis (Q59-Q68)
 - [ ] Q59: Servidor municipal que eh socio de empresa fornecedora do mesmo municipio (cruzamento tce_pb_servidor × socio × tce_pb_despesa)
@@ -338,12 +328,38 @@ Arquivos criados:
 Status:
 - [x] Schema SQL (sql/20_schema_dados_pb.sql)
 - [x] ETL criado (etl/20_dados_pb.py) — staging COPY + limpeza CPF/CNPJ inline
-- [x] Download automatizado (etl/00_download.py) — cache local, skip se existe
-- [x] Normalizacao adicionada (15_normalizar.py Fases 7-8)
-- [ ] Download em andamento (python -m etl.00_download --only dados_pb)
-- [ ] Carga no banco (python -m etl.20_dados_pb)
-- [ ] Normalizacao (python -m etl.15_normalizar) — rodar Fases 7-8
-- [ ] Queries cruzadas com dados existentes
+- [x] Download completo: 262 arquivos, 1.6GB em G:\govbr-dados-brutos\dados_pb\
+- [x] Carga completa: pb_pagamento 3.87M, pb_empenho 1.67M, pb_contrato 15.6k, pb_saude 215k, pb_convenio 7.8k = 5.78M registros
+- [x] Indices basicos criados (17 indices)
+- [ ] Normalizacao (python -m etl.15_normalizar) — rodar Fases 7-8 (cnpj_basico, cpf_digitos_6, nome_upper + 7 indices)
+- [ ] Queries cruzadas (Q78-Q91) — ver secao abaixo
+
+### Queries dados.pb × TCE-PB × fontes federais (Q78-Q91)
+Diferencial: pb_pagamento tem CPF COMPLETO (11 dig, nao mascarado) — match exato possivel.
+
+**CPF completo (pb_pagamento) — cruzamentos ineditos:**
+- [ ] Q78: Auto-contratacao — credor PF do estado eh socio de empresa que tambem recebe do estado. pb_pagamento(CPF) → socio → pb_pagamento(CNPJ). ALTO VALOR
+- [ ] Q79: Credor PF do estado eh candidato/doador TSE — pb_pagamento(CPF) → tse_candidato/tse_receita. Conexao politica direta. ALTO VALOR
+- [ ] Q80: Credor PF do estado recebe Bolsa Familia — pb_pagamento(cpf_digitos_6) → bolsa_familia. Valores altos = suspeito
+- [ ] Q81: Credor PF sancionado (CEIS/CNEP) recebendo pagamento estadual — pb_pagamento(CPF 11dig) → ceis_sancao(cpf_cnpj_norm)
+- [ ] Q82: Credor PF do estado eh servidor federal SIAPE — pb_pagamento(cpf_digitos_6) → siape_cadastro. Acumulo irregular
+
+**CNPJ — cruzamento estado × municipio × federal:**
+- [ ] Q83: Empresa dominante — recebe do estado (pb_pagamento) E municipios (tce_pb_despesa) via cnpj_basico. Possivel cartel. ALTO VALOR
+- [ ] Q84: Contratada estadual inativa/inapta — pb_contrato(cnpj_basico) → estabelecimento(situacao != '02'). Irregularidade objetiva. ALTO VALOR
+- [ ] Q85: Fornecedor estadual com divida ativa PGFN — pb_pagamento(cnpj_basico) → pgfn_divida
+- [ ] Q86: Fornecedor saude sancionado — pb_saude(cnpj_basico) → ceis_sancao. Setor alto risco
+- [ ] Q87: Socio de contratada estadual eh servidor municipal — pb_contrato(cnpj_basico) → socio → tce_pb_servidor(nome_upper + cpf)
+
+**Cross TCE-PB × dados.pb:**
+- [ ] Q88: Servidor municipal recebe pagamento estadual como PF — tce_pb_servidor(nome_upper+cpf_digitos_6) → pb_pagamento(nome_upper+cpf_digitos_6). Duplo vinculo. ALTO VALOR
+- [ ] Q89: Convenio estado→municipio com despesas suspeitas — pb_convenio(nome_municipio) → tce_pb_despesa(municipio). Desvio de finalidade
+
+**Fracionamento / padroes:**
+- [ ] Q90: Empenhos estaduais abaixo do limite de dispensa — pb_empenho WHERE modalidade=dispensa AND valor proximo ao limite. Mesmo padrao do Q19
+- [ ] Q91: Mesmo credor, multiplos pagamentos no mesmo dia — pb_pagamento GROUP BY cpfcnpj_credor, data_pagamento HAVING COUNT > N
+
+Priorizacao: Q78, Q83, Q84, Q88, Q79, Q85 (maior impacto, dados disponiveis)
 
 SAGRES API (sagrescaptura.tce.pb.gov.br): requer token do TCE, email suportesagres@tce.pb.gov.br
 
