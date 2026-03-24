@@ -1,13 +1,22 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] Implementar views materializadas (`sql/12_views.sql`) — plano completo em `.claude/plans/twinkling-puzzling-giraffe.md`
-  - 6 MVs: mv_empresa_governo (360° empresa), mv_pessoa_pb (CPF completo), mv_municipio_pb_risco (score município), mv_servidor_pb_risco (servidor+flags), mv_empresa_pb (foco PB), mv_rede_pb (grafo conexões)
-  - 2 views de risco: v_risk_score_empresa, v_risk_score_pb (ranking unificado empresa+servidor+PF)
-  - Estimativa: ~5-9GB disco, ~45-60min refresh
+- [ ] Completar views materializadas (`sql/12_views.sql`)
+  - [x] mv_empresa_governo: 690k rows, 209MB — 360° empresa × 9 fontes + flags
+  - [x] mv_municipio_pb_risco: 223 rows, 64KB — score risco por municipio PB
+  - [x] mv_pessoa_pb: 204k rows, 36MB — PFs PB com cross-refs socio/servidor/TSE/BF/CEIS
+  - [x] mv_servidor_pb_base: 353k rows, 66MB — servidores municipais dedup (>= 2022)
+  - [ ] mv_servidor_pb_risco: PENDENTE — cross-refs (socio/BF/conflito) sobre base. Bottleneck: JOINs com socio(27M) e bolsa_familia(21M) via cpf_digitos_6+nome_upper sem indice composto
+    - FIX: criar indices compostos antes de rodar (estimativa ~2-3.5GB):
+      `CREATE INDEX idx_socio_norm_nome ON socio(cpf_cnpj_norm, UPPER(TRIM(nome))) WHERE cpf_cnpj_norm IS NOT NULL;`
+      `CREATE INDEX idx_bf_cpf_nome ON bolsa_familia(cpf_digitos, UPPER(TRIM(nm_favorecido))) WHERE cpf_digitos IS NOT NULL;`
+    - Depois: rodar `sed -n '/^CREATE MATERIALIZED VIEW mv_servidor_pb_risco/,/^CREATE INDEX idx_mv_srv_risco/p' sql/12_views.sql > /tmp/mv_srvr.sql && psql -f /tmp/mv_srvr.sql`
+  - [ ] mv_empresa_pb: foco PB, combina TCE+dados.pb
+  - [ ] mv_rede_pb: grafo conexoes PB
+  - [ ] v_risk_score_empresa + v_risk_score_pb: views de risco (leem das MVs, instantaneas)
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
-- [ ] ETL pncp_itens: apos download (~91%), rodar etl/04b_pncp_itens.py para carregar JSONs no banco
+- [ ] ETL pncp_itens: download 99.98% completo (2,987,291/2,987,788). Rodar etl/04b_pncp_itens.py para carregar JSONs no banco
 - [ ] Queries superfaturamento Q45-Q58 (Q43/Q44/Q51/Q53 ja implementadas)
 
 ## Estado do banco (~336M registros)
@@ -18,8 +27,10 @@
 - cpgf_transacao: 645k, tce_pb_licitacao: 310k, pb_saude: 215k, bndes_contrato: ~100k
 - pb_contrato: 15.6k, pb_convenio: 7.8k
 - PostgreSQL: localhost, user=govbr, db=govbr
-- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env), disco C: ~83GB livres
+- Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env, HDD)
+- PostgreSQL data: disco C: (SSD), ~47GB livres
 - GitHub: https://github.com/lucasdiniz/govbr-cruza-dados (public)
+- MVs criadas: mv_empresa_governo (209MB), mv_municipio_pb_risco (64KB), mv_pessoa_pb (36MB), mv_servidor_pb_base (66MB)
 
 ## Normalizacao (etl.15_normalizar) — Fases 1-8 COMPLETAS
 Fases 1-8: todas colunas desnormalizadas + ~43 indices.
@@ -136,18 +147,36 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
 - Limpeza TODO/README: removidos itens stale, marcados Q43/Q44/Q51/Q53 como feitos, corrigido tse_receita→tse_receita_candidato, ~40GB→~100GB dados (186GB DB)
 - Download PNCP itens retomado (~91%, 2.71M/2.99M contratacoes)
 
-### Handoff proxima sessao
-- Git: main branch, commit 725b04f, pushed
-- DB: PostgreSQL localhost, user=govbr, db=govbr, 186GB, ~336M registros. Normalizacao Fases 1-8 completas
-- 75 queries completas em resultados/ (764k resultados). 8 queries com 0 resultados (ver acima)
-- Download PNCP itens em andamento (~91%). Verificar: `wc -l G:\govbr-dados-brutos\pncp_itens\_checkpoint.txt` (2.99M = completo)
-- Plano views materializadas pronto em `.claude/plans/twinkling-puzzling-giraffe.md`
+### 2026-03-23 (sessao 11)
+- sql/12_views.sql reescrito: 7 MVs + 2 views de risco (split servidor em base+risco para evitar re-scan 21M rows)
+- Nomes corretos de tabelas: ceis_sancao (nao sancao_ceis), cnep_sancao (nao sancao_cnep), pncp_contratacao (nao pncp_licitacao), holding nao existe
+- tce_pb_despesa.mes formato "12-Dezembro" (nao integer) — usar LIKE '12%'
+- Fixes durante criacao: COUNT(DISTINCT) OVER → subquery, LATERAL JOIN tse_candidato → CTE DISTINCT ON (OOM), EXISTS full scan 27M → JOIN from small side
+- MVs criadas com sucesso:
+  - mv_empresa_governo: 690,734 rows (209MB) — 9 fontes governo + flags inativa/CEIS/CNEP/PGFN
+  - mv_municipio_pb_risco: 223 rows (64KB) — score 0-100 por municipio PB
+  - mv_pessoa_pb: 204,828 rows (36MB) — PFs PB cross-ref socio/servidor/SIAPE/TSE/BF/CEIS
+  - mv_servidor_pb_base: 353,177 rows (66MB) — servidores dedup (cpf_digitos_6+nome_upper)
+- mv_servidor_pb_risco NAO concluida: JOINs com socio(27M) e bolsa_familia(21M) lentos sem indice composto em (cpf_digitos_6, nome_upper)
+- Diagnostico: indices existentes sao single-column (idx_socio_norm, idx_bf_cpf_digitos). PostgreSQL faz index lookup no primeiro campo mas precisa ler cada row da tabela para filtrar nome. Indice composto eliminaria o table fetch
+- Download PNCP itens: 99.98% (2,987,291/2,987,788) — praticamente completo
+- Disco C: (SSD, PostgreSQL): 47GB livres. Indices compostos estimados em ~2-3.5GB
+
+### Handoff proxima sessao (sessao 12)
+- Git: main branch. Commitar sql/12_views.sql com as mudancas
+- DB: PostgreSQL localhost (C: SSD), user=govbr, db=govbr, 186GB, ~336M registros
+- 4 de 7 MVs criadas no banco (mv_empresa_governo, mv_municipio_pb_risco, mv_pessoa_pb, mv_servidor_pb_base)
+- sql/12_views.sql reescrito com 7 MVs + 2 views (split servidor em base+risco)
+- Download PNCP itens 99.98% completo (2,987,291/2,987,788)
 - PROXIMOS PASSOS:
-  1. Verificar se PNCP download completou → rodar ETL pncp_itens (etl/04b_pncp_itens.py)
-  2. Implementar views materializadas (6 MVs + 2 views risco em sql/12_views.sql)
-  3. Investigar queries com 0 resultados — ajustar thresholds ou JOINs
-  4. Queries superfaturamento Q45-Q58 (10 pendentes)
-  5. Relatorios de investigacao focados nos achados PB (Q59 32k, Q60 9.3k, Q83 500)
+  1. Criar indices compostos para acelerar mv_servidor_pb_risco (idx_socio_norm_nome, idx_bf_cpf_nome) — ~2-3.5GB, ~10-20min cada
+  2. Criar mv_servidor_pb_risco (lê de mv_servidor_pb_base indexado)
+  3. Criar mv_empresa_pb + mv_rede_pb (Layer 2)
+  4. Criar v_risk_score_empresa + v_risk_score_pb (Layer 3, instantaneo)
+  5. Testar MVs vs queries originais para validar consistencia
+  6. ETL pncp_itens (etl/04b_pncp_itens.py)
+  7. Queries superfaturamento Q45-Q58 (10 pendentes)
+  8. Relatorios de investigacao focados nos achados PB
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
