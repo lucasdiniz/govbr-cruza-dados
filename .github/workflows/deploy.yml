@@ -39,25 +39,24 @@ jobs:
             set -e
 
             # Install system dependencies if missing
-            if ! command -v python3-venv >/dev/null 2>&1; then
+            if ! dpkg -s python3-venv >/dev/null 2>&1; then
               sudo apt update
               sudo apt install -y python3-venv python3-pip git
             fi
 
             # Clone repo if missing
             if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
-              mkdir -p ${{ env.PROJECT_DIR }}
               cd /home/${{ env.VM_USER }}
               git clone https://github.com/lucasdiniz/govbr-cruza-dados.git govbr-project
             fi
 
             cd ${{ env.PROJECT_DIR }}
 
-            # Reset to latest main
+            # Reset repo
             git fetch origin main
             git reset --hard origin/main
 
-            # Setup virtual environment
+            # Setup venv
             if [ ! -d "venv" ]; then
               python3 -m venv venv
               source venv/bin/activate
