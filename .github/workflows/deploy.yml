@@ -9,17 +9,18 @@ on:
   workflow_dispatch:
     inputs:
       etl_phase:
-        description: 'ETL phase to run (e.g. "17" for phase 17+, or "all" for full ETL, or "sql" for SQL only)'
+        description: 'ETL phase to run ("17", "all", or "sql")'
         required: false
         default: 'sql'
 
 env:
   VM_USER: govbr
-  PROJECT_DIR: /data/govbr-project
+  PROJECT_DIR: /home/govbr/govbr-project
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,22 +31,37 @@ jobs:
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
-      - name: Pull latest code
+      - name: Deploy + Setup
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << EOF
+            set -e
+
+            # Install system dependencies if missing
+            if ! command -v python3-venv >/dev/null 2>&1; then
+              sudo apt update
+              sudo apt install -y python3-venv python3-pip git
+            fi
+
+            # Clone repo if missing
             if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
-              mkdir -p /data
-              cd /data
+              mkdir -p ${{ env.PROJECT_DIR }}
+              cd /home/${{ env.VM_USER }}
               git clone https://github.com/lucasdiniz/govbr-cruza-dados.git govbr-project
             fi
-      
+
             cd ${{ env.PROJECT_DIR }}
+
+            # Reset to latest main
             git fetch origin main
             git reset --hard origin/main
+
+            # Setup virtual environment
             if [ ! -d "venv" ]; then
               python3 -m venv venv
               source venv/bin/activate
+              pip install --upgrade pip
               pip install -r requirements.txt
             fi
           EOF
@@ -54,10 +70,12 @@ jobs:
         if: inputs.etl_phase == 'sql' || inputs.etl_phase == ''
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << EOF
+            set -e
             cd ${{ env.PROJECT_DIR }}
             source venv/bin/activate
+
             python -m etl.01_schema
-            python -m etl.10_indices 2>&1 || true  # indexes may already exist
+            python -m etl.10_indices 2>&1 || true
             python -m etl.21_views
           EOF
 
@@ -65,8 +83,10 @@ jobs:
         if: inputs.etl_phase != 'sql' && inputs.etl_phase != ''
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << EOF
+            set -e
             cd ${{ env.PROJECT_DIR }}
             source venv/bin/activate
+
             if [ "${{ inputs.etl_phase }}" = "all" ]; then
               python -m etl.run_all 2>&1 | tee /tmp/etl.log
             else
@@ -77,17 +97,22 @@ jobs:
       - name: Verify database
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << EOF
+            set -e
             cd ${{ env.PROJECT_DIR }}
             source venv/bin/activate
-            python -c "
-          from etl.db import get_conn, table_count
-          conn = get_conn()
-          tables = ['empresa', 'estabelecimento', 'socio', 'pncp_contratacao', 'pncp_contrato']
-          for t in tables:
-              try:
-                  print(f'  {t}: {table_count(conn, t):,}')
-              except Exception as e:
-                  print(f'  {t}: {e}')
-          conn.close()
-          "
+
+            python - << 'PYCODE'
+from etl.db import get_conn, table_count
+
+conn = get_conn()
+tables = ['empresa', 'estabelecimento', 'socio', 'pncp_contratacao', 'pncp_contrato']
+
+for t in tables:
+    try:
+        print(f"{t}: {table_count(conn, t):,}")
+    except Exception as e:
+        print(f"{t}: {e}")
+
+conn.close()
+PYCODE
           EOF
