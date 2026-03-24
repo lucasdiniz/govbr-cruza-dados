@@ -62,18 +62,19 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Setup virtualenv + install project
+            # Setup venv (create if missing)
             if [ ! -d "venv" ]; then
               python3 -m venv venv
-              source venv/bin/activate
-              pip install --upgrade pip
-              pip install -e .
             fi
+
+            # ALWAYS install/update dependencies
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -e .
 
             # FIRST RUN: only run full ETL
             if [ ! -f ".initialized" ]; then
               echo "First run detected → running full ETL"
-              source venv/bin/activate
               python -m etl.run_all
               touch .initialized
               exit 0
