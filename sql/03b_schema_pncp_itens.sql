@@ -6,7 +6,7 @@ DROP TABLE IF EXISTS pncp_item CASCADE;
 
 CREATE TABLE pncp_item (
     numero_controle_pncp     VARCHAR(50),        -- FK para pncp_contratacao
-    numero_item              SMALLINT,
+    numero_item              INTEGER,
     descricao                TEXT,
     material_ou_servico      CHAR(1),             -- M=Material, S=Servico
     valor_unitario_estimado  DECIMAL(15,2),

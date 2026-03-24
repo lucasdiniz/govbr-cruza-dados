@@ -1,18 +1,21 @@
 """Fase 4b: Carrega itens PNCP (JSON → PostgreSQL).
 
 Le os JSONs baixados por download_pncp.py e insere na tabela pncp_item.
+Usa COPY + thread pool para maximizar throughput em HDD.
 
 Uso:
   python -m etl.04b_pncp_itens
 """
 
+import io
 import json
-from pathlib import Path
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from etl.config import DATA_DIR, BATCH_SIZE
-from etl.db import get_conn, batch_insert, table_count
+from etl.config import DATA_DIR
+from etl.db import get_conn, table_count
 from etl.utils import safe_strip
 
 
@@ -28,6 +31,8 @@ COLUMNS = [
     "dt_inclusao", "dt_atualizacao",
     "cnpj_orgao", "ano_compra", "sequencial_compra",
 ]
+
+COPY_SQL = f"COPY pncp_item ({', '.join(COLUMNS)}) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')"
 
 
 def _parse_ts(val):
@@ -46,70 +51,109 @@ def _to_decimal(val):
         return None
 
 
+def _escape_copy(val):
+    """Escape value for COPY TEXT format."""
+    if val is None:
+        return "\\N"
+    s = str(val)
+    return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _read_file(filepath):
+    """Read and parse a single JSON file. Returns list of TSV lines."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+
+    if not isinstance(items, list):
+        return None
+
+    lines = []
+    for item in items:
+        nc = item.get("_numero_controle_pncp", "")
+        if not nc:
+            continue
+
+        vals = [
+            _escape_copy(nc),
+            _escape_copy(item.get("numeroItem")),
+            _escape_copy(safe_strip(str(item.get("descricao", "") or ""))),
+            _escape_copy(safe_strip(str(item.get("materialOuServico", "") or ""))),
+            _escape_copy(_to_decimal(item.get("valorUnitarioEstimado"))),
+            _escape_copy(_to_decimal(item.get("valorTotal"))),
+            _escape_copy(_to_decimal(item.get("quantidade"))),
+            _escape_copy(safe_strip(str(item.get("unidadeMedida", "") or ""))),
+            _escape_copy(item.get("orcamentoSigiloso")),
+            _escape_copy(safe_strip(str(item.get("criterioJulgamentoNome", "") or ""))),
+            _escape_copy(safe_strip(str(item.get("situacaoCompraItemNome", "") or ""))),
+            _escape_copy(item.get("temResultado")),
+            _escape_copy(safe_strip(str(item.get("ncmNbsCodigo", "") or "")) or None),
+            _escape_copy(safe_strip(str(item.get("ncmNbsDescricao", "") or "")) or None),
+            _escape_copy(safe_strip(str(item.get("catalogo", "") or "")) or None),
+            _escape_copy(safe_strip(str(item.get("catalogoCodigoItem", "") or "")) or None),
+            _escape_copy(_parse_ts(item.get("dataInclusao"))),
+            _escape_copy(_parse_ts(item.get("dataAtualizacao"))),
+            _escape_copy(item.get("_cnpj_orgao", "")),
+            _escape_copy(item.get("_ano_compra")),
+            _escape_copy(item.get("_sequencial_compra")),
+        ]
+        lines.append("\t".join(vals) + "\n")
+
+    return lines
+
+
 def load_itens(conn):
-    """Carrega pncp_itens/*.json → pncp_item."""
+    """Carrega pncp_itens/*.json → pncp_item usando COPY + thread pool."""
     if not ITENS_DIR.exists():
         print("    AVISO: diretorio pncp_itens/ nao encontrado.")
         return
 
-    files = sorted(ITENS_DIR.glob("*.json"))
-    # Excluir checkpoint
-    files = [f for f in files if f.name != "_checkpoint.txt"]
+    # Use os.scandir for speed (no sorting 3M entries)
+    itens_dir = str(ITENS_DIR)
+    filepaths = [
+        os.path.join(itens_dir, e.name)
+        for e in os.scandir(itens_dir)
+        if e.name.endswith(".json") and e.is_file()
+    ]
+    print(f"    {len(filepaths)} arquivos JSON encontrados")
 
-    batch = []
     total = 0
     erros = 0
+    buffer = io.StringIO()
+    buffer_count = 0
+    flush_every = 50000  # flush to DB every 50k files
 
-    for filepath in tqdm(files, desc="    PNCP itens"):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                items = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            erros += 1
-            continue
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(_read_file, fp): fp for fp in filepaths}
 
-        if not isinstance(items, list):
-            continue
-
-        for item in items:
-            nc = item.get("_numero_controle_pncp", "")
-            if not nc:
+        for future in tqdm(as_completed(futures), total=len(futures), desc="    PNCP itens"):
+            result = future.result()
+            if result is None:
+                erros += 1
                 continue
 
-            row = (
-                nc,
-                item.get("numeroItem"),
-                safe_strip(str(item.get("descricao", "") or "")),
-                safe_strip(str(item.get("materialOuServico", "") or "")),
-                _to_decimal(item.get("valorUnitarioEstimado")),
-                _to_decimal(item.get("valorTotal")),
-                _to_decimal(item.get("quantidade")),
-                safe_strip(str(item.get("unidadeMedida", "") or "")),
-                item.get("orcamentoSigiloso"),
-                safe_strip(str(item.get("criterioJulgamentoNome", "") or "")),
-                safe_strip(str(item.get("situacaoCompraItemNome", "") or "")),
-                item.get("temResultado"),
-                safe_strip(str(item.get("ncmNbsCodigo", "") or "")) or None,
-                safe_strip(str(item.get("ncmNbsDescricao", "") or "")) or None,
-                safe_strip(str(item.get("catalogo", "") or "")) or None,
-                safe_strip(str(item.get("catalogoCodigoItem", "") or "")) or None,
-                _parse_ts(item.get("dataInclusao")),
-                _parse_ts(item.get("dataAtualizacao")),
-                item.get("_cnpj_orgao", ""),
-                item.get("_ano_compra"),
-                item.get("_sequencial_compra"),
-            )
+            for line in result:
+                buffer.write(line)
+                total += 1
 
-            batch.append(row)
+            buffer_count += 1
 
-            if len(batch) >= BATCH_SIZE:
-                batch_insert(conn, "pncp_item", COLUMNS, batch)
-                total += len(batch)
-                batch = []
+            if buffer_count >= flush_every:
+                buffer.seek(0)
+                with conn.cursor() as cur:
+                    cur.copy_expert(COPY_SQL, buffer)
+                conn.commit()
+                buffer = io.StringIO()
+                buffer_count = 0
 
-    if batch:
-        batch_insert(conn, "pncp_item", COLUMNS, batch)
-        total += len(batch)
+    # Flush remaining
+    if buffer.tell() > 0:
+        buffer.seek(0)
+        with conn.cursor() as cur:
+            cur.copy_expert(COPY_SQL, buffer)
+        conn.commit()
 
     print(f"    pncp_item: {table_count(conn, 'pncp_item')} registros ({erros} arquivos com erro)")
 

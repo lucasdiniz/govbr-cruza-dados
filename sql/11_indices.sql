@@ -29,6 +29,9 @@ CREATE INDEX idx_socio_cpf_cnpj ON socio(cpf_cnpj_socio)
 CREATE INDEX idx_socio_nome ON socio USING gin(nome gin_trgm_ops)
     WHERE nome IS NOT NULL;
 CREATE INDEX idx_socio_tipo ON socio(tipo_socio);
+-- Composite: cpf_digitos_6 + nome normalizado (para JOINs com mv_servidor_pb_base/mv_pessoa_pb)
+CREATE INDEX idx_socio_norm_nome ON socio(cpf_cnpj_norm, UPPER(TRIM(nome)))
+    WHERE cpf_cnpj_norm IS NOT NULL AND cpf_cnpj_norm <> '000000';
 
 -- =============================================
 -- PNCP: Contratação
@@ -92,6 +95,13 @@ CREATE INDEX idx_pgfn_valor ON pgfn_divida(valor_consolidado);
 CREATE INDEX idx_pgfn_situacao ON pgfn_divida(tipo_situacao_inscricao);
 CREATE INDEX idx_pgfn_uf ON pgfn_divida(uf_devedor);
 CREATE INDEX idx_pgfn_nome ON pgfn_divida USING gin(nome_devedor gin_trgm_ops);
+
+-- =============================================
+-- Bolsa Família
+-- =============================================
+-- Composite: cpf_digitos_6 + nome normalizado (para JOINs com mv_servidor_pb_base/mv_pessoa_pb)
+CREATE INDEX idx_bf_cpf_nome ON bolsa_familia(cpf_digitos, UPPER(TRIM(nm_favorecido)))
+    WHERE cpf_digitos IS NOT NULL;
 
 -- =============================================
 -- Renúncias Fiscais

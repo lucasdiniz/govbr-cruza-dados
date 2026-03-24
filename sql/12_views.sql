@@ -456,75 +456,82 @@ CREATE UNIQUE INDEX idx_mv_srvb_cpf_nome ON mv_servidor_pb_base(cpf_digitos_6, n
 
 -- -----------------------------------------------------------------------------
 -- 4b. mv_servidor_pb_risco: Enriquece base com cross-refs e flags
---     Lê de mv_servidor_pb_base (indexado), não re-escaneia tce_pb_servidor
+--     IMPORTANTE: Abordagem stepwise com tabelas regulares.
+--     A versão CTE-única causa timeout porque:
+--     - BOOL_OR(EXISTS(subquery)) executa subquery correlacionada por grupo (~10min+)
+--     - PostgreSQL escolhe plano catastrófico quando todas CTEs combinadas
+--     Solução: materializar cada step como tabela com índice, depois montar a MV.
 -- -----------------------------------------------------------------------------
+
+-- Step 1: Sócio-empresas (sem flag fornecedor — o BOOL_OR(EXISTS) é o gargalo)
+DROP TABLE IF EXISTS _tmp_socio_empresas;
+CREATE TABLE _tmp_socio_empresas AS
+SELECT srv.cpf_digitos_6,
+       srv.nome_upper,
+       COUNT(DISTINCT s.cnpj_basico) AS qtd_empresas,
+       ARRAY_AGG(DISTINCT s.cnpj_basico ORDER BY s.cnpj_basico) AS cnpjs
+FROM mv_servidor_pb_base srv
+JOIN socio s ON s.cpf_cnpj_norm = srv.cpf_digitos_6
+    AND UPPER(TRIM(s.nome)) = srv.nome_upper
+    AND s.tipo_socio = 2
+JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
+    AND est.cnpj_ordem = '0001'
+    AND est.situacao_cadastral = 2
+GROUP BY srv.cpf_digitos_6, srv.nome_upper;
+
+CREATE INDEX idx_tmp_se_cpf ON _tmp_socio_empresas(cpf_digitos_6, nome_upper);
+
+-- Step 2: Flag fornecedor_governo via JOIN (não correlated EXISTS)
+DROP TABLE IF EXISTS _tmp_fornecedor_gov;
+CREATE TABLE _tmp_fornecedor_gov AS
+SELECT DISTINCT se.cpf_digitos_6, se.nome_upper
+FROM _tmp_socio_empresas se,
+     LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
+JOIN tce_pb_despesa d ON d.cnpj_basico = cnpj.cnpj_basico AND d.valor_pago > 0;
+
+-- Step 3: Conflito de interesses (empresa do sócio fornece ao mesmo município)
+DROP TABLE IF EXISTS _tmp_conflito;
+CREATE TABLE _tmp_conflito AS
+SELECT se.cpf_digitos_6, se.nome_upper,
+       COUNT(DISTINCT d.cnpj_basico) AS qtd_conflitos,
+       SUM(d.total_pago) AS total_conflito
+FROM _tmp_socio_empresas se,
+     LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
+JOIN (
+    SELECT cnpj_basico, municipio, SUM(valor_pago) AS total_pago
+    FROM tce_pb_despesa WHERE valor_pago > 0
+    GROUP BY cnpj_basico, municipio
+) d ON d.cnpj_basico = cnpj.cnpj_basico
+JOIN mv_servidor_pb_base srv ON srv.cpf_digitos_6 = se.cpf_digitos_6
+    AND srv.nome_upper = se.nome_upper
+    AND d.municipio = ANY(srv.municipios)
+GROUP BY se.cpf_digitos_6, se.nome_upper;
+
+-- Step 4: Bolsa Família match (usa idx_bf_cpf_nome composto)
+DROP TABLE IF EXISTS _tmp_bf;
+CREATE TABLE _tmp_bf AS
+SELECT srv.cpf_digitos_6,
+       srv.nome_upper,
+       SUM(bf.valor_parcela) AS total_bf
+FROM mv_servidor_pb_base srv
+JOIN bolsa_familia bf ON bf.cpf_digitos = srv.cpf_digitos_6
+    AND UPPER(TRIM(bf.nm_favorecido)) = srv.nome_upper
+GROUP BY srv.cpf_digitos_6, srv.nome_upper;
+
+-- Step 5: Duplo vínculo estado (servidor municipal + credor estadual PF)
+DROP TABLE IF EXISTS _tmp_duplo;
+CREATE TABLE _tmp_duplo AS
+SELECT srv.cpf_digitos_6,
+       srv.nome_upper,
+       SUM(pp.valor_pagamento) AS total_estado
+FROM mv_servidor_pb_base srv
+JOIN pb_pagamento pp ON pp.cpf_digitos_6 = srv.cpf_digitos_6
+    AND pp.nome_upper = srv.nome_upper
+    AND LENGTH(pp.cpfcnpj_credor) = 11
+GROUP BY srv.cpf_digitos_6, srv.nome_upper;
+
+-- Step 6: Montar MV final a partir das tabelas intermediárias
 CREATE MATERIALIZED VIEW mv_servidor_pb_risco AS
-WITH
--- Drive from base (353k) → index lookup on socio (idx_socio_cnpj_basico exists, but we need cpf_cnpj_norm)
--- Use JOIN from base to socio ON cpf_cnpj_norm, grouping after
-socio_empresas AS (
-    SELECT srv.cpf_digitos_6,
-           srv.nome_upper,
-           COUNT(DISTINCT s.cnpj_basico) AS qtd_empresas,
-           ARRAY_AGG(DISTINCT s.cnpj_basico ORDER BY s.cnpj_basico) AS cnpjs,
-           BOOL_OR(
-               est.situacao_cadastral = 2
-               AND EXISTS (
-                   SELECT 1 FROM tce_pb_despesa d
-                   WHERE d.cnpj_basico = s.cnpj_basico AND d.valor_pago > 0
-               )
-           ) AS fornecedor_governo
-    FROM mv_servidor_pb_base srv
-    JOIN socio s ON s.cpf_cnpj_norm = srv.cpf_digitos_6
-        AND UPPER(TRIM(s.nome)) = srv.nome_upper
-        AND s.tipo_socio = 2
-    JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico AND est.cnpj_ordem = '0001'
-    GROUP BY srv.cpf_digitos_6, srv.nome_upper
-),
--- CNPJs de interesse: empresas cujos sócios são servidores
-socio_cnpjs AS (
-    SELECT DISTINCT unnest(cnpjs) AS cnpj_basico, cpf_digitos_6, nome_upper
-    FROM socio_empresas
-),
--- Despesas desses CNPJs via JOIN direto (usa idx_tce_desp_cnpj_basico)
-desp_socio AS (
-    SELECT sc.cnpj_basico, sc.cpf_digitos_6, sc.nome_upper,
-           d.municipio, SUM(d.valor_pago) AS total_pago
-    FROM socio_cnpjs sc
-    JOIN tce_pb_despesa d ON d.cnpj_basico = sc.cnpj_basico AND d.valor_pago > 0
-    GROUP BY sc.cnpj_basico, sc.cpf_digitos_6, sc.nome_upper, d.municipio
-),
-conflito AS (
-    SELECT ds.cpf_digitos_6, ds.nome_upper,
-           COUNT(DISTINCT ds.cnpj_basico) AS qtd_conflitos,
-           SUM(ds.total_pago) AS total_conflito
-    FROM desp_socio ds
-    JOIN mv_servidor_pb_base srv ON srv.cpf_digitos_6 = ds.cpf_digitos_6
-        AND srv.nome_upper = ds.nome_upper
-        AND ds.municipio = ANY(srv.municipios)
-    GROUP BY ds.cpf_digitos_6, ds.nome_upper
-),
--- Drive from base → index lookup on bolsa_familia (idx_bf_cpf_digitos)
-bf_match AS (
-    SELECT srv.cpf_digitos_6,
-           srv.nome_upper,
-           SUM(bf.valor_parcela) AS total_bf
-    FROM mv_servidor_pb_base srv
-    JOIN bolsa_familia bf ON bf.cpf_digitos = srv.cpf_digitos_6
-        AND UPPER(TRIM(bf.nm_favorecido)) = srv.nome_upper
-    GROUP BY srv.cpf_digitos_6, srv.nome_upper
-),
--- Drive from base → index lookup on pb_pagamento (idx_pb_pag_nome_upper? cpf_digitos_6?)
-duplo_estado AS (
-    SELECT srv.cpf_digitos_6,
-           srv.nome_upper,
-           SUM(pp.valor_pagamento) AS total_estado
-    FROM mv_servidor_pb_base srv
-    JOIN pb_pagamento pp ON pp.cpf_digitos_6 = srv.cpf_digitos_6
-        AND pp.nome_upper = srv.nome_upper
-        AND LENGTH(pp.cpfcnpj_credor) = 11
-    GROUP BY srv.cpf_digitos_6, srv.nome_upper
-)
 SELECT
     srv.cpf_digitos_6,
     srv.nome_upper,
@@ -537,7 +544,7 @@ SELECT
     -- Sócio de empresas
     COALESCE(se.qtd_empresas, 0) AS qtd_empresas_socio,
     se.cnpjs AS cnpjs_socio,
-    COALESCE(se.fornecedor_governo, FALSE) AS socio_fornecedor_governo,
+    COALESCE(fg.cpf_digitos_6 IS NOT NULL, FALSE) AS socio_fornecedor_governo,
     -- Conflito de interesses (mesmo município)
     COALESCE(conf.qtd_conflitos, 0) AS qtd_conflitos_municipio,
     COALESCE(conf.total_conflito, 0) AS total_conflito_municipio,
@@ -560,14 +567,22 @@ SELECT
       + CASE WHEN se.qtd_empresas >= 3 THEN 10 ELSE 0 END
     )::SMALLINT AS risco_score
 FROM mv_servidor_pb_base srv
-LEFT JOIN socio_empresas se ON se.cpf_digitos_6 = srv.cpf_digitos_6 AND se.nome_upper = srv.nome_upper
-LEFT JOIN conflito conf ON conf.cpf_digitos_6 = srv.cpf_digitos_6 AND conf.nome_upper = srv.nome_upper
-LEFT JOIN bf_match bf ON bf.cpf_digitos_6 = srv.cpf_digitos_6 AND bf.nome_upper = srv.nome_upper
-LEFT JOIN duplo_estado de ON de.cpf_digitos_6 = srv.cpf_digitos_6 AND de.nome_upper = srv.nome_upper;
+LEFT JOIN _tmp_socio_empresas se ON se.cpf_digitos_6 = srv.cpf_digitos_6 AND se.nome_upper = srv.nome_upper
+LEFT JOIN _tmp_fornecedor_gov fg ON fg.cpf_digitos_6 = srv.cpf_digitos_6 AND fg.nome_upper = srv.nome_upper
+LEFT JOIN _tmp_conflito conf ON conf.cpf_digitos_6 = srv.cpf_digitos_6 AND conf.nome_upper = srv.nome_upper
+LEFT JOIN _tmp_bf bf ON bf.cpf_digitos_6 = srv.cpf_digitos_6 AND bf.nome_upper = srv.nome_upper
+LEFT JOIN _tmp_duplo de ON de.cpf_digitos_6 = srv.cpf_digitos_6 AND de.nome_upper = srv.nome_upper;
 
 CREATE UNIQUE INDEX idx_mv_srv_cpf_nome ON mv_servidor_pb_risco(cpf_digitos_6, nome_upper);
 CREATE INDEX idx_mv_srv_conflito ON mv_servidor_pb_risco(cpf_digitos_6) WHERE flag_conflito_interesses;
 CREATE INDEX idx_mv_srv_risco ON mv_servidor_pb_risco(risco_score DESC) WHERE risco_score > 0;
+
+-- Cleanup tabelas intermediárias (DROP pode falhar se MV tem dependência de metadata — OK)
+DROP TABLE IF EXISTS _tmp_socio_empresas;
+DROP TABLE IF EXISTS _tmp_fornecedor_gov;
+DROP TABLE IF EXISTS _tmp_conflito;
+DROP TABLE IF EXISTS _tmp_bf;
+DROP TABLE IF EXISTS _tmp_duplo;
 
 
 -- =============================================================================
@@ -723,76 +738,94 @@ CREATE INDEX idx_mv_epb_endereco ON mv_empresa_pb(logradouro, numero) WHERE logr
 --    CREDOR_ESTADUAL_PF, DOADOR_CAMPANHA
 --    ~500k-2M rows estimado
 --    Sem UNIQUE INDEX → refresh non-concurrent
+--
+--    IMPORTANTE: Abordagem stepwise — query única com 5 UNION ALL de subqueries
+--    pesadas causa timeout (30min+). Materializar cada tipo de aresta como tabela
+--    e depois UNION ALL das tabelas é ~5min total.
 -- -----------------------------------------------------------------------------
-CREATE MATERIALIZED VIEW mv_rede_pb AS
--- Arestas: sócio → empresa (apenas empresas ativas em PB)
+
+-- CNPJs ativos em PB (filtro compartilhado)
+DROP TABLE IF EXISTS _tmp_pb_cnpjs;
+CREATE TABLE _tmp_pb_cnpjs AS
+SELECT DISTINCT cnpj_basico FROM (
+    SELECT DISTINCT cnpj_basico FROM tce_pb_despesa WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
+    UNION
+    SELECT DISTINCT cnpj_basico FROM pb_empenho WHERE cnpj_basico IS NOT NULL
+) x;
+CREATE INDEX idx_tmp_pb_cnpj ON _tmp_pb_cnpjs(cnpj_basico);
+
+-- Aresta 1: SOCIO (pessoa → empresa ativa em PB)
+DROP TABLE IF EXISTS _tmp_rede_socio;
+CREATE TABLE _tmp_rede_socio (
+    tipo_aresta TEXT, pessoa_id TEXT, pessoa_nome TEXT,
+    entidade_id TEXT, entidade_nome TEXT, contexto TEXT
+);
+INSERT INTO _tmp_rede_socio
 SELECT
-    'SOCIO'::TEXT AS tipo_aresta,
-    s.cpf_cnpj_norm AS pessoa_id,
-    UPPER(TRIM(s.nome)) AS pessoa_nome,
-    s.cnpj_basico AS entidade_id,
-    e.razao_social AS entidade_nome,
-    NULL::TEXT AS contexto
+    'SOCIO', s.cpf_cnpj_norm, UPPER(TRIM(s.nome)),
+    s.cnpj_basico, e.razao_social, NULL
 FROM socio s
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
+JOIN _tmp_pb_cnpjs pb ON pb.cnpj_basico = s.cnpj_basico
 WHERE s.tipo_socio = 2
   AND s.cpf_cnpj_norm IS NOT NULL
-  AND LENGTH(s.cpf_cnpj_norm) = 6
-  AND EXISTS (
-      SELECT 1 FROM tce_pb_despesa d WHERE d.cnpj_basico = s.cnpj_basico AND d.valor_pago > 0
-      UNION ALL
-      SELECT 1 FROM pb_empenho pe WHERE pe.cnpj_basico = s.cnpj_basico
-  )
+  AND LENGTH(s.cpf_cnpj_norm) = 6;
 
-UNION ALL
-
--- Arestas: empresa → município (fornecedor municipal)
+-- Aresta 2: FORNECEDOR_MUNICIPAL (empresa → município)
+DROP TABLE IF EXISTS _tmp_rede_forn;
+CREATE TABLE _tmp_rede_forn (
+    tipo_aresta TEXT, pessoa_id TEXT, pessoa_nome TEXT,
+    entidade_id TEXT, entidade_nome TEXT, contexto TEXT
+);
+INSERT INTO _tmp_rede_forn
 SELECT
-    'FORNECEDOR_MUNICIPAL',
-    d.cnpj_basico,
-    e.razao_social,
-    d.municipio,
-    d.municipio,
+    'FORNECEDOR_MUNICIPAL', d.cnpj_basico, e.razao_social,
+    d.municipio, d.municipio,
     'R$' || TO_CHAR(SUM(d.valor_pago), 'FM999,999,999.00')
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
-GROUP BY d.cnpj_basico, e.razao_social, d.municipio
+GROUP BY d.cnpj_basico, e.razao_social, d.municipio;
 
-UNION ALL
-
--- Arestas: pessoa → município (servidor municipal)
+-- Aresta 3: SERVIDOR_MUNICIPAL (pessoa → município)
+DROP TABLE IF EXISTS _tmp_rede_srv;
+CREATE TABLE _tmp_rede_srv (
+    tipo_aresta TEXT, pessoa_id TEXT, pessoa_nome TEXT,
+    entidade_id TEXT, entidade_nome TEXT, contexto TEXT
+);
+INSERT INTO _tmp_rede_srv
 SELECT DISTINCT
-    'SERVIDOR_MUNICIPAL',
-    srv.cpf_digitos_6,
-    srv.nome_upper,
-    srv.municipio,
-    srv.municipio,
-    srv.descricao_cargo
+    'SERVIDOR_MUNICIPAL', srv.cpf_digitos_6, srv.nome_upper,
+    srv.municipio, srv.municipio, srv.descricao_cargo
 FROM tce_pb_servidor srv
 WHERE srv.cpf_digitos_6 IS NOT NULL AND srv.nome_upper IS NOT NULL
-  AND srv.ano_mes >= '2022-01'
+  AND srv.ano_mes >= '2022-01';
 
-UNION ALL
-
--- Arestas: pessoa → estado (credor estadual PF)
+-- Aresta 4: CREDOR_ESTADUAL_PF (pessoa → estado)
+DROP TABLE IF EXISTS _tmp_rede_cred;
+CREATE TABLE _tmp_rede_cred (
+    tipo_aresta TEXT, pessoa_id TEXT, pessoa_nome TEXT,
+    entidade_id TEXT, entidade_nome TEXT, contexto TEXT
+);
+INSERT INTO _tmp_rede_cred
 SELECT
-    'CREDOR_ESTADUAL_PF',
-    pp.cpf_digitos_6,
-    pp.nome_upper,
-    'ESTADO_PB',
-    'Estado da Paraíba',
+    'CREDOR_ESTADUAL_PF', pp.cpf_digitos_6, pp.nome_upper,
+    'ESTADO_PB', 'Estado da Paraíba',
     'R$' || TO_CHAR(SUM(pp.valor_pagamento), 'FM999,999,999.00')
 FROM pb_pagamento pp
 WHERE pp.cpf_digitos_6 IS NOT NULL
   AND pp.nome_upper IS NOT NULL
   AND LENGTH(pp.cpfcnpj_credor) = 11
   AND pp.cpfcnpj_credor ~ '^[0-9]+$'
-GROUP BY pp.cpf_digitos_6, pp.nome_upper
+GROUP BY pp.cpf_digitos_6, pp.nome_upper;
 
-UNION ALL
-
--- Arestas: empresa → candidato (doação campanha PB)
+-- Aresta 5: DOADOR_CAMPANHA (empresa → candidato PB)
+DROP TABLE IF EXISTS _tmp_rede_doador;
+CREATE TABLE _tmp_rede_doador (
+    tipo_aresta TEXT, pessoa_id TEXT, pessoa_nome TEXT,
+    entidade_id TEXT, entidade_nome TEXT, contexto TEXT
+);
+INSERT INTO _tmp_rede_doador
 SELECT
     'DOADOR_CAMPANHA',
     LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8),
@@ -808,9 +841,25 @@ WHERE tc.sg_uf = 'PB'
 GROUP BY LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8),
          tr.nm_doador, tc.sq_candidato, tc.nm_candidato, tc.sg_partido;
 
+-- Montar MV a partir das tabelas (rápido, sem re-scan)
+CREATE MATERIALIZED VIEW mv_rede_pb AS
+SELECT * FROM _tmp_rede_socio
+UNION ALL SELECT * FROM _tmp_rede_forn
+UNION ALL SELECT * FROM _tmp_rede_srv
+UNION ALL SELECT * FROM _tmp_rede_cred
+UNION ALL SELECT * FROM _tmp_rede_doador;
+
 CREATE INDEX idx_mv_rede_tipo ON mv_rede_pb(tipo_aresta);
 CREATE INDEX idx_mv_rede_pessoa ON mv_rede_pb(pessoa_id);
 CREATE INDEX idx_mv_rede_entidade ON mv_rede_pb(entidade_id);
+
+-- Cleanup tabelas intermediárias
+DROP TABLE IF EXISTS _tmp_pb_cnpjs;
+DROP TABLE IF EXISTS _tmp_rede_socio;
+DROP TABLE IF EXISTS _tmp_rede_forn;
+DROP TABLE IF EXISTS _tmp_rede_srv;
+DROP TABLE IF EXISTS _tmp_rede_cred;
+DROP TABLE IF EXISTS _tmp_rede_doador;
 
 
 -- =============================================================================
@@ -936,10 +985,12 @@ WHERE ppb.flag_auto_contratacao_potencial OR ppb.flag_duplo_vinculo_mun_est
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_governo;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pessoa_pb;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_risco;
---   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_servidor_pb_risco;
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_servidor_pb_base;
+--   Para mv_servidor_pb_risco: DROP + re-executar steps 1-6 (não suporta REFRESH
+--   porque depende de tabelas _tmp_ intermediárias — abordagem stepwise necessária)
 --
 -- Layer 2 (após Layer 1, ~20min):
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_pb;
---   REFRESH MATERIALIZED VIEW mv_rede_pb;  -- sem UNIQUE, non-concurrent
+--   Para mv_rede_pb: DROP + re-executar steps (abordagem stepwise)
 --
 -- Layer 3: views normais, sempre atualizadas automaticamente

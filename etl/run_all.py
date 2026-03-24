@@ -26,7 +26,11 @@ def main():
         ("Fase 11: TSE Candidatos e Bens", "etl.16_tse"),
         ("Fase 12: Bolsa Familia", "etl.17_bolsa_familia"),
         ("Fase 13: TSE Prestacao de Contas", "etl.18_tse_prestacao"),
-        ("Fase 14: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
+        ("Fase 14: TCE-PB (Despesas, Servidores, Licitacoes, Receitas)", "etl.19_tce_pb"),
+        ("Fase 15: Dados PB (Pagamento, Empenho, Contratos, Saude, Convenios)", "etl.20_dados_pb"),
+        ("Fase 16: PNCP Itens", "etl.04b_pncp_itens"),
+        ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
+        ("Fase 18: Views materializadas", "etl.21_views"),
     ]
 
     # Permite rodar fase específica: python -m etl.run_all 3

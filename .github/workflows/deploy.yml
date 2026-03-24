@@ -1,0 +1,82 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - '.claude/**'
+  workflow_dispatch:
+    inputs:
+      etl_phase:
+        description: 'ETL phase to run (e.g. "17" for phase 17+, or "all" for full ETL, or "sql" for SQL only)'
+        required: false
+        default: 'sql'
+
+env:
+  VM_USER: govbr
+  PROJECT_DIR: /data/govbr-project
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.VM_HOST }} $(ssh-keyscan -t ed25519 ${{ secrets.VM_HOST }} 2>/dev/null)" >> ~/.ssh/known_hosts
+
+      - name: Pull latest code
+        run: |
+          ssh ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+            cd ${{ env.PROJECT_DIR }}
+            git fetch origin main
+            git reset --hard origin/main
+          EOF
+
+      - name: Apply SQL schema + indexes + views
+        if: inputs.etl_phase == 'sql' || inputs.etl_phase == ''
+        run: |
+          ssh ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+            cd ${{ env.PROJECT_DIR }}
+            source venv/bin/activate
+            python -m etl.01_schema
+            python -m etl.10_indices 2>&1 || true  # indexes may already exist
+            python -m etl.21_views
+          EOF
+
+      - name: Run ETL from phase
+        if: inputs.etl_phase != 'sql' && inputs.etl_phase != ''
+        run: |
+          ssh ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+            cd ${{ env.PROJECT_DIR }}
+            source venv/bin/activate
+            if [ "${{ inputs.etl_phase }}" = "all" ]; then
+              python -m etl.run_all 2>&1 | tee /tmp/etl.log
+            else
+              python -m etl.run_all ${{ inputs.etl_phase }} 2>&1 | tee /tmp/etl.log
+            fi
+          EOF
+
+      - name: Verify database
+        run: |
+          ssh ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+            cd ${{ env.PROJECT_DIR }}
+            source venv/bin/activate
+            python -c "
+          from etl.db import get_conn, table_count
+          conn = get_conn()
+          tables = ['empresa', 'estabelecimento', 'socio', 'pncp_contratacao', 'pncp_contrato']
+          for t in tables:
+              try:
+                  print(f'  {t}: {table_count(conn, t):,}')
+              except Exception as e:
+                  print(f'  {t}: {e}')
+          conn.close()
+          "
+          EOF

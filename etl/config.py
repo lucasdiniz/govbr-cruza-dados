@@ -17,7 +17,7 @@ DB_PASS = os.getenv("POSTGRES_PASSWORD", "govbr_dev")
 DSN = f"host={DB_HOST} port={DB_PORT} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
 
 # ── Diretórios ──────────────────────────────────────────────────
-DATA_DIR = Path(os.getenv("DATA_DIR", r"C:\Users\lucas\br-acc\infra\neo4j\import"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "/data/raw-data"))
 SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
 
 # ── Constantes de carga ────────────────────────────────────────
