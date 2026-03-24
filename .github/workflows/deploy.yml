@@ -38,25 +38,45 @@ jobs:
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << EOF
             set -e
 
+            # Install system dependencies if missing
             if ! dpkg -s python3-venv >/dev/null 2>&1; then
               sudo apt update
               sudo apt install -y python3-venv python3-pip git
             fi
 
+            # Clone repo if missing
             if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
               cd /home/${{ env.VM_USER }}
               git clone https://github.com/lucasdiniz/govbr-cruza-dados.git govbr-project
             fi
 
             cd ${{ env.PROJECT_DIR }}
+
+            # Create .env from GitHub Secrets
+            echo "${{ secrets.ENV_FILE }}" > .env
+
+            # Ensure data directory exists
+            mkdir -p /home/${{ env.VM_USER }}/data
+
+            # Update repo
             git fetch origin main
             git reset --hard origin/main
 
+            # Setup virtualenv + install project
             if [ ! -d "venv" ]; then
               python3 -m venv venv
               source venv/bin/activate
               pip install --upgrade pip
-              pip install -r requirements.txt
+              pip install -e .
+            fi
+
+            # FIRST RUN: only run full ETL
+            if [ ! -f ".initialized" ]; then
+              echo "First run detected → running full ETL"
+              source venv/bin/activate
+              python -m etl.run_all
+              touch .initialized
+              exit 0
             fi
           EOF
 
@@ -95,5 +115,5 @@ jobs:
             cd ${{ env.PROJECT_DIR }}
             source venv/bin/activate
 
-            python -c "from etl.db import get_conn, table_count; conn = get_conn(); tables = ['empresa','estabelecimento','socio','pncp_contratacao','pncp_contrato']; [print(f'{t}: {table_count(conn, t):,}') if not isinstance(table_count(conn, t), Exception) else print(f'{t}: error') for t in tables]; conn.close()"
+            python -c "from etl.db import get_conn, table_count; conn = get_conn(); tables = ['empresa','estabelecimento','socio','pncp_contratacao','pncp_contrato']; [print(f'{t}: {table_count(conn, t):,}') for t in tables]; conn.close()"
           EOF
