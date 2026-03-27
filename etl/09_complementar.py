@@ -1,13 +1,20 @@
-"""Fase 4.7-4.8 + 5.2: Carrega BNDES, Holdings e ComprasNet.
+"""Fase 4.7 + 5.2: Carrega BNDES e ComprasNet.
 
 Fontes:
-  - bndes.csv (delimitador ;, quoted, com header)
-  - holding.csv (delimitador ,, com header)
-  - comprasnet.csv (delimitador ,, com header)
+  - bndes.csv (delimitador ;, quoted, com header) — download automatizado
+  - comprasnet.csv (delimitador ,, com header) — data/static/comprasnet.csv.gz no repo
+Holdings removido: redundante com socio WHERE tipo_socio=1 (PJ socio de PJ)
 """
+
+import gzip
+import shutil
+from pathlib import Path
 
 from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
+
+# comprasnet.csv.gz no repo (data/static/)
+STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
 
 
 def load_bndes(conn):
@@ -117,8 +124,16 @@ def load_comprasnet(conn):
     """Carrega comprasnet.csv → comprasnet_contrato."""
     filepath = DATA_DIR / "comprasnet.csv"
     if not filepath.exists():
-        print("    AVISO: comprasnet.csv não encontrado.")
-        return
+        # Tentar descomprimir do repo
+        gz_path = STATIC_DIR / "comprasnet.csv.gz"
+        if gz_path.exists():
+            print("    Descomprimindo comprasnet.csv.gz...")
+            with gzip.open(gz_path, "rb") as f_in:
+                with open(filepath, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+        else:
+            print("    AVISO: comprasnet.csv não encontrado.")
+            return
 
     staging = "_stg_comprasnet"
     cols = ", ".join(f"c{i} TEXT" for i in range(38))
@@ -182,7 +197,7 @@ def run():
     conn = get_conn()
     try:
         load_bndes(conn)
-        load_holdings(conn)
+        # Holdings removido: redundante com socio WHERE tipo_socio=1 (PJ socio de PJ)
         load_comprasnet(conn)
     finally:
         conn.close()

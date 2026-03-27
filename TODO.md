@@ -18,7 +18,8 @@
 - [ ] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4)
 - [x] Automatizar downloads: RFB (auto-detect mês), PGFN (trimestral), emendas, renúncias, BNDES (2 CSVs)
   - PNCP: sem bulk download, apenas via API (download_pncp.py)
-  - Holdings/ComprasNet: sem fonte pública separada (arquivos estáticos no DATA_DIR)
+  - ComprasNet: incluído no repo como data/static/comprasnet.csv.gz (13MB)
+  - Holdings: removido do pipeline (redundante com socio WHERE tipo_socio=1)
 - [ ] Preparar VM Azure: redimensionar disco 256GB, upload dados brutos, rodar ETL completo
 - [ ] Reativar deploy automático no push (após VM pronta)
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)

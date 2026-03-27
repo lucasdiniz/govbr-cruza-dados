@@ -19,8 +19,7 @@ Carrega ~100GB de dados de **18+ fontes publicas** num banco PostgreSQL (~336M r
 - **Bolsa Familia** - beneficiarios e pagamentos (20.9M registros)
 - **SIAPE** - servidores federais (cadastro + remuneracao)
 - **BNDES** - emprestimos do banco de desenvolvimento
-- **Holdings** - estrutura de controle societario entre empresas
-- **ComprasNet** - contratos historicos (pre-PNCP)
+- **ComprasNet** - contratos federais historicos (pre-PNCP, 104k contratos incluidos no repo)
 - **Renuncias Fiscais** - beneficios e isencoes tributarias
 - **Viagens a Servico** - passagens e diarias (3.9M registros)
 - **Sancoes** - CEIS/CEPIM/CNEP (empresas e pessoas sancionadas)
@@ -78,25 +77,29 @@ python -m etl.run_queries --query Q03  # query especifica
 
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Scripts de carga por fonte de dados (20 fases, 18+ fontes)
+etl/           Scripts de carga por fonte de dados (22 fases, 18+ fontes)
 queries/       75 queries SQL prontas para investigacao de fraudes
 resultados/    CSVs com resultados das queries (gitignored)
 relatorios/    Investigacoes baseadas nos resultados (Markdown)
+data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
 ```
 
 ## Fontes de dados
 
-Os dados brutos devem ser baixados separadamente dos portais oficiais:
+A maioria dos dados e baixada automaticamente via `python -m etl.00_download`:
 
-- [Receita Federal - CNPJ](https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica---cnpj)
-- [PNCP](https://pncp.gov.br/api/consulta/swagger-ui/index.html)
-- [Portal da Transparencia](https://portaldatransparencia.gov.br/download-de-dados)
-- [PGFN](https://www.gov.br/pgfn/pt-br/assuntos/divida-ativa-da-uniao/transparencia-fiscal-1)
-- [BNDES](https://dadosabertos.bndes.gov.br/)
-- [TSE - Prestacao de Contas](https://dadosabertos.tse.jus.br/)
-- [Bolsa Familia / SIAPE / CPGF / Viagens / Sancoes](https://portaldatransparencia.gov.br/download-de-dados)
-- [TCE-PB - Dados Consolidados](https://dados-abertos.tce.pb.gov.br/dados-consolidados) (despesas, servidores, licitacoes, receitas municipais PB)
-- [dados.pb.gov.br](https://dados.pb.gov.br/app/) (pagamentos, empenhos, contratos estaduais PB)
+| Fonte | URL | Download |
+|-------|-----|----------|
+| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | Automatico (~30GB) |
+| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | Automatico (trimestral) |
+| PNCP (licitacoes) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.download_pncp`) |
+| Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias) |
+| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | Automatico |
+| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Manual |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Manual (20.9M rows) |
+| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | Automatico |
+| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | Automatico |
+| ComprasNet | Incluido no repo (`data/static/`) | N/A |
 
 ## Entity Resolution
 
