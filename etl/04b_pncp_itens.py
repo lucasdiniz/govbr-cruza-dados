@@ -51,6 +51,15 @@ def _to_decimal(val):
         return None
 
 
+def _extract_catalogo(val):
+    """Extract catalogo name from dict or string."""
+    if val is None:
+        return None
+    if isinstance(val, dict):
+        return safe_strip(str(val.get("nome", "") or "")) or None
+    return safe_strip(str(val)) or None
+
+
 def _escape_copy(val):
     """Escape value for COPY TEXT format."""
     if val is None:
@@ -91,7 +100,7 @@ def _read_file(filepath):
             _escape_copy(item.get("temResultado")),
             _escape_copy(safe_strip(str(item.get("ncmNbsCodigo", "") or "")) or None),
             _escape_copy(safe_strip(str(item.get("ncmNbsDescricao", "") or "")) or None),
-            _escape_copy(safe_strip(str(item.get("catalogo", "") or "")) or None),
+            _escape_copy(_extract_catalogo(item.get("catalogo"))),
             _escape_copy(safe_strip(str(item.get("catalogoCodigoItem", "") or "")) or None),
             _escape_copy(_parse_ts(item.get("dataInclusao"))),
             _escape_copy(_parse_ts(item.get("dataAtualizacao"))),
