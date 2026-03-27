@@ -10,11 +10,19 @@
   - [x] mv_empresa_pb: 157k rows, 71MB — empresas ativas em PB (TCE+dados.pb)
   - [x] mv_rede_pb: 1.67M rows, 259MB — grafo conexoes PB (5 tipos aresta)
   - [x] v_risk_score_empresa + v_risk_score_pb: views de risco (instantaneas)
+- [ ] **Issue #1**: tce_pb_despesa.data_empenho NULL em 97.3% dos rows (15.4M/15.8M)
+  - Root cause: `_DATE_SQL` regex espera DD/MM/YYYY mas CSVs 2018-2025 usam ISO (YYYY-MM-DD)
+  - Fix: reescrever regex para 3 formatos + re-rodar ETL 19_tce_pb (TRUNCATE + reload ~15-30min)
+- [ ] **Issue #3**: Q59/Q63 sem filtro temporal — falso positivo (prefeita Baraunas). Depende de Issue #1
+  - Fix: adicionar `AND d.ano >= LEFT(sv.ano_mes, 4)::INT` ao JOIN com tce_pb_despesa
+- [ ] **Issue #4**: 5 queries (Q10,Q21,Q22,Q29,Q32) usam cpf_digitos_6 sem nome — falsos positivos
+  - Fix: adicionar `AND UPPER(TRIM(nome)) = UPPER(TRIM(s.nome))` + 4 indices compostos novos
+- [ ] **Issue #2**: Deploy Azure VM falhando (disco 30GB cheio, sem PostgreSQL)
+  - Fix: redimensionar disco 256GB, instalar PG16, automatizar 8 fontes de download manual
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
-- [ ] ETL pncp_itens: download 99.98% completo (2,987,291/2,987,788). Rodar etl/04b_pncp_itens.py para carregar JSONs no banco
+- [ ] ETL pncp_itens: rodando em background (3M arquivos, fix catalogo dict→string)
 - [ ] Queries superfaturamento Q45-Q58 (Q43/Q44/Q51/Q53 ja implementadas)
-- [ ] Deploy Azure: pausado (B4ms SkuNotAvailable em eastus/brazilsouth). Creditos $150/mes MSFT
 
 ## Estado do banco (~336M registros)
 - empresa: 66.6M, estabelecimento: 69.8M, simples: 47M, socio: 27M
@@ -177,17 +185,29 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
 - Deploy Azure pausado: B4ms SkuNotAvailable em eastus e brazilsouth
 - Diagnostico zombie processes: ls/du em diretorio 3M arquivos pncp_itens (HDD) causava 300-600 IOPS
 
-### Handoff proxima sessao (sessao 13)
-- Git: main branch. Tudo uncommitted — commitar agora
-- DB: PostgreSQL localhost (C: SSD), user=govbr, db=govbr, ~336M registros + 7 MVs (~800MB) + indices compostos (~2GB)
-- Todas 7 MVs + 2 views de risco criadas e verificadas
-- pncp_item: tabela vazia (0 rows). ETL 04b_pncp_itens.py pronto mas precisa ser rodado
-- PROXIMOS PASSOS:
-  1. Rodar ETL pncp_itens (etl/04b_pncp_itens.py) — ~3M JSONs, ~8h estimado
-  2. Queries superfaturamento Q45-Q58 (10 pendentes)
-  3. Analisar resultados 75 queries existentes (764k resultados)
-  4. Relatorios de investigacao focados nos achados PB
-  5. Deploy Azure quando SKU disponivel
+### 2026-03-27 (sessao 13)
+- sql/12_views.sql reescrito com abordagem stepwise confirmada (commit 99c2d75)
+- TODO.md atualizado com changelog sessao 12 completo
+- etl/04b_pncp_itens.py fix: catalogo era dict JSON, agora extrai campo nome (commit 288fcc5)
+- PNCP items ETL rodando em background (~3M arquivos, HDD)
+- Investigacao 4 issues GitHub:
+  - Issue #1: ROOT CAUSE ENCONTRADO — `_DATE_SQL` regex espera DD/MM/YYYY mas CSVs 2018-2025 usam ISO YYYY-MM-DD. Resultado: 97.3% (15.4M/15.8M) data_empenho NULL. So 2026 (434k) tem data.
+  - Issue #2: VM 52.162.207.186 disco 100% cheio (30GB), PostgreSQL nao instalado. Deploy falhou na Fase 1 (Connection refused)
+  - Issue #3: Q59 falso positivo (prefeita Baraunas) — depende Issue #1 para filtro temporal
+  - Issue #4: 5 queries (Q10,Q21,Q22,Q29,Q32) sem nome no JOIN CPF
+- Plano aprovado: Issues #1→#4→#3→#2. Disco VM→256GB. Automatizar 8 fontes download.
+- deploy.yml atualizado pelo user (commit c417ce4): etl_phase input, PostgreSQL setup placeholder
+
+### Handoff proxima sessao (sessao 14)
+- Git: main branch, commits up to date
+- DB: PostgreSQL localhost (C: SSD), user=govbr, db=govbr. 7 MVs + 2 views OK
+- Azure VM: 52.162.207.186, user=govbr, SSH key em ~/.ssh/azure_vm.txt. Disco 30GB CHEIO, PG nao instalado
+- PNCP items ETL rodando em background (task bpmzqw8rb)
+- PLANO A EXECUTAR (ver .claude/plans/twinkling-puzzling-giraffe.md):
+  1. Issue #1: Fix _DATE_SQL em etl/19_tce_pb.py (3 formatos ISO+DD/MM/YYYY), re-rodar ETL despesas (~15-30min)
+  2. Issue #4: Adicionar nome a 5 queries + 4 indices compostos novos
+  3. Issue #3: Adicionar filtro temporal d.ano >= sv.ano em Q59
+  4. Issue #2: Redimensionar VM 256GB, instalar PG16, automatizar 8 fontes download, reescrever deploy.yml
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
