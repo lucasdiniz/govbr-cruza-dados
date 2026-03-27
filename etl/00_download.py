@@ -128,41 +128,155 @@ def download_sancoes():
             _unzip(zip_path, dest)
 
 
-def download_emendas():
-    """Emendas parlamentares - Tesouro (snapshot)."""
-    dest = DATA_DIR
-    # Emendas do Tesouro nao tem URL padrao de download do portal.
-    # Os dados originais vieram de outra fonte (br-acc).
-    print("  Emendas: dados originais do br-acc (sem download automatizado)")
+def download_emendas(anos=None):
+    """Emendas parlamentares - Portal da Transparencia (anual)."""
+    if anos is None:
+        anos = DEFAULT_ANOS
+    dest = DATA_DIR / "emendas"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    print("  Emendas:")
+    for ano in anos:
+        url = f"{TRANSPARENCIA_BASE}/emendas-parlamentares/{ano}"
+        zip_path = dest / f"{ano}_EmendaParlamentar.zip"
+        if _download(url, zip_path):
+            _unzip(zip_path, dest)
 
 
 def download_pgfn():
-    """Divida Ativa da Uniao - PGFN."""
-    # PGFN tem download proprio fora do Portal da Transparencia
-    # https://www.gov.br/pgfn/pt-br/assuntos/divida-ativa-da-uniao/transparencia-fiscal-1
-    print("  PGFN: dados originais do br-acc (download manual via gov.br/pgfn)")
+    """Divida Ativa da Uniao - PGFN (dados abertos, trimestral).
+
+    URL: https://dadosabertos.pgfn.gov.br/{YYYY}_trimestre_{QQ}/
+    3 arquivos por trimestre. Tenta o mais recente.
+    """
+    dest = DATA_DIR / "pgfn"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    PGFN_BASE = "https://dadosabertos.pgfn.gov.br"
+    arquivos = [
+        "Dados_abertos_Nao_Previdenciario.zip",
+        "Dados_abertos_Previdenciario.zip",
+        "Dados_abertos_FGTS.zip",
+    ]
+
+    # Tentar trimestres recentes (atual ate 2 atras)
+    today = date.today()
+    trimestre_atual = (today.month - 1) // 3 + 1
+    tentativas = []
+    for delta in range(4):
+        q = trimestre_atual - delta
+        y = today.year
+        while q <= 0:
+            q += 4
+            y -= 1
+        tentativas.append(f"{y}_trimestre_{q:02d}")
+
+    print("  PGFN:")
+    pgfn_dir = None
+    for tri in tentativas:
+        test_url = f"{PGFN_BASE}/{tri}/{arquivos[0]}"
+        test_path = dest / f"test_{tri}.zip"
+        if _download(test_url, test_path):
+            pgfn_dir = tri
+            # Rename test file to proper name
+            proper = dest / arquivos[0]
+            if not proper.exists():
+                test_path.rename(proper)
+            _unzip(proper, dest)
+            print(f"    Usando dados de {tri}")
+            break
+        if test_path.exists():
+            test_path.unlink()
+        print(f"    {tri} nao disponivel...")
+
+    if not pgfn_dir:
+        print("    ERRO: nenhum trimestre disponivel")
+        return
+
+    # Baixar os outros arquivos
+    for arq in arquivos[1:]:
+        url = f"{PGFN_BASE}/{pgfn_dir}/{arq}"
+        zip_path = dest / arq
+        if _download(url, zip_path):
+            _unzip(zip_path, dest)
 
 
 def download_rfb():
-    """Dados CNPJ da Receita Federal."""
-    # RFB tem download proprio: https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica---cnpj
-    # Arquivos sao muito grandes (~30GB) e mudam trimestralmente
-    print("  RFB/CNPJ: dados originais do br-acc (download manual via dados.gov.br)")
+    """Dados CNPJ da Receita Federal (~30GB, atualizado mensalmente).
+
+    URL: https://dadosabertos.rfb.gov.br/CNPJ/dados_abertos_cnpj/{YYYY-MM}/
+    Tenta mes atual e anterior ate encontrar dados disponiveis.
+    """
+    dest = DATA_DIR / "rfb"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    RFB_BASE = "https://dadosabertos.rfb.gov.br/CNPJ/dados_abertos_cnpj"
+    categorias = {
+        "Empresas": 10,
+        "Estabelecimentos": 10,
+        "Socios": 10,
+        "Simples": 1,
+        "Cnaes": 1,
+        "Motivos": 1,
+        "Municipios": 1,
+        "Naturezas": 1,
+        "Paises": 1,
+        "Qualificacoes": 1,
+    }
+
+    # Tentar mes atual e os 3 anteriores
+    from datetime import timedelta
+    today = date.today()
+    meses_tentativa = []
+    for delta in range(4):
+        d = today.replace(day=1) - timedelta(days=delta * 28)
+        meses_tentativa.append(f"{d.year}-{d.month:02d}")
+
+    print("  RFB/CNPJ:")
+    rfb_month = None
+    for mes in meses_tentativa:
+        # Testar se o mes existe baixando o menor arquivo
+        test_url = f"{RFB_BASE}/{mes}/Cnaes.zip"
+        test_path = dest / f"Cnaes_{mes}.zip"
+        if _download(test_url, test_path):
+            rfb_month = mes
+            print(f"    Usando dados de {mes}")
+            break
+        print(f"    {mes} nao disponivel, tentando anterior...")
+
+    if not rfb_month:
+        print("    ERRO: nenhum mes disponivel encontrado")
+        return
+
+    for cat, n_files in categorias.items():
+        for i in range(n_files):
+            fname = f"{cat}{i}.zip" if n_files > 1 else f"{cat}.zip"
+            url = f"{RFB_BASE}/{rfb_month}/{fname}"
+            zip_path = dest / fname
+            if _download(url, zip_path):
+                _unzip(zip_path, dest)
 
 
 def download_pncp():
-    """PNCP - licitacoes e contratos."""
-    # Contratacoes e contratos: dados originais do br-acc (JSON pre-baixado)
-    print("  PNCP contratacoes/contratos: dados originais do br-acc")
-    # Itens e resultados: baixar via API (requer contratacoes ja carregadas no banco)
-    print("  PNCP itens/resultados: usar 'python -m etl.download_pncp'")
+    """PNCP - licitacoes e contratos (API only, sem bulk download)."""
+    print("  PNCP:")
+    print("    Contratacoes/contratos: sem bulk download disponivel")
+    print("    Usar 'python -m etl.download_pncp' para baixar via API REST")
 
 
-def download_renuncias():
-    """Renuncias fiscais (anual)."""
-    dest = DATA_DIR
-    # Renuncias ja vieram do br-acc como 20XX_RenunciasFiscais.csv
-    print("  Renuncias: dados originais do br-acc (sem download automatizado)")
+def download_renuncias(anos=None):
+    """Renuncias fiscais (anual) - Portal da Transparencia."""
+    if anos is None:
+        anos = DEFAULT_ANOS
+    dest = DATA_DIR / "renuncias"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    print("  Renuncias:")
+    for ano in anos:
+        url = f"{TRANSPARENCIA_BASE}/renuncias/{ano}"
+        zip_path = dest / f"{ano}_RenunciasFiscais.zip"
+        if _download(url, zip_path):
+            _unzip(zip_path, dest)
 
 
 def download_tce_pb(anos=None):
@@ -261,9 +375,22 @@ def download_dados_pb(anos=None):
 
 def download_complementar():
     """BNDES, Holdings, ComprasNet."""
-    print("  BNDES: dados originais do br-acc (download manual via dadosabertos.bndes.gov.br)")
-    print("  Holdings: dados originais do br-acc")
-    print("  ComprasNet: dados originais do br-acc")
+    dest_bndes = DATA_DIR / "bndes"
+    dest_bndes.mkdir(parents=True, exist_ok=True)
+
+    print("  BNDES:")
+    # BNDES operacoes financeiras (CSV publico)
+    BNDES_URL = "https://dadosabertos.bndes.gov.br/dataset/e45e53b4-3d18-4a38-835b-e21c8c735145/resource/47e039dd-e43e-4d66-b1e4-75f0b2e8e1a6/download/operacoes-financiamento-bndes.csv"
+    bndes_path = dest_bndes / "operacoes-financiamento-bndes.csv"
+    _download(BNDES_URL, bndes_path)
+
+    # Holdings: relacoes holding-subsidiaria extraidas dos socios RFB (507k rows)
+    # Sem fonte publica conhecida separada — derivado do RFB socios
+    print("  Holdings: derivado RFB socios (holding.csv no DATA_DIR)")
+
+    # ComprasNet: contratos federais (104k rows) — substituido por compras.gov.br
+    # Dados historicos sem endpoint bulk publico
+    print("  ComprasNet: dados historicos (comprasnet.csv no DATA_DIR)")
 
 
 # ── Orquestrador ────────────────────────────────────────────────
@@ -314,7 +441,7 @@ def run():
 
         fn = DOWNLOADERS[source]
         # Passar anos se a funcao aceita
-        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb"):
+        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias"):
             fn(anos=anos)
         elif source == "siape" and anos:
             fn(meses=[f"{a}01" for a in anos])

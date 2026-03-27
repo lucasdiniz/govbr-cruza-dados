@@ -16,7 +16,9 @@
 - [x] **Issue #2**: deploy.yml reescrito (PG16 install, clean step, disk check, CI/CD logic)
   - Deploy automático DESATIVADO até VM pronta (disco 256GB + downloads automatizados)
 - [ ] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4)
-- [ ] Automatizar 8 fontes de download manual (RFB, PGFN, emendas, PNCP, renuncias, BNDES, holdings, comprasnet)
+- [x] Automatizar downloads: RFB (auto-detect mês), PGFN (trimestral), emendas, renúncias, BNDES (2 CSVs)
+  - PNCP: sem bulk download, apenas via API (download_pncp.py)
+  - Holdings/ComprasNet: sem fonte pública separada (arquivos estáticos no DATA_DIR)
 - [ ] Preparar VM Azure: redimensionar disco 256GB, upload dados brutos, rodar ETL completo
 - [ ] Reativar deploy automático no push (após VM pronta)
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
@@ -215,17 +217,22 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
   - Deploy automático DESATIVADO até VM pronta
 - etl/00_download.py: hardcoded `range(2020, 2027)` → dynamic `CURRENT_YEAR`
 - etl/19_tce_pb.py: `ANOS = range(2018, 2027)` → dynamic
+- etl/00_download.py: 6 fontes automatizadas (RFB auto-detect mês, PGFN trimestral, emendas, renúncias, BNDES 2 CSVs)
+  - URLs testadas: PGFN OK, Emendas OK, BNDES OK (1.1GB), Renúncias OK (`/renuncias/` não `/renuncias-fiscais/`)
+  - RFB: servidor timeout (normal, precisa retry longo). PNCP: sem bulk, API only
+  - Holdings/ComprasNet: sem fonte pública — arquivos estáticos
+- deploy.yml: adicionado step "Run queries" (`python -m etl.run_queries`)
+- ETL tce_pb_despesa re-rodando (schema recreou todas 4 tabelas — servidores/licitacoes/receitas precisam reload)
 
 ### Handoff proxima sessao (sessao 15)
-- Git: main branch, commits up to date
-- DB: PostgreSQL localhost (C: SSD), user=govbr, db=govbr. 7 MVs + 2 views OK
-- Azure VM: 52.162.207.186, user=govbr, SSH key em ~/.ssh/azure_vm.txt. Disco 30GB CHEIO, PG nao instalado
-- PNCP items ETL rodando em background (task bpmzqw8rb)
-- PLANO A EXECUTAR (ver .claude/plans/twinkling-puzzling-giraffe.md):
-  1. Issue #1: Fix _DATE_SQL em etl/19_tce_pb.py (3 formatos ISO+DD/MM/YYYY), re-rodar ETL despesas (~15-30min)
-  2. Issue #4: Adicionar nome a 5 queries + 4 indices compostos novos
-  3. Issue #3: Adicionar filtro temporal d.ano >= sv.ano em Q59
-  4. Issue #2: Redimensionar VM 256GB, instalar PG16, automatizar 8 fontes download, reescrever deploy.yml
+- Git: main branch, 2 commits sessao 14
+- DB local: tce_pb_despesa reloading (schema DROP recriou todas 4 tabelas TCE-PB)
+  - Após despesas terminar, rodar: `python -m etl.19_tce_pb --only servidores,licitacoes,receitas --no-schema`
+  - Depois: `python -m etl.15_normalizar` (Fases 5-6 TCE-PB) + rodar todas queries
+- Issues #1/#3/#4: código pronto e commitado, aguardando validação pós-ETL
+- Issue #2: deploy.yml reescrito, downloads automatizados. Falta: resize disco VM 256GB, upload dados, rodar ETL
+- PNCP items ETL: status desconhecido (task da sessao 13)
+- Queries automáticas no deploy: step adicionado
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica

@@ -210,6 +210,24 @@ jobs:
           SCRIPT
         timeout-minutes: 300
 
+      # ── Run all fraud queries and save results ──
+      - name: Run queries
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
+            set -e
+            cd ${{ env.PROJECT_DIR }}
+
+            if [ ! -f ".initialized" ]; then
+              echo "Not initialized yet, skipping queries"
+              exit 0
+            fi
+
+            source venv/bin/activate
+            echo "=== Running all queries ==="
+            python -m etl.run_queries 2>&1 | tail -50
+          SCRIPT
+        timeout-minutes: 60
+
       # ── Always: verify ──
       - name: Verify database
         if: always()
