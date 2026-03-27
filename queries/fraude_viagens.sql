@@ -7,6 +7,7 @@ FROM viagem v
 JOIN socio s ON v.cpf_viajante_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
   AND v.cpf_viajante_digitos IS NOT NULL AND v.cpf_viajante_digitos != '000000'
+  AND UPPER(TRIM(v.nome_viajante)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
 WHERE v.destinos ILIKE '%' || est.uf || '%'

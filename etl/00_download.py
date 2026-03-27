@@ -12,6 +12,7 @@ Uso:
 import os
 import sys
 import zipfile
+from datetime import date
 from pathlib import Path
 from urllib.request import urlretrieve
 from urllib.error import URLError, HTTPError
@@ -25,6 +26,9 @@ from etl.config import DATA_DIR
 
 TRANSPARENCIA_BASE = "https://portaldatransparencia.gov.br/download-de-dados"
 RFB_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida"
+
+CURRENT_YEAR = date.today().year
+DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
 
 
 def _download(url, dest_path):
@@ -64,7 +68,7 @@ def _unzip(zip_path, dest_dir=None):
 def download_cpgf(anos=None):
     """Cartao de Pagamento do Governo Federal (mensal)."""
     if anos is None:
-        anos = range(2020, 2027)
+        anos = DEFAULT_ANOS
     dest = DATA_DIR / "cpgf"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +85,7 @@ def download_cpgf(anos=None):
 def download_viagens(anos=None):
     """Viagens a servico (anual)."""
     if anos is None:
-        anos = range(2020, 2027)
+        anos = DEFAULT_ANOS
     dest = DATA_DIR / "viagens"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -96,7 +100,7 @@ def download_viagens(anos=None):
 def download_siape(meses=None):
     """Servidores federais SIAPE (mensal)."""
     if meses is None:
-        meses = ["202602"]  # Mais recente por padrao
+        meses = [f"{CURRENT_YEAR}{date.today().month:02d}"]  # Mais recente por padrao
     dest = DATA_DIR / "siape"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -113,8 +117,6 @@ def download_sancoes():
     dest = DATA_DIR / "sancoes"
     dest.mkdir(parents=True, exist_ok=True)
 
-    # Usar data de hoje
-    from datetime import date
     dt = date.today().strftime("%Y%m%d")
 
     print("  Sancoes:")
@@ -166,7 +168,7 @@ def download_renuncias():
 def download_tce_pb(anos=None):
     """TCE-PB - Dados consolidados (despesas, servidores, licitacoes, receitas)."""
     if anos is None:
-        anos = range(2018, 2027)
+        anos = range(2018, CURRENT_YEAR + 1)
     dest = DATA_DIR / "tce_pb"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -185,7 +187,7 @@ def download_tce_pb(anos=None):
 def download_dados_pb(anos=None):
     """dados.pb.gov.br - Dados estaduais PB (pagamento, empenho, contratos, saude, convenios)."""
     if anos is None:
-        anos = range(2018, 2027)
+        anos = range(2018, CURRENT_YEAR + 1)
     dest = DATA_DIR / "dados_pb"
     dest.mkdir(parents=True, exist_ok=True)
 

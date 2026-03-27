@@ -19,6 +19,7 @@ SELECT ct.nome_portador, ct.cpf_portador,
 FROM cpgf_transacao ct
 JOIN socio s ON ct.cpf_portador_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
+  AND UPPER(TRIM(ct.nome_portador)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'

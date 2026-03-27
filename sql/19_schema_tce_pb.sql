@@ -53,7 +53,8 @@ CREATE TABLE tce_pb_despesa (
     descricao_fonte_recurso     TEXT,
     ano_fonte                   TEXT,
     co                          TEXT,
-    descricao_co                TEXT
+    descricao_co                TEXT,
+    ano_arquivo                 SMALLINT
 );
 
 -- ── Servidores municipais/estaduais PB ──────────────────────────

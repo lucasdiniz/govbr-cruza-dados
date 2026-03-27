@@ -30,6 +30,7 @@ JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.situacao_cadastral = '2'
 JOIN tce_pb_despesa d ON d.cnpj_basico = e.cnpj_basico
     AND d.municipio = sv.municipio
+    AND d.ano >= LEFT(sv.ano_mes, 4)::INT
 WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
   AND sv.ano_mes >= '2022-01'
 GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj, sv.descricao_cargo,
@@ -117,7 +118,7 @@ JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.situacao_cadastral = '2'
 WHERE sv.valor_vantagem > 10000
   AND sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
-  AND sv.ano_mes >= '2024-01'
+  AND sv.ano_mes >= '2022-01'
 ORDER BY sv.valor_vantagem DESC
 LIMIT 500;
 

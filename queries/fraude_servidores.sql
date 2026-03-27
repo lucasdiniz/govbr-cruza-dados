@@ -6,6 +6,7 @@ SELECT sc.nome, sc.cpf, sc.org_exercicio, sc.descricao_cargo,
 FROM siape_cadastro sc
 JOIN socio s ON sc.cpf_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
+  AND UPPER(TRIM(sc.nome)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
@@ -23,8 +24,10 @@ SELECT sc.nome, sc.cpf, sc.org_exercicio,
 FROM siape_cadastro sc
 JOIN cpgf_transacao ct ON sc.cpf_digitos = ct.cpf_portador_digitos
   AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos != '000000'
+  AND UPPER(TRIM(sc.nome)) = UPPER(TRIM(ct.nome_portador))
 JOIN socio s ON sc.cpf_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
+  AND UPPER(TRIM(sc.nome)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'

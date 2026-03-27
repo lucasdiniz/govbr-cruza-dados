@@ -142,6 +142,11 @@ def run():
         _exec(conn, "idx siape UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_siape_nome_upper ON siape_cadastro (UPPER(TRIM(nome)))", autocommit=True)
         _exec(conn, "idx cpgf UPPER portador", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_portador_nome_upper ON cpgf_transacao (UPPER(TRIM(nome_portador)))", autocommit=True)
 
+        # Compostos: CPF digitos + nome (para JOINs que usam CPF mascarado 6 dig)
+        _exec(conn, "idx cpgf cpf+nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_portador_cpf_nome ON cpgf_transacao(cpf_portador_digitos, UPPER(TRIM(nome_portador))) WHERE cpf_portador_digitos IS NOT NULL AND cpf_portador_digitos != '000000'", autocommit=True)
+        _exec(conn, "idx siape cpf+nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_siape_cpf_nome ON siape_cadastro(cpf_digitos, UPPER(TRIM(nome))) WHERE cpf_digitos IS NOT NULL AND cpf_digitos != '000000'", autocommit=True)
+        _exec(conn, "idx viagem cpf+nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_cpf_nome ON viagem(cpf_viajante_digitos, UPPER(TRIM(nome_viajante))) WHERE cpf_viajante_digitos IS NOT NULL AND cpf_viajante_digitos != '000000'", autocommit=True)
+
         print("\n  === Fase 4: Índices de datas e compostos ===")
 
         _exec(conn, "idx pncp dt_assinatura", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_dt_assinatura ON pncp_contrato (dt_assinatura)", autocommit=True)
@@ -159,7 +164,7 @@ def run():
         _exec(conn, "tce_desp: ADD ano",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS ano SMALLINT")
         _exec(conn, "tce_desp: UPDATE ano",
-              "UPDATE tce_pb_despesa SET ano = EXTRACT(YEAR FROM data_empenho)::SMALLINT WHERE ano IS NULL AND data_empenho IS NOT NULL")
+              "UPDATE tce_pb_despesa SET ano = COALESCE(EXTRACT(YEAR FROM data_empenho)::SMALLINT, ano_arquivo) WHERE ano IS NULL")
 
         # tce_pb_servidor: cpf_digitos_6 (6 centrais do CPF mascarado)
         _exec(conn, "tce_serv: ADD cpf_digitos_6",

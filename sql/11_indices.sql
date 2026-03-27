@@ -145,3 +145,14 @@ CREATE INDEX idx_obs_pessoa ON pessoa_observacao(pessoa_id);
 CREATE INDEX idx_obs_fonte ON pessoa_observacao(fonte, fonte_id);
 CREATE UNIQUE INDEX idx_merge_par ON pessoa_merge(pessoa_a_id, pessoa_b_id);
 CREATE INDEX idx_merge_status ON pessoa_merge(status);
+
+-- =============================================
+-- Compostos: CPF digitos + nome (para JOINs Issue #4)
+-- Evita falsos positivos em JOINs por CPF mascarado (6 digitos)
+-- =============================================
+CREATE INDEX idx_cpgf_portador_cpf_nome ON cpgf_transacao(cpf_portador_digitos, UPPER(TRIM(nome_portador)))
+    WHERE cpf_portador_digitos IS NOT NULL AND cpf_portador_digitos != '000000';
+CREATE INDEX idx_siape_cpf_nome ON siape_cadastro(cpf_digitos, UPPER(TRIM(nome)))
+    WHERE cpf_digitos IS NOT NULL AND cpf_digitos != '000000';
+CREATE INDEX idx_viagem_cpf_nome ON viagem(cpf_viajante_digitos, UPPER(TRIM(nome_viajante)))
+    WHERE cpf_viajante_digitos IS NOT NULL AND cpf_viajante_digitos != '000000';

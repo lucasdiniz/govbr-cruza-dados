@@ -10,15 +10,15 @@
   - [x] mv_empresa_pb: 157k rows, 71MB — empresas ativas em PB (TCE+dados.pb)
   - [x] mv_rede_pb: 1.67M rows, 259MB — grafo conexoes PB (5 tipos aresta)
   - [x] v_risk_score_empresa + v_risk_score_pb: views de risco (instantaneas)
-- [ ] **Issue #1**: tce_pb_despesa.data_empenho NULL em 97.3% dos rows (15.4M/15.8M)
-  - Root cause: `_DATE_SQL` regex espera DD/MM/YYYY mas CSVs 2018-2025 usam ISO (YYYY-MM-DD)
-  - Fix: reescrever regex para 3 formatos + re-rodar ETL 19_tce_pb (TRUNCATE + reload ~15-30min)
-- [ ] **Issue #3**: Q59/Q63 sem filtro temporal — falso positivo (prefeita Baraunas). Depende de Issue #1
-  - Fix: adicionar `AND d.ano >= LEFT(sv.ano_mes, 4)::INT` ao JOIN com tce_pb_despesa
-- [ ] **Issue #4**: 5 queries (Q10,Q21,Q22,Q29,Q32) usam cpf_digitos_6 sem nome — falsos positivos
-  - Fix: adicionar `AND UPPER(TRIM(nome)) = UPPER(TRIM(s.nome))` + 4 indices compostos novos
-- [ ] **Issue #2**: Deploy Azure VM falhando (disco 30GB cheio, sem PostgreSQL)
-  - Fix: redimensionar disco 256GB, instalar PG16, automatizar 8 fontes de download manual
+- [x] **Issue #1**: tce_pb_despesa.data_empenho NULL em 97.3% — fix `_DATE_SQL` 3 formatos + `ano_arquivo`
+- [x] **Issue #3**: Q59 filtro temporal `d.ano >= LEFT(sv.ano_mes,4)::INT` + Q63 threshold 2022-01
+- [x] **Issue #4**: Q10/Q21/Q22/Q29 nome no JOIN CPF + 3 indices compostos (Q32 CPF completo, sem nome)
+- [x] **Issue #2**: deploy.yml reescrito (PG16 install, clean step, disk check, CI/CD logic)
+  - Deploy automático DESATIVADO até VM pronta (disco 256GB + downloads automatizados)
+- [ ] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4)
+- [ ] Automatizar 8 fontes de download manual (RFB, PGFN, emendas, PNCP, renuncias, BNDES, holdings, comprasnet)
+- [ ] Preparar VM Azure: redimensionar disco 256GB, upload dados brutos, rodar ETL completo
+- [ ] Reativar deploy automático no push (após VM pronta)
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 - [ ] ETL pncp_itens: rodando em background (3M arquivos, fix catalogo dict→string)
@@ -198,7 +198,25 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
 - Plano aprovado: Issues #1→#4→#3→#2. Disco VM→256GB. Automatizar 8 fontes download.
 - deploy.yml atualizado pelo user (commit c417ce4): etl_phase input, PostgreSQL setup placeholder
 
-### Handoff proxima sessao (sessao 14)
+### 2026-03-27 (sessao 14)
+- Issue #1 FIX: `_DATE_SQL` reescrito para 3 formatos (ISO+timestamp, ISO date, DD/MM/YYYY)
+  - etl/19_tce_pb.py: regex `^\d{4}-\d{2}-\d{2}` → LEFT(10) + TO_DATE, fallback DD/MM/YYYY
+  - sql/19_schema_tce_pb.sql: adicionado `ano_arquivo SMALLINT` (ano do filename como fallback)
+  - etl/15_normalizar.py: `ano = COALESCE(EXTRACT(YEAR FROM data_empenho), ano_arquivo)`
+  - ETL tce_pb_despesa re-rodando (TRUNCATE + reload 9 anos)
+- Issue #4 FIX: nome adicionado a 4 queries (Q10, Q21, Q22, Q29). Q32 mantido sem nome (CEAF CPF completo)
+  - sql/11_indices.sql + etl/15_normalizar.py: 3 indices compostos (cpgf, siape, viagem) cpf+UPPER(nome)
+- Issue #3 FIX: Q59 `AND d.ano >= LEFT(sv.ano_mes, 4)::INT`, Q63 threshold relaxado 2024→2022
+- Issue #2: deploy.yml reescrito completo
+  - PostgreSQL 16 install step (user, db, pg_trgm, tuning 16GB RAM)
+  - Clean step (workflow_dispatch com `clean: true`)
+  - Disk check + warning
+  - CI/CD: push→SQL only, manual dispatch→ETL phase, first run→full ETL
+  - Deploy automático DESATIVADO até VM pronta
+- etl/00_download.py: hardcoded `range(2020, 2027)` → dynamic `CURRENT_YEAR`
+- etl/19_tce_pb.py: `ANOS = range(2018, 2027)` → dynamic
+
+### Handoff proxima sessao (sessao 15)
 - Git: main branch, commits up to date
 - DB: PostgreSQL localhost (C: SSD), user=govbr, db=govbr. 7 MVs + 2 views OK
 - Azure VM: 52.162.207.186, user=govbr, SSH key em ~/.ssh/azure_vm.txt. Disco 30GB CHEIO, PG nao instalado

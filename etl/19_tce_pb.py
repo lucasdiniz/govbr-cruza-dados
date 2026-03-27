@@ -20,8 +20,10 @@ from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
 
 
+from datetime import date
+
 TCE_DIR = DATA_DIR / "tce_pb"
-ANOS = range(2018, 2027)
+ANOS = range(2018, date.today().year + 1)
 
 
 def _parse_decimal_br(val):
@@ -117,7 +119,9 @@ _DECIMAL_SQL = """
 """
 
 _DATE_SQL = """
-    CASE WHEN TRIM({col}) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
+    CASE WHEN TRIM({col}) ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}'
+         THEN TO_DATE(LEFT(TRIM({col}), 10), 'YYYY-MM-DD')
+         WHEN TRIM({col}) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
          THEN TO_DATE(TRIM({col}), 'DD/MM/YYYY')
          ELSE NULL END
 """
@@ -150,7 +154,8 @@ def load_despesas(conn, anos):
                     codigo_subelemento, codigo_subelemento_exibicao,
                     numero_licitacao, modalidade_licitacao, numero_obra,
                     historico, codigo_fonte_recurso, descricao_fonte_recurso,
-                    ano_fonte, co, descricao_co
+                    ano_fonte, co, descricao_co,
+                    ano_arquivo
                 )
                 SELECT
                     TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3),
@@ -167,7 +172,8 @@ def load_despesas(conn, anos):
                     TRIM(c29), TRIM(c30),
                     TRIM(c31), TRIM(c32), TRIM(c33),
                     TRIM(c34), TRIM(c35), TRIM(c36),
-                    TRIM(c37), TRIM(c38), TRIM(c39)
+                    TRIM(c37), TRIM(c38), TRIM(c39),
+                    {ano}::SMALLINT
                 FROM {staging}
             """.format(
                 staging=staging,
@@ -175,6 +181,7 @@ def load_despesas(conn, anos):
                 val_empenhado=_DECIMAL_SQL.format(col="c8"),
                 val_liquidado=_DECIMAL_SQL.format(col="c9"),
                 val_pago=_DECIMAL_SQL.format(col="c10"),
+                ano=ano,
             )
         with conn.cursor() as cur:
             cur.execute(sql)
