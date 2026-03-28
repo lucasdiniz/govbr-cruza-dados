@@ -20,8 +20,8 @@
   - PNCP: sem bulk download, apenas via API (download_pncp.py)
   - ComprasNet: incluído no repo como data/static/comprasnet.csv.gz (13MB)
   - Holdings: removido do pipeline (redundante com socio WHERE tipo_socio=1)
-- [ ] Preparar VM Azure: redimensionar disco 256GB, upload dados brutos, rodar ETL completo
-- [ ] Reativar deploy automático no push (após VM pronta)
+- [x] Preparar VM Azure: data disk 512GB montado em /data, PG16 instalado, deploy rodando
+- [ ] Reativar deploy automático no push (após Full ETL completar na VM)
 - [ ] Analisar resultados das 75 queries (764k resultados totais — ver resumo sessao 10)
 - [ ] Continuar relatorios de investigacao (foco Paraiba)
 - [ ] ETL pncp_itens: rodando em background (3M arquivos, fix catalogo dict→string)
@@ -225,15 +225,59 @@ Queries Q01-Q91 migradas para colunas normalizadas indexadas. Status:
 - deploy.yml: adicionado step "Run queries" (`python -m etl.run_queries`)
 - ETL tce_pb_despesa re-rodando (schema recreou todas 4 tabelas — servidores/licitacoes/receitas precisam reload)
 
-### Handoff proxima sessao (sessao 15)
-- Git: main branch, 2 commits sessao 14
-- DB local: tce_pb_despesa reloading (schema DROP recriou todas 4 tabelas TCE-PB)
-  - Após despesas terminar, rodar: `python -m etl.19_tce_pb --only servidores,licitacoes,receitas --no-schema`
-  - Depois: `python -m etl.15_normalizar` (Fases 5-6 TCE-PB) + rodar todas queries
-- Issues #1/#3/#4: código pronto e commitado, aguardando validação pós-ETL
-- Issue #2: deploy.yml reescrito, downloads automatizados. Falta: resize disco VM 256GB, upload dados, rodar ETL
-- PNCP items ETL: status desconhecido (task da sessao 13)
-- Queries automáticas no deploy: step adicionado
+### 2026-03-28 (sessao 15)
+- ETL local tce_pb: despesas 15.8M OK + servidores 21.7M + licitacoes 310k + receitas 1.2M recarregados
+- Issue #1 VALIDADO: data_empenho 100% populado em todos os anos 2018-2026 (antes 2.7%)
+- Normalizacao 15_normalizar rodando (Fases 1-8)
+- VM Azure: data disk 512GB descoberto e montado em /data (era desmontado)
+  - OS disk liberado de 99%→8% (dados movidos para /data/govbr)
+  - Symlink /home/govbr/data → /data/govbr
+  - PG data dir configurado para /data/postgresql (deploy.yml)
+- Deploy fixes:
+  - safe_to_date() nao existia no repo (so no banco local) → adicionada a sql/00_extensions.sql
+  - YAML nested heredoc CONF → echo -e
+  - python -c indentacao → extraido para etl/verify.py
+  - Views step sem || true → adicionado
+  - CPGF baixava meses futuros (403) → para no mes atual
+  - SIAPE mes unico → tenta 3 meses (atraso publicacao)
+  - Sancoes data exata → tenta 7 dias retroativos
+  - BNDES URL 404 (dataset antigo removido) → 2 novos CSVs (nao-automaticas 19MB + indiretas-automaticas 1.1GB)
+  - DB_PASSWORD secret adicionado no GitHub
+- Deploy rodando: run 23674360290 (clean=true, etl_phase=all) — First run Full ETL em progresso
+- Commits: 379da10, e6dc07f, fc23d5e, 15ca486, 7998b0e
+
+#### Avaliacao relatorios (gerados pelo Gemini)
+20 relatorios em relatorios/ avaliados. Problemas globais:
+- **Linguagem acusatoria**: quase todos usam "fraude comprovada", "mafia", "peculato" — excede o que dados permitem
+- **Encoding UTF-8 quebrado**: secoes "Fontes e Referencias" duplicadas com caracteres garbled
+- **"Deteccao precoce" infalsificavel**: ausencia de investigacao ≠ prova de que sistema detectou antes
+
+Relatorios mais problematicos:
+1. **conflito_cartao_corporativo** — CRITICO. Baseado em Q10 PRE-FIX (CPF 6dig sem nome). Resultados provavelmente falsos positivos. DEVE ser regenerado.
+2. **cartel_combustiveis_pb** — ALTO RISCO. Pessoa nomeada como "Paciente Zero de mafia" baseado so em estrutura societaria. Redes de postos usam 1 CNPJ/ponto (normal). Zero evidencia de co-participacao em licitacao.
+3. **smart_smurfing_cpgf** (secao ABIN) — ALTO RISCO. Acusa agencias de inteligencia sem considerar gastos sub-limite legitimos por razoes operacionais.
+4. **risk_score_elite_politica_pb** (Barauna) — Report identifica como falso positivo mas mantem em contexto difamatorio.
+5. **fazenda_laranjas_mato_grosso_pb** — Declara "roubo de identidade"/"quadrilha" sem evidencia alem do padrao de dados.
+
+Relatorios solidos: falsos_positivos_pb (modelo auto-critico), megafraudes_sertao_pb (corroborado TCU/MPPB), cartel_equipamentos_medicos_jp (precedentes TCE-BA/RN), empresas_inativas_pb (check binario CNPJ), smart_smurfing_cpgf (exceto ABIN)
+
+Recomendacoes:
+- [ ] Regenerar relatorios baseados em Q10/Q21/Q22/Q29 apos re-rodar queries com fix nome
+- [ ] Adicionar disclaimer padrao: "Analise identifica anomalias estatisticas. Nenhuma conclusao sobre responsabilidade criminal."
+- [ ] Corrigir encoding UTF-8 nas secoes duplicadas
+- [ ] Reclassificar cartel_combustiveis de "fraude" para "padrao requer analise licitacoes especificas"
+- [ ] Remover/caveatar secao ABIN/GSI do relatorio CPGF smurfing
+
+### Handoff proxima sessao (sessao 16)
+- Git: main branch, commits sessao 15: 379da10→7998b0e
+- DB local: TCE-PB 4 tabelas recarregadas + data_empenho 100% OK
+  - Normalizacao (15_normalizar) rodando em background
+  - Apos normalizar: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
+- VM Azure: deploy rodando (run 23674360290, Full ETL) — horas de download + carga
+  - Se falhar: commit BNDES fix (7998b0e) nao foi pego por este run, re-triggar depois
+  - PG16 instalado, data dir em /data (512GB), OS disk limpo (8%)
+- Relatorios: 5 problematicos identificados, recomendacoes de fix listadas acima
+- Pendente apos queries: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
