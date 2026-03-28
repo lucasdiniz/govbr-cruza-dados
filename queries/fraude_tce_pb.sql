@@ -10,17 +10,41 @@
 -- Detecta conflito de interesses direto: servidor público com participação societária
 -- em empresa que recebe pagamentos do mesmo município onde trabalha.
 -- Match por cpf_digitos_6 + nome (6 dígitos centrais, ambas fontes mascaram CPF)
-SELECT DISTINCT
-       sv.municipio,
+-- FIX: pre-aggregate despesas and deduplicate servidores to avoid JOIN explosion
+-- (tce_pb_servidor has one row per ano_mes, inflating SUM(valor_pago))
+WITH servidores AS (
+    SELECT DISTINCT
+           sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
+           sv.descricao_cargo, sv.tipo_cargo,
+           sv.cpf_digitos_6, sv.nome_upper,
+           MAX(sv.valor_vantagem) AS valor_vantagem,
+           MIN(LEFT(sv.ano_mes, 4)::INT) AS primeiro_ano
+    FROM tce_pb_servidor sv
+    WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
+      AND sv.ano_mes >= '2022-01'
+    GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
+             sv.descricao_cargo, sv.tipo_cargo,
+             sv.cpf_digitos_6, sv.nome_upper
+),
+despesas_agg AS (
+    SELECT d.cnpj_basico, d.municipio,
+           SUM(d.valor_pago) AS total_pago,
+           COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
+           MIN(d.ano) AS primeiro_ano_desp
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
+    GROUP BY d.cnpj_basico, d.municipio
+)
+SELECT sv.municipio,
        sv.nome_servidor, sv.cpf_cnpj AS cpf_servidor,
        sv.descricao_cargo, sv.tipo_cargo,
        sv.valor_vantagem,
        e.razao_social, est.cnpj_completo,
        e.capital_social,
        s.qualificacao AS qualificacao_socio,
-       SUM(d.valor_pago) AS total_recebido_municipio,
-       COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
-FROM tce_pb_servidor sv
+       da.total_pago AS total_recebido_municipio,
+       da.qtd_empenhos
+FROM servidores sv
 JOIN socio s ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
     AND s.tipo_socio = 2
     AND sv.nome_upper = UPPER(TRIM(s.nome))
@@ -28,14 +52,9 @@ JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.cnpj_ordem = '0001'
     AND est.situacao_cadastral = '2'
-JOIN tce_pb_despesa d ON d.cnpj_basico = e.cnpj_basico
-    AND d.municipio = sv.municipio
-    AND d.ano >= LEFT(sv.ano_mes, 4)::INT
-WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
-  AND sv.ano_mes >= '2022-01'
-GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj, sv.descricao_cargo,
-         sv.tipo_cargo, sv.valor_vantagem,
-         e.razao_social, est.cnpj_completo, e.capital_social, s.qualificacao
+JOIN despesas_agg da ON da.cnpj_basico = e.cnpj_basico
+    AND da.municipio = sv.municipio
+    AND da.primeiro_ano_desp >= sv.primeiro_ano
 ORDER BY total_recebido_municipio DESC;
 
 -- Q60: Fornecedor recebendo pagamentos "Sem Licitação" em múltiplos municípios PB
@@ -233,6 +252,8 @@ LIMIT 500;
 -- Q70: Empresa inativa/baixada recebendo pagamento municipal
 -- Irregularidade objetiva: empresa com situação cadastral diferente de "ativa" na RFB
 -- mas ainda recebendo pagamentos de municípios PB
+-- FIX: filter out PF creditors (11-digit CPF) whose 8-digit prefix collides
+-- with unrelated empresa cnpj_basico
 SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
        est.situacao_cadastral,
        CASE est.situacao_cadastral
@@ -256,6 +277,7 @@ JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL
   AND d.valor_pago > 0
   AND d.data_empenho > est.dt_situacao
+  AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14  -- only PJ creditors (CNPJ), exclude PF (CPF)
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
          est.situacao_cadastral, est.dt_situacao, e.razao_social
 HAVING SUM(d.valor_pago) > 10000
