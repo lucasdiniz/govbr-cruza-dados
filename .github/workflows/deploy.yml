@@ -82,6 +82,15 @@ jobs:
               sudo apt update
               sudo apt install -y postgresql-16 postgresql-contrib-16
 
+              # Move data dir to /data disk (OS disk is only 30GB)
+              sudo systemctl stop postgresql
+              sudo mkdir -p /data/postgresql/16/main
+              sudo chown -R postgres:postgres /data/postgresql
+              sudo rsync -av /var/lib/postgresql/16/main/ /data/postgresql/16/main/
+              sudo sed -i "s|data_directory = '/var/lib/postgresql/16/main'|data_directory = '/data/postgresql/16/main'|" /etc/postgresql/16/main/postgresql.conf
+              sudo systemctl start postgresql
+              echo "=== PG data dir moved to /data ==="
+
               # Create user + database
               sudo -u postgres createuser -s govbr 2>/dev/null || true
               sudo -u postgres createdb -O govbr govbr 2>/dev/null || true
