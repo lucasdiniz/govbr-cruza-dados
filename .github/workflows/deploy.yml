@@ -165,7 +165,7 @@ jobs:
 
             echo "=== First run: full ETL ==="
             source venv/bin/activate
-            python -m etl.run_all 2>&1 | tee /tmp/etl.log
+            python -m etl.run_all 2>&1 | tee /tmp/etl.log || true
             touch .initialized
           SCRIPT
         timeout-minutes: 300
@@ -193,7 +193,7 @@ jobs:
 
       # ── Manual: run ETL from specific phase ──
       - name: Run ETL from phase ${{ inputs.etl_phase }}
-        if: github.event_name == 'workflow_dispatch' && inputs.etl_phase != 'sql'
+        if: github.event_name == 'workflow_dispatch' && inputs.etl_phase != 'sql' && inputs.etl_phase != 'all'
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
             set -e
@@ -201,13 +201,8 @@ jobs:
             source venv/bin/activate
 
             PHASE="${{ inputs.etl_phase }}"
-            if [ "$PHASE" = "all" ]; then
-              echo "=== Full ETL ==="
-              python -m etl.run_all 2>&1 | tee /tmp/etl.log
-            else
-              echo "=== ETL from phase $PHASE ==="
-              python -m etl.run_all "$PHASE" 2>&1 | tee /tmp/etl.log
-            fi
+            echo "=== ETL from phase $PHASE ==="
+            python -m etl.run_all "$PHASE" 2>&1 | tee /tmp/etl.log
           SCRIPT
         timeout-minutes: 300
 

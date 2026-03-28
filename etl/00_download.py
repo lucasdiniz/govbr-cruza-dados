@@ -10,16 +10,20 @@ Uso:
 """
 
 import os
+import shutil
 import sys
 import zipfile
 from datetime import date
 from pathlib import Path
-from urllib.request import urlretrieve
+from urllib.request import Request, urlopen, urlretrieve
 from urllib.error import URLError, HTTPError
 
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
+
+_UA = "Mozilla/5.0 (compatible; govbr-etl/1.0)"
+_TIMEOUT = 300  # 5 min per file
 
 
 # ── URLs e padroes de download ──────────────────────────────────
@@ -31,8 +35,8 @@ CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
 
 
-def _download(url, dest_path):
-    """Baixa arquivo com barra de progresso. Pula se ja existe."""
+def _download(url, dest_path, timeout=_TIMEOUT):
+    """Baixa arquivo com User-Agent e timeout. Pula se ja existe."""
     if dest_path.exists() and dest_path.stat().st_size > 1000:
         print(f"    [pula] {dest_path.name} (ja existe)")
         return True
@@ -41,7 +45,10 @@ def _download(url, dest_path):
     print(f"    [baixando] {dest_path.name}...")
 
     try:
-        urlretrieve(url, dest_path)
+        req = Request(url, headers={"User-Agent": _UA})
+        with urlopen(req, timeout=timeout) as resp:
+            with open(dest_path, "wb") as f:
+                shutil.copyfileobj(resp, f)
         size_mb = dest_path.stat().st_size / 1e6
         print(f"    [ok] {dest_path.name} ({size_mb:.1f}MB)")
         return True
@@ -220,16 +227,56 @@ def download_pgfn():
             _unzip(zip_path, dest)
 
 
-def download_rfb():
-    """Dados CNPJ da Receita Federal (~30GB, atualizado mensalmente).
+def _download_rfb_webdav(url, dest_path, timeout=1800):
+    """Download via Nextcloud WebDAV (Basic Auth com token, sem senha).
 
-    URL: https://dadosabertos.rfb.gov.br/CNPJ/dados_abertos_cnpj/{YYYY-MM}/
-    Tenta mes atual e anterior ate encontrar dados disponiveis.
+    Forca IPv4 pois arquivos.receitafederal.gov.br nao suporta IPv6.
+    """
+    if dest_path.exists() and dest_path.stat().st_size > 1000:
+        print(f"    [pula] {dest_path.name} (ja existe)")
+        return True
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"    [baixando] {dest_path.name}...")
+
+    import base64
+    import socket
+    # Forcar IPv4 (RFB nao suporta IPv6, urllib tenta IPv6 primeiro e dá timeout)
+    _orig_getaddrinfo = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **kw: [
+        r for r in _orig_getaddrinfo(*a, **kw) if r[0] == socket.AF_INET
+    ]
+    try:
+        auth = base64.b64encode(b"YggdBLfdninEJX9:").decode()
+        req = Request(url, headers={
+            "User-Agent": _UA,
+            "Authorization": f"Basic {auth}",
+        })
+        with urlopen(req, timeout=timeout) as resp:
+            with open(dest_path, "wb") as f:
+                shutil.copyfileobj(resp, f)
+        size_mb = dest_path.stat().st_size / 1e6
+        print(f"    [ok] {dest_path.name} ({size_mb:.1f}MB)")
+        return True
+    except (URLError, HTTPError) as e:
+        print(f"    [erro] {dest_path.name}: {e}")
+        if dest_path.exists():
+            dest_path.unlink()
+        return False
+    finally:
+        socket.getaddrinfo = _orig_getaddrinfo
+
+
+def download_rfb():
+    """Dados CNPJ da Receita Federal (~7GB/mes, atualizado mensalmente).
+
+    Fonte: Nextcloud share em arquivos.receitafederal.gov.br
+    Acesso via WebDAV com token publico.
     """
     dest = DATA_DIR / "rfb"
     dest.mkdir(parents=True, exist_ok=True)
 
-    RFB_BASE = "https://dadosabertos.rfb.gov.br/CNPJ/dados_abertos_cnpj"
+    RFB_WEBDAV = "https://arquivos.receitafederal.gov.br/public.php/webdav"
     categorias = {
         "Empresas": 10,
         "Estabelecimentos": 10,
@@ -255,10 +302,11 @@ def download_rfb():
     rfb_month = None
     for mes in meses_tentativa:
         # Testar se o mes existe baixando o menor arquivo
-        test_url = f"{RFB_BASE}/{mes}/Cnaes.zip"
-        test_path = dest / f"Cnaes_{mes}.zip"
-        if _download(test_url, test_path):
+        test_url = f"{RFB_WEBDAV}/{mes}/Cnaes.zip"
+        test_path = dest / "Cnaes.zip"
+        if _download_rfb_webdav(test_url, test_path, timeout=60):
             rfb_month = mes
+            _unzip(test_path, dest)
             print(f"    Usando dados de {mes}")
             break
         print(f"    {mes} nao disponivel, tentando anterior...")
@@ -270,17 +318,150 @@ def download_rfb():
     for cat, n_files in categorias.items():
         for i in range(n_files):
             fname = f"{cat}{i}.zip" if n_files > 1 else f"{cat}.zip"
-            url = f"{RFB_BASE}/{rfb_month}/{fname}"
+            url = f"{RFB_WEBDAV}/{rfb_month}/{fname}"
             zip_path = dest / fname
-            if _download(url, zip_path):
+            if _download_rfb_webdav(url, zip_path):
                 _unzip(zip_path, dest)
 
 
-def download_pncp():
-    """PNCP - licitacoes e contratos (API only, sem bulk download)."""
-    print("  PNCP:")
-    print("    Contratacoes/contratos: sem bulk download disponivel")
-    print("    Usar 'python -m etl.download_pncp' para baixar via API REST")
+def download_pncp(anos=None):
+    """PNCP - contratacoes e contratos via API Consulta.
+
+    Contratacoes: por data × modalidade (13 modalidades), max 500/pagina.
+    Contratos: por data, max 500/pagina.
+    Salva JSONs compativeis com etl/04_pncp.py loader.
+    """
+    import json
+    import time
+
+    if anos is None:
+        anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
+
+    PNCP_API = "https://pncp.gov.br/api/consulta/v1"
+    MODALIDADES = list(range(1, 14))  # 1-13
+    PAGE_SIZE = 500
+    today = date.today()
+
+    dest_contratacoes = DATA_DIR / "pncp"
+    dest_contratacoes.mkdir(parents=True, exist_ok=True)
+    dest_contratos = DATA_DIR / "pncp_contratos"
+    dest_contratos.mkdir(parents=True, exist_ok=True)
+
+    # Checkpoint: ultimo dia completo baixado
+    ckpt_file = DATA_DIR / "pncp" / "_checkpoint.json"
+    ckpt = {}
+    if ckpt_file.exists():
+        try:
+            ckpt = json.loads(ckpt_file.read_text())
+        except Exception:
+            pass
+    last_contratacao = ckpt.get("last_contratacao_date", "")
+    last_contrato = ckpt.get("last_contrato_date", "")
+
+    def _api_get(url, retries=3):
+        """GET com retry e backoff."""
+        for attempt in range(retries):
+            try:
+                req = Request(url, headers={"User-Agent": _UA})
+                with urlopen(req, timeout=60) as resp:
+                    return json.loads(resp.read())
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    print(f"    [erro] {e}")
+                    return None
+
+    def _date_range(anos):
+        """Gera datas dia a dia para os anos solicitados."""
+        from datetime import timedelta
+        for ano in anos:
+            d = date(ano, 1, 1)
+            end = min(date(ano, 12, 31), today)
+            while d <= end:
+                yield d
+                d += timedelta(days=1)
+
+    # ── Contratacoes (por dia × modalidade) ──
+    print("  PNCP contratacoes:")
+    total_contratacoes = 0
+    for d in _date_range(anos):
+        ds = d.strftime("%Y%m%d")
+        if ds <= last_contratacao:
+            continue
+
+        day_records = []
+        for mod in MODALIDADES:
+            page = 1
+            while True:
+                url = (f"{PNCP_API}/contratacoes/publicacao"
+                       f"?dataInicial={ds}&dataFinal={ds}"
+                       f"&codigoModalidadeContratacao={mod}"
+                       f"&pagina={page}&tamanhoPagina={PAGE_SIZE}")
+                resp = _api_get(url)
+                if not resp:
+                    break
+                items = resp.get("data", [])
+                if not items:
+                    break
+                day_records.extend(items)
+                total_pages = resp.get("totalPaginas", 1)
+                if page >= total_pages:
+                    break
+                page += 1
+                time.sleep(0.1)
+
+        if day_records:
+            out_path = dest_contratacoes / f"contratacoes_{ds}.json"
+            out_path.write_text(json.dumps(day_records, ensure_ascii=False), encoding="utf-8")
+            total_contratacoes += len(day_records)
+            print(f"    {ds}: {len(day_records)} contratacoes")
+
+        # Update checkpoint
+        ckpt["last_contratacao_date"] = ds
+        ckpt_file.write_text(json.dumps(ckpt))
+
+    print(f"    Total contratacoes baixadas: {total_contratacoes}")
+
+    # ── Contratos (por dia) ──
+    print("  PNCP contratos:")
+    total_contratos = 0
+    for d in _date_range(anos):
+        ds = d.strftime("%Y%m%d")
+        if ds <= last_contrato:
+            continue
+
+        day_records = []
+        page = 1
+        while True:
+            url = (f"{PNCP_API}/contratos"
+                   f"?dataInicial={ds}&dataFinal={ds}"
+                   f"&pagina={page}&tamanhoPagina={PAGE_SIZE}")
+            resp = _api_get(url)
+            if not resp:
+                break
+            items = resp.get("data", [])
+            if not items:
+                break
+            day_records.extend(items)
+            total_pages = resp.get("totalPaginas", 1)
+            if page >= total_pages:
+                break
+            page += 1
+            time.sleep(0.1)
+
+        if day_records:
+            out_path = dest_contratos / f"contratos_{ds}.json"
+            out_path.write_text(json.dumps(day_records, ensure_ascii=False), encoding="utf-8")
+            total_contratos += len(day_records)
+            print(f"    {ds}: {len(day_records)} contratos")
+
+        # Update checkpoint
+        ckpt["last_contrato_date"] = ds
+        ckpt_file.write_text(json.dumps(ckpt))
+
+    print(f"    Total contratos baixados: {total_contratos}")
+    print("    Itens/resultados: usar 'python -m etl.download_pncp' (API por contratacao)")
 
 
 def download_renuncias(anos=None):
@@ -324,10 +505,9 @@ def download_dados_pb(anos=None):
     dest = DATA_DIR / "dados_pb"
     dest.mkdir(parents=True, exist_ok=True)
 
-    from urllib.request import urlopen
-    from urllib.error import URLError, HTTPError
-
     PB_BASE = "https://dados.pb.gov.br:443/getcsv"
+    today = date.today()
+    current_ym = today.year * 100 + today.month
 
     # Datasets mensais
     monthly = [
@@ -340,13 +520,16 @@ def download_dados_pb(anos=None):
     for api_nome, file_prefix in monthly:
         for ano in anos:
             for mes in range(1, 13):
+                if ano * 100 + mes > current_ym:
+                    break
                 fname = f"{file_prefix}_{ano}_{mes:02d}.csv"
                 fpath = dest / fname
                 if fpath.exists() and fpath.stat().st_size > 100:
                     continue
                 url = f"{PB_BASE}?nome={api_nome}&exercicio={ano}&mes={mes}"
                 try:
-                    resp = urlopen(url, timeout=120)
+                    req = Request(url, headers={"User-Agent": _UA})
+                    resp = urlopen(req, timeout=120)
                     data = resp.read()
                     if len(data) > 100:
                         with open(fpath, "wb") as f:
@@ -365,7 +548,8 @@ def download_dados_pb(anos=None):
             continue
         url = f"{PB_BASE}?nome=contratos&exercicio={ano}"
         try:
-            resp = urlopen(url, timeout=120)
+            req = Request(url, headers={"User-Agent": _UA})
+            resp = urlopen(req, timeout=120)
             data = resp.read()
             if len(data) > 100:
                 with open(fpath, "wb") as f:
@@ -382,7 +566,8 @@ def download_dados_pb(anos=None):
             continue
         url = f"{PB_BASE}?nome=convenios&exercicio={ano}&mes_inicio=1&mes_fim=12"
         try:
-            resp = urlopen(url, timeout=120)
+            req = Request(url, headers={"User-Agent": _UA})
+            resp = urlopen(req, timeout=120)
             data = resp.read()
             if len(data) > 100:
                 with open(fpath, "wb") as f:
@@ -466,7 +651,7 @@ def run():
 
         fn = DOWNLOADERS[source]
         # Passar anos se a funcao aceita
-        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias"):
+        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp"):
             fn(anos=anos)
         elif source == "siape" and anos:
             fn(meses=[f"{a}01" for a in anos])

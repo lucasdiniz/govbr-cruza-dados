@@ -17,7 +17,7 @@
   - Deploy automático DESATIVADO até VM pronta (disco 256GB + downloads automatizados)
 - [ ] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4)
 - [x] Automatizar downloads: RFB (auto-detect mês), PGFN (trimestral), emendas, renúncias, BNDES (2 CSVs)
-  - PNCP: sem bulk download, apenas via API (download_pncp.py)
+  - PNCP: bulk download via API Consulta (contratacoes dia×modalidade + contratos dia) + itens via download_pncp.py
   - ComprasNet: incluído no repo como data/static/comprasnet.csv.gz (13MB)
   - Holdings: removido do pipeline (redundante com socio WHERE tipo_socio=1)
 - [x] Preparar VM Azure: data disk 512GB montado em /data, PG16 instalado, deploy rodando
@@ -268,22 +268,36 @@ Recomendacoes:
 - [ ] Reclassificar cartel_combustiveis de "fraude" para "padrao requer analise licitacoes especificas"
 - [ ] Remover/caveatar secao ABIN/GSI do relatorio CPGF smurfing
 
-### Handoff proxima sessao (sessao 16)
-- Git: main branch, commits sessao 15: 379da10→e6a9c39
-- DB local: TCE-PB 4 tabelas recarregadas + data_empenho 100% OK
-  - Normalizacao (15_normalizar) estava rodando em background — verificar se completou
-  - Apos normalizar: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
-- VM Azure: deploy run 23674360290 COMPLETOU mas com problemas:
-  - Steps todos "success" mas tabelas com 0 registros (empresa, estabelecimento, socio, pncp = 0)
-  - tce_pb tabelas "not found"
-  - **INVESTIGAR**: logs mostram falhas de download (arquivos nao baixados) e erros SQL
-  - Commit BNDES fix (7998b0e) + TODO (e6a9c39) nao foram pegos por este run
-  - PG16 instalado OK, data dir em /data (512GB), OS disk limpo (8%)
-  - Proxima sessao: `gh run view 23674360290 --log` para diagnosticar falhas especificas
-  - Provavelmente: RFB timeout (66M rows), PNCP sem bulk, downloads falharam silenciosamente
-  - Re-triggar deploy apos fixes com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
-- Relatorios: 5 problematicos identificados, recomendacoes de fix listadas acima
-- Pendente apos queries locais: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
+### 2026-03-28 (sessao 16)
+- Diagnosticado deploy run 23674360290: RFB timeout, ComprasNet VARCHAR crash, run_all raise parava todo ETL
+- **ComprasNet VARCHAR fix**: sql/09_schema_complementar.sql cnpj/fornecedor_cnpj_cpf VARCHAR(14)→VARCHAR(20) (CSVs tem formato 12.345.678/0001-90)
+- **run_all.py error handling**: removido `raise` que parava todas fases — agora coleta erros e continua, sys.exit(1) no final com resumo
+- **deploy.yml double-execution fix**: `etl_phase=all` triggava "First run" E "Run ETL from phase" — adicionado `inputs.etl_phase != 'all'` na condicao
+- **deploy.yml first-run**: adicionado `|| true` para `.initialized` ser criado mesmo com erros parciais
+- **RFB download reescrito**: dadosabertos.rfb.gov.br morto → Nextcloud WebDAV em arquivos.receitafederal.gov.br
+  - Novo `_download_rfb_webdav()` com Basic Auth (token YggdBLfdninEJX9), forçando IPv4 (IPv6 timeout)
+  - Auto-detect mes: tenta mes atual ate 3 anteriores via Cnaes.zip (menor arquivo)
+- **CPGF/dados_pb future month fix**: skip meses futuros (`current_ym` check)
+- **SIAPE**: tenta mes atual + 2 anteriores (atraso publicacao)
+- **Sancoes**: tenta hoje + 7 dias retroativos (atraso publicacao)
+- **User-Agent** adicionado a todos urlopen (algumas APIs bloqueiam Python default)
+
+### 2026-03-28 (sessao 17)
+- **PNCP bulk download implementado**: `download_pncp()` via API Consulta (`/api/consulta/v1/`)
+  - Contratacoes: itera dia × 13 modalidades, max 500/pagina, salva em DATA_DIR/pncp/contratacoes_YYYYMMDD.json
+  - Contratos: itera dia, max 500/pagina, salva em DATA_DIR/pncp_contratos/contratos_YYYYMMDD.json
+  - Checkpoint em _checkpoint.json (retomavel)
+  - Range: 2021→ano atual (PNCP existe desde 2021)
+  - Itens/resultados: continua via `python -m etl.download_pncp` (API por contratacao)
+- JSONs compativeis com loader existente (04_pncp.py aceita lista ou dict com "data" key)
+
+### Handoff proxima sessao (sessao 18)
+- Git: 5 arquivos modificados (uncommitted): deploy.yml, 00_download.py, run_all.py, 09_schema_complementar.sql, relatorio
+- DB local: TCE-PB OK, normalizacao pode precisar verificacao
+  - Pendente: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
+- VM Azure: re-triggar deploy com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+- Relatorios: 5 problematicos identificados, recomendacoes de fix na secao "Avaliacao relatorios"
+- Pendente: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica

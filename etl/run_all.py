@@ -2,6 +2,7 @@
 
 import sys
 import time
+import traceback
 
 
 def main():
@@ -33,6 +34,8 @@ def main():
         ("Fase 18: Views materializadas", "etl.21_views"),
     ]
 
+    errors = []
+
     # Permite rodar fase específica: python -m etl.run_all 3
     start_phase = 0
     if len(sys.argv) > 1:
@@ -58,15 +61,23 @@ def main():
         except Exception as e:
             print(f"\n  ERRO na {name}: {e}")
             print(f"  Para retomar a partir desta fase: python -m etl.run_all {i+1}")
-            raise
+            traceback.print_exc()
+            errors.append((name, str(e)))
 
         elapsed = time.time() - phase_start
         print(f"  Concluído em {elapsed:.1f}s")
 
     total = time.time() - start
     print(f"\n{'='*60}")
-    print(f"ETL completo em {total/60:.1f} minutos")
-    print(f"{'='*60}")
+    if errors:
+        print(f"ETL completo com {len(errors)} erro(s) em {total/60:.1f} minutos:")
+        for name, err in errors:
+            print(f"  - {name}: {err}")
+        print(f"{'='*60}")
+        sys.exit(1)
+    else:
+        print(f"ETL completo em {total/60:.1f} minutos")
+        print(f"{'='*60}")
 
 
 if __name__ == "__main__":

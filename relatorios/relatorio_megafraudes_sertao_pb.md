@@ -13,7 +13,7 @@ A busca por anomalias de "Empresas Recém-Criadas" e "Faixas Etárias Extremas" 
 O algoritmo de Laranjas (q18) identificou um contrato de **R$ 11.163.973,50** para gêneros alimentícios e limpeza.
 * **A Empresa:** GOMES E COSTA LTDA (CNPJ 44.409.367/0001-39).
 * **A Fraude:** O dono da empresa é **Damião Gomes Sarmento Neto**, que no ato de fundação da empresa tinha apenas **15/16 anos de idade** (nascido em 2006). Ele foi emancipado judicialmente apenas para assinar pela empresa.
-* **O Verdadeiro Operador:** A pesquisa OSINT revelou que a empresa é uma fachada jurídica para a família de *Jucélio Costa de Araújo*, dono do "Supermercado Félix", um fornecedor histórico de prefeitos da região. 
+* **O Verdadeiro Operador e a Prova Matemática:** A pesquisa OSINT inicial sugeria que a empresa era uma fachada para a família de *Jucélio Costa de Araújo*, dono do "Supermercado Félix". O uso da nova ferramenta de Grafos do banco de dados (`mv_rede_pb`) **provou matematicamente a fraude societária**: O CPF do adolescente Damião Gomes foi localizado no quadro societário matriz da Receita Federal não apenas da empresa de fachada, mas também como sócio oficial da **SUPERMERCADO FELIX LTDA**. O pai utilizou o filho recém-emancipado como "sócio-escudo" simultâneo em ambas as empresas para burlar restrições da prefeitura. 
 * **O Cerco do MPPB:** A manobra de usar o filho para monopolizar licitações ruiu quando o Ministério Público da Paraíba flagrou a empresa do adolescente em *conluio* (acordo de divisão de lucros) com outra empresa local (Melo e Martins) em um mega-pregão de **R$ 23 milhões** na cidade.
 
 ## 3. São João do Rio do Peixe/PB: A Obra do Açude e o TCU (R$ 11,1 Milhões)

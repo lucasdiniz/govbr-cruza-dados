@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS comprasnet_contrato CASCADE;
 CREATE TABLE bndes_contrato (
     id                      SERIAL PRIMARY KEY,
     cliente                 VARCHAR(200),
-    cnpj                    VARCHAR(14),
+    cnpj                    VARCHAR(20),
     descricao_projeto       TEXT,
     uf                      CHAR(2),
     municipio               VARCHAR(100),
@@ -36,7 +36,7 @@ CREATE TABLE bndes_contrato (
     porte_cliente           VARCHAR(50),
     natureza_cliente        VARCHAR(100),
     instituicao_credenciada VARCHAR(200),
-    cnpj_instituicao        VARCHAR(14),
+    cnpj_instituicao        VARCHAR(20),
     tipo_garantia           VARCHAR(100),
     tipo_excepcionalidade   VARCHAR(100),
     situacao_contrato       VARCHAR(50)
@@ -68,7 +68,7 @@ CREATE TABLE comprasnet_contrato (
     unidade_origem_codigo   VARCHAR(20),
     unidade_origem_nome     VARCHAR(200),
     fornecedor_tipo         VARCHAR(20),
-    fornecedor_cnpj_cpf     VARCHAR(14),
+    fornecedor_cnpj_cpf     VARCHAR(20),
     fornecedor_nome         VARCHAR(200),
     codigo_tipo             VARCHAR(10),
     tipo                    VARCHAR(100),
