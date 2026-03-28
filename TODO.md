@@ -98,7 +98,15 @@ Problemas globais: linguagem acusatoria, encoding quebrado, "deteccao precoce" i
 - Deploy run 23687002733 em andamento
 
 ### Handoff sessao 20
-- Git: commits ate 4479008, pushed to main
-- DB local: OK, 77 query results em resultados/
-- VM: deploy em andamento
-- Proximos passos: monitorar deploy, corrigir relatorios problematicos, fix Issue #5 queries
+- Git: commits ate e3f025e, pushed to main
+- DB local: OK, PostgreSQL rodando (path: `/c/Program Files/PostgreSQL/16/bin/psql.exe`, PGPASSWORD=kong1029)
+- 77 query results em resultados/ (validados)
+- VM Azure: deploy run 23687002733 em andamento (~40min+, full ETL leva horas)
+- Issues: #1/#3/#4 fechadas, #2 (deploy) aberta, #5 (query quality) aberta
+- Background tasks from previous sessions (b80x6y0h3 etc) failed due to psql path — ignorar, dados ja estao em resultados/
+- Proximos passos:
+  1. Monitorar deploy: `gh run view 23687002733` (quando completar, verificar logs)
+  2. Fix Issue #5 queries: Q59 JOIN explosion (CTE pre-agregar despesas), Q70 CNPJ collision (filtrar PF)
+  3. Corrigir relatorios problematicos (cartel_combustiveis, smart_smurfing ABIN, risk_score_elite, fazenda_laranjas)
+  4. Re-rodar pncp_itens ETL (VARCHAR(500) fix aplicado)
+  5. Queries Q45-Q58 (superfaturamento pendentes)
