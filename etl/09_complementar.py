@@ -18,10 +18,19 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
 
 
 def load_bndes(conn):
-    """Carrega bndes.csv → bndes_contrato."""
-    filepath = DATA_DIR / "bndes.csv"
-    if not filepath.exists():
-        print("    AVISO: bndes.csv não encontrado.")
+    """Carrega BNDES CSVs → bndes_contrato.
+
+    Aceita formato antigo (bndes.csv) ou novo (2 CSVs separados).
+    """
+    bndes_dir = DATA_DIR / "bndes"
+    # Formato novo: 2 CSVs no subdir bndes/
+    new_files = list(bndes_dir.glob("operacoes-financiamento-*.csv")) if bndes_dir.exists() else []
+    # Formato antigo: bndes.csv na raiz
+    old_file = DATA_DIR / "bndes.csv"
+
+    files = new_files if new_files else ([old_file] if old_file.exists() else [])
+    if not files:
+        print("    AVISO: BNDES CSVs não encontrados.")
         return
 
     staging = "_stg_bndes"
@@ -33,10 +42,12 @@ def load_bndes(conn):
 
     copy_sql = f"""COPY {staging} FROM STDIN
         WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
-    with open(filepath, "rb") as f:
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, f)
-    conn.commit()
+    for filepath in sorted(files):
+        print(f"    Carregando {filepath.name}...")
+        with open(filepath, "rb") as f:
+            with conn.cursor() as cur:
+                cur.copy_expert(copy_sql, f)
+        conn.commit()
 
     with conn.cursor() as cur:
         cur.execute(f"""

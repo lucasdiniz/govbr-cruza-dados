@@ -398,10 +398,16 @@ def download_complementar():
     dest_bndes.mkdir(parents=True, exist_ok=True)
 
     print("  BNDES:")
-    # BNDES operacoes financeiras (CSV publico)
-    BNDES_URL = "https://dadosabertos.bndes.gov.br/dataset/e45e53b4-3d18-4a38-835b-e21c8c735145/resource/47e039dd-e43e-4d66-b1e4-75f0b2e8e1a6/download/operacoes-financiamento-bndes.csv"
-    bndes_path = dest_bndes / "operacoes-financiamento-bndes.csv"
-    _download(BNDES_URL, bndes_path)
+    # BNDES operacoes financeiras - agora dividido em 2 CSVs
+    BNDES_BASE = "https://dadosabertos.bndes.gov.br/dataset/10e21ad1-568e-45e5-a8af-43f2c05ef1a2/resource"
+    bndes_files = {
+        "operacoes-financiamento-operacoes-nao-automaticas.csv":
+            f"{BNDES_BASE}/6f56b78c-510f-44b6-8274-78a5b7e931f4/download/operacoes-financiamento-operacoes-nao-automaticas.csv",
+        "operacoes-financiamento-operacoes-indiretas-automaticas.csv":
+            f"{BNDES_BASE}/612faa0b-b6be-4b2c-9317-da5dc2c0b901/download/operacoes-financiamento-operacoes-indiretas-automaticas.csv",
+    }
+    for fname, url in bndes_files.items():
+        _download(url, dest_bndes / fname)
 
     # Holdings: relacoes holding-subsidiaria extraidas dos socios RFB (507k rows)
     # Sem fonte publica conhecida separada — derivado do RFB socios
