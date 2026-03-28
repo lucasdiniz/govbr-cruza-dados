@@ -282,20 +282,36 @@ Recomendacoes:
 - **Sancoes**: tenta hoje + 7 dias retroativos (atraso publicacao)
 - **User-Agent** adicionado a todos urlopen (algumas APIs bloqueiam Python default)
 
-### 2026-03-28 (sessao 17)
-- **PNCP bulk download implementado**: `download_pncp()` via API Consulta (`/api/consulta/v1/`)
-  - Contratacoes: itera dia × 13 modalidades, max 500/pagina, salva em DATA_DIR/pncp/contratacoes_YYYYMMDD.json
-  - Contratos: itera dia, max 500/pagina, salva em DATA_DIR/pncp_contratos/contratos_YYYYMMDD.json
-  - Checkpoint em _checkpoint.json (retomavel)
+### 2026-03-28 (sessao 17+18)
+- **PNCP bulk download**: via API Consulta (`/api/consulta/v1/`)
+  - BUGFIX: `tamanhoPagina=500` causava 400 na API contratacoes (max=50). Contratos aceita 500.
+  - Otimizado: intervalos semanais em vez de diarios (7x menos chamadas de date range)
+  - Contratacoes: semana × 13 modalidades, 50/pagina, salva em DATA_DIR/pncp/contratacoes_YYYYMMDD_YYYYMMDD.json
+  - Contratos: semana, 500/pagina, salva em DATA_DIR/pncp_contratos/contratos_YYYYMMDD_YYYYMMDD.json
+  - Checkpoint em _checkpoint.json (retomavel), skip existing files
   - Range: 2021→ano atual (PNCP existe desde 2021)
-  - Itens/resultados: continua via `python -m etl.download_pncp` (API por contratacao)
-- JSONs compativeis com loader existente (04_pncp.py aceita lista ou dict com "data" key)
+  - 04_pncp.py: exclui _checkpoint.json do glob loader
+- **_unzip fix**: deleta zips corrompidos para permitir re-download (RFB tinha HTMLs salvos como .zip)
+- **pncp_item.unidade_medida**: VARCHAR(100)→VARCHAR(500) (campo contem descricoes longas)
+- **Diagnostico deploy run 23675652803**:
+  - PNCP 400s: page size 500→50 (fixed)
+  - RFB "invalid zip": corrupt files from previous run (fixed by _unzip delete)
+  - CPGF 202511/202603: 403 normal (meses nao publicados)
+  - SIAPE 202603: 403 (tenta 202602 que funciona)
+  - Sancoes 20260328: 403 (fallback para 20260327 funciona)
+  - PGFN Q1/2026: 404 (nao publicado, fallback para Q4/2025)
+  - ETL nunca passou de Fase 0 (downloads): PNCP travou 5h em 400s
+- **PostgreSQL local**: crashou durante ALTER, recuperado via pg_ctl restart + kill psql zombies
+- **TCE-PB verificado**: ano 2018-2026 totalmente preenchido (15.8M rows)
+- **Normalizacao**: completou com sucesso (fases 1-8 + TCE-PB + dados.pb)
 
-### Handoff proxima sessao (sessao 18)
-- Git: 5 arquivos modificados (uncommitted): deploy.yml, 00_download.py, run_all.py, 09_schema_complementar.sql, relatorio
-- DB local: TCE-PB OK, normalizacao pode precisar verificacao
+### Handoff proxima sessao (sessao 19)
+- Git: commits ate e4cc52f, pushed to main
+- DB local: OK, PostgreSQL rodando, 61 tabelas, pncp_item.unidade_medida alargado
   - Pendente: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
+  - Pendente: re-rodar `python -m etl.04b_pncp_itens` (crashou em 550k/3M por unidade_medida, agora VARCHAR(500))
 - VM Azure: re-triggar deploy com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+  - PNCP download inicial sera lento (5 anos × 52 semanas × 13 mod), mas checkpoint salva progresso entre deploys
 - Relatorios: 5 problematicos identificados, recomendacoes de fix na secao "Avaliacao relatorios"
 - Pendente: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
 
