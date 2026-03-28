@@ -59,7 +59,7 @@ def load_contratacoes(conn):
         print("    AVISO: diretório pncp/ não encontrado.")
         return
 
-    files = sorted(pncp_dir.glob("*.json"))
+    files = sorted(f for f in pncp_dir.glob("*.json") if not f.name.startswith("_"))
     columns = [
         "numero_controle_pncp", "cnpj_orgao", "orgao_razao_social",
         "poder", "esfera", "uf", "municipio_nome", "municipio_ibge",

@@ -376,92 +376,96 @@ def download_pncp(anos=None):
                     print(f"    [erro] {e}")
                     return None
 
-    def _date_range(anos):
-        """Gera datas dia a dia para os anos solicitados."""
+    def _week_ranges(anos):
+        """Gera intervalos semanais (seg-dom) para os anos solicitados."""
         from datetime import timedelta
         for ano in anos:
             d = date(ano, 1, 1)
+            # Alinhar ao inicio da semana (segunda)
+            d -= timedelta(days=d.weekday())
             end = min(date(ano, 12, 31), today)
             while d <= end:
-                yield d
-                d += timedelta(days=1)
+                week_end = min(d + timedelta(days=6), end)
+                yield d, week_end
+                d += timedelta(days=7)
 
-    # ── Contratacoes (por dia × modalidade) ──
-    print("  PNCP contratacoes:")
-    total_contratacoes = 0
-    for d in _date_range(anos):
-        ds = d.strftime("%Y%m%d")
-        if ds <= last_contratacao:
-            continue
-
-        day_records = []
-        for mod in MODALIDADES:
-            page = 1
-            while True:
-                url = (f"{PNCP_API}/contratacoes/publicacao"
-                       f"?dataInicial={ds}&dataFinal={ds}"
-                       f"&codigoModalidadeContratacao={mod}"
-                       f"&pagina={page}&tamanhoPagina={PAGE_SIZE_CONTRATACOES}")
-                resp = _api_get(url)
-                if not resp:
-                    break
-                items = resp.get("data", [])
-                if not items:
-                    break
-                day_records.extend(items)
-                total_pages = resp.get("totalPaginas", 1)
-                if page >= total_pages:
-                    break
-                page += 1
-                time.sleep(0.1)
-
-        if day_records:
-            out_path = dest_contratacoes / f"contratacoes_{ds}.json"
-            out_path.write_text(json.dumps(day_records, ensure_ascii=False), encoding="utf-8")
-            total_contratacoes += len(day_records)
-            print(f"    {ds}: {len(day_records)} contratacoes")
-
-        # Update checkpoint
-        ckpt["last_contratacao_date"] = ds
-        ckpt_file.write_text(json.dumps(ckpt))
-
-    print(f"    Total contratacoes baixadas: {total_contratacoes}")
-
-    # ── Contratos (por dia) ──
-    print("  PNCP contratos:")
-    total_contratos = 0
-    for d in _date_range(anos):
-        ds = d.strftime("%Y%m%d")
-        if ds <= last_contrato:
-            continue
-
-        day_records = []
+    def _fetch_all_pages(base_url, page_size, max_pages=2000):
+        """Pagina por todos os resultados de uma URL base."""
+        all_items = []
         page = 1
-        while True:
-            url = (f"{PNCP_API}/contratos"
-                   f"?dataInicial={ds}&dataFinal={ds}"
-                   f"&pagina={page}&tamanhoPagina={PAGE_SIZE_CONTRATOS}")
+        while page <= max_pages:
+            url = f"{base_url}&pagina={page}&tamanhoPagina={page_size}"
             resp = _api_get(url)
             if not resp:
                 break
             items = resp.get("data", [])
             if not items:
                 break
-            day_records.extend(items)
+            all_items.extend(items)
             total_pages = resp.get("totalPaginas", 1)
             if page >= total_pages:
                 break
             page += 1
-            time.sleep(0.1)
+            time.sleep(0.05)
+        return all_items
 
-        if day_records:
-            out_path = dest_contratos / f"contratos_{ds}.json"
-            out_path.write_text(json.dumps(day_records, ensure_ascii=False), encoding="utf-8")
-            total_contratos += len(day_records)
-            print(f"    {ds}: {len(day_records)} contratos")
+    # ── Contratacoes (por semana × modalidade) ──
+    print("  PNCP contratacoes:")
+    total_contratacoes = 0
+    for week_start, week_end in _week_ranges(anos):
+        ds = week_start.strftime("%Y%m%d")
+        de = week_end.strftime("%Y%m%d")
+        if de <= last_contratacao:
+            continue
+
+        out_path = dest_contratacoes / f"contratacoes_{ds}_{de}.json"
+        if out_path.exists() and out_path.stat().st_size > 10:
+            continue
+
+        week_records = []
+        for mod in MODALIDADES:
+            base_url = (f"{PNCP_API}/contratacoes/publicacao"
+                        f"?dataInicial={ds}&dataFinal={de}"
+                        f"&codigoModalidadeContratacao={mod}")
+            items = _fetch_all_pages(base_url, PAGE_SIZE_CONTRATACOES)
+            week_records.extend(items)
+
+        if week_records:
+            out_path.write_text(json.dumps(week_records, ensure_ascii=False), encoding="utf-8")
+            total_contratacoes += len(week_records)
+            print(f"    {ds}-{de}: {len(week_records)} contratacoes")
 
         # Update checkpoint
-        ckpt["last_contrato_date"] = ds
+        ckpt["last_contratacao_date"] = de
+        ckpt_file.write_text(json.dumps(ckpt))
+
+    print(f"    Total contratacoes baixadas: {total_contratacoes}")
+
+    # ── Contratos (por semana) ──
+    print("  PNCP contratos:")
+    total_contratos = 0
+    for week_start, week_end in _week_ranges(anos):
+        ds = week_start.strftime("%Y%m%d")
+        de = week_end.strftime("%Y%m%d")
+        if de <= last_contrato:
+            continue
+
+        out_path = dest_contratos / f"contratos_{ds}_{de}.json"
+        if out_path.exists() and out_path.stat().st_size > 10:
+            continue
+
+        week_records = _fetch_all_pages(
+            f"{PNCP_API}/contratos?dataInicial={ds}&dataFinal={de}",
+            PAGE_SIZE_CONTRATOS,
+        )
+
+        if week_records:
+            out_path.write_text(json.dumps(week_records, ensure_ascii=False), encoding="utf-8")
+            total_contratos += len(week_records)
+            print(f"    {ds}-{de}: {len(week_records)} contratos")
+
+        # Update checkpoint
+        ckpt["last_contrato_date"] = de
         ckpt_file.write_text(json.dumps(ckpt))
 
     print(f"    Total contratos baixados: {total_contratos}")
