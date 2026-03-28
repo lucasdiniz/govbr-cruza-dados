@@ -60,14 +60,17 @@ def _download(url, dest_path, timeout=_TIMEOUT):
 
 
 def _unzip(zip_path, dest_dir=None):
-    """Extrai zip. Destino padrao = mesmo diretorio do zip."""
+    """Extrai zip. Destino padrao = mesmo diretorio do zip.
+    Deleta arquivo corrompido para permitir re-download.
+    """
     if dest_dir is None:
         dest_dir = zip_path.parent
     try:
         with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(dest_dir)
     except zipfile.BadZipFile:
-        print(f"    [erro] {zip_path.name} nao e um zip valido")
+        print(f"    [erro] {zip_path.name} nao e um zip valido, deletando para re-download")
+        zip_path.unlink(missing_ok=True)
 
 
 # ── Downloads por fonte ─────────────────────────────────────────
@@ -339,7 +342,8 @@ def download_pncp(anos=None):
 
     PNCP_API = "https://pncp.gov.br/api/consulta/v1"
     MODALIDADES = list(range(1, 14))  # 1-13
-    PAGE_SIZE = 500
+    PAGE_SIZE_CONTRATACOES = 50   # API max for contratacoes
+    PAGE_SIZE_CONTRATOS = 500     # API max for contratos
     today = date.today()
 
     dest_contratacoes = DATA_DIR / "pncp"
@@ -397,7 +401,7 @@ def download_pncp(anos=None):
                 url = (f"{PNCP_API}/contratacoes/publicacao"
                        f"?dataInicial={ds}&dataFinal={ds}"
                        f"&codigoModalidadeContratacao={mod}"
-                       f"&pagina={page}&tamanhoPagina={PAGE_SIZE}")
+                       f"&pagina={page}&tamanhoPagina={PAGE_SIZE_CONTRATACOES}")
                 resp = _api_get(url)
                 if not resp:
                     break
@@ -436,7 +440,7 @@ def download_pncp(anos=None):
         while True:
             url = (f"{PNCP_API}/contratos"
                    f"?dataInicial={ds}&dataFinal={ds}"
-                   f"&pagina={page}&tamanhoPagina={PAGE_SIZE}")
+                   f"&pagina={page}&tamanhoPagina={PAGE_SIZE_CONTRATOS}")
             resp = _api_get(url)
             if not resp:
                 break

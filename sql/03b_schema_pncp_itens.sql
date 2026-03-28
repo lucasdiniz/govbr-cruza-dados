@@ -12,7 +12,7 @@ CREATE TABLE pncp_item (
     valor_unitario_estimado  DECIMAL(15,2),
     valor_total              DECIMAL(15,2),
     quantidade               DECIMAL(15,4),
-    unidade_medida           VARCHAR(100),
+    unidade_medida           VARCHAR(500),
     orcamento_sigiloso       BOOLEAN,
     criterio_julgamento_nome VARCHAR(100),
     situacao_item_nome       VARCHAR(100),        -- Homologado, Em andamento, etc
