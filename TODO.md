@@ -15,7 +15,7 @@
 - [x] **Issue #4**: Q10/Q21/Q22/Q29 nome no JOIN CPF + 3 indices compostos (Q32 CPF completo, sem nome)
 - [x] **Issue #2**: deploy.yml reescrito (PG16 install, clean step, disk check, CI/CD logic)
   - Deploy automático DESATIVADO até VM pronta (disco 256GB + downloads automatizados)
-- [ ] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4)
+- [x] Re-rodar todas queries após ETL tce_pb_despesa terminar (validar fixes Issues #1/#3/#4) — 77 CSVs gerados
 - [x] Automatizar downloads: RFB (auto-detect mês), PGFN (trimestral), emendas, renúncias, BNDES (2 CSVs)
   - PNCP: bulk download via API Consulta (contratacoes dia×modalidade + contratos dia) + itens via download_pncp.py
   - ComprasNet: incluído no repo como data/static/comprasnet.csv.gz (13MB)
@@ -305,15 +305,30 @@ Recomendacoes:
 - **TCE-PB verificado**: ano 2018-2026 totalmente preenchido (15.8M rows)
 - **Normalizacao**: completou com sucesso (fases 1-8 + TCE-PB + dados.pb)
 
-### Handoff proxima sessao (sessao 19)
-- Git: commits ate e4cc52f, pushed to main
-- DB local: OK, PostgreSQL rodando, 61 tabelas, pncp_item.unidade_medida alargado
-  - Pendente: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
+### 2026-03-28 (sessao 19)
+- **Queries rodadas localmente**: 77 CSVs em resultados/, todas 75 queries OK
+  - Q10: 979 resultados (validado, down de ~16K pre-fix) — CPF+nome matching funciona
+  - Q21: 95 resultados (validado)
+  - Q22: 4 resultados (self-dealing direto e raro)
+  - Q59: 32K resultados (filtro temporal ativo, Issue #3 fix confirmado)
+  - Q63: 501 resultados (threshold 2022-01 confirmado)
+- **Issues fechadas**: #1 (tce_pb dates), #3 (Q59/Q63 temporal), #4 (CPF+nome matching)
+- **Issue #5 criada**: Problemas de qualidade em queries (Q70 CNPJ collision, Q59 JOIN explosion, Q29 ruido, Q19 sigilosos, Q21 valores absurdos)
+- **Deploy run 23687002733**: trigado (clean=true, etl_phase=all), em andamento
+- **Relatorios regenerados/novos**:
+  - relatorio_conflito_cartao_corporativo.md — **REGENERADO** (v2) com Q10 validada (979 matches). Casos CBTU/ICMBio removidos (falsos positivos). Novos top cases: UFSM (R$459K), Hospital Conceicao (R$355K), INCRA (R$347K), Min. Defesa+drogaria (R$285K)
+  - relatorio_sancionados_recebendo_pb.md — **NOVO**. Q65: 270 empresas sancionadas (CEIS) recebendo R$170.6M de 199 municipios PB. Destaques: PBF Grafica R$16.2M em 3 municipios, Marbella inidone R$10.6M, Multiservicoessolucoes impedida por JP operando em Bayeux R$5.4M
+  - relatorio_pejotizacao_saude_municipal_pb.md — **NOVO**. Q59: medicos-servidores socios de empresas de saude. I2 Saude: R$65.8M em 16 municipios, 29+ medicos-socios. Gadelha Hospital Sousa R$19.9M, MAISMED R$8.1M
+
+### Handoff proxima sessao (sessao 20)
+- Git: pendente commit + push dos novos relatorios
+- DB local: OK, PostgreSQL rodando
   - Pendente: re-rodar `python -m etl.04b_pncp_itens` (crashou em 550k/3M por unidade_medida, agora VARCHAR(500))
-- VM Azure: re-triggar deploy com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
-  - PNCP download inicial sera lento (5 anos × 52 semanas × 13 mod), mas checkpoint salva progresso entre deploys
-- Relatorios: 5 problematicos identificados, recomendacoes de fix na secao "Avaliacao relatorios"
-- Pendente: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
+- VM Azure: deploy run 23687002733 em andamento
+- Issue #2 (deploy) ainda aberta
+- Issue #5 (query quality) aberta — fixes para Q59 JOIN explosion e Q70 CNPJ collision
+- Pendente: corrigir relatorios cartel_combustiveis_pb, smart_smurfing_cpgf (ABIN), risk_score_elite_politica_pb, fazenda_laranjas_mato_grosso_pb
+- Pendente: adicionar disclaimer padrao a todos relatorios
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
