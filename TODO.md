@@ -269,15 +269,21 @@ Recomendacoes:
 - [ ] Remover/caveatar secao ABIN/GSI do relatorio CPGF smurfing
 
 ### Handoff proxima sessao (sessao 16)
-- Git: main branch, commits sessao 15: 379da10→7998b0e
+- Git: main branch, commits sessao 15: 379da10→e6a9c39
 - DB local: TCE-PB 4 tabelas recarregadas + data_empenho 100% OK
-  - Normalizacao (15_normalizar) rodando em background
+  - Normalizacao (15_normalizar) estava rodando em background — verificar se completou
   - Apos normalizar: rodar `python -m etl.run_queries` para validar fixes Issues #1/#3/#4
-- VM Azure: deploy rodando (run 23674360290, Full ETL) — horas de download + carga
-  - Se falhar: commit BNDES fix (7998b0e) nao foi pego por este run, re-triggar depois
-  - PG16 instalado, data dir em /data (512GB), OS disk limpo (8%)
+- VM Azure: deploy run 23674360290 COMPLETOU mas com problemas:
+  - Steps todos "success" mas tabelas com 0 registros (empresa, estabelecimento, socio, pncp = 0)
+  - tce_pb tabelas "not found"
+  - **INVESTIGAR**: logs mostram falhas de download (arquivos nao baixados) e erros SQL
+  - Commit BNDES fix (7998b0e) + TODO (e6a9c39) nao foram pegos por este run
+  - PG16 instalado OK, data dir em /data (512GB), OS disk limpo (8%)
+  - Proxima sessao: `gh run view 23674360290 --log` para diagnosticar falhas especificas
+  - Provavelmente: RFB timeout (66M rows), PNCP sem bulk, downloads falharam silenciosamente
+  - Re-triggar deploy apos fixes com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
 - Relatorios: 5 problematicos identificados, recomendacoes de fix listadas acima
-- Pendente apos queries: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
+- Pendente apos queries locais: regenerar relatorios afetados por fix Q10/Q21/Q22/Q29
 
 ### 2026-03-22 (sessao 5)
 - Retomada: PGFN UPDATE ainda rodando (~5h, PID 16664), 39.9M rows transacao unica
