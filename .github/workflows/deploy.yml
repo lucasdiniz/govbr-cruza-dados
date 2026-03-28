@@ -98,15 +98,7 @@ jobs:
               sudo -u postgres psql -d govbr -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
               # Tuning for 16GB RAM VM
-              sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null << CONF
-            shared_buffers = 4GB
-            effective_cache_size = 12GB
-            work_mem = 512MB
-            maintenance_work_mem = 1GB
-            max_wal_size = 4GB
-            checkpoint_completion_target = 0.9
-            random_page_cost = 1.1
-            CONF
+              echo -e "shared_buffers = 4GB\neffective_cache_size = 12GB\nwork_mem = 512MB\nmaintenance_work_mem = 1GB\nmax_wal_size = 4GB\ncheckpoint_completion_target = 0.9\nrandom_page_cost = 1.1" | sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null
 
               # Allow local connections with password
               sudo sed -i 's/local\s\+all\s\+all\s\+peer/local all all md5/' /etc/postgresql/16/main/pg_hba.conf
@@ -247,19 +239,13 @@ jobs:
             source venv/bin/activate
 
             python -c "
-            from etl.db import get_conn, table_count
-            conn = get_conn()
-            tables = [
-                'empresa', 'estabelecimento', 'socio',
-                'pncp_contratacao', 'pncp_contrato',
-                'tce_pb_despesa', 'tce_pb_servidor',
-            ]
-            print('=== Database Status ===')
-            for t in tables:
-                try:
-                    print(f'  {t}: {table_count(conn, t):,}')
-                except Exception:
-                    print(f'  {t}: (not found)')
-            conn.close()
-            "
+from etl.db import get_conn, table_count
+conn = get_conn()
+tables = ['empresa','estabelecimento','socio','pncp_contratacao','pncp_contrato','tce_pb_despesa','tce_pb_servidor']
+print('=== Database Status ===')
+for t in tables:
+    try: print(f'  {t}: {table_count(conn, t):,}')
+    except Exception: print(f'  {t}: (not found)')
+conn.close()
+"
           SCRIPT
