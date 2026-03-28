@@ -1,43 +1,47 @@
-# Relatório de Investigação: Laranjas do Bolsa Família em Empresas Milionárias na Paraíba
+# Relatório de Análise: Incompatibilidade entre Benefício Social e Participação Societária na Paraíba
 
 **Data de Geração:** 21 de Março de 2026
-**Base de Dados:** Repositório `govbr-cruza-dados` (Arquivos `q39_socio_empresa_bolsa_familia.csv`)
-**Foco:** Uso de vulnerabilidade social para blindagem patrimonial.
+**Base de Dados:** Repositório `govbr-cruza-dados` (Query Q39 — cruzamento Bolsa Família × QSA Receita Federal)
+**Foco:** Identificação de beneficiários de programas sociais que constam como sócios de empresas com capital social elevado.
+
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração, não conclusões de irregularidade. A presença do CPF de um beneficiário no QSA de uma empresa pode ter diversas explicações legítimas (inclusão sem conhecimento, sociedade formal sem participação efetiva, erro cadastral). Nenhuma das pessoas citadas foi investigada ou condenada pelos fatos aqui descritos, salvo quando explicitamente indicado por fonte externa.
 
 ---
 
 ## 1. Resumo Executivo
-O cruzamento automático entre a base do Auxílio Brasil/Bolsa Família e o quadro de Sócios e Administradores (QSA) da Receita Federal expôs uma tipologia grave de fraude na Paraíba: o uso de cidadãos em situação de pobreza extrema como "testas de ferro" (laranjas) para empresas com Capital Social na casa dos milhões. 
+O cruzamento automático entre a base do Auxílio Brasil/Bolsa Família e o Quadro de Sócios e Administradores (QSA) da Receita Federal identificou casos na Paraíba onde beneficiários de programas sociais constam como sócios de empresas com capital social significativamente superior à sua renda declarada. Esse tipo de incompatibilidade pode indicar uso indevido de CPF (com ou sem consentimento do titular) para constituição de empresas.
 
-A inteligência de fontes abertas (OSINT) validou que empresas atreladas a esses CPFs possuem vasto histórico de condenações por corrupção e improbidade administrativa em obras públicas no estado.
+## 2. Caso de Referência: Hidro Perfurações Ltda
+O cruzamento apontou que a Sra. **Maria do Desterro Formiga Flavio** (São José da Lagoa Tapada/PB), beneficiária de R$ 600,00, consta como sócia da **HIDRO PERFURACOES LTDA** (CNPJ: 04.830.606/0001-05), com Capital Social de R$ 5.000.000,00.
 
-## 2. O Estudo de Caso: Hidro Perfurações Ltda
-O cruzamento apontou que a Sra. **Maria do Desterro Formiga Flavio** (Município de São José da Lagoa Tapada/PB) recebe o benefício social de **R$ 600,00**. Contudo, na Receita Federal, ela consta como dona da **HIDRO PERFURACOES LTDA** (CNPJ: 04.830.606/0001-05), que possui Capital Social de **R$ 5.000.000,00**.
+**Corroboração por fontes externas:**
+- **TCU (Acórdão 18200/2021):** A Hidro Perfurações foi objeto de processo por inexecução e pagamentos irregulares na construção de escolas (Proinfância) em Quixabá/PB.
+- **CAGEPA (2019):** A empresa foi suspensa e impedida de licitar com a administração estadual por dois anos.
+- **MPF:** Alvo de ação por improbidade em obras em Guarabira.
 
-**Corroboração (OSINT e TCE):**
-Pesquisas confirmam que o nome da "sócia" é usado para blindar os verdadeiros donos de uma empresa com atuação suspeita em todo o estado:
-* **Tribunal de Contas da União (TCU):** A Hidro Perfurações foi condenada no Acórdão 18200/2021 (TCE) junto a ex-prefeitos por inexecução e pagamentos fraudulentos na construção de escolas (Proinfância) em Quixabá/PB.
-* **Governo do Estado (CAGEPA):** A empresa foi punida em 2019 com a suspensão e o impedimento de licitar com a administração estadual e com o próprio Ministério Público (MPPB) por dois anos devido a quebras de contrato.
-* **Ministério Público Federal (MPF):** Foi alvo de ação do MPF em Guarabira por improbidade e dano moral coletivo em desvios de obras.
+## 3. Outros Casos Identificados
 
-## 3. Outros Casos Alarmantes de "Miseráveis Milionários"
-O padrão se repete em outros municípios, criando frentes prontas para investigação de lavagem de dinheiro:
-
-* **João Pessoa/PB:** 
-  * **Janailda Maria da Silva:** Recebe míseros **R$ 180,00** do Bolsa Família, mas é "dona" da **SUCATAS HOSPITALARES COMERCIO E RECICLAGEM LTDA** (CNPJ: 15.739.000/0001-76) com Capital Social de **R$ 1.500.000,00**. (O setor de descarte hospitalar é crítico e alvo de máfias ambientais).
-  * **Aline Medeiros Correa de Oliveira:** Recebe **R$ 640,00**, mas figura como dona da construtora **OLHO DAGUA DO CAPIM SPE LTDA** (CNPJ: 50.839.309/0001-08) com Capital de **R$ 4.800.000,00**.
+* **João Pessoa/PB:**
+  * **Janailda Maria da Silva:** Beneficiária de R$ 180,00, consta como sócia da **SUCATAS HOSPITALARES COMERCIO E RECICLAGEM LTDA** (CNPJ: 15.739.000/0001-76) com Capital Social de R$ 1.500.000,00.
+  * **Aline Medeiros Correa de Oliveira:** Beneficiária de R$ 640,00, consta como sócia da **OLHO DAGUA DO CAPIM SPE LTDA** (CNPJ: 50.839.309/0001-08) com Capital de R$ 4.800.000,00.
 
 * **Juarez Távora/PB:**
-  * **Severino Alves de Andrade:** Recebe **R$ 600,00**, dono da **ETHIC REPRESENTACOES COMERCIAIS LTDA** (CNPJ: 00.803.795/0001-00) com Capital de **R$ 2.500.000,00**.
+  * **Severino Alves de Andrade:** Beneficiário de R$ 600,00, consta como sócio da **ETHIC REPRESENTACOES COMERCIAIS LTDA** (CNPJ: 00.803.795/0001-00) com Capital de R$ 2.500.000,00.
 
-* **O "Conglomerado" de Queimadas/PB:**
-  * **Carlos Alberto de Luna Candido:** Recebe **R$ 600,00** do governo. No entanto, seu CPF foi usado para abrir rapidamente **cinco empresas** diferentes, cada uma com Capital de R$ 200.000,00, sugerindo uma base de notas frias: *LUNA PUBLICIDADES LTDA*, *LIVRARIA LUNA LTDA*, *ALBERTO LUNA ASSISTENCIA TECNICA LTDA*, *LUNA SOLUCOES DIGITAIS LTDA* e *ADEGA LUNA LTDA*.
+* **Queimadas/PB:**
+  * **Carlos Alberto de Luna Candido:** Beneficiário de R$ 600,00, consta como sócio de cinco empresas distintas com Capital de R$ 200.000,00 cada: *LUNA PUBLICIDADES LTDA*, *LIVRARIA LUNA LTDA*, *ALBERTO LUNA ASSISTENCIA TECNICA LTDA*, *LUNA SOLUCOES DIGITAIS LTDA* e *ADEGA LUNA LTDA*.
 
-## 4. Conclusão
-A detecção de Laranjas do Bolsa Família não representa fraude contra o programa social em si, mas sim o crime de Fraude Societária (Falsidade Ideológica e Lavagem de Dinheiro) por parte dos verdadeiros operadores do esquema, que se escondem atrás da identidade de pessoas humildes para fraudar cofres públicos (como provado pelo caso da Hidro Perfurações) garantindo que seus bens pessoais não sejam bloqueados pela Justiça.
+## 4. Nota Metodológica
+A incompatibilidade entre benefício social e participação societária não constitui, por si só, prova de irregularidade. Possíveis explicações incluem:
+- Uso do CPF do beneficiário sem seu conhecimento (fraude contra o titular)
+- Inclusão formal como sócio sem participação efetiva na gestão
+- Erro cadastral na Receita Federal
+- Empresa constituída em período anterior ao recebimento do benefício
 
-## Fontes e Referências
-1. **Acórdão TCU (18200/2021):** Condenação da Hidro Perfurações por inexecução de obras. [Acesse o Acórdão do TCU](https://pesquisa.apps.tcu.gov.br/#/doc/acordao-completo/18200/2021/Primeira%20C%C3%A2mara)
-2. **CGE-PB (Controladoria Geral do Estado):** Cadastro de Fornecedores Impedidos (Sanção CAGEPA 2019 contra a Hidro Perfurações). [Acesse o Diário do CAFIL/PB](https://cge.pb.gov.br/site/imagens/Gsc/Uploads/2019/07-Julho/cadastro%20cge%20-%20cafilpb%2026.07.2019.pdf)
+A apuração da situação concreta de cada caso compete aos órgãos de controle (CGU, MPF, TCU).
+
+## Fontes
+1. **Acórdão TCU (18200/2021):** Processo envolvendo a Hidro Perfurações.
+2. **CGE-PB:** Cadastro de Fornecedores Impedidos (Sanção CAGEPA 2019).
 3. **Ministério Público Federal:** Ações civis públicas em Guarabira/PB.
-4. **Arquivos do Projeto:** `resultados\q39_socio_empresa_bolsa_familia.csv`
+4. **Arquivos do Projeto:** `resultados/q39_socio_empresa_bolsa_familia.csv`

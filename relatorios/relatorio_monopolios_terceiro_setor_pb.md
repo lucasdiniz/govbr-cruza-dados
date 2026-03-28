@@ -1,36 +1,37 @@
-# Relatório de Investigação: Hegemonia do Terceiro Setor e Conflito de Interesses na Paraíba
+# Relatório de Análise: Concentração de Repasses ao Terceiro Setor na Paraíba
 
 **Data de Geração:** 21 de Março de 2026
-**Base de Dados:** Repositório `govbr-cruza-dados` (Arquivos `q59` e `q60` - Bases do TCE-PB e DadosPB)
-**Foco:** O monopólio de Organizações Sociais (OS) e entidades filantrópicas como duto de repasses municipais sem licitação.
+**Base de Dados:** Repositório `govbr-cruza-dados` (Queries Q59 e Q60 — TCE-PB e DadosPB)
+**Foco:** Concentração de repasses municipais em organizações do terceiro setor e potenciais conflitos de interesse.
+
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração, não conclusões de irregularidade. Repasses a entidades filantrópicas e hospitais do terceiro setor são, em muitos casos, instrumentos legítimos e necessários de política pública. A concentração de repasses em uma entidade pode refletir sua posição como prestador essencial de serviços, não necessariamente irregularidade.
 
 ---
 
 ## 1. Resumo Executivo
-O cruzamento de dados focados nas bases estaduais (Tribunal de Contas do Estado da Paraíba - Sagres) identificou um gargalo sistêmico de terceirização na administração pública paraibana. O **Instituto Walfredo Guedes Pereira** consolidou-se como um monopólio de prestação de serviços de saúde e assistência, recebendo repasses vultosos de praticamente todos os municípios do estado. A gravidade do caso aumenta ao cruzar o quadro diretivo/societário da instituição com a folha de pagamento de servidores públicos (inativos) na capital.
+O cruzamento de dados identificou uma concentração significativa de repasses municipais em uma única entidade do terceiro setor na Paraíba: o **Instituto Walfredo Guedes Pereira**, que recebeu R$ 183,1 milhões de 158 dos 223 municípios do estado. Adicionalmente, foi identificado um potencial conflito de interesse envolvendo uma servidora municipal no quadro diretivo da entidade.
 
-## 2. A "Metástase" Financeira: Presente em 158 Cidades
-O algoritmo de fornecedores seriais (`q60_fornecedor_recebendo_pagamentos_sem_licitacao`) flagrou uma dependência extrema do poder público estadual em relação a esta única entidade filantrópica.
-* **O Volume:** O Instituto Walfredo Guedes Pereira (CNPJ 09.124.165/0001-40) recebeu incríveis **R$ 183.126.188,89** (Cento e oitenta e três milhões de reais).
-* **A Capilaridade:** A entidade recebeu repasses (geralmente sob a rubrica de subvenções, convênios ou inexigibilidade) de **158 dos 223 municípios da Paraíba**. Isso representa um monopólio de prestação de serviços em mais de 70% do território do estado.
+## 2. Concentração de Repasses
+- **Entidade:** Instituto Walfredo Guedes Pereira (CNPJ 09.124.165/0001-40)
+- **Volume total:** R$ 183.126.188,89
+- **Abrangência:** 158 municípios (71% do estado)
+- **Natureza dos repasses:** Subvenções, convênios e inexigibilidades, geralmente vinculados à prestação de serviços de saúde
 
-## 3. O Conflito de Interesses: O Fator "Servidor Municipal"
-Embora repasses para hospitais filantrópicos sejam comuns (o Instituto administra complexos como o Hospital São Vicente de Paulo), o arquivo `q59` alertou para um severo conflito de governança.
+**Contexto:** O Instituto administra complexos hospitalares como o Hospital São Vicente de Paulo. A concentração de repasses pode refletir sua posição como principal prestador de serviços hospitalares filantrópicos no estado.
 
-* **O Elo na Prefeitura de João Pessoa:** A ferramenta identificou a Sra. **Maria Gerlane Carneiro Cavalcanti** no quadro de qualificação societária/diretiva do Instituto. 
-* **A Irregularidade:** O cruzamento com a folha de pagamento (DadosPB/TCE) provou que ela é uma **Servidora Municipal Inativa** (Técnico de Comunicação Social) da Prefeitura de João Pessoa. 
-* **Análise de Risco:** A presença de servidores (ativos ou inativos) do próprio município nas diretorias de entidades que recebem milhões em subvenções e repasses da prefeitura fere o princípio da impessoalidade. É uma brecha clássica usada para a "terceirização" de mão de obra (burlando concursos públicos) ou para o uso político da estrutura filantrópica por grupos estabelecidos na capital.
+## 3. Potencial Conflito de Interesse
+A query Q59 identificou a Sra. **Maria Gerlane Carneiro Cavalcanti** no quadro diretivo do Instituto. O cruzamento com a folha de pagamento mostrou que ela é **Servidora Municipal Inativa** (Técnico de Comunicação Social) da Prefeitura de João Pessoa.
 
-## 4. Análise de Fontes Abertas (OSINT) e Mídia
-Realizamos uma busca aprofundada no Google e em portais de controle sobre o Instituto Walfredo Guedes Pereira. Os fatos levantados pela nossa base de dados já repercutem em investigações ativas:
-* **Condenação no TCU (Acórdão 1060/2020):** O Tribunal de Contas da União investigou o instituto por uma parceria irregular com a Prefeitura de João Pessoa. O instituto foi flagrado utilizando espaço físico e **40 máquinas de hemodiálise públicas** de graça, sem licitação, em troca de descontos na tabela SUS.
-* **Fiscalização do CRM-PB:** O Conselho Regional de Medicina já notificou o hospital gerido pelo instituto por atuar com escalas médicas incompletas e falta de insumos básicos de contraste.
-* **Os Negócios Privados da Diretora:** A pesquisa revelou que a diretora Maria Gerlane Carneiro Cavalcanti (servidora municipal flagrada no nosso cruzamento) também é dona do "Pistache Restaurante", que ironicamente também já faturou dispensas de licitação de órgãos públicos como a Assembleia Legislativa (ALPB).
+A presença de servidores municipais (ativos ou inativos) em diretorias de entidades que recebem repasses do mesmo município é uma situação que merece atenção do ponto de vista do princípio da impessoalidade, embora não constitua, por si só, irregularidade.
 
-## 5. Conclusão
-O terceiro setor na Paraíba (OSs e fundações privadas) opera como uma administração paralela que movimenta centenas de milhões de reais com regras de contratação muito mais afrouxadas que a Lei de Licitações (Lei 14.133/21). O domínio do Instituto Walfredo Guedes sobre 158 cidades, atrelado a membros ligados à prefeitura da capital, exige auditoria imediata sobre a efetiva prestação dos serviços conveniados no interior e a folha de pagamento oculta do instituto.
+## 4. Histórico de Fiscalização
+- **TCU (Acórdão 1060/2020):** Investigou parceria entre o Instituto e a Prefeitura de João Pessoa envolvendo uso de equipamentos de hemodiálise públicos sem licitação.
+- **CRM-PB:** Notificação por escalas médicas incompletas no hospital gerido pelo Instituto.
 
-## Fontes e Referências
-1. **Dados Cadastrais do Terceiro Setor (OSINT):** Quadro de Sócios e Administradores do Instituto Walfredo Guedes Pereira. [Acesse os Dados Abertos (CNPJ Biz)](https://cnpj.biz/09124165000140)
-2. **Tribunal de Contas do Estado (TCE-PB):** Portal Sagres (Módulo de Subvenções e Repasses a Terceiro Setor). [Acesse a Base de Dados Abertos do Sagres-PB](https://sagres.tce.pb.gov.br/dados_abertos.php)
-3. **Arquivos Locais de Extração:** `resultados\q59_servidor_municipal_que_socio_de_empresa...csv` e `resultados\q60_fornecedor_recebendo_pagamentos_sem_licitacao...csv`
+## 5. Nota Metodológica
+A análise de concentração de repasses não distingue automaticamente entre prestação legítima de serviços essenciais e eventual irregularidade. A apuração da regularidade dos convênios e repasses compete ao TCE-PB e ao Ministério Público.
+
+## Fontes
+1. **TCE-PB (Sagres):** Dados de subvenções e repasses a terceiro setor.
+2. **Receita Federal (QSA):** Quadro diretivo do Instituto Walfredo Guedes Pereira.
+3. **Arquivos do Projeto:** `resultados/q59_servidor_municipal...csv` e `resultados/q60_fornecedor_recebendo_pagamentos_sem_licitacao...csv`
