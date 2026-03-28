@@ -1,35 +1,41 @@
-# Relatório de Investigação: Licitações "Fictícias" e Anomalias Contábeis (TCE-PB)
+# Relatório: Licitações com Proponente Único e Anomalias de Dados no TCE-PB
 
 **Data de Geração:** 21 de Março de 2026
 **Base de Dados:** Repositório `govbr-cruza-dados` (Arquivo `q68_licitacao_tce_pb_com_proponente_unico...`)
-**Foco:** Ocorrência de "Proponente Único" em licitações bilionárias (erros do sistema Sagres) e direcionamento em megaobras de infraestrutura.
+**Foco:** Licitações com participante único e inconsistências de valores na base Sagres/TCE-PB.
+
+> **Nota:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam anomalias estatísticas que merecem apuração, não conclusões de irregularidade.
 
 ---
 
-## 1. Resumo Executivo
-O arquivo Q68 cruza as bases de licitação do Tribunal de Contas do Estado da Paraíba (TCE-PB) focando em um dos maiores indícios de fraude do mundo contábil: licitações onde **apenas uma empresa se apresenta para competir** e sai vencedora. A auditoria na base identificou dois padrões preocupantes: a "concorrência zero" para as maiores obras públicas da capital e o colapso na validação de dados no interior do estado (aceitação de empenhos bilionários por erro de digitação).
+## 1. Resumo
 
-## 2. A "Concorrência Zero" nos Viadutos de João Pessoa
-A prefeitura de João Pessoa está executando o milionário "Complexo Viário Altiplano", um conjunto de obras de infraestrutura massiva (viadutos e requalificação viária). O sistema alertou para a completa ausência de competitividade nestes certames em 2026:
+O cruzamento da base de licitações do Tribunal de Contas do Estado da Paraíba (TCE-PB) identificou dois padrões: (a) licitações de alto valor com apenas um proponente e (b) registros com valores inconsistentes que indicam falhas de validação no sistema Sagres.
 
-* **Viaduto 1 e 3:** A Concorrência nº 99902/2025 foi vencida pelo *Consorcio Mobilidade Joao Pessoa* pelo valor de **R$ 128.390.000,00**. Não houve nenhuma outra construtora concorrendo.
-* **Viaduto 2 e 4:** A Concorrência nº 99003/2025 foi vencida pelo *Consorcio Altiplano* pelo valor de **R$ 106.790.217,60**. Novamente, proponente único.
+## 2. Licitações de Alto Valor com Proponente Único em João Pessoa
 
-**O Risco (Direcionamento):** Obras que somam um quarto de bilhão de reais e não atraem mais de um consórcio nacional para disputa de lances configuram um caso clássico de **Edital Restritivo**. A prefeitura insere cláusulas ou exigências técnicas tão específicas no edital que apenas o "consórcio amigo" consegue se qualificar, espantando (ou desclassificando) os concorrentes antes mesmo de a disputa de preços começar.
+A prefeitura de João Pessoa realizou licitações para o "Complexo Viário Altiplano" (obras de viadutos e requalificação viária) em que apenas um consórcio apresentou proposta em cada certame:
 
-## 3. O Colapso dos "Trilhões" no Interior (Fragilidade do Sagres)
-O algoritmo também provou que a base de dados oficial do estado (Sagres/TCE) engole qualquer número digitado por contadores de prefeituras pequenas, sem travas sistêmicas, mascarando a fraude de proponente único debaixo de erros crassos:
+- **Concorrência nº 99902/2025:** Vencida pelo *Consórcio Mobilidade João Pessoa* pelo valor de **R$ 128.390.000,00**. Proponente único.
+- **Concorrência nº 99003/2025:** Vencida pelo *Consórcio Altiplano* pelo valor de **R$ 106.790.217,60**. Proponente único.
 
-* **O Material Elétrico de 16 Bilhões (Nova Palmeira/PB):** O município informou no sistema do TCE que a empresa *JSA COMÉRCIO E SERVIÇOS LTDA* foi a única participante e vencedora de um pregão para material elétrico no valor de **R$ 16.389.998.361,00** (Dezesseis bilhões de reais). 
-* **O Combustível de 768 Milhões (Monteiro/PB):** A prefeitura informou que a *Lucas & Saraiva Comercio de Combustiveis Ltda* ganhou, sozinha, um pregão de **R$ 768.200.000,00**.
+As duas obras somam aproximadamente R$ 235 milhões. A ocorrência de proponente único em licitações dessa magnitude é um indicador que os órgãos de controle costumam monitorar, pois pode refletir tanto características específicas do mercado (como a complexidade técnica da obra) quanto possíveis restrições indevidas no edital. A causa específica depende de análise detalhada do edital e das condições de mercado.
 
-**Conclusão sobre as Anomalias:** Esses valores são claramente erros humanos. Contudo, o fato da auditoria sistêmica do TCE-PB não possuir um filtro que bloqueie uma prefeitura de 5 mil habitantes de cadastrar uma licitação de 16 Bilhões com apenas um concorrente prova que o controle interno atual é reativo e analógico.
+## 3. Inconsistências de Valores na Base Sagres (Erros de Digitação)
 
-## 4. Análise de Fontes Abertas (OSINT) e Mídia
-Realizamos uma busca aprofundada no Google sobre as megalicitações do "Complexo Viário Altiplano" vencidas por consórcios únicos, bem como sobre os erros bilionários lançados pelas prefeituras do interior no sistema Sagres.
-* **Status:** Trata-se de uma **Detecção Precoce** do algoritmo. Até o fechamento deste relatório, não foram encontradas matérias jornalísticas ou inquéritos abertos do MPPB/TCE questionando ativamente a "Concorrência Zero" nessas obras específicas dos viadutos ou os erros crassos de digitação das prefeituras. Nossos dados estão à frente da fiscalização oficial atual.
+O algoritmo também identificou registros na base do TCE-PB com valores evidentemente inconsistentes, indicando erros de entrada de dados:
+
+- **Nova Palmeira/PB:** Registro de pregão para material elétrico no valor de **R$ 16.389.998.361,00** (dezesseis bilhões), com proponente único (JSA Comércio e Serviços Ltda). O valor é incompatível com o porte do município e do objeto licitado.
+- **Monteiro/PB:** Registro de pregão para combustíveis no valor de **R$ 768.200.000,00** (setecentos e sessenta e oito milhões), com proponente único (Lucas & Saraiva Comércio de Combustíveis Ltda). O valor é igualmente inconsistente.
+
+Esses registros evidenciam a ausência de validações automáticas no sistema Sagres que impeçam a inserção de valores fora de faixas plausíveis. Trata-se de uma fragilidade sistêmica que pode dificultar auditorias automatizadas e comprometer a confiabilidade dos dados abertos.
+
+## 4. Cobertura em Fontes Abertas
+
+Até a data de fechamento deste relatório, não foram encontradas matérias jornalísticas ou procedimentos do MPPB/TCE-PB questionando especificamente a ocorrência de proponente único nas licitações dos viadutos do Complexo Viário Altiplano, nem os erros de digitação nos registros de municípios do interior.
 
 ## Fontes e Referências
-1. **Dados de Licitações Oficiais (Viadutos JP):** Consulta de andamento de licitações na Prefeitura de João Pessoa. [Portal de Compras - JP](https://transparencia.joaopessoa.pb.gov.br/licitacoes/)
-2. **Tribunal de Contas do Estado (TCE-PB):** Dados Abertos (Sagres - Módulo Licitações) reportando os erros bilionários e a ausência de concorrentes. [Acesse o Repositório de Licitações (Sagres-PB)](https://sagres.tce.pb.gov.br/dados_abertos.php)
-3. **Arquivos Locais de Extração:** `resultados\q68_licitacao_tce_pb_com_proponente_unico_competicao_ficticia.csv`
+
+1. **Portal da Transparência de João Pessoa:** Consulta de licitações. [Portal de Compras - JP](https://transparencia.joaopessoa.pb.gov.br/licitacoes/)
+2. **Tribunal de Contas do Estado (TCE-PB):** Dados Abertos do sistema Sagres (Módulo Licitações). [Acesse o Repositório de Licitações (Sagres-PB)](https://sagres.tce.pb.gov.br/dados_abertos.php)
+3. **Arquivos do Projeto:** `resultados\q68_licitacao_tce_pb_com_proponente_unico_competicao_ficticia.csv`

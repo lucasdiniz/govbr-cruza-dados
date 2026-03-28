@@ -1,15 +1,17 @@
-# Relatório de Investigação: Esquema de "Pejotização" de Médicos e Dispensas Emergenciais em Campina Grande/PB
+# Relatório de Análise: Credenciamento de Empresas Médicas Recém-Constituídas em Campina Grande/PB
 
 **Data de Geração:** 21 de Março de 2026
 **Base de Dados:** Repositório `govbr-cruza-dados` (Dados Abertos do Governo Federal, Receita Federal e PNCP)
 **Município Alvo:** Campina Grande - PB
 
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração, não conclusões de irregularidade. A contratação de empresas recém-constituídas pode ser legítima em contextos de credenciamento na saúde. A apuração compete aos órgãos de controle.
+
 ---
 
 ## 1. Resumo Executivo
-A análise de dados estruturada a partir de cruzamentos automatizados (ETL) sobre contratações públicas revelou um padrão sistêmico e altamente anômalo na Secretaria de Saúde de Campina Grande/PB. 
+O cruzamento automatizado de dados de contratações públicas identificou um padrão recorrente na Secretaria de Saúde de Campina Grande/PB: dezenas de empresas de serviços médicos foram constituídas e, em curto intervalo, obtiveram contratos municipais de valores padronizados (R$ 288.000, R$ 360.000 ou R$ 450.000).
 
-A detecção foi inicialmente realizada através da análise de empresas recém-criadas que, quase imediatamente após a obtenção do CNPJ, venceram contratos milionários. O aprofundamento investigativo validou que este padrão de dados reflete um escândalo real e em andamento, atualmente sob investigação do Ministério Público da Paraíba (MPPB) e do Tribunal de Contas do Estado (TCE-PB), envolvendo a substituição de vínculos empregatícios (concursos) por contratos através de Pessoas Jurídicas ("Pejotização") e contratos emergenciais com indícios de direcionamento.
+Este padrão coincide com investigações em andamento pelo Ministério Público da Paraíba (MPPB) e pelo Tribunal de Contas do Estado (TCE-PB) sobre o uso de credenciamentos na saúde como alternativa a concursos públicos ("pejotização").
 
 ## 2. Metodologia e Origem dos Dados (Data Mining)
 Os indícios foram localizados primariamente através do arquivo de resultados extraído do banco de dados do projeto:
@@ -17,14 +19,14 @@ Os indícios foram localizados primariamente através do arquivo de resultados e
 * **Arquivo Base de Evidências:** `resultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
 * **Lógica do Cruzamento (Query Q03):** O algoritmo cruza a data de abertura da empresa (`dt_inicio_atividade` na Receita Federal) com a data de assinatura do contrato no Portal Nacional de Contratações Públicas (`dt_assinatura`).
 
-## 3. Achados de Dados: A "Fábrica" de CNPJs Médicos
+## 3. Achados de Dados: Empresas Médicas Recém-Constituídas
 
-A varredura no arquivo `q03` retornou dezenas de linhas referentes a Campina Grande, demonstrando uma linha de montagem de contratos:
+A varredura no arquivo `q03` retornou dezenas de registros referentes a Campina Grande com as seguintes características:
 1. **Nomenclatura:** Empresas registradas predominantemente com nomes próprios seguidos de "SERVICOS MEDICOS LTDA".
-2. **Tempo de Existência:** Criação de CNPJs no final de 2024 e início de 2025.
-3. **Padronização Financeira:** A esmagadora maioria desses "credenciamentos" apresenta o **valor exato e tabelado de R$ 288,00,00** ou **R$ 360,00,00** ou **R$ 450,00,00**.
+2. **Tempo de Existência:** Criação de CNPJs concentrada no final de 2024 e início de 2025.
+3. **Padronização de Valores:** A maioria dos credenciamentos apresenta valores padronizados de **R$ 288.000**, **R$ 360.000** ou **R$ 450.000**.
 
-### Lista Completa de CNPJs Suspeitos Encontrados nos Dados (Campina Grande):
+### Lista de Empresas Identificadas (Campina Grande):
 * MIQUERINO SERVICOS MEDICOS LTDA (CNPJ: 57446568000158)
   - Valor: R$ 288.000,00
   - Data de Abertura: 26-09-2024
@@ -619,12 +621,12 @@ A varredura no arquivo `q03` retornou dezenas de linhas referentes a Campina Gra
   - Data de Abertura: 18-10-2024
   - Data do Contrato: 14-04-2025
 
-## 4. Corroboração no Mundo Real: Investigações do MPPB e TCE-PB
-A anomalia puramente matemática encontrada pelo algoritmo corrobora diretamente com as recentes ações dos órgãos de controle na Paraíba (MPPB), que instaurou procedimento focado expressamente na apuração desta "pejotização". Médicos são pagos como "Serviços de Terceiros" (CNPJ) para burlar a Folha de Pagamento, com pagamentos a profissionais que ultrapassavam os R$ 40 mil mensais.
+## 4. Contexto Externo
+O padrão identificado pelo cruzamento de dados coincide com investigações em andamento:
+- O MPPB instaurou procedimento para apurar a prática de "pejotização" na saúde de Campina Grande, com pagamentos a profissionais que ultrapassam R$ 40 mil mensais via CNPJ.
+- Reportagens locais documentaram contratos sem licitação envolvendo empresas médicas recém-criadas.
 
-## Fontes e Referências (Open Source Intelligence)
-1. **Polêmica Paraíba:** Reportagens sobre o esquema de mais de R$ 12 milhões (Lavamedi). [Leia na Polêmica Paraíba](https://www.polemicaparaiba.com.br/paraiba/campina-grande/bomba-documentos-revelam-que-esquema-ligado-a-gabinete-de-bruno-movimentou-mais-de-r-12-milhoes-sem-licitacao-em-campina-grande/)
-2. **Paraíba Mix:** Notícias cobrindo a instauração do procedimento do MPPB. [Leia no Paraíba Mix](https://paraibamix.com.br/ministerio-publico-investiga-prefeitura-de-campina-grande-por-pejotizacao-e-pagamentos-que-chegam-a-r-40-mil-para-medicos/)
-3. **Portal Correio / MPF:** Histórico de atuações do Ministério Público Federal. [Notícia Portal Correio](https://portalcorreio.com.br/ex-secretario-de-saude-de-campina-grande-e-denunciado-por-fraude-na-compra-de-insumos-na-pandemia/)
-4. **Arquivos Locais de Extração:** 
-   - `resultados\q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
+## Fontes e Referências
+1. **Arquivos do Projeto:** `resultados/q03_empresa_fachada_criada_recentemente_ganha_grande_contrato.csv`
+2. **MPPB:** Procedimento de investigação sobre pejotização na saúde de Campina Grande.
+3. **TCE-PB:** Nota Técnica 01/2024 sobre credenciamentos na saúde.

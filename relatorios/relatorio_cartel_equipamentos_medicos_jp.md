@@ -1,38 +1,50 @@
-# Relatório de Investigação: Conluio e Concorrência Simulada em João Pessoa/PB
+# Relatório: Participação de Empresas com Propriedade Comum em Licitações de João Pessoa/PB
 
 **Data de Geração:** 21 de Março de 2026
 **Base de Dados:** Repositório `govbr-cruza-dados` (Arquivo `q01_empresas_do_mesmo_grupo...`)
-**Foco:** Simulação de Competição (Bid Rigging) no Setor Médico.
+**Foco:** Empresas do mesmo grupo econômico participando das mesmas licitações no setor de equipamentos médicos.
+
+> **Nota:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam anomalias estatísticas que merecem apuração, não conclusões de irregularidade.
 
 ---
 
-## 1. Resumo Executivo
-O script de detecção de conluio identificou licitações em João Pessoa (PB) onde empresas controladas pela mesma "Holding de Topo" competiram entre si, dando falsa aparência de concorrência e burlando a Lei de Licitações. A inteligência de fontes abertas confirmou que o padrão detectado já está sob escrutínio de Tribunais de Contas pelo Brasil.
+## 1. Resumo
 
-## 2. A Fraude: O Cartel da Prime Holding
-A detecção originou-se no **Pregão Eletrônico nº 10.075/2019** (UASG: 08715618000140), da Prefeitura Municipal de João Pessoa, focado na aquisição de caros equipamentos de Raio-X e diagnóstico por imagem para os hospitais da rede (Santa Isabel, Valentina e Complexo de Mangabeira).
+O algoritmo de cruzamento identificou licitações em João Pessoa/PB onde duas empresas controladas pela mesma holding participaram simultaneamente do mesmo certame. A propriedade comum foi confirmada por meio de consulta ao Quadro de Sócios e Administradores (QSA) da Receita Federal.
 
-O algoritmo detectou a participação conjunta de duas empresas no certame:
-1. **VMI TECNOLOGIAS LTDA** (CNPJ: 02.659.246/0001-03)
-2. **ALFA MED SISTEMAS MEDICOS LTDA** (CNPJ: 11.405.384/0001-49)
+## 2. Empresas Identificadas e Vínculo Societário
 
-**A Ligação Oculta:**
-Ambas as empresas, aparentemente concorrentes, pertencem ao mesmo grupo econômico e são controladas pela **PRIME HOLDING E SERVICOS LTDA** (CNPJ: 10.328.635/0001-76). As investigações de OSINT confirmaram que as duas empresas dividem o exato mesmo parque industrial na cidade de Lagoa Santa, em Minas Gerais.
+As seguintes empresas foram detectadas participando conjuntamente em processos licitatórios:
 
-Na licitação de João Pessoa, essa "concorrência entre irmãs" resultou na homologação de ambas em lotes distintos, dividindo os lucros milionários da compra de equipamentos de imagem.
+1. **VMI Tecnologias Ltda** (CNPJ: 02.659.246/0001-03)
+2. **Alfa Med Sistemas Médicos Ltda** (CNPJ: 11.405.384/0001-49)
 
-## 3. Implicações Jurídicas e Corroboração Externa
-A participação de empresas sob controle comum em um mesmo lote ou licitação anula o caráter competitivo exigido pela administração pública.
+**Vínculo:** Ambas são subsidiárias da **Prime Holding e Serviços Ltda** (CNPJ: 10.328.635/0001-76), conforme dados do QSA da Receita Federal. As duas empresas compartilham o mesmo endereço industrial em Lagoa Santa/MG.
 
-* **Alerta dos Tribunais (TCE):** Cortes de contas (como TCE-BA e TCE-RN) já emitiram pareceres desfavoráveis em auditorias envolvendo a dupla (VMI e Alfa Med), citando exatamente o risco de conluio quando essas empresas atuam juntas para esvaziar a concorrência e manter os preços altos nos pregões de prefeituras.
-* **Saúde na Paraíba:** O estado é alvo frequente de desmantelamento de esquemas similares (como nas Operações "Festa no Terreiro" e "Saulus"), onde o uso de empresas do mesmo grupo para forjar pesquisas de preço (orçamentos) e propostas de pregão é a espinha dorsal de desvios na saúde pública.
-* **A Hegemonia no Interior da Paraíba (Novo Achado TCE-PB):** O esquema de loteamento de licitações não se restringiu à capital. O cruzamento de dados com bases do TCE-PB revelou que a *ALFA MED SISTEMAS MEDICOS LTDA* pulverizou sua atuação e venceu licitações em **24 municípios diferentes** do estado, faturando mais de R$ 5,3 milhões no interior paraibano. A Prime Holding utiliza suas subsidiárias para estabelecer um verdadeiro monopólio regional no fornecimento de equipamentos de Raio-X.
+## 3. Licitações com Participação Simultânea
 
-## 4. Conclusão
-O cruzamento de dados de `Bid Rigging` funcionou com precisão cirúrgica. A identificação de concorrência ilusória entre subsidiárias da *Prime Holding* em compras de Raio-X pela prefeitura de João Pessoa é um forte indício de superfaturamento por ausência de competição real, configurando fraude à licitação.
+O cruzamento identificou as seguintes licitações em João Pessoa com participação de ambas as empresas:
+
+- Pregão Eletrônico nº 10.075/2019 (aquisição de equipamentos de diagnóstico por imagem)
+- Pregão Eletrônico nº 10.035/2019
+- Pregão Eletrônico nº 10.132/2018
+- Pregão Eletrônico nº 13.069/2024
+
+Em ao menos um desses certames, ambas as empresas foram homologadas em lotes distintos.
+
+## 4. Atuação da Alfa Med no Estado da Paraíba
+
+O cruzamento com a base do TCE-PB revelou que a Alfa Med Sistemas Médicos Ltda venceu licitações em **24 municípios** do estado, com contratos somando mais de R$ 5,3 milhões. Essa presença ampla indica uma posição de mercado significativa no segmento de equipamentos médicos na Paraíba.
+
+## 5. Contexto Jurídico
+
+A participação simultânea de empresas com propriedade comum em um mesmo certame licitatório levanta potencial conflito de interesses quanto ao caráter competitivo exigido pela legislação de licitações. Tribunais de Contas de outros estados (TCE-BA, TCE-RN) já emitiram pareceres sobre situações similares envolvendo essas mesmas empresas, recomendando atenção à efetiva competitividade quando subsidiárias de um mesmo grupo participam do mesmo processo.
+
+Cabe ressaltar que a legislação não proíbe expressamente a participação de empresas do mesmo grupo econômico na mesma licitação, desde que apresentem propostas independentes. A análise de eventual prejuízo à competitividade depende da avaliação caso a caso pelos órgãos de controle.
 
 ## Fontes e Referências
-1. **Diário Oficial / Portal da Transparência:** Editais e resultados do Pregão 10.075/2019 da Prefeitura de João Pessoa. [Acesse o Portal da Transparência JP (Buscar Pregão 10.075/2019)](https://transparencia.joaopessoa.pb.gov.br/licitacoes/)
-2. **Tribunais de Contas:** Diários eletrônicos do TCE (como TCE-RN) e despachos abordando auditorias sobre o grupo VMI/Alfa Med. [Acesse o Diário do TCE-RN (Pág 3)](https://webdisk.diariooficial.rn.gov.br/Jornal/12024-03-26.pdf)
-3. **Receita Federal (QSA):** Comprovação do controle acionário pela Prime Holding sobre as subsidiárias e identidade de endereços. [Consulta de Quadro Societário](https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp)
+
+1. **Portal da Transparência de João Pessoa:** Editais e resultados dos pregões citados. [Acesse o Portal da Transparência JP](https://transparencia.joaopessoa.pb.gov.br/licitacoes/)
+2. **Tribunais de Contas:** Diários eletrônicos do TCE-RN com registros de auditorias sobre o grupo VMI/Alfa Med. [Acesse o Diário do TCE-RN](https://webdisk.diariooficial.rn.gov.br/Jornal/12024-03-26.pdf)
+3. **Receita Federal (QSA):** Comprovação do controle societário pela Prime Holding sobre ambas as subsidiárias. [Consulta de Quadro Societário](https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp)
 4. **Arquivos do Projeto:** `resultados\q01_empresas_do_mesmo_grupo_holding_em_licita_o_concorrente_bid_.csv`

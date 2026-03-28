@@ -4,6 +4,8 @@
 **Base de Dados:** Query Q59 (corrigida) — cruzamento TCE-PB servidores × QSA RFB × TCE-PB despesas
 **Metodologia:** Identificação de servidores municipais da saúde que são sócios de empresas que recebem pagamentos do mesmo município. Match por CPF (6 dígitos centrais) + nome completo.
 
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração, não conclusões de irregularidade. A simultaneidade de vínculo societário e funcional pode ter explicações legítimas. Nenhuma das pessoas ou empresas citadas foi investigada ou condenada pelos fatos aqui descritos, salvo quando explicitamente indicado por fonte externa.
+
 ---
 
 ## 1. Resumo Executivo
@@ -36,8 +38,8 @@ O cruzamento entre os dados de servidores municipais da Paraíba (TCE-PB/SAGRES)
 | + 7 outros municípios | R$ 4.589.238 | 111 | — |
 | **TOTAL** | **R$ 65.767.829** | **907** | **29+** |
 
-### O Esquema
-Em Bayeux, o padrão é inequívoco: **16 médicos** que constam como sócios da I2 Saúde na Receita Federal são simultaneamente contratados pela Prefeitura de Bayeux como "excepcional interesse público" (contratos temporários). Cargos identificados:
+### Padrão Identificado
+Em Bayeux, **16 médicos** que constam como sócios da I2 Saúde na Receita Federal são simultaneamente contratados pela Prefeitura de Bayeux como "excepcional interesse público" (contratos temporários). Cargos identificados:
 - Médico do PSF (Programa Saúde da Família)
 - Médico Plantonista UPA
 - Médico Ultrassonografista
@@ -47,11 +49,11 @@ Em Bayeux, o padrão é inequívoco: **16 médicos** que constam como sócios da
 
 A empresa recebeu R$ 23,3 milhões de Bayeux por "serviços de saúde" enquanto seus sócios recebiam salários individuais de R$ 1.150 a R$ 30.900/mês como contratados temporários do mesmo município.
 
-### Implicações
+### Potenciais Implicações
 1. **Duplo pagamento:** O município paga o profissional como PF (salário de servidor) e como PJ (contrato com a I2 Saúde)
-2. **Conflito de interesses:** Os médicos-servidores participam (direta ou indiretamente) da decisão de contratação da empresa onde são sócios
-3. **Evasão fiscal e previdenciária:** A "pejotização" permite que o município evite encargos trabalhistas e o profissional reduza sua carga tributária
-4. **Burla à licitação:** Contratos de "excepcional interesse público" dispensam licitação, facilitando a perpetuação do esquema
+2. **Potencial conflito de interesses:** Os médicos-servidores podem participar (direta ou indiretamente) da decisão de contratação da empresa onde são sócios
+3. **Possível evasão fiscal e previdenciária:** A "pejotização" pode permitir que o município evite encargos trabalhistas e o profissional reduza sua carga tributária
+4. **Dispensa de licitação:** Contratos de "excepcional interesse público" dispensam licitação
 
 ---
 

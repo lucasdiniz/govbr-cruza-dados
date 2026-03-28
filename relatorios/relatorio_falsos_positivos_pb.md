@@ -4,6 +4,8 @@
 **Base de Dados:** Repositório `govbr-cruza-dados` (Arquivo `q02_empresas_com_socios_em_comum...`)
 **Foco da Análise:** Validação de Alertas de Alto Vulto e Identificação de Falsos Positivos na Paraíba.
 
+> **Nota:** Este relatório documenta limitações do algoritmo de detecção. Os casos abaixo foram identificados como falsos positivos e servem como referência para aprimoramento das queries.
+
 ---
 
 ## 1. Resumo Executivo
@@ -50,8 +52,7 @@ Os achados não desmerecem a eficácia do banco de dados, mas expõem uma limita
 1. **Filtro de "White-List" por CNAE:** Excluir da lógica de "sócios em comum" (Query 02) todas as empresas cujo CNAE principal pertença a monopólios de utilidade pública (Geração/Distribuição de Energia, Tratamento de Água/Esgoto e Gás). Isso eliminaria imediatamente os ruídos da CAGEPA, PBGÁS e ENERGISA vistos no log original.
 2. **Filtro de Natureza Jurídica:** Criar exceções para Fundações de Apoio a Instituições de Ensino Superior (Fundações de Direito Privado com fins públicos), pois seus diretores frequentemente possuem atuação privada paralela que não constitui cartel de empreiteiras.
 
-## Fontes e Refer?ncias
-1. **Receita Federal:** Consulta de Natureza Jur?dica CAGEPA. [Comprovante CNPJ CAGEPA](https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp?cnpj=09123654000187)
-2. **Receita Federal:** Consulta de Natureza Jur?dica PaqTcPB. [Comprovante CNPJ PaqTcPB](https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp?cnpj=09261843000116)
-3. **Arquivos do Projeto:** 
-esultados\q02_empresas_com_socios_em_comum...csv
+## Fontes e Referências
+1. **Receita Federal:** Consulta de Natureza Jurídica CAGEPA (CNPJ 09.123.654/0001-87).
+2. **Receita Federal:** Consulta de Natureza Jurídica PaqTcPB (CNPJ 09.261.843/0001-16).
+3. **Arquivos do Projeto:** `resultados/q02_empresas_com_socios_em_comum...csv`

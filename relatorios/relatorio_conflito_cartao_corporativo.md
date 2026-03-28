@@ -4,6 +4,8 @@
 **Base de Dados:** Repositório `govbr-cruza-dados` — Query Q10
 **Metodologia:** Cruzamento CPF (6 dígitos centrais) + nome completo entre portadores CPGF e quadro societário RFB. Validação por nome elimina falsos positivos por colisão de CPF parcial (redução de ~16K para 979 matches na v1 → v2).
 
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração, não conclusões de irregularidade. A participação societária pode ser inativa, formal, ou anterior ao ingresso no serviço público. Nenhuma das pessoas citadas foi investigada ou condenada pelos fatos aqui descritos, salvo quando explicitamente indicado.
+
 ---
 
 ## 1. Resumo Executivo

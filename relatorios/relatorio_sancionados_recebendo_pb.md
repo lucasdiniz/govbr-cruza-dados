@@ -4,6 +4,8 @@
 **Base de Dados:** Query Q65 — cruzamento CEIS (Cadastro de Empresas Inidôneas e Suspensas) × TCE-PB (despesas municipais)
 **Metodologia:** Identificação de empenhos realizados durante o período de vigência da sanção, por CNPJ exato.
 
+> **Disclaimer:** Este relatório apresenta cruzamentos automatizados de dados públicos. Os achados representam **anomalias estatísticas** que merecem apuração. A presença de um empenho durante o período de sanção pode ter explicações (empenho de exercício anterior, pagamento de contrato pré-existente, divergência de datas entre sistemas). A apuração compete aos órgãos de controle.
+
 ---
 
 ## 1. Resumo Executivo
@@ -12,7 +14,7 @@ O cruzamento identificou **270 empresas** com sanções vigentes no CEIS que con
 
 ---
 
-## 2. Os Maiores Infratores
+## 2. Maiores Volumes Identificados
 
 ### 2.1. PBF Gráfica e Têxtil Ltda (CNPJ 16.994.727/0001-71) — R$ 16,2 milhões
 - **Sanção:** Impedimento de contratar, vigente de 01/11/2024 a 01/11/2026
