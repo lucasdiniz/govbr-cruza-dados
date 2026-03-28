@@ -98,15 +98,18 @@ Problemas globais: linguagem acusatoria, encoding quebrado, "deteccao precoce" i
 - Deploy run 23687002733 em andamento
 
 ### Handoff sessao 20
-- Git: commits ate e3f025e, pushed to main
-- DB local: OK, PostgreSQL rodando (path: `/c/Program Files/PostgreSQL/16/bin/psql.exe`, PGPASSWORD=kong1029)
+- Git: commits ate 94f653c, pushed to main
+- **PNCP API fix em andamento**: `_api_get` em etl/00_download.py ja editado (timeout 60→120s, retries 3→5, backoff 2/4/8/16/30s, check empty body). Mudanca local NAO commitada ainda.
+  - Erro na VM: "The read operation timed out" + "Expecting value: line 1 column 1" — API PNCP throttlea apos muitas chamadas rapidas
+  - API funciona daqui (0.5s), problema eh volume na VM. Considerar adicionar sleep maior entre chamadas (time.sleep(0.2) em vez de 0.05)
+  - Teste de stress local rodando em background (task b5klkkx81)
+- DB local: OK, PostgreSQL rodando (psql: `/c/Program Files/PostgreSQL/16/bin/psql.exe`, PGPASSWORD=kong1029)
 - 77 query results em resultados/ (validados)
-- VM Azure: deploy run 23687002733 em andamento (~40min+, full ETL leva horas)
+- VM Azure: deploy run 23687002733 em andamento (step 7: First run Full ETL)
 - Issues: #1/#3/#4 fechadas, #2 (deploy) aberta, #5 (query quality) aberta
-- Background tasks from previous sessions (b80x6y0h3 etc) failed due to psql path — ignorar, dados ja estao em resultados/
 - Proximos passos:
-  1. Monitorar deploy: `gh run view 23687002733` (quando completar, verificar logs)
-  2. Fix Issue #5 queries: Q59 JOIN explosion (CTE pre-agregar despesas), Q70 CNPJ collision (filtrar PF)
-  3. Corrigir relatorios problematicos (cartel_combustiveis, smart_smurfing ABIN, risk_score_elite, fazenda_laranjas)
-  4. Re-rodar pncp_itens ETL (VARCHAR(500) fix aplicado)
-  5. Queries Q45-Q58 (superfaturamento pendentes)
+  1. Terminar e commitar fix PNCP API (ja editado localmente, falta testar + commit + push)
+  2. Considerar: aumentar sleep entre chamadas PNCP de 0.05s para 0.3s
+  3. Fix Issue #5 queries: Q59 JOIN explosion, Q70 CNPJ collision
+  4. Corrigir relatorios problematicos
+  5. Re-rodar pncp_itens ETL

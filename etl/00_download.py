@@ -362,16 +362,20 @@ def download_pncp(anos=None):
     last_contratacao = ckpt.get("last_contratacao_date", "")
     last_contrato = ckpt.get("last_contrato_date", "")
 
-    def _api_get(url, retries=3):
-        """GET com retry e backoff."""
+    def _api_get(url, retries=5):
+        """GET com retry e backoff exponencial."""
         for attempt in range(retries):
             try:
                 req = Request(url, headers={"User-Agent": _UA})
-                with urlopen(req, timeout=60) as resp:
-                    return json.loads(resp.read())
+                with urlopen(req, timeout=120) as resp:
+                    raw = resp.read()
+                    if not raw or not raw.strip():
+                        raise ValueError("Empty response body")
+                    return json.loads(raw)
             except Exception as e:
+                wait = min(2 ** (attempt + 1), 30)  # 2, 4, 8, 16, 30s
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(wait)
                 else:
                     print(f"    [erro] {e}")
                     return None
