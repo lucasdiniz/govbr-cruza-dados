@@ -238,14 +238,5 @@ jobs:
             cd ${{ env.PROJECT_DIR }}
             source venv/bin/activate
 
-            python -c "
-from etl.db import get_conn, table_count
-conn = get_conn()
-tables = ['empresa','estabelecimento','socio','pncp_contratacao','pncp_contrato','tce_pb_despesa','tce_pb_servidor']
-print('=== Database Status ===')
-for t in tables:
-    try: print(f'  {t}: {table_count(conn, t):,}')
-    except Exception: print(f'  {t}: (not found)')
-conn.close()
-"
+            python3 -m etl.verify
           SCRIPT
