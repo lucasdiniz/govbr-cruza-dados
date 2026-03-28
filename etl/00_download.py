@@ -410,7 +410,7 @@ def download_pncp(anos=None):
             if page >= total_pages:
                 break
             page += 1
-            time.sleep(0.05)
+            time.sleep(0.5)
         return all_items
 
     # ── Contratacoes (por semana × modalidade) ──
