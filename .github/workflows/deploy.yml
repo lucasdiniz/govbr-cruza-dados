@@ -188,7 +188,7 @@ jobs:
             python -m etl.01_schema 2>&1 || true
             python -m etl.10_indices 2>&1 || true
             python -m etl.15_normalizar 2>&1 || true
-            python -m etl.21_views 2>&1
+            python -m etl.21_views 2>&1 || true
           SCRIPT
 
       # ── Manual: run ETL from specific phase ──

@@ -72,10 +72,13 @@ def download_cpgf(anos=None):
     dest = DATA_DIR / "cpgf"
     dest.mkdir(parents=True, exist_ok=True)
 
+    current_ym = int(f"{date.today().year}{date.today().month:02d}")
     print("  CPGF:")
     for ano in anos:
         for mes in range(1, 13):
             ym = f"{ano}{mes:02d}"
+            if int(ym) > current_ym:
+                break
             url = f"{TRANSPARENCIA_BASE}/cpgf/{ym}"
             zip_path = dest / f"{ym}_CPGF.zip"
             if _download(url, zip_path):
@@ -98,9 +101,17 @@ def download_viagens(anos=None):
 
 
 def download_siape(meses=None):
-    """Servidores federais SIAPE (mensal)."""
+    """Servidores federais SIAPE (mensal). Tenta mes atual e 2 anteriores."""
     if meses is None:
-        meses = [f"{CURRENT_YEAR}{date.today().month:02d}"]  # Mais recente por padrao
+        today = date.today()
+        meses = []
+        for offset in range(3):  # tenta mes atual, -1, -2
+            m = today.month - offset
+            y = today.year
+            if m <= 0:
+                m += 12
+                y -= 1
+            meses.append(f"{y}{m:02d}")
     dest = DATA_DIR / "siape"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -113,19 +124,27 @@ def download_siape(meses=None):
 
 
 def download_sancoes():
-    """CEIS, CNEP, CEAF, Acordos de Leniencia (snapshot diario)."""
+    """CEIS, CNEP, CEAF, Acordos de Leniencia (snapshot diario).
+    Tenta data de hoje e ate 7 dias anteriores (publicacao pode atrasar).
+    """
+    from datetime import timedelta
     dest = DATA_DIR / "sancoes"
     dest.mkdir(parents=True, exist_ok=True)
 
-    dt = date.today().strftime("%Y%m%d")
-
     print("  Sancoes:")
     for dataset in ["ceis", "cnep", "ceaf", "acordos-leniencia"]:
-        url = f"{TRANSPARENCIA_BASE}/{dataset}/{dt}"
         name = dataset.replace("-", "_").upper()
-        zip_path = dest / f"{dt}_{name}.zip"
-        if _download(url, zip_path):
-            _unzip(zip_path, dest)
+        downloaded = False
+        for offset in range(8):  # hoje ate 7 dias atras
+            dt = (date.today() - timedelta(days=offset)).strftime("%Y%m%d")
+            zip_path = dest / f"{dt}_{name}.zip"
+            url = f"{TRANSPARENCIA_BASE}/{dataset}/{dt}"
+            if _download(url, zip_path):
+                _unzip(zip_path, dest)
+                downloaded = True
+                break
+        if not downloaded:
+            print(f"    [aviso] {name}: nenhuma data disponivel nos ultimos 7 dias")
 
 
 def download_emendas(anos=None):
