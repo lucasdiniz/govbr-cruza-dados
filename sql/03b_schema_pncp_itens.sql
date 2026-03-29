@@ -25,7 +25,7 @@ CREATE TABLE pncp_item (
     dt_atualizacao           TIMESTAMP,
     -- Campos de referencia (enriquecidos no download)
     cnpj_orgao               CHAR(14),
-    ano_compra               SMALLINT,
+    ano_compra               INTEGER,
     sequencial_compra        INT,
     PRIMARY KEY (numero_controle_pncp, numero_item)
 );

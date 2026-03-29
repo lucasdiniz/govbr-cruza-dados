@@ -374,10 +374,13 @@ def download_pncp(anos=None):
                     return json.loads(raw)
             except Exception as e:
                 wait = min(2 ** (attempt + 1), 30)  # 2, 4, 8, 16, 30s
+                err_type = type(e).__name__
                 if attempt < retries - 1:
+                    print(f"    [retry {attempt+1}/{retries}] {err_type}: {e} (wait {wait}s)")
                     time.sleep(wait)
                 else:
-                    print(f"    [erro] {e}")
+                    print(f"    [erro] {err_type}: {e}")
+                    print(f"    [url ] {url}")
                     return None
 
     def _week_ranges(anos):
@@ -394,13 +397,17 @@ def download_pncp(anos=None):
                 d += timedelta(days=7)
 
     def _fetch_all_pages(base_url, page_size, max_pages=2000):
-        """Pagina por todos os resultados de uma URL base."""
+        """Pagina por todos os resultados de uma URL base.
+        Returns None if the first page fails (API error), [] if no results.
+        """
         all_items = []
         page = 1
         while page <= max_pages:
             url = f"{base_url}&pagina={page}&tamanhoPagina={page_size}"
             resp = _api_get(url)
             if not resp:
+                if page == 1:
+                    return None  # API error on first page
                 break
             items = resp.get("data", [])
             if not items:
@@ -416,6 +423,9 @@ def download_pncp(anos=None):
     # ── Contratacoes (por semana × modalidade) ──
     print("  PNCP contratacoes:")
     total_contratacoes = 0
+    consecutive_errors = 0
+    failed_contratacao_weeks = []
+    MAX_CONSECUTIVE_ERRORS = 20  # abort if API is down
     for week_start, week_end in _week_ranges(anos):
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
@@ -424,30 +434,53 @@ def download_pncp(anos=None):
 
         out_path = dest_contratacoes / f"contratacoes_{ds}_{de}.json"
         if out_path.exists() and out_path.stat().st_size > 10:
+            consecutive_errors = 0
             continue
 
         week_records = []
+        failed_mods = 0
         for mod in MODALIDADES:
             base_url = (f"{PNCP_API}/contratacoes/publicacao"
                         f"?dataInicial={ds}&dataFinal={de}"
                         f"&codigoModalidadeContratacao={mod}")
             items = _fetch_all_pages(base_url, PAGE_SIZE_CONTRATACOES)
-            week_records.extend(items)
+            if items is None:
+                failed_mods += 1
+            elif items:
+                week_records.extend(items)
 
+        if failed_mods > 0:
+            consecutive_errors += 1
+            failed_contratacao_weeks.append(f"{ds}-{de}")
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                print(f"    [abort] {MAX_CONSECUTIVE_ERRORS} semanas consecutivas com erro, abortando PNCP contratacoes")
+                break
+            # Don't save partial data or advance checkpoint — will retry this week
+            print(f"    {ds}-{de}: ERRO em {failed_mods}/{len(MODALIDADES)} modalidades, sera retentado")
+            continue
+
+        consecutive_errors = 0
         if week_records:
             out_path.write_text(json.dumps(week_records, ensure_ascii=False), encoding="utf-8")
             total_contratacoes += len(week_records)
             print(f"    {ds}-{de}: {len(week_records)} contratacoes")
 
-        # Update checkpoint
+        # Only advance checkpoint when week had NO errors
         ckpt["last_contratacao_date"] = de
         ckpt_file.write_text(json.dumps(ckpt))
 
+    # Save failed weeks to checkpoint for later retry
+    ckpt["failed_contratacao_weeks"] = failed_contratacao_weeks
+    ckpt_file.write_text(json.dumps(ckpt, indent=2))
     print(f"    Total contratacoes baixadas: {total_contratacoes}")
+    if failed_contratacao_weeks:
+        print(f"    ATENCAO: {len(failed_contratacao_weeks)} semanas com falha (salvo em _checkpoint.json)")
 
     # ── Contratos (por semana) ──
     print("  PNCP contratos:")
     total_contratos = 0
+    consecutive_errors = 0
+    failed_contrato_weeks = []
     for week_start, week_end in _week_ranges(anos):
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
@@ -456,6 +489,7 @@ def download_pncp(anos=None):
 
         out_path = dest_contratos / f"contratos_{ds}_{de}.json"
         if out_path.exists() and out_path.stat().st_size > 10:
+            consecutive_errors = 0
             continue
 
         week_records = _fetch_all_pages(
@@ -463,16 +497,31 @@ def download_pncp(anos=None):
             PAGE_SIZE_CONTRATOS,
         )
 
+        if week_records is None:
+            consecutive_errors += 1
+            failed_contrato_weeks.append(f"{ds}-{de}")
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                print(f"    [abort] {MAX_CONSECUTIVE_ERRORS} semanas consecutivas com erro, abortando PNCP contratos")
+                break
+            print(f"    {ds}-{de}: ERRO, sera retentado")
+            continue  # don't advance checkpoint
+
+        consecutive_errors = 0
         if week_records:
             out_path.write_text(json.dumps(week_records, ensure_ascii=False), encoding="utf-8")
             total_contratos += len(week_records)
             print(f"    {ds}-{de}: {len(week_records)} contratos")
 
-        # Update checkpoint
+        # Only advance checkpoint when week had NO errors
         ckpt["last_contrato_date"] = de
         ckpt_file.write_text(json.dumps(ckpt))
 
+    # Save failed weeks to checkpoint for later retry
+    ckpt["failed_contrato_weeks"] = failed_contrato_weeks
+    ckpt_file.write_text(json.dumps(ckpt, indent=2))
     print(f"    Total contratos baixados: {total_contratos}")
+    if failed_contrato_weeks:
+        print(f"    ATENCAO: {len(failed_contrato_weeks)} semanas com falha (salvo em _checkpoint.json)")
     print("    Itens/resultados: usar 'python -m etl.download_pncp' (API por contratacao)")
 
 

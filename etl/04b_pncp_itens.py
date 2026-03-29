@@ -10,7 +10,10 @@ Uso:
 import io
 import json
 import os
+import sys
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 from tqdm import tqdm
 
@@ -34,6 +37,18 @@ COLUMNS = [
 
 COPY_SQL = f"COPY pncp_item ({', '.join(COLUMNS)}) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')"
 
+# Log file for errors
+LOG_FILE = DATA_DIR / "pncp_itens_etl.log"
+
+
+def _log(msg):
+    """Append a timestamped message to the log file and print it."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(f"    {line}")
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
 
 def _parse_ts(val):
     """Parse ISO timestamp ou None."""
@@ -47,6 +62,16 @@ def _to_decimal(val):
         return None
     try:
         return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _to_int(val):
+    """Convert to int safely. Returns None on failure."""
+    if val is None:
+        return None
+    try:
+        return int(val)
     except (ValueError, TypeError):
         return None
 
@@ -105,12 +130,56 @@ def _read_file(filepath):
             _escape_copy(_parse_ts(item.get("dataInclusao"))),
             _escape_copy(_parse_ts(item.get("dataAtualizacao"))),
             _escape_copy(item.get("_cnpj_orgao", "")),
-            _escape_copy(item.get("_ano_compra")),
-            _escape_copy(item.get("_sequencial_compra")),
+            _escape_copy(_to_int(item.get("_ano_compra"))),
+            _escape_copy(_to_int(item.get("_sequencial_compra"))),
         ]
         lines.append("\t".join(vals) + "\n")
 
     return lines
+
+
+def _flush_buffer(conn, buffer, batch_num):
+    """Flush a buffer to the DB via COPY. Returns (success, rows, error_msg)."""
+    buffer.seek(0)
+    # Count lines before sending
+    content = buffer.getvalue()
+    row_count = content.count("\n")
+    buffer.seek(0)
+
+    try:
+        with conn.cursor() as cur:
+            cur.copy_expert(COPY_SQL, buffer)
+        conn.commit()
+        return True, row_count, None
+    except Exception as e:
+        # Roll back the failed transaction so connection stays usable
+        conn.rollback()
+        error_msg = str(e).strip()
+        _log(f"ERRO batch #{batch_num}: {error_msg}")
+
+        # Try to find the offending line by inserting line-by-line
+        _log(f"  Tentando identificar linhas problematicas no batch #{batch_num}...")
+        buffer.seek(0)
+        recovered = 0
+        failed_lines = 0
+        for i, line in enumerate(buffer):
+            single = io.StringIO(line)
+            try:
+                with conn.cursor() as cur:
+                    cur.copy_expert(COPY_SQL, single)
+                conn.commit()
+                recovered += 1
+            except Exception as line_err:
+                conn.rollback()
+                failed_lines += 1
+                if failed_lines <= 5:  # Log first 5 bad lines
+                    # Show truncated line content for debugging
+                    preview = line.strip()[:200]
+                    _log(f"  Linha {i} falhou: {str(line_err).strip()[:100]}")
+                    _log(f"    Conteudo: {preview}")
+
+        _log(f"  Batch #{batch_num}: {recovered} recuperadas, {failed_lines} descartadas")
+        return False, recovered, error_msg
 
 
 def load_itens(conn):
@@ -119,19 +188,28 @@ def load_itens(conn):
         print("    AVISO: diretorio pncp_itens/ nao encontrado.")
         return
 
+    # Truncate table for clean start
+    _log("TRUNCATE pncp_item para recarga completa...")
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE pncp_item;")
+    conn.commit()
+
     # Use os.scandir for speed (no sorting 3M entries)
+    _log("Escaneando diretorio de JSONs...")
     itens_dir = str(ITENS_DIR)
     filepaths = [
         os.path.join(itens_dir, e.name)
         for e in os.scandir(itens_dir)
         if e.name.endswith(".json") and e.is_file()
     ]
-    print(f"    {len(filepaths)} arquivos JSON encontrados")
+    _log(f"{len(filepaths)} arquivos JSON encontrados")
 
     total = 0
-    erros = 0
+    erros_arquivo = 0
+    erros_batch = 0
     buffer = io.StringIO()
     buffer_count = 0
+    batch_num = 0
     flush_every = 50000  # flush to DB every 50k files
 
     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -140,39 +218,51 @@ def load_itens(conn):
         for future in tqdm(as_completed(futures), total=len(futures), desc="    PNCP itens"):
             result = future.result()
             if result is None:
-                erros += 1
+                erros_arquivo += 1
                 continue
 
             for line in result:
                 buffer.write(line)
-                total += 1
 
             buffer_count += 1
 
             if buffer_count >= flush_every:
-                buffer.seek(0)
-                with conn.cursor() as cur:
-                    cur.copy_expert(COPY_SQL, buffer)
-                conn.commit()
+                batch_num += 1
+                success, rows, _ = _flush_buffer(conn, buffer, batch_num)
+                total += rows
+                if not success:
+                    erros_batch += 1
                 buffer = io.StringIO()
                 buffer_count = 0
 
     # Flush remaining
     if buffer.tell() > 0:
-        buffer.seek(0)
-        with conn.cursor() as cur:
-            cur.copy_expert(COPY_SQL, buffer)
-        conn.commit()
+        batch_num += 1
+        success, rows, _ = _flush_buffer(conn, buffer, batch_num)
+        total += rows
+        if not success:
+            erros_batch += 1
 
-    print(f"    pncp_item: {table_count(conn, 'pncp_item')} registros ({erros} arquivos com erro)")
+    final_count = table_count(conn, 'pncp_item')
+    _log(f"CONCLUIDO: {final_count} registros na tabela")
+    _log(f"  Arquivos lidos: {len(filepaths) - erros_arquivo} OK, {erros_arquivo} com erro")
+    _log(f"  Batches: {batch_num} total, {erros_batch} com erro parcial")
+    print(f"    pncp_item: {final_count} registros ({erros_arquivo} arquivos com erro, {erros_batch} batches com erro)")
 
 
 def run():
+    _log("="*60)
+    _log("INICIO etl.04b_pncp_itens")
     conn = get_conn()
     try:
         load_itens(conn)
+    except Exception:
+        _log(f"ERRO FATAL: {traceback.format_exc()}")
+        raise
     finally:
         conn.close()
+        _log("FIM etl.04b_pncp_itens")
+        _log("="*60)
 
 
 if __name__ == "__main__":

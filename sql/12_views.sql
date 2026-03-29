@@ -98,7 +98,7 @@ divida_agg AS (
     SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
            SUM(valor_consolidado) AS total, COUNT(*) AS qtd
     FROM pgfn_divida
-    WHERE tipo_pessoa = 'PJ' AND cpf_cnpj_norm IS NOT NULL
+    WHERE tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J') AND cpf_cnpj_norm IS NOT NULL
     GROUP BY 1
 ),
 ceis_agg AS (
@@ -106,7 +106,7 @@ ceis_agg AS (
            COUNT(*) AS qtd,
            BOOL_OR(dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE) AS vigente
     FROM ceis_sancao
-    WHERE tipo_pessoa = 'PJ' AND cpf_cnpj_norm IS NOT NULL
+    WHERE tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J') AND cpf_cnpj_norm IS NOT NULL
     GROUP BY 1
 ),
 cnep_agg AS (
@@ -114,7 +114,7 @@ cnep_agg AS (
            COUNT(*) AS qtd,
            BOOL_OR(dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE) AS vigente
     FROM cnep_sancao
-    WHERE tipo_pessoa = 'PJ' AND cpf_cnpj_norm IS NOT NULL
+    WHERE tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J') AND cpf_cnpj_norm IS NOT NULL
     GROUP BY 1
 ),
 all_cnpj AS (
@@ -285,7 +285,7 @@ ceis_pf AS (
            COUNT(*) AS qtd_sancoes,
            BOOL_OR(dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE) AS vigente
     FROM ceis_sancao
-    WHERE tipo_pessoa = 'PF' AND cpf_digitos_6 IS NOT NULL
+    WHERE tipo_pessoa IN ('PF', 'Pessoa física', 'F') AND cpf_digitos_6 IS NOT NULL
     GROUP BY cpf_digitos_6, UPPER(TRIM(nome_sancionado))
 ),
 -- TSE: pre-filter only CPFs in pf_base
@@ -495,8 +495,8 @@ CREATE TABLE _tmp_conflito AS
 SELECT se.cpf_digitos_6, se.nome_upper,
        COUNT(DISTINCT d.cnpj_basico) AS qtd_conflitos,
        SUM(d.total_pago) AS total_conflito
-FROM _tmp_socio_empresas se,
-     LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
+FROM _tmp_socio_empresas se
+CROSS JOIN LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
 JOIN (
     SELECT cnpj_basico, municipio, SUM(valor_pago) AS total_pago
     FROM tce_pb_despesa WHERE valor_pago > 0
@@ -658,14 +658,14 @@ divida_agg AS (
     SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
            SUM(valor_consolidado) AS total_divida
     FROM pgfn_divida
-    WHERE tipo_pessoa = 'PJ' AND cpf_cnpj_norm IS NOT NULL
+    WHERE tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J') AND cpf_cnpj_norm IS NOT NULL
     GROUP BY 1
 ),
 ceis_agg AS (
     SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
            BOOL_OR(dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE) AS vigente
     FROM ceis_sancao
-    WHERE tipo_pessoa = 'PJ' AND cpf_cnpj_norm IS NOT NULL
+    WHERE tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J') AND cpf_cnpj_norm IS NOT NULL
     GROUP BY 1
 )
 SELECT
@@ -853,13 +853,11 @@ CREATE INDEX idx_mv_rede_tipo ON mv_rede_pb(tipo_aresta);
 CREATE INDEX idx_mv_rede_pessoa ON mv_rede_pb(pessoa_id);
 CREATE INDEX idx_mv_rede_entidade ON mv_rede_pb(entidade_id);
 
--- Cleanup tabelas intermediárias
-DROP TABLE IF EXISTS _tmp_pb_cnpjs;
-DROP TABLE IF EXISTS _tmp_rede_socio;
-DROP TABLE IF EXISTS _tmp_rede_forn;
-DROP TABLE IF EXISTS _tmp_rede_srv;
-DROP TABLE IF EXISTS _tmp_rede_cred;
-DROP TABLE IF EXISTS _tmp_rede_doador;
+-- Nota: _tmp tables não podem ser dropadas pois mv_rede_pb depende delas.
+-- O PostgreSQL mantém dependência de referência mesmo após materialização.
+-- Estas tabelas ficam como backing storage da MV.
+-- DROP TABLE IF EXISTS _tmp_pb_cnpjs;  -- já dropada antes do CREATE MV
+-- DROP TABLE IF EXISTS _tmp_rede_*;    -- mantidas (dependência da MV)
 
 
 -- =============================================================================

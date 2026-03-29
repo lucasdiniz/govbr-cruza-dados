@@ -153,6 +153,7 @@ jobs:
 
       # ── First run: full ETL (only once) ──
       - name: First run - Full ETL
+        continue-on-error: true  # PNCP API may timeout; don't block rest of pipeline
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
             set -e

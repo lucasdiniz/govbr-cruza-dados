@@ -1,13 +1,13 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] **Issue #2**: Deploy VM Azure — run 23692083768 em andamento (step "First run - Full ETL", download PNCP pode estar lento)
-- [ ] ETL pncp_itens local: rodando (~40%, 1.2M/3M arquivos, ~4h runtime)
+- [ ] **Issue #2**: Deploy VM Azure — run 23692083768 timeout (PNCP API). Fix: abort apos 20 erros consecutivos, salvar semanas falhadas em _checkpoint.json, continue-on-error no workflow. Novo deploy pendente.
+- [ ] ETL pncp_itens local: pronto para re-executar (aguardando 12_views.sql terminar)
 - [x] **Encoding investigado**: Tabelas RFB limpas (UPPER() OK em 66M+27M+69M rows). Erro era do psql Windows terminal — dados UTF-8 válidos no banco. Fix: usar `2>/dev/null` ou `SET client_encoding TO 'WIN1252'`
-- [ ] **Bug tipo_pessoa**: mv_empresa_governo filtra `tipo_pessoa = 'PJ'` mas PGFN usa "Pessoa jurídica" e CEIS usa "J". Flags CEIS/CNEP/PGFN são 0. Fix: atualizar 12_views.sql
+- [x] **Bug tipo_pessoa**: Corrigido em 12_views.sql — PGFN, CEIS e CNEP agora usam `IN ('PJ', 'Pessoa jurídica', 'J')`
 - [ ] Q55/Q56: empresa fenix e doador→contrato — testar
 - [ ] Q72 doador→prefeito: doacoes PJ sao fundo partidario (proibidas desde 2015), query nao gera achados
-- [ ] MVs: mv_empresa_governo, mv_pessoa_pb, mv_municipio_pb_risco, mv_servidor_pb_base criadas. Faltam: mv_servidor_pb_risco, mv_empresa_pb, mv_rede_pb, views (12_views.sql rodando)
+- [ ] MVs: 12_views.sql re-executando (sessao 23). ~70% completo, em _tmp_conflito do mv_servidor_pb_risco
 
 ## Concluido
 - [x] **Issue #1**: tce_pb_despesa dates — 3 formatos + ano_arquivo. Validado: 15.8M rows, 2018-2026
@@ -30,7 +30,8 @@
 - tse_despesa: 6M, tse_bem_candidato: 4M, pb_pagamento: 3.87M, viagem: 3.9M, pncp_contrato: 3.7M
 - tse_candidato: 2.1M, tse_receita_candidato: 2.3M, pb_empenho: 1.67M, tce_pb_receita: 1.2M, emenda_favorecido: 1.2M
 - cpgf_transacao: 645k, tce_pb_licitacao: 310k, pb_saude: 215k, bndes_contrato: ~100k
-- pncp_item: re-carregando (era 1.6M, truncado, alvo 3M)
+- pncp_item: 3.8M rows (parcial, será truncado e recarregado). Alvo ~3M items de ~2.99M JSONs
+- DB size: 204 GB
 - PostgreSQL local: user=postgres, db=govbr, password=kong1029, work_mem=512MB
 - Dados brutos: G:\govbr-dados-brutos (DATA_DIR no .env, HDD)
 
@@ -71,13 +72,22 @@
   2. empresas_inativas_fornecedoras_pb: Edilane Carvalho (144 mun), MJ Comercio (33 mun, R$20M)
   3. risco_municipal_pb: Score 25-52, JP com 76.7% proponente unico, Lucena score 52
 
-### Handoff sessao 23
-- Deploy run 23692083768 ainda em andamento (step "First run - Full ETL")
-- ETL pncp_itens local: ~40%, ainda rodando
-- 12_views.sql: rodando em background (faltam mv_servidor_pb_risco, mv_empresa_pb, mv_rede_pb, views)
+### 2026-03-28 (sessao 23)
+- **Diagnóstico pncp_item crash**: PG log revelou `o valor "202439" está fora do intervalo para smallint` — `ano_compra SMALLINT` overflow. Dados corrompidos da API PNCP (ano+seq concatenados).
+- **Fix schema**: `ano_compra SMALLINT → INTEGER` em 03_schema_pncp.sql, 03b_schema_pncp_itens.sql e ALTER TABLE no banco live
+- **Fix ETL 04b_pncp_itens.py**: try/except por batch COPY, retry linha-a-linha em falha, log persistente (pncp_itens_etl.log), TRUNCATE no inicio, `_to_int()` sanitizer para ano_compra/sequencial_compra
+- **Zombie PID 12536**: processo COPY pncp_item em `idle in transaction (aborted)` por 2h+. Terminado.
+- **12_views.sql re-executado**: run anterior incompleta (só 3 de 7+ MVs criadas). Desbloqueado PID 20960 (orphan superuser lock em mv_servidor_pb_base). Re-run em andamento.
+- **Bug tipo_pessoa**: já estava corrigido em 12_views.sql (usa `IN ('PJ', 'Pessoa jurídica', 'J')` nos filtros)
+
+### Handoff sessao 24
+- 12_views.sql: rodando (~70%, em _tmp_conflito do mv_servidor_pb_risco). Faltam: steps 4-6, mv_empresa_pb, mv_rede_pb, views
+- ETL pncp_itens: pronto para re-executar apos 12_views.sql terminar (`python -m etl.04b_pncp_itens`)
+- Deploy run 23692083768 status desconhecido (nao verificado nesta sessao)
 - Proximos passos:
-  1. Fix bug tipo_pessoa em 12_views.sql (PGFN "Pessoa jurídica", CEIS "J")
-  2. Testar Q55 empresa fenix e Q56 doador→contrato
-  3. Monitorar deploy e ETL pncp_itens
-  4. Mais relatorios: Q77 fracionamento, mv_rede_pb (apos recriacao), mv_servidor_pb_risco
-  5. Push + commit
+  1. Aguardar 12_views.sql terminar e validar MVs
+  2. Executar ETL pncp_itens (TRUNCATE + reload com error handling)
+  3. Testar Q55 empresa fenix e Q56 doador→contrato
+  4. Monitorar deploy Azure
+  5. Mais relatorios: Q77 fracionamento, mv_rede_pb, mv_servidor_pb_risco
+  6. Push + commit
