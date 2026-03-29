@@ -1,10 +1,13 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente
-- [ ] **Issue #2**: Deploy VM Azure — run 23692083768 em andamento (re-trigado sessao 21)
-- [ ] ETL pncp_itens: re-rodando (~100 it/s, 3M arquivos, ~8h estimado no HDD)
+- [ ] **Issue #2**: Deploy VM Azure — run 23692083768 em andamento (step "First run - Full ETL", download PNCP pode estar lento)
+- [ ] ETL pncp_itens local: rodando (~40%, 1.2M/3M arquivos, ~4h runtime)
+- [x] **Encoding investigado**: Tabelas RFB limpas (UPPER() OK em 66M+27M+69M rows). Erro era do psql Windows terminal — dados UTF-8 válidos no banco. Fix: usar `2>/dev/null` ou `SET client_encoding TO 'WIN1252'`
+- [ ] **Bug tipo_pessoa**: mv_empresa_governo filtra `tipo_pessoa = 'PJ'` mas PGFN usa "Pessoa jurídica" e CEIS usa "J". Flags CEIS/CNEP/PGFN são 0. Fix: atualizar 12_views.sql
+- [ ] Q55/Q56: empresa fenix e doador→contrato — testar
 - [ ] Q72 doador→prefeito: doacoes PJ sao fundo partidario (proibidas desde 2015), query nao gera achados
-- [ ] Q55/Q56: empresa fenix e doador→contrato — nao testados ainda (cancelados para liberar recursos)
+- [ ] MVs: mv_empresa_governo, mv_pessoa_pb, mv_municipio_pb_risco, mv_servidor_pb_base criadas. Faltam: mv_servidor_pb_risco, mv_empresa_pb, mv_rede_pb, views (12_views.sql rodando)
 
 ## Concluido
 - [x] **Issue #1**: tce_pb_despesa dates — 3 formatos + ano_arquivo. Validado: 15.8M rows, 2018-2026
@@ -58,14 +61,23 @@
   2. contratos_fim_de_semana_pb: 426 contratos, R$247.9M
   3. capital_minimo_contratos_pb: Doutor Work R$42M, Silas Fernandes R$2.2M
 
-### Handoff sessao 22
-- Git: commit ed4c481, main
-- Deploy run 23692083768 em andamento
-- ETL pncp_itens rodando em background (~8h estimado)
-- Issues: #2 (deploy) aberta, #5 (query quality) pode fechar
+### 2026-03-28 (sessao 22)
+- **Encoding investigado**: Tabelas RFB limpas. Erro era do psql Windows (terminal nao suporta UTF-8). Fix: `2>/dev/null` ou `SET client_encoding TO 'WIN1252'`
+- **ETL pncp_itens**: ~40% (1.2M/3M), ainda rodando
+- **MVs recriadas**: mv_empresa_governo (690K), mv_pessoa_pb (204K), mv_municipio_pb_risco (223), mv_servidor_pb_base. Resto em andamento via 12_views.sql
+- **Bug tipo_pessoa**: PGFN usa "Pessoa jurídica" (nao "PJ"), CEIS usa "J" (nao "PJ"). Flags CEIS/CNEP/PGFN zeradas nas MVs.
+- **3 novos relatorios**:
+  1. servidor_bolsa_familia_pb: 20.566 servidores em 223 municipios recebendo BF (79% contratos temporarios)
+  2. empresas_inativas_fornecedoras_pb: Edilane Carvalho (144 mun), MJ Comercio (33 mun, R$20M)
+  3. risco_municipal_pb: Score 25-52, JP com 76.7% proponente unico, Lucena score 52
+
+### Handoff sessao 23
+- Deploy run 23692083768 ainda em andamento (step "First run - Full ETL")
+- ETL pncp_itens local: ~40%, ainda rodando
+- 12_views.sql: rodando em background (faltam mv_servidor_pb_risco, mv_empresa_pb, mv_rede_pb, views)
 - Proximos passos:
-  1. Monitorar deploy run 23692083768
-  2. Monitorar ETL pncp_itens (completar 3M arquivos)
-  3. Testar Q55 empresa fenix e Q56 doador→contrato PNCP
-  4. Escrever mais relatorios (Q60 fornecedor sem licitacao, Q74 servidor+BF)
-  5. Push final
+  1. Fix bug tipo_pessoa em 12_views.sql (PGFN "Pessoa jurídica", CEIS "J")
+  2. Testar Q55 empresa fenix e Q56 doador→contrato
+  3. Monitorar deploy e ETL pncp_itens
+  4. Mais relatorios: Q77 fracionamento, mv_rede_pb (apos recriacao), mv_servidor_pb_risco
+  5. Push + commit
