@@ -1,7 +1,7 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente (por prioridade)
-1. [ ] **Queries pncp_item**: 4.71M itens sem queries. Ideias: sobrepreco por item (comparar preco unitario entre contratos), variacao de preco entre municipios, itens sem descricao, concentracao de fornecedor por tipo de item.
+1. [x] **Queries pncp_item**: 7 queries criadas (Q92-Q98) em queries/fraude_pncp_item.sql — sobrepreco por item, itens fracassados repetidos, variacao UF, concentracao fornecedor, orcamento sigiloso, jogo de planilha, precos identicos (cartel).
 2. [ ] **Q55 fix**: empresa fenix — query muito pesada (cost 21M, self-join estabelecimento 70M por UPPER(TRIM(logradouro))). Opcoes: index funcional, filtro por UF/estado, ou pre-materializar enderecos normalizados.
 3. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403 (CPGF, SIAPE, CEIS, CNEP, CEAF) + PNCP API 500/empty body da VM. Investigar bloqueio IP Azure.
 
@@ -12,7 +12,7 @@
 - mv_empresa_governo 690K rows (criada sessao 26)
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 86+ queries em queries/*.sql, 21 relatorios em relatorios/
+- 93+ queries em queries/*.sql, 21 relatorios em relatorios/
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas
@@ -35,6 +35,13 @@
 - pncp_item completo: 4.71M rows
 - Deploy 23718465381 "success" mas DB Azure vazio (downloads bloqueados)
 - tipo_pessoa fix linhas 661/668 aplicado (ja commitado)
+
+### 2026-04-03 (sessao 27)
+- 7 queries pncp_item criadas (Q92-Q98): sobrepreco, fracassados repetidos, variacao UF, concentracao fornecedor, sigiloso, jogo de planilha, precos identicos
+- Dados: 46% dos itens homologados compartilham descricao exata com 10+ outros (viabiliza comparacao por descricao)
+- NCM esparso (1.4%), catalogo quase inexistente (0.1%) — queries usam descricao normalizada
+- Performance: Q92/Q97 usam window functions (evita self-join), Q94 usa AVG em vez de PERCENTILE_CONT
+- Achados: Sec. Educacao MS com 974 licitacoes fracassadas de arroz; precos identicos nao-redondos de material limpeza em 20+ orgaos
 
 ### 2026-04-03 (sessao 26)
 - mv_empresa_governo criada: 690K rows, 5 indices. (1a tentativa falhou maintenance_work_mem 1kB acima max)
