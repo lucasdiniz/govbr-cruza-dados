@@ -156,3 +156,10 @@ CREATE INDEX idx_siape_cpf_nome ON siape_cadastro(cpf_digitos, UPPER(TRIM(nome))
     WHERE cpf_digitos IS NOT NULL AND cpf_digitos != '000000';
 CREATE INDEX idx_viagem_cpf_nome ON viagem(cpf_viajante_digitos, UPPER(TRIM(nome_viajante)))
     WHERE cpf_viajante_digitos IS NOT NULL AND cpf_viajante_digitos != '000000';
+
+-- =============================================
+-- Funcional: CNPJ basico do doador TSE (para Q56)
+-- =============================================
+CREATE INDEX idx_tse_rec_cnpj_basico_doador
+    ON tse_receita_candidato (LEFT(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g'), 8))
+    WHERE LENGTH(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g')) >= 14;
