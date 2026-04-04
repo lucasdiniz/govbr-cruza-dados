@@ -200,7 +200,31 @@ O item "PANO DE CHÃO" com valor unitário de **R$ 5,83** aparece em **17 órgã
 
 **Contexto legal:** A formação de cartel em licitações públicas é crime tipificado no art. 337-I do Código Penal (inserido pela Lei 14.133/2021), com pena de 4 a 8 anos de reclusão. O CADE mantém o Programa de Combate a Cartéis em Licitações com mecanismo de denúncia e acordo de leniência.
 
-**Recomendação:** Identificar os fornecedores vencedores nos 17 órgãos e verificar sobreposição societária. Encaminhar ao CADE via Formulário de Denúncia caso os mesmos fornecedores (ou empresas relacionadas) sejam recorrentes nos contratos.
+#### Cruzamento realizado: Fornecedores vencedores do cartel do pano de chão
+
+O cruzamento dos itens Q98 com `pncp_contrato` identificou os fornecedores que mais vencem licitações com o preço cartelizado de R$ 5,83:
+
+| Fornecedor | CNPJ | Contratos R$5,83 |
+|------------|------|-------------------|
+| DISTRIBUIDORA FELISMINO LTDA | 39476248000240 | 54 |
+| MH COMERCIO DE PAPELARIA ELETROELETRONICOS E INFORMATICA LTDA | 27645400000100 | 51 |
+| ENIO DOS SANTOS SILVA | 16747924000196 | 20 |
+| NAN COMERCIO E REPRESENTAÇÃO LTDA | 53280704000121 | 19 |
+| SJ ATENTO MONITORAMENTO ELETRONICO EIRELI | 37604302000189 | 16 |
+| THIAGO MELO DOS SANTOS | 35999472000184 | 10 |
+| REAL GLOBAL COMERCIO E IMPORTACAO LTDA | 32177997000146 | 9 |
+| COMERCIAL UNIDOS LTDA | 01628729000170 | 8 |
+| SHOPPEE DA LIMPEZA LTDA | 51660757000142 | 8 |
+| CRISTINA FELISMINO DOS SANTOS | 30510368000160 | 5 |
+
+**Achados críticos:**
+- **DISTRIBUIDORA FELISMINO** (54 contratos) e **CRISTINA FELISMINO DOS SANTOS** (5 contratos) compartilham o sobrenome "Felismino" — possível vínculo familiar ou societário. Se confirmado, configura atuação coordenada via empresas formalmente independentes.
+- **MH COMERCIO** (51 contratos) é empresa de papelaria/eletroeletrônicos que vende pano de chão — diversificação atípica de portfólio.
+- Os mesmos fornecedores reaparecem em **outros itens com preço idêntico**: DISTRIBUIDORA FELISMINO também vence 18 contratos de detergente a R$2,41 e MH COMERCIO vence 14 contratos do mesmo item. O padrão se repete em papel A4 a R$25,03 (MH COMERCIO 7 contratos, FRANCISCO COSTA DE SANTANA 7 contratos).
+
+**Padrão cross-product:** A repetição dos mesmos fornecedores em múltiplos itens com preço idêntico não-redondo (pano R$5,83, detergente R$2,41, papel R$25,03) é o indicador mais forte de cartel identificado nesta análise. Não é plausível que empresas independentes convergissem para o mesmo preço não-redondo em 3+ produtos diferentes, em 17-20 órgãos distintos.
+
+**Recomendação:** Encaminhar ao CADE a lista completa de fornecedores com os 3 itens cartelizados (pano, detergente, papel A4), incluindo sobreposição de CNPJs e vínculos societários (FELISMINO × CRISTINA FELISMINO). Verificar se há vínculo societário via base da Receita Federal (socio table).
 
 ---
 
@@ -224,7 +248,7 @@ O item "PANO DE CHÃO" com valor unitário de **R$ 5,83** aparece em **17 órgã
 
 3. **[Médio prazo] Q96 — Maranhão e Ceará:** Solicitar aos TCEs estaduais a justificativa legal para sigilo do orçamento nos contratos com Telefonica Brasil e Convergint Technologies. Comparar valor contratado com benchmarks de mercado (painel de preços COMPRASNET).
 
-4. **[Médio prazo] Q98 — Pano de chão R$ 5,83:** Compilar lista de fornecedores vencedores nos 17 órgãos. Se houver sobreposição de CNPJs ou de sócios, encaminhar denúncia formal ao CADE.
+4. ~~**[Médio prazo] Q98 — Pano de chão R$ 5,83:** Compilar lista de fornecedores vencedores~~ — **Feito**: 10 fornecedores identificados (Seção 4.3), padrão cross-product em 3 itens. Vínculo FELISMINO detectado. **Próximo passo: verificar vínculo societário e encaminhar ao CADE.**
 
 5. **[Análise futura] Combinação Q93 + Q96:** Órgãos que acumulam fracassos repetidos E usam orçamento sigiloso nas homologações subsequentes para os mesmos itens representam risco duplo e merecem prioridade de auditoria.
 

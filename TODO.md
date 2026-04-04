@@ -9,7 +9,7 @@
 4. [x] **Sobrepreço × fornecedores**: Top 15 fornecedores outlier. PRIME CONSULTORIA 324× em 10 contratos R$10.3B. LMM ENGENHARIA R$16.3B.
 5. [x] **Sobrepreço × CEIS/CNEP/PGFN**: 0 matches em todas as bases — fornecedores formalmente regulares.
 6. [ ] **Fracassados SES-PB × contratos diretos**: "planilha sem itens" fracassa → verificar dispensa/inexigibilidade no mesmo período
-7. [ ] **Cartel (Q98) × fornecedores**: Preços idênticos → pncp_contrato → mapear rede via mv_rede_pb
+7. [x] **Cartel (Q98) × fornecedores**: FELISMINO 54 contratos, MH COMERCIO 51. Cross-product em 3 itens (pano R$5.83, detergente R$2.41, papel R$25.03).
 8. [x] **Rede societária × mv_empresa_governo**: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B. Top 10 hubs documentados.
 9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
 
