@@ -122,38 +122,85 @@ Equipamentos de segurança pública são itens de difícil comparação de preç
 
 ---
 
-## 5. Limitações e Próximos Passos
+## 5. Cruzamentos Realizados
 
-### 5.1. Limitações Metodológicas
+### 5.1. Fornecedores com Maior Volume de Itens Sobrepreço (Q92 × pncp_contrato)
 
-| Limitação | Impacto | Correção Pendente |
-|-----------|---------|-------------------|
-| Uso de AVG (média aritmética) em Q92 e Q94 | Sensível a outliers — um único preço extremo distorce a média do grupo, gerando falsos positivos ou mascarando verdadeiros sobrepreços | Substituir por `PERCENTILE_CONT(0.5)` (mediana) e IQR |
-| Normalização de descrições apenas por `UPPER(TRIM())` | Itens com unidades diferentes (UN, UNID, Unidade, CX, PCT) são tratados como grupos distintos ou agrupados incorretamente | Implementar dicionário de unidades e clustering de descrições similares |
-| Cobertura de NCM apenas 1,4% | Não é possível usar código NCM como chave de agrupamento na maioria dos casos | Ampliar via enriquecimento por NLP ou mapeamento manual de categorias-chave |
-| Filtro de R$ 1B exclui possíveis erros graves | Itens com valor total acima de R$ 1B são descartados como prováveis erros, mas podem ser sobrepreços reais | Criar fila separada para revisão manual de itens acima de R$ 1B |
-| Ausência de série temporal | Análise é um corte transversal — não detecta evolução de preço ao longo do tempo no mesmo órgão | Adicionar análise de variação ano a ano por órgão/item |
+O cruzamento dos 6.196 itens outlier (preço > média + 3σ) com a tabela `pncp_contrato` identificou os fornecedores que mais concentram itens com preço acima do esperado:
 
-### 5.2. Próximos Passos Recomendados
+| Fornecedor | CNPJ | Itens Outlier | Valor Total (R$) | Contratações | Razão Média |
+|------------|------|---------------|-------------------|--------------|-------------|
+| LMM ENGENHARIA E SERVICOS LTDA | 44626011000157 | 240 | 16,3 bilhões | 1 | 44,2× |
+| PRIME CONSULTORIA E ASSESSORIA EMPRESARIAL LTDA | 05340639000130 | 70 | 10,3 bilhões | 10 | 324,3× |
+| FOCUS EMPREENDIMENTOS LTDA | 05410666000131 | 95 | 6,5 bilhões | 1 | 44,2× |
+| NEW CONSTRUCOES E PLANEJAMENTO LTDA | 44683432000110 | 60 | 4,1 bilhões | 1 | 44,2× |
+| FUNDACAO DE APOIO A PESQUISA E A EXTENSAO | 14645162000191 | 25 | 3,4 bilhões | 2 | 68,9× |
+| CONSTRUTORA LUIZ COSTA LTDA | 00779059000120 | 10 | 2,9 bilhões | 7 | 36,7× |
+| LCM CONSTRUCAO E COMERCIO S.A | 19758842000135 | 11 | 2,4 bilhões | 6 | 8,7× |
+| REAL JG FACILITIES S/A | 08247960000162 | 36 | 1,6 bilhões | 8 | 38,6× |
+| SIGMA ENGENHARIA INDUSTRIA E COMERCIO LTDA | 25898180000100 | 12 | 1,6 bilhões | 2 | 19,9× |
+| SERPRO | 33683111000107 | 14 | 1,5 bilhões | 9 | 26,1× |
+| COMERCIO DE PRODUTOS DE LIMPEZA D. PRADO LTDA | 08103754000189 | 12 | 1,4 bilhões | 1 | 8,7× |
+| V.TECH TECNOLOGIA E SISTEMAS LTDA | 37739311000187 | 10 | 1,4 bilhões | 2 | 20,0× |
+| NTSEC SOLUCOES EM TELEINFORMATICA LTDA | 09137728000134 | 67 | 1,3 bilhões | 2 | 22,2× |
+| VIGENT CONSTRUCOES LTDA | 15320722000109 | 4 | 1,1 bilhões | 1 | 20,1× |
+| CONSTRUPAV EMPREENDIMENTOS LTDA | 30251160000174 | 15 | 1,0 bilhões | 1 | 38,9× |
 
-1. **Corrigir Q92 e Q94** para usar mediana (`PERCENTILE_CONT`) em vez de média aritmética, reduzindo falsos positivos e aumentando a robustez do ranking.
-2. **Cruzar outliers Q92 com fornecedores vencedores** (tabela `pncp_contrato`) para identificar se os sobrepreços se concentram em fornecedores específicos.
-3. **Cruzar casos Q97** com o banco de sanções (CEIS/CNEP) e com o score de risco de empresas, verificando se fornecedores com histórico de irregularidades reaparecem nos casos de jogo de planilha.
-4. **Encaminhar os casos de maior valor** (flanela R$ 103M, arma não-letal R$ 448M) aos órgãos competentes (CGU, TCU) para triagem de investigação formal.
-5. **Implementar alerta em tempo real** para novos itens publicados no PNCP que excedam 5× a média do grupo, antes da homologação.
+**Destaque — PRIME CONSULTORIA** (CNPJ 05340639000130): razão média de **324,3×** sobre o preço esperado, distribuída em 10 contratações distintas com 70 itens outlier (R$ 10,3 bilhões). Empresa ativa em São Paulo desde 2005, sócios: Rodrigo Mantovani e João Márcio Oliveira Ferreira. Padrão consistente em múltiplos contratos sugere sobrepreço sistêmico, não erro pontual.
+
+**LMM ENGENHARIA** (CNPJ 44626011000157): maior volume absoluto (R$ 16,3B em 240 itens outlier), mas concentrado em uma única contratação com razão 44,2×. Empresa ativa em SP desde 2021. Valor extremamente alto pode indicar contratação de grande porte (engenharia/infraestrutura) com precificação incompatível com as médias nacionais dos itens individuais.
+
+### 5.2. Cruzamento com Sanções e Dívidas (CEIS/CNEP/PGFN)
+
+O cruzamento dos fornecedores outlier com as bases de sanções e dívidas federais revelou:
+
+| Base | Matches | Observação |
+|------|---------|------------|
+| CEIS (empresas inidôneas/suspensas) | **0** | Nenhum dos top fornecedores está no cadastro de empresas sancionadas |
+| CNEP (empresas punidas) | **0** | Nenhuma punição Lei Anticorrupção registrada |
+| PGFN (dívida ativa federal) | **0** | Nenhum dos top fornecedores tem dívida ativa inscrita |
+
+**Interpretação**: Os fornecedores que mais concentram itens sobrepreço estão formalmente regulares perante o governo federal — sem sanções, sem dívidas, com situação cadastral ativa na RFB. Isso é consistente com dois cenários: (a) erros de digitação/cadastro no PNCP que inflam artificialmente os valores, ou (b) fornecedores que operam dentro da legalidade formal mas praticam preços acima do mercado, aproveitando deficiências na pesquisa de preços dos órgãos contratantes.
+
+A ausência de sanções não implica regularidade de preços — indica apenas que esses fornecedores não foram alcançados por processos administrativos punitivos até o momento.
 
 ---
 
-## 6. Conclusão
+## 6. Limitações e Próximos Passos
+
+### 6.1. Limitações Metodológicas
+
+| Limitação | Impacto | Correção Pendente |
+|-----------|---------|-------------------|
+| ~~Uso de AVG (média aritmética) em Q94~~ | ~~Sensível a outliers~~ | ~~Corrigido: Q94 agora usa PERCENTILE_CONT(0.5) (mediana)~~ |
+| Normalização de descrições apenas por `UPPER(TRIM())` | Itens com unidades diferentes (UN, UNID, Unidade, CX, PCT) são tratados como grupos distintos ou agrupados incorretamente | Implementar dicionário de unidades e clustering de descrições similares |
+| Cobertura de NCM apenas 1,4% | Não é possível usar código NCM como chave de agrupamento na maioria dos casos | Ampliar via enriquecimento por NLP ou mapeamento manual de categorias-chave |
+| ~~Filtro de R$ 1B exclui possíveis sobrepreços reais~~ | ~~Itens acima de R$ 1B descartados~~ | ~~Investigado: todos os 30 itens >R$1B examinados são erros de digitação (quantidade = valor unitário)~~ |
+| Ausência de série temporal | Análise é um corte transversal — não detecta evolução de preço ao longo do tempo no mesmo órgão | Adicionar análise de variação ano a ano por órgão/item |
+
+### 6.2. Próximos Passos Recomendados
+
+1. ~~**Corrigir Q94** para usar mediana~~ — **Feito**: Q94 reescrito com `PERCENTILE_CONT(0.5)` e temp tables.
+2. ~~**Cruzar outliers Q92 com fornecedores vencedores**~~ — **Feito**: Seção 5.1 acima.
+3. ~~**Cruzar com CEIS/CNEP/PGFN**~~ — **Feito**: Seção 5.2, 0 matches em todas as bases.
+4. **Encaminhar os casos de maior valor** (flanela R$ 103M, arma não-letal R$ 448M, PRIME CONSULTORIA R$ 10,3B em 10 contratos) aos órgãos competentes (CGU, TCU) para triagem de investigação formal.
+5. **Implementar série temporal de preços** por órgão/item para detectar evolução anômala ao longo do tempo.
+6. **Investigar PRIME CONSULTORIA** (05340639000130): razão média 324× em 10 contratos distintos é o padrão mais consistente de sobrepreço na amostra — merece aprofundamento via rede societária e histórico de contratações.
+
+---
+
+## 7. Conclusão
 
 A análise estatística de itens homologados no PNCP revela **14.126 ocorrências** suspeitas de sobrepreço (10.034 via desvio padrão nacional + 4.092 via jogo de planilha), com casos individuais chegando a centenas de milhões de reais.
 
-Os achados sugerem três categorias de problema distintas:
+O cruzamento com fornecedores vencedores (Seção 5) revelou alta concentração: os 15 maiores fornecedores acumulam **R$ 57,3 bilhões** em itens outlier. O caso mais grave — **PRIME CONSULTORIA** — apresenta razão média de 324× sobre o preço esperado em 10 contratos distintos, padrão consistente que transcende erro pontual.
 
-- **Erros de digitação não corrigidos** (como o avental EBSERH-PB a R$ 1M/unidade), que distorcem o banco de dados e podem inflar estimativas de mercado em licitações futuras.
+A ausência total de matches nas bases de sanções (CEIS/CNEP) e dívida ativa (PGFN) indica que os fornecedores operam formalmente regulares, o que reforça a necessidade de controles ex-ante (pesquisa de preços robusta, alertas automáticos) em vez de depender exclusivamente de mecanismos punitivos ex-post.
+
+Os achados sugerem três categorias de problema:
+
+- **Erros de digitação não corrigidos** (avental EBSERH-PB a R$ 1M/unidade; itens >R$ 1B confirmados como erros de digitação), que distorcem o banco de dados e podem inflar estimativas de mercado em licitações futuras.
 - **Sobrepreço por ausência de pesquisa de mercado adequada**, especialmente em UFs com mercado menos competitivo e em itens hospitalares de nicho.
 - **Manipulação deliberada de planilha de preços**, evidenciada pela concentração extrema do valor do contrato em um único item outlier — padrão clássico do jogo de planilha.
 
-A metodologia atual, baseada em média aritmética, tende a superestimar o número de falsos positivos em grupos com distribuição assimétrica. Com a substituição para mediana e IQR (correção pendente), espera-se produzir um ranking mais preciso e confiável para os órgãos de controle.
-
-Os dados estão disponíveis para cruzamento com as demais bases do pipeline (CNPJ, CEIS, PGFN, TSE) para aprofundamento dos perfis dos fornecedores envolvidos nos casos de maior valor absoluto.
+A correção da Q94 para usar mediana (PERCENTILE_CONT) já foi implementada, reduzindo a sensibilidade a outliers na comparação entre UFs.

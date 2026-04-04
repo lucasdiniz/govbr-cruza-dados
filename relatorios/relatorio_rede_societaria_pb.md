@@ -122,6 +122,44 @@ A sobreposição entre SERVIDOR_MUNICIPAL e SOCIO é o padrão de maior relevân
 
 **Caso de destaque — THALLIO ROSADO DE SA XAVIER:** Servidor em 6 municípios e sócio de 16 empresas. A combinação de ampla presença como servidor com carteira societária diversificada merece verificação de eventual conflito entre as atividades empresariais e as funções públicas exercidas.
 
+### 5.3. Cruzamento: Hubs Societários × Contratos com o Governo
+
+O cruzamento dos maiores hubs societários (sócios que participam de 3+ empresas) com a `mv_empresa_governo` revela quais desses hubs têm suas empresas contratando com o governo federal, estadual ou municipal.
+
+**Top 10 hubs societários por volume de contratos governo:**
+
+| Sócio | Empresas | Empresas Gov | Total Governo (R$) | PNCP (R$) | TCE-PB (R$) |
+|-------|----------|--------------|---------------------|-----------|-------------|
+| RUDIMAR BARBOSA DOS REIS | 7 | 7 | 49,2 bilhões | 49,2B | 4,4M |
+| RODRIGO MODESTO DE ABREU | 4 | 4 | 13,5 bilhões | 139K | 37,5M |
+| BRENO RODRIGO PACHECO DE OLIVEIRA | 5 | 5 | 10,1 bilhões | 424M | 3,7M |
+| DAVID MELCON SANCHEZ FRIERA | 3 | 3 | 10,1 bilhões | 421M | 3,7M |
+| CHRISTIAN MAUAD GEBARA | 3 | 3 | 10,1 bilhões | 421M | 3,7M |
+| LUCIANA MAXIMINO MAIA | 4 | 4 | 6,5 bilhões | 1,6B | 12,2M |
+| JOSE RAMOS ROCHA NETO | 4 | 4 | 5,6 bilhões | 5,5B | 7,4M |
+| MAURICIO PEREZ BOTELHO | 4 | 4 | 3,3 bilhões | 36M | 1,8B |
+| GIORELI DE SOUSA FILHO | 3 | 3 | 3,2 bilhões | — | — |
+| CARLOS HENRIQUE DONEGA AIDAR | 3 | 3 | 1,6 bilhões | — | — |
+
+**Nota**: Alguns hubs com valores bilionários correspondem a grandes grupos econômicos (telecomunicações, bancos, construção). O volume total reflete a soma de todas as empresas em que o sócio participa.
+
+### 5.4. Cruzamento: Hubs com Empresas Sancionadas/Inativas + Contratos
+
+| Sócio | Total Empresas | CEIS | PGFN | Inativas | Total Governo (R$) |
+|-------|---------------|------|------|----------|---------------------|
+| LINCOLN THIAGO DE ANDRADE BEZERRA | 5 | **3** | 0 | 0 | 1,4 bilhões |
+| RODRIGO MODESTO DE ABREU | 4 | 0 | 0 | 3 | 13,5 bilhões |
+| BRENO RODRIGO PACHECO DE OLIVEIRA | 5 | 0 | 0 | 3 | 10,1 bilhões |
+| JOSE ANTONIO GUARALDI FELIX | 6 | 0 | 0 | 3 | 1,0 bilhão |
+| ROBERTO CATALAO CARDOSO | 6 | 0 | 0 | 3 | 1,0 bilhão |
+| JOAO PAULO ESTEVAM | 6 | 0 | 0 | 3 | 826 milhões |
+| RODRIGO MARQUES DE OLIVEIRA | 5 | 0 | 0 | 3 | 825 milhões |
+| JOSE ROBERTO NOGUEIRA | 5 | 0 | 0 | 3 | 810 milhões |
+
+**Caso de destaque — LINCOLN THIAGO DE ANDRADE BEZERRA**: Único hub com **3 empresas no CEIS** (cadastro de empresas inidôneas/suspensas) e ainda assim R$ 1,4 bilhão em contratos com o governo. Padrão grave: sócio com múltiplas empresas sancionadas que continua operando via outras empresas do grupo. Merece investigação prioritária.
+
+**Padrão de empresas inativas**: A maioria dos hubs com alto volume de contratos possui empresas inativas em suas carteiras. Isoladamente, isso é comum (empresas antigas fechadas). Porém, hubs com 3+ empresas inativas e alto volume de contratos em outras empresas do grupo podem indicar uso de empresas "descartáveis" para fins de elisão contratual.
+
 ---
 
 ## 6. Padrões Identificados

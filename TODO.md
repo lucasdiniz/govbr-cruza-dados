@@ -4,22 +4,22 @@
 
 ### Enriquecimento de relatórios com cruzamentos
 1. [x] **Fênix PB × mv_empresa_governo**: 43/390 contrataram governo, R$119.1M total. CONSORCIO SFT R$95.9M.
-2. [ ] **Fênix PB × PGFN** (refazer com CNPJ completo 14 digitos ou CPF socio)
-3. [ ] **Fênix PB × CEIS/CNEP** (refazer com CNPJ completo 14 digitos)
-4. [ ] **Sobrepreço × fornecedores**: Q92 outliers → pncp_contrato → identificar CNPJs que recebem preços inflados
-5. [ ] **Sobrepreço × CEIS/CNEP**: Fornecedores de Q97 (jogo planilha) têm histórico de sanções?
+2. [x] **Fênix PB × PGFN** (CNPJ completo): 33 empresas R$200.6M dívida, 394 sócios R$133.5B dívida pessoal
+3. [x] **Fênix PB × CEIS/CNEP**: 0 matches — evasão fiscal, não sanções
+4. [x] **Sobrepreço × fornecedores**: Top 15 fornecedores outlier. PRIME CONSULTORIA 324× em 10 contratos R$10.3B. LMM ENGENHARIA R$16.3B.
+5. [x] **Sobrepreço × CEIS/CNEP/PGFN**: 0 matches em todas as bases — fornecedores formalmente regulares.
 6. [ ] **Fracassados SES-PB × contratos diretos**: "planilha sem itens" fracassa → verificar dispensa/inexigibilidade no mesmo período
 7. [ ] **Cartel (Q98) × fornecedores**: Preços idênticos → pncp_contrato → mapear rede via mv_rede_pb
-8. [ ] **Rede societária × mv_empresa_governo**: Hub-sócios rankeados por volume de contratos governo
+8. [x] **Rede societária × mv_empresa_governo**: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B. Top 10 hubs documentados.
 9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
 
 ### Deep dives
-10. [ ] **Deep dive Sec. Educação MS**: 974 licitações fracassadas arroz 19 meses. Preço teto? Fornecedores? Direcionamento?
-11. [ ] **Deep dive SES-PB "planilha sem itens"**: 114 submissões R$4.9M médio, R$563M total. Contratos diretos?
+10. [x] **Deep dive Sec. Educação MS**: Preço OK (R$25.28 vs R$26.01 nacional). Problema: 4781 dispensas individuais por escola, modelo operacional ineficiente.
+11. [x] **Deep dive SES-PB "planilha sem itens"**: Workaround PNCP para credenciamento, não fraude. R$1.17B via inexigibilidade sem itens = risco de controle.
 
 ### Melhorias queries
-12. [ ] **Q94 mediana**: Trocar AVG por PERCENTILE_CONT (usuario exigiu metrica correta)
-13. [ ] **Investigar itens > R$1B**: Q92 filtra como "sanidade" mas pode excluir superfaturamento real
+12. [x] **Q94 mediana**: Reescrito com PERCENTILE_CONT(0.5) + temp tables (committed 745ee96)
+13. [x] **Investigar itens > R$1B**: Todos 30 examinados são erros de digitação (quantidade = valor unitário). Não é sobrepreço real.
 14. [ ] **Série temporal de preços**: Q92/Q94 sem segmentação por período, inflação distorce
 
 ### Infra
