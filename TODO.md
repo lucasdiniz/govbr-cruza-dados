@@ -1,10 +1,10 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente (por prioridade)
-1. [ ] **Relatórios pncp_item**: Agentes Sonnet falharam (limite uso). Escrever 3 relatórios:
-   - relatorio_sobrepreco_pncp_item.md (Q92/Q94/Q97 — dados coletados, ver sessao 27)
-   - relatorio_itens_fracassados_pncp.md (Q93/Q96/Q98 — dados coletados)
-   - relatorio_empresa_fenix_pb.md (Q55 — dados coletados)
+1. [x] **Relatórios pncp_item**: 3 relatórios escritos (sessao 28):
+   - relatorio_sobrepreco_pncp_item.md (Q92/Q94/Q97 — 159 linhas)
+   - relatorio_itens_fracassados_pncp.md (Q93/Q96/Q98 — 196 linhas)
+   - relatorio_empresa_fenix_pb.md (Q55 — 166 linhas)
 2. [ ] **Q94 mediana**: Trocar AVG por PERCENTILE_CONT ou abordagem mais precisa (usuario pediu metrica correta, nao economizar processamento)
 3. [ ] **Investigar itens > R$1B**: Q92 filtra valor_total<=1B como "sanidade" mas pode excluir superfaturamento real. Analisar esses separadamente.
 4. [ ] **Série temporal de preços**: Q92/Q94 nao segmentam por periodo. Inflacao e cambio distorcem comparacao. Adicionar filtro temporal (ex: mesmo ano).
@@ -19,7 +19,7 @@
 - mv_empresa_governo 690K rows (criada sessao 26)
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 93+ queries em queries/*.sql, 25 relatorios em relatorios/
+- 93+ queries em queries/*.sql, 28 relatorios em relatorios/
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas
@@ -42,6 +42,9 @@
 - pncp_item completo: 4.71M rows
 - Deploy 23718465381 "success" mas DB Azure vazio (downloads bloqueados)
 - tipo_pessoa fix linhas 661/668 aplicado (ja commitado)
+
+### 2026-04-04 (sessao 28)
+- 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb
 
 ### 2026-04-03 (sessao 27)
 - 7 queries pncp_item criadas (Q92-Q98): sobrepreco, fracassados repetidos, variacao UF, concentracao fornecedor, sigiloso, jogo de planilha, precos identicos
