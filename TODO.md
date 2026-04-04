@@ -1,16 +1,29 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente (por prioridade)
-1. [x] **Relatórios pncp_item**: 3 relatórios escritos (sessao 28):
-   - relatorio_sobrepreco_pncp_item.md (Q92/Q94/Q97 — 159 linhas)
-   - relatorio_itens_fracassados_pncp.md (Q93/Q96/Q98 — 196 linhas)
-   - relatorio_empresa_fenix_pb.md (Q55 — 166 linhas)
-2. [ ] **Q94 mediana**: Trocar AVG por PERCENTILE_CONT ou abordagem mais precisa (usuario pediu metrica correta, nao economizar processamento)
-3. [ ] **Investigar itens > R$1B**: Q92 filtra valor_total<=1B como "sanidade" mas pode excluir superfaturamento real. Analisar esses separadamente.
-4. [ ] **Série temporal de preços**: Q92/Q94 nao segmentam por periodo. Inflacao e cambio distorcem comparacao. Adicionar filtro temporal (ex: mesmo ano).
-5. [ ] **Deep dive Sec. Educação MS**: 974 licitacoes fracassadas de arroz em 19 meses. Investigar: preco teto irrealista? falta de fornecedores? direcionamento?
-6. [ ] **Deep dive SES-PB "planilha sem itens"**: 114 submissoes a R$4.9M medio, R$563M total em 595 dias. Muito suspeito.
-7. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403 (CPGF, SIAPE, CEIS, CNEP, CEAF) + PNCP API 500/empty body da VM. Investigar bloqueio IP Azure.
+
+### Enriquecimento de relatórios com cruzamentos
+1. [x] **Fênix PB × mv_empresa_governo**: 43/390 contrataram governo, R$119.1M total. CONSORCIO SFT R$95.9M.
+2. [ ] **Fênix PB × PGFN** (refazer com CNPJ completo 14 digitos ou CPF socio)
+3. [ ] **Fênix PB × CEIS/CNEP** (refazer com CNPJ completo 14 digitos)
+4. [ ] **Sobrepreço × fornecedores**: Q92 outliers → pncp_contrato → identificar CNPJs que recebem preços inflados
+5. [ ] **Sobrepreço × CEIS/CNEP**: Fornecedores de Q97 (jogo planilha) têm histórico de sanções?
+6. [ ] **Fracassados SES-PB × contratos diretos**: "planilha sem itens" fracassa → verificar dispensa/inexigibilidade no mesmo período
+7. [ ] **Cartel (Q98) × fornecedores**: Preços idênticos → pncp_contrato → mapear rede via mv_rede_pb
+8. [ ] **Rede societária × mv_empresa_governo**: Hub-sócios rankeados por volume de contratos governo
+9. [ ] **Q99 Fênix nacional**: Query criada, rodando (temp tables + hash). Atualizar relatório com dados nacionais.
+
+### Deep dives
+10. [ ] **Deep dive Sec. Educação MS**: 974 licitações fracassadas arroz 19 meses. Preço teto? Fornecedores? Direcionamento?
+11. [ ] **Deep dive SES-PB "planilha sem itens"**: 114 submissões R$4.9M médio, R$563M total. Contratos diretos?
+
+### Melhorias queries
+12. [ ] **Q94 mediana**: Trocar AVG por PERCENTILE_CONT (usuario exigiu metrica correta)
+13. [ ] **Investigar itens > R$1B**: Q92 filtra como "sanidade" mas pode excluir superfaturamento real
+14. [ ] **Série temporal de preços**: Q92/Q94 sem segmentação por período, inflação distorce
+
+### Infra
+15. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403. Investigar bloqueio IP Azure.
 
 ## Estado do banco local
 - **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
@@ -45,6 +58,12 @@
 
 ### 2026-04-04 (sessao 28)
 - 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb
+- Q99 criada: fenix nacional com temp tables (18.7M closed × 16.3M active, 2020+)
+- Cruzamento fenix PB: 43/390 empresas novas contrataram governo (R$119.1M). Top: CONSORCIO SFT R$95.9M
+- PGFN/CEIS cruzamento por cnpj_basico retornou 0 (precisa CNPJ completo ou CPF socio)
+- Deep dive Sec.Educacao MS: preco NÃO é o problema (R$25.28 vs R$26.01 nacional). 96% fracassos via Dispensa individual por escola (4781 processos), apenas 3 via Pregao Eletronico. Hipotese: modelo operacional ineficiente, nao fraude de preco.
+- Deep dive SES-PB: "planilha sem itens" é workaround PNCP para credenciamento, NAO fraude. Mas R$1.17B via inexigibilidade/dispensa sem detalhamento de itens. PB SAUDE R$355M, JUSTIZ R$40M. Risco de controle.
+- Relatorios fenix e fracassados enriquecidos com dados reais dos cruzamentos e deep dives
 
 ### 2026-04-03 (sessao 27)
 - 7 queries pncp_item criadas (Q92-Q98): sobrepreco, fracassados repetidos, variacao UF, concentracao fornecedor, sigiloso, jogo de planilha, precos identicos

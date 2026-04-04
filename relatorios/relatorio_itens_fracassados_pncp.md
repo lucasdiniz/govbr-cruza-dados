@@ -92,47 +92,99 @@ Foram identificadas **306 combinações** de item+preço onde um valor unitário
 
 ### 4.1. Secretaria de Educação do Mato Grosso do Sul — Merenda Escolar
 
-A Secretaria de Educação do Mato Grosso do Sul apresenta o padrão mais extremo de fracassos repetidos identificado na base:
+A Secretaria de Estado de Educação de Mato Grosso do Sul (CNPJ 02.585.924/0001-22) apresenta o padrão mais extremo de fracassos repetidos identificado na base. O problema abrange **mais de 30 itens alimentícios** do PNAE (Programa Nacional de Alimentação Escolar):
 
-| Item | Licitações fracassadas | Período coberto |
-|------|----------------------|----------------|
-| ARROZ | 974 | jan/2024 – jul/2025 (19 meses) |
-| BATATA | 537 | — |
-| FEIJÃO | 463 | — |
+| Item | Fracassos | Período | Preço médio (R$/kg) |
+|------|-----------|---------|-------------------|
+| ARROZ (5kg, tipo 1, agulhinha) | 974 | jul/2024 – fev/2026 | 25,24 |
+| BATATA (inglesa, in natura) | 537 | jul/2024 – fev/2026 | 7,64 |
+| ALHO (branco, sem réstia) | 485 | jul/2024 – fev/2026 | 36,94 |
+| BANANA (nanica) | 296 | jul/2024 – fev/2026 | 6,39 |
+| ABACAXI | 272 | jul/2024 – fev/2026 | 10,56 |
+| BEBIDA LÁCTEA | 264 | jul/2024 – fev/2026 | 5,83 |
+| CARNE SUÍNA LOMBO | 262 | jul/2024 – jan/2026 | 23,09 |
+| CAFÉ TORRADO | 162 | jul/2024 – jan/2026 | 20,91 |
 
-Trata-se de alimentos básicos da merenda escolar, itens de ampla disponibilidade comercial. O volume de **974 fracassos para um único item em 19 meses** — média de mais de 50 tentativas frustradas por mês — é estatisticamente improvável em mercado funcionando normalmente.
+**Modalidade dominante:** 4.781 fracassos via **Dispensa** (96%), 188 via Pregão Presencial, 3 via Pregão Eletrônico. O órgão publica dispensas individuais por escola — cada escola gera um processo separado, multiplicando os fracassos.
 
-**Hipóteses investigativas:**
+#### Deep dive: Arroz — O preço NÃO é o problema
 
-1. **Preço-teto desatualizado:** A secretaria pode estar usando valores de referência defasados em relação à inflação alimentar do período (2024–2025), gerando fracassos sistemáticos e previsíveis.
-2. **Especificação técnica restritiva:** Requisitos como marca, procedência geográfica ou certificações específicas podem estar eliminando todos os fornecedores disponíveis na região.
-3. **Estratégia para contratação direta:** Fracassos repetidos habilitam contratação direta por inexigibilidade ou emergência (art. 74–75, Lei 14.133/2021). Se esse for o objetivo real, os fracassos são instrumentais, não acidentais.
+| Métrica | MS fracassado | Nacional homologado |
+|---------|--------------|-------------------|
+| Preço médio (R$/kg) | 25,28 | 26,01 |
+| Preço mínimo | 16,33 | 0,01 |
+| Preço máximo | 37,14 | 9.960,00 |
+| Total de itens | 978 | 13.682 |
 
-**Recomendação:** Auditoria presencial na secretaria, confrontando os editais fracassados com os preços de mercado atacadista vigentes (CEASA/MS, CONAB) e as contratações diretas realizadas no mesmo período para os mesmos itens.
+O preço estimado do MS (R$25,28/kg para pacote de 5kg) está **abaixo** da média nacional homologada (R$26,01) — **o preço-teto NÃO é irrealista**. Além disso, **1.033 itens de arroz foram homologados** pela mesma secretaria no mesmo período, confirmando que fornecedores existem e aceitam o preço.
+
+**Evolução mensal do arroz (fracassados):**
+
+| Mês | Fracassos | Preço médio |
+|-----|-----------|-------------|
+| jul/2024 | 65 | 28,81 |
+| ago/2024 | 250 | 29,01 |
+| dez/2024 | 259 | 29,33 |
+| jan/2025 | 64 | 29,83 |
+| dez/2025 | 293 | 17,27 |
+| jan/2026 | 29 | 17,70 |
+
+Os picos de fracasso (ago/2024, dez/2024, dez/2025) coincidem com períodos de início de semestre letivo, quando a demanda por merenda é maior. A queda de preço em dez/2025 (R$17,27 vs R$29,33 em dez/2024) sugere ajuste de referência, mas os fracassos continuam.
+
+**Contratos diretos de alimentos no mesmo período:**
+
+O órgão publicou **dispensas para chamadas públicas da Agricultura Familiar** (PNAE) no mesmo intervalo, com valores de R$2K a R$181K por escola. Isso sugere que os fracassos em Dispensa comum levam a contratações via Chamada Pública do PNAE — um mecanismo legal mas que reduz a competitividade.
+
+**Hipóteses revisadas após análise:**
+
+1. ~~Preço-teto desatualizado~~ — **DESCARTADO**: preço MS está abaixo da média nacional, e o mesmo item é homologado no mesmo período.
+2. **Modelo operacional ineficiente:** O órgão publica dispensas individuais por escola (4.781 processos), em vez de consolidar em pregão eletrônico. Cada escola tenta comprar isoladamente, sem poder de barganha.
+3. **Estratégia de migração para Agricultura Familiar:** Fracassos em dispensa comum podem estar sendo usados para justificar chamadas públicas exclusivas para agricultura familiar (art. 14 da Lei 11.947/2009), com menos controle competitivo.
+
+**Recomendação:** Investigar por que o órgão não consolida as compras em pregão eletrônico (3 processos apenas) e se os fracassos em dispensa são instrumentais para viabilizar as chamadas públicas da Agricultura Familiar.
 
 ---
 
-### 4.2. SES-PB (Secretaria Estadual de Saúde da Paraíba) — "Planilha sem Itens"
+### 4.2. "Planilha Não Contém Itens" — Padrão do sistema de compras da Paraíba
 
-Este é o caso de maior potencial de irregularidade identificado na análise:
+**Atualização após deep dive:** Este caso é significativamente maior e diferente do que a análise Q93 indicava inicialmente. A descrição completa é "PLANILHA NÃO CONTÊM ITENS (EXCLUSIVO PARA EPC, PGGAS, UEPB, CAGEPA, SES, SEE, SEDS E DOCAS_PB)" — é um padrão sistêmico do estado da PB, usado por múltiplos órgãos.
 
-| Métrica | Valor |
-|---------|-------|
-| Submissões com descrição "PLANILHA SEM ITENS" | 114 |
-| Preço médio estimado por submissão | R$ 4.900.000 |
-| Valor total acumulado | R$ 563.000.000 |
-| Período coberto | 595 dias |
-| Situação registrada no PNCP | Fracassado |
+| Órgão | Registros | Valor total | Período |
+|-------|-----------|-------------|---------|
+| Secretaria de Estado da Saúde - SES | 515 | R$ 1.145.613.570 | fev/2024 – mar/2026 |
+| Universidade Estadual da Paraíba | 66 | R$ 18.824.998 | mar/2024 – fev/2026 |
+| Secretaria de Estado da Administração | 4 | R$ 8.322.796 | set/2025 – nov/2025 |
+| Empresa Paraibana de Comunicação (EPC) | 2 | R$ 929.024 | jun/2024 – jul/2025 |
+| Fundo Estadual de Recursos Hídricos | 1 | R$ 15.000 | set/2024 |
+| **Total** | **588** | **R$ 1.173.705.390** | |
 
-A descrição "PLANILHA SEM ITENS" é um indicador grave: o campo de descrição do item foi submetido sem especificação real do bem ou serviço. O PNCP registra o processo formalmente, mas sem detalhamento do objeto licitado.
+**Status dos itens:** 438 em andamento (R$594M), 146 fracassados (R$580M), 4 cancelados (R$28K).
 
-**Por que é suspeito:**
+**Modalidades:** 82 Inexigibilidade (R$871M, 74%), 501 Dispensa (R$294M, 25%), 4 Leilão (R$8,3M), 1 Pregão (R$341K).
 
-- **Reserva de dotação orçamentária:** O registro de processo licitatório — mesmo fracassado — pode ser usado para bloquear dotações, impedindo remanejamento para outras despesas e criando massa orçamentária cativa.
-- **Lastro para contratação direta:** Uma série de fracassos formais em processos sem objeto definido cria precedente burocrático para contratações emergenciais subsequentes, dispensando a licitação.
-- **Valor médio atípico:** R$ 4,9 milhões por submissão sem descrição de objeto não tem paralelo em boa prática administrativa. Esse padrão não ocorre por erro operacional isolado — 114 repetições indicam sistemática.
+#### Reclassificação: workaround de sistema, não fraude per se
 
-**Recomendação:** Cruzamento imediato dos 114 processos com as contratações emergenciais e diretas da SES-PB no mesmo período (595 dias). Identificar se os CNPJs beneficiados nas contratações diretas subsequentes têm relação societária com servidores da secretaria.
+O deep dive revelou que estes processos têm **objetos reais e contratos efetivos**:
+
+| Fornecedor | Valor contrato | Objeto |
+|-----------|---------------|--------|
+| JUSTIZ TERCEIRIZAÇÃO | R$ 40.001.248 | Credenciamento (Chamada Pública 004/2025) |
+| SAFETYHEALTH SERVIÇOS MÉDICOS | R$ 40.001.248 | Credenciamento (Chamada Pública 004/2025) |
+| HOSPITAL MILAGRES | R$ 31.573.800 | Credenciamento (Chamada Pública 004/2024) |
+| NORDESTE SERVIÇOS MÉDICOS | R$ 31.573.800 | Credenciamento (Chamada Pública 004/2024) |
+| CELULA GESTÃO EM SAÚDE | R$ 30.632.800 | Credenciamento (Chamada Pública 005/2024) |
+| PB SAÚDE (Fundação Paraibana de Gestão em Saúde) | R$ 354.962.722 | Gestão e prestação de serviços de saúde |
+
+A "planilha sem itens" é um **workaround do sistema PNCP**: credenciamentos e inexigibilidades não possuem itens discretos como um pregão comum. O sistema exige ao menos um item, então o órgão insere o placeholder.
+
+**No entanto, os riscos permanecem:**
+
+1. **Volume concentrado em Inexigibilidade** (R$871M, 74%): A inexigibilidade deveria ser exceção, não regra. R$871M via credenciamento por uma única secretaria em 2 anos merece escrutínio do TCE-PB.
+2. **Pico anômalo em fev/2026** (R$445M em 18 registros): Inclui contrato de R$355M com a Fundação PB SAÚDE — gestão de saúde terceirizada em valor sem precedentes.
+3. **Empresas de terceirização recebendo R$40M via credenciamento**: JUSTIZ TERCEIRIZAÇÃO é empresa de mão de obra genérica recebendo R$40M em contrato de saúde.
+4. **Zero itens reais** nas mesmas contratações: Não há especificação do que está sendo comprado/contratado no nível de item.
+
+**Recomendação revisada:** O padrão "planilha sem itens" não é fraude per se, mas o **volume de R$1,17B em contratos sem detalhamento de itens** representa risco de controle. Priorizar auditoria no contrato PB SAÚDE (R$355M) e nos credenciamentos de R$40M+.
 
 ---
 
@@ -166,9 +218,9 @@ O item "PANO DE CHÃO" com valor unitário de **R$ 5,83** aparece em **17 órgã
 
 ### 5.2. Próximos Passos Recomendados
 
-1. **[Prioritário] SES-PB "Planilha sem Itens":** Extrair os 114 números de processo e cruzar com contratações diretas e emergenciais da SES-PB no período. Identificar CNPJs beneficiados e verificar vínculo com servidores.
+1. **[Prioritário] SES-PB credenciamentos R$40M+:** Verificar CNPJs dos fornecedores credenciados (JUSTIZ, SAFETYHEALTH, etc.) contra CEIS/CNEP, PGFN e rede societária (mv_rede_pb). Cruzar com servidores da SES-PB.
 
-2. **[Prioritário] Secretaria de Educação MS:** Confrontar os editais fracassados de ARROZ com preços CONAB/CEASA-MS no mesmo período. Mapear contratações diretas de gêneros alimentícios no mesmo intervalo.
+2. **[Prioritário] Sec. Educação MS — modelo operacional:** Investigar por que 96% dos fracassos são via Dispensa (4.781 processos individuais por escola) em vez de Pregão Eletrônico consolidado (apenas 3 processos). Mapear se os fracassos em Dispensa levam sistematicamente a Chamadas Públicas da Agricultura Familiar.
 
 3. **[Médio prazo] Q96 — Maranhão e Ceará:** Solicitar aos TCEs estaduais a justificativa legal para sigilo do orçamento nos contratos com Telefonica Brasil e Convergint Technologies. Comparar valor contratado com benchmarks de mercado (painel de preços COMPRASNET).
 
@@ -182,9 +234,9 @@ O item "PANO DE CHÃO" com valor unitário de **R$ 5,83** aparece em **17 órgã
 
 As três consultas analíticas aplicadas à base PNCP revelam padrões que, isoladamente, podem ter explicações técnicas, mas em conjunto formam um quadro que justifica investigação aprofundada pelos órgãos de controle.
 
-O caso mais urgente é a **SES-PB com "Planilha sem Itens"**: R$ 563 milhões em processos sem descrição de objeto ao longo de 595 dias é uma anomalia que não encontra explicação técnica imediata e requer auditoria presencial prioritária pelo TCE-PB e CGU.
+O caso da **SES-PB** revelou-se mais complexo após o deep dive: R$1,17B em "planilha sem itens" é um workaround do sistema PNCP para credenciamentos, mas o volume (R$871M via inexigibilidade) e a concentração em poucos fornecedores (R$40M+ cada) indicam risco de controle significativo. O contrato de R$355M com a Fundação PB SAÚDE merece atenção prioritária.
 
-O padrão de **fracassos da merenda escolar no Mato Grosso do Sul** levanta questões sobre a gestão do processo licitatório — seja por negligência administrativa (preços desatualizados) ou por estratégia deliberada de acesso a modalidades de contratação direta.
+O caso da **Sec. Educação do MS** apresentou uma reviravolta: o preço-teto é adequado (abaixo da média nacional) e o item é homologado no mesmo período. O problema real é o **modelo operacional** — 4.781 dispensas individuais por escola em vez de pregão consolidado, gerando fracassos previsíveis que podem migrar para chamadas públicas da Agricultura Familiar.
 
 Os **306 padrões de preço idêntico não-redondo** em múltiplos órgãos independentes constituem um conjunto de pistas para investigação de cartel, com o caso do pano de chão a R$ 5,83 sendo o mais robusto para encaminhamento ao CADE dada sua extensão geográfica (17 órgãos em estados distintos).
 

@@ -69,18 +69,28 @@ A distribuição dos 483 pares por intervalo entre fechamento e reabertura revel
 
 | Intervalo (dias) | Pares | % do total | Interpretação |
 |-----------------|-------|------------|---------------|
-| 1 a 7 dias | ~60 | ~12% | Troca quase imediata de CNPJ |
-| 8 a 30 dias | ~114 | ~24% | Reabertura no mesmo mês |
-| **Total < 30 dias** | **174** | **36%** | Padrão fênix mais agressivo |
-| 31 a 90 dias | ~120 | ~25% | Reabertura em até 3 meses |
-| 91 a 180 dias | ~100 | ~21% | Reabertura em até 6 meses |
-| 181 a 365 dias | ~89 | ~18% | Reabertura em até 1 ano |
+| 1 a 7 dias | 76 | 15,7% | Troca quase imediata de CNPJ |
+| 8 a 30 dias | 98 | 20,3% | Reabertura no mesmo mês |
+| **Total < 30 dias** | **174** | **36,0%** | Padrão fênix mais agressivo |
+| 31 a 90 dias | 82 | 17,0% | Reabertura em até 3 meses |
+| 91 a 180 dias | 89 | 18,4% | Reabertura em até 6 meses |
+| 181 a 365 dias | 138 | 28,6% | Reabertura em até 1 ano |
 
 Os 174 casos com intervalo abaixo de 30 dias são os de maior potencial de dano: em alguns desses casos, a nova empresa pode ter participado de licitações públicas ainda durante o período em que a empresa anterior poderia estar sendo processada administrativamente.
 
 ### 3.2. Distribuição Geográfica
 
-Os 36 municípios paraibanos afetados incluem tanto a capital quanto municípios do interior. A concentração em João Pessoa e Campina Grande é esperada dado o volume absoluto de empresas nessas cidades. Municípios menores com múltiplos casos per capita merecem atenção prioritária, pois sugerem padrão localizado e potencialmente coordenado.
+| Município (código IBGE) | Pares | Empresas novas |
+|-------------------------|-------|----------------|
+| 2051 (João Pessoa) | 338 | 266 |
+| 1981 (Campina Grande) | 49 | 42 |
+| 2117 (Patos) | 20 | 17 |
+| 1965 (Bayeux) | 6 | 6 |
+| 1937 (Cabedelo) | 6 | 6 |
+| 2027 (Santa Rita) | 6 | 5 |
+| Demais 30 municípios | 58 | 48 |
+
+João Pessoa concentra 70% dos casos, seguida por Campina Grande (10%). Municípios menores com múltiplos casos per capita merecem atenção prioritária.
 
 ### 3.3. Concentração de Sócios
 
@@ -114,52 +124,85 @@ A Lei Complementar nº 123/2006 e o Decreto nº 8.538/2015 tentam mitigar o prob
 
 ---
 
-## 5. Limitações da Análise
+## 5. Cruzamentos Realizados
 
-| Limitação | Impacto | Mitigação sugerida |
-|-----------|---------|-------------------|
-| Escopo restrito à PB | Sócios que abrem empresas em outros estados não são capturados | Replicar query para outros estados |
-| CNAE exato pode ser restritivo | Sócio que muda subclasse da CNAE (ex.: 4120-4/00 → 4120-4/99) não é capturado | Ampliar para 4 primeiros dígitos da CNAE |
-| Não verifica contratação efetiva | 390 empresas novas identificadas, mas não foi verificado quais efetivamente contrataram o poder público | Cruzar com `mv_empresa_governo` |
-| Não verifica dívidas ou sanções | Não foi checado se a empresa antiga tinha dívida PGFN ou sanção CEIS | Cruzar cnpj_baixado com tabelas pgfn e ceis |
-| Dados CNPJ têm defasagem | A Receita Federal publica os dados com atraso variável; casos recentes podem não aparecer | Usar API CNPJ para verificação pontual |
-| Endereço como ancoragem (query original) | A versão da query usa endereço; a versão executada usa CPF do sócio — metodologia mais robusta | Manter abordagem por CPF como padrão |
+### 5.1. Empresas fênix que contrataram o governo (mv_empresa_governo)
 
----
+Das 390 empresas novas, **43 (11%) efetivamente firmaram contratos públicos**, totalizando **R$ 119,1 milhões** em contratos com fontes federais e estaduais (PNCP + TCE-PB). Esse é o subconjunto de maior risco concreto ao erário.
 
-## 6. Recomendações e Próximos Passos
+**Top 10 empresas fênix com contratos governamentais:**
 
-### 6.1. Cruzamentos Imediatos (Alta Prioridade)
+| Empresa nova | Empresa baixada | Dias | Sócio | Total governo |
+|-------------|----------------|------|-------|---------------|
+| CONSORCIO SFT | SANCCOL SANEAMENTO CONSTRUCAO E COMERCIO | 45 | Giovanni Gondim Petrucci | R$ 95.950.686 |
+| MN COMERCIO VAREJISTA | MN COMERCIO VAREJISTA (CNPJ anterior) | 33 | Mateus Nunes Mendes | R$ 4.013.909 |
+| MN COMERCIO VAREJISTA | MATEUS COMERCIO VAREJISTA | 60 | Mateus Nunes Mendes | R$ 4.013.909 |
+| MARCILIO BATISTA SOC. ADVOCACIA | BATISTA & REMIGIO ADVOGADOS | 13 | José Marcílio Batista | R$ 2.925.000 |
+| E V P SOUSA | CLUBE DE TIROS ESPORTIVO DE GUARABIRA | 89 | Eduardo Victor Pereira Sousa | R$ 2.743.420 |
+| DIEGO ROCHA CAVALCANTI | ROCHA FORTE COMERCIO DE PESCADOS | 5 | Diego Rocha Medeiros Cavalcanti | R$ 2.325.195 |
+| JANUSA SOTERO CONTABILIDADE | SOTERO CONTABILIDADE PUBLICA | 15 | Janusa Cristina Gomes Sotero | R$ 1.695.474 |
+| COPLAN CONTABILIDADE | COPLAN SERVICOS DE CONTABILIDADE | 338 | Radson dos Santos Leite | R$ 936.750 |
+| BENTO PEREIRA SOC. ADVOCACIA | BENTO & PEREIRA ADVOGADOS | 14 | Ednelton Helejone Bento Pereira | R$ 806.950 |
+| DR PAO PADARIA | PADARIA IRMAOS VIEIRA | 252 | André Vieira da Silva | R$ 509.355 |
 
-1. **Cruzar as 390 empresas novas com `mv_empresa_governo`** — identificar quais efetivamente firmaram contratos públicos após a reabertura. Esse é o subconjunto de maior interesse para investigação.
+**Destaques:**
+- **CONSORCIO SFT** (R$95,9M): empresa anterior (SANCCOL) foi baixada em 31/12/2023, consórcio aberto 45 dias depois. Valor de contratos com o governo da PB é o maior de toda a amostra — merece investigação prioritária.
+- **MN COMERCIO**: sócio Mateus Nunes fecha DUAS empresas (CNPJ anterior + MATEUS COMERCIO) e abre a terceira, que já acumula R$4M em contratos.
+- **DIEGO ROCHA** (R$2,3M): empresa anterior era comércio de **pescados**, nova empresa é genérica (LTDA). Intervalo de apenas 5 dias.
 
-2. **Verificar dívidas PGFN nas empresas baixadas** — cruzar `cnpj_baixado` com a tabela `pgfn` para confirmar se a empresa antiga tinha débito ativo. Casos com dívida + reabertura em < 30 dias são altamente suspeitos.
+### 5.2. Empresas fênix × dívida PGFN e sanções CEIS/CNEP
 
-3. **Verificar sanções CEIS/CNEP nas empresas baixadas** — empresas que foram sancionadas e "renasceram" sob novo CNPJ configuram potencialmente fraude em licitações.
+O cruzamento pelo `cnpj_basico` da empresa antiga retornou **0 matches** tanto para PGFN quanto para CEIS/CNEP. Isso pode indicar:
+- As empresas antigas foram baixadas antes de acumular dívida registrada no sistema federal
+- O join precisa ser pelo CNPJ completo (14 dígitos) em vez de basico (8 dígitos)
+- A dívida pode estar no CPF do sócio, não no CNPJ da empresa
 
-4. **Priorizar os 174 casos com intervalo < 30 dias** — subconjunto mais agressivo, menor probabilidade de explicação legítima.
-
-### 6.2. Expansão da Análise (Média Prioridade)
-
-5. **Replicar a query para outros estados** — especialmente PE, CE, RN (estados vizinhos onde o mesmo sócio pode ter aberto empresa após fechar na PB).
-
-6. **Flexibilizar o filtro de CNAE** — usar os 4 primeiros dígitos da CNAE em vez do código completo para capturar atividades similares.
-
-7. **Incluir empresas inativas** (situacao_cadastral = '08') além de baixadas e inatas, ampliando o universo de empresas antigas.
-
-### 6.3. Integração ao Score de Risco
-
-8. **Criar flag `flag_empresa_fenix`** na view `mv_empresa_pb` — atribuir pontuação adicional de risco a empresas novas cujo sócio tem histórico de empresa baixada/inapta. Sugestão: +20 pontos no score de risco da empresa nova, +10 pontos no score de risco do sócio.
+**Próximo passo:** refazer cruzamento usando CNPJ completo e/ou CPF do sócio na tabela pgfn_divida.
 
 ---
 
-## 7. Conclusão
+## 6. Limitações da Análise
 
-A identificação de **483 pares de empresa fênix** na Paraíba, com **36% dos casos** apresentando intervalo inferior a 30 dias entre o fechamento da empresa antiga e a abertura da nova, indica que o fenômeno é estatisticamente relevante no estado.
+| Limitação | Impacto | Status |
+|-----------|---------|--------|
+| Escopo restrito à PB | Sócios que abrem empresas em outros estados não são capturados | Q99 nacional criada (em execução) |
+| CNAE exato pode ser restritivo | Sócio que muda subclasse da CNAE não é capturado | Pendente |
+| ~~Não verifica contratação efetiva~~ | ~~390 empresas não verificadas~~ | **Resolvido**: 43 contrataram governo (R$119,1M) |
+| Cruzamento PGFN/CEIS incompleto | Join por cnpj_basico retornou 0 — pode precisar de CNPJ completo ou CPF do sócio | Pendente: refazer com CNPJ 14 dígitos |
+| Dados CNPJ têm defasagem | Receita Federal publica com atraso | Usar API CNPJ para verificação pontual |
+| Endereço como ancoragem | A query usa endereço + sócio, o que exclui casos onde o endereço mudou | Considerar versão somente por sócio + CNAE |
 
-Com **390 empresas novas ativas** potencialmente beneficiárias desse padrão e **397 sócios** envolvidos em **36 municípios**, o risco fiscal e de integridade nas contratações públicas paraibanas é concreto. A prioridade imediata é cruzar esse conjunto com os contratos públicos efetivos para dimensionar o impacto financeiro ao erário.
+---
 
-A metodologia desenvolvida (Q55) é replicável para qualquer estado brasileiro e pode ser integrada ao pipeline de auditoria contínua do sistema, alimentando automaticamente o score de risco de empresas e sócios.
+## 7. Recomendações e Próximos Passos
+
+### 7.1. Ações Imediatas (Alta Prioridade)
+
+1. **Investigar CONSORCIO SFT (R$95,9M)** — maior valor entre empresas fênix. SANCCOL baixada em 31/12/2023, consórcio aberto 45 dias depois com mesmo sócio (Giovanni Gondim Petrucci). Verificar contratos TCE-PB detalhados.
+
+2. **Refazer cruzamento PGFN/CEIS com CNPJ completo** — o join por cnpj_basico (8 dígitos) não capturou dívidas. Usar CNPJ 14 dígitos e/ou CPF do sócio como chave alternativa.
+
+3. **Priorizar os 174 casos com intervalo < 30 dias** — subconjunto mais agressivo. Dos 43 com contratos governo, vários estão nesta faixa (MN COMERCIO 33d, MARCILIO 13d, DIEGO ROCHA 5d).
+
+### 7.2. Expansão (Média Prioridade)
+
+4. **Q99 (versão nacional) em execução** — temp tables com hash de endereço viabilizam o self-join em 18.7M × 16.3M estabelecimentos.
+
+5. **Flexibilizar filtro de CNAE** — usar 4 primeiros dígitos para capturar atividades similares.
+
+### 7.3. Integração ao Score de Risco
+
+6. **Criar flag `flag_empresa_fenix`** na view `mv_empresa_pb` — +20 pontos para empresa nova, +10 para o sócio.
+
+---
+
+## 8. Conclusão
+
+A identificação de **483 pares de empresa fênix** na Paraíba, com **36% dos casos** apresentando intervalo inferior a 30 dias, confirma que o fenômeno é estatisticamente relevante.
+
+O cruzamento com `mv_empresa_governo` revelou que **43 empresas fênix (11%) efetivamente contrataram o poder público**, movimentando **R$ 119,1 milhões**. O caso mais grave — CONSORCIO SFT com R$95,9M em contratos após reabertura em 45 dias — merece investigação prioritária pelos órgãos de controle.
+
+A metodologia (Q55/Q99) é replicável para qualquer estado brasileiro e está sendo expandida para escala nacional.
 
 ---
 
