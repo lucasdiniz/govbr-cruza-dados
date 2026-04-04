@@ -11,7 +11,7 @@
 6. [ ] **Fracassados SES-PB × contratos diretos**: "planilha sem itens" fracassa → verificar dispensa/inexigibilidade no mesmo período
 7. [ ] **Cartel (Q98) × fornecedores**: Preços idênticos → pncp_contrato → mapear rede via mv_rede_pb
 8. [ ] **Rede societária × mv_empresa_governo**: Hub-sócios rankeados por volume de contratos governo
-9. [ ] **Q99 Fênix nacional**: Query criada, rodando (temp tables + hash). Atualizar relatório com dados nacionais.
+9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
 
 ### Deep dives
 10. [ ] **Deep dive Sec. Educação MS**: 974 licitações fracassadas arroz 19 meses. Preço teto? Fornecedores? Direcionamento?
@@ -58,7 +58,7 @@
 
 ### 2026-04-04 (sessao 28)
 - 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb
-- Q99 criada: fenix nacional com temp tables (18.7M closed × 16.3M active, 2020+)
+- Q99 fenix nacional: 106.699 pares, 42.694 empresas novas, 35.537 socios. SP(29K) RJ(28K) MG(8.8K) PE(8K). RJ anomalo: 28K pares mas so 3K empresas novas (socios seriais).
 - Cruzamento fenix PB: 43/390 empresas novas contrataram governo (R$119.1M). Top: CONSORCIO SFT R$95.9M
 - PGFN/CEIS cruzamento por cnpj_basico retornou 0 (precisa CNPJ completo ou CPF socio)
 - Deep dive Sec.Educacao MS: preco NÃO é o problema (R$25.28 vs R$26.01 nacional). 96% fracassos via Dispensa individual por escola (4781 processos), apenas 3 via Pregao Eletronico. Hipotese: modelo operacional ineficiente, nao fraude de preco.
