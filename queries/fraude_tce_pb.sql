@@ -120,6 +120,20 @@ ORDER BY qtd_municipios DESC, total_ofertado DESC;
 -- Q63: Servidor municipal com salário alto que é sócio de empresa
 -- Detecta conflito de interesses: servidor com remuneração significativa tendo
 -- participação societária em empresas ativas (independente de ser fornecedor)
+-- FIX #15: deduplificar servidor (1 row por ano_mes) como Q59
+WITH servidores AS (
+    SELECT DISTINCT municipio, nome_servidor, cpf_cnpj,
+           descricao_cargo, tipo_cargo,
+           cpf_digitos_6, nome_upper,
+           MAX(valor_vantagem) AS valor_vantagem
+    FROM tce_pb_servidor
+    WHERE valor_vantagem > 10000
+      AND cpf_digitos_6 IS NOT NULL AND cpf_digitos_6 != ''
+      AND ano_mes >= '2022-01'
+    GROUP BY municipio, nome_servidor, cpf_cnpj,
+             descricao_cargo, tipo_cargo,
+             cpf_digitos_6, nome_upper
+)
 SELECT sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
        sv.descricao_cargo, sv.tipo_cargo,
        sv.valor_vantagem,
@@ -127,7 +141,7 @@ SELECT sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
        e.capital_social,
        s.qualificacao,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa
-FROM tce_pb_servidor sv
+FROM servidores sv
 JOIN socio s ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
     AND s.tipo_socio = 2
     AND sv.nome_upper = UPPER(TRIM(s.nome))
@@ -135,11 +149,7 @@ JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.cnpj_ordem = '0001'
     AND est.situacao_cadastral = '2'
-WHERE sv.valor_vantagem > 10000
-  AND sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
-  AND sv.ano_mes >= '2022-01'
-ORDER BY sv.valor_vantagem DESC
-LIMIT 500;
+ORDER BY sv.valor_vantagem DESC;
 
 -- Q64: Cruzamento despesa TCE-PB × contrato PNCP — verificar valores divergentes
 -- Detecta discrepâncias entre o valor contratado (PNCP) e o efetivamente pago (TCE-PB)

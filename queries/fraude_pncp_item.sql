@@ -134,7 +134,12 @@ DROP TABLE tmp_uf_prices;
 -- Q95: Fornecedor dominante por tipo de item — concentração de mercado
 -- Identifica fornecedores que vencem >50% dos itens de uma descrição específica.
 -- Alta concentração em item padronizado pode indicar cartel ou direcionamento.
-WITH item_wins AS (
+-- FIX #15: deduplificar contrato por contratação para evitar inflação quando há múltiplos lotes
+WITH contrato_dedup AS (
+    SELECT DISTINCT numero_controle_contratacao, ni_fornecedor, nome_fornecedor
+    FROM pncp_contrato
+),
+item_wins AS (
     SELECT
         UPPER(TRIM(i.descricao))    AS desc_norm,
         co.ni_fornecedor,
@@ -143,7 +148,7 @@ WITH item_wins AS (
         SUM(i.valor_total)          AS valor_total_ganho
     FROM pncp_item i
     JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
-    JOIN pncp_contrato co   ON co.numero_controle_contratacao = ca.numero_controle_pncp
+    JOIN contrato_dedup co  ON co.numero_controle_contratacao = ca.numero_controle_pncp
     WHERE i.situacao_item_nome = 'Homologado'
       AND i.valor_total > 0
     GROUP BY UPPER(TRIM(i.descricao)), co.ni_fornecedor, co.nome_fornecedor

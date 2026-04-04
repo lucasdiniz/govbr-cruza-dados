@@ -311,7 +311,8 @@ JOIN LATERAL (
            COUNT(*) AS qtd_empenhos,
            COUNT(DISTINCT d.cpf_cnpj) AS qtd_credores_distintos
     FROM tce_pb_despesa d
-    WHERE UPPER(TRIM(d.municipio)) = UPPER(TRIM(cv.nome_municipio))
+    -- FIX #17: usar unaccent para normalizar nomes de municípios entre fontes
+    WHERE UPPER(TRIM(unaccent(d.municipio))) = UPPER(TRIM(unaccent(cv.nome_municipio)))
       AND d.data_empenho BETWEEN cv.data_celebracao_convenio
           AND COALESCE(cv.data_termino_vigencia, cv.data_celebracao_convenio + INTERVAL '1 year')
       AND d.valor_empenhado > 0

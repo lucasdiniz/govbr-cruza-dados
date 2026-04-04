@@ -35,16 +35,25 @@ HAVING SUM(COALESCE(pncp_val,0) + COALESCE(emenda_val,0) + COALESCE(bndes_val,0)
 ORDER BY SUM(COALESCE(pncp_val,0) + COALESCE(emenda_val,0) + COALESCE(bndes_val,0)) DESC;
 
 -- Q18: Sócios laranjas (faixa etária extrema em empresas fornecedoras)
+-- FIX #15: pre-agregar contratos por empresa para evitar JOIN explosion (1 row por sócio)
+WITH contratos_agg AS (
+    SELECT cnpj_basico_fornecedor,
+           COUNT(*) AS qtd_contratos,
+           SUM(valor_global) AS total_contratos,
+           MAX(valor_global) AS maior_contrato
+    FROM pncp_contrato
+    WHERE valor_global > 100000
+    GROUP BY cnpj_basico_fornecedor
+)
 SELECT s.nome, s.cpf_cnpj_socio, s.faixa_etaria,
        e.razao_social, e.capital_social,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa,
-       pc.valor_global, pc.objeto
+       ca.qtd_contratos, ca.total_contratos, ca.maior_contrato
 FROM socio s
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
-JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
+JOIN contratos_agg ca ON ca.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE s.faixa_etaria IN (1, 2, 9)
   AND s.tipo_socio = 2
-  AND pc.valor_global > 100000
-ORDER BY pc.valor_global DESC;
+ORDER BY ca.total_contratos DESC;

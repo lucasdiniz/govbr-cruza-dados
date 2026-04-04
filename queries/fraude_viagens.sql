@@ -44,6 +44,7 @@ ORDER BY (valor_diarias + COALESCE(valor_passagens, 0)) DESC
 LIMIT 20;
 
 -- Q32: Servidor expulso (CEAF) que ainda faz viagens a servico
+-- FIX #6: adicionado match por nome para evitar falsos positivos em CPF 6-dígitos
 SELECT ce.nome_sancionado, ce.cpf_cnpj_sancionado,
        ce.categoria_sancao, ce.dt_inicio_sancao,
        v.nome_viajante, v.destinos, v.dt_inicio AS dt_viagem,
@@ -51,6 +52,6 @@ SELECT ce.nome_sancionado, ce.cpf_cnpj_sancionado,
 FROM ceaf_expulsao ce
 JOIN viagem v ON ce.cpf_cnpj_norm = v.cpf_viajante_digitos
   AND v.cpf_viajante_digitos IS NOT NULL AND v.cpf_viajante_digitos != '000000'
+  AND UPPER(TRIM(ce.nome_sancionado)) = UPPER(TRIM(v.nome_viajante))
 WHERE v.dt_inicio > ce.dt_inicio_sancao
-ORDER BY v.dt_inicio DESC
-LIMIT 20;
+ORDER BY v.dt_inicio DESC;

@@ -54,18 +54,27 @@ LIMIT 500;
 -- Detecta: uso indevido — mesma pessoa recebendo benefício social e usando cartão do governo
 -- Match por nome + 6 dígitos centrais do CPF
 -- Requer: etl.15_normalizar (cpf_digitos em bolsa_familia, cpf_portador_digitos em cpgf)
-SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
+-- FIX #16: pre-agregar BF para evitar duplicação por valor_parcela distinto
+WITH bf_agg AS (
+    SELECT nm_favorecido, cpf_favorecido, uf, cpf_digitos,
+           MAX(valor_parcela) AS ultima_parcela,
+           COUNT(*) AS meses_bf
+    FROM bolsa_familia
+    WHERE cpf_digitos IS NOT NULL AND cpf_digitos != ''
+    GROUP BY nm_favorecido, cpf_favorecido, uf, cpf_digitos
+)
+SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf,
+       bf.ultima_parcela, bf.meses_bf,
        ct.nome_portador, ct.cpf_portador,
        COUNT(*) AS qtd_transacoes_cpgf,
        SUM(ct.valor_transacao) AS total_cpgf
-FROM bolsa_familia bf
+FROM bf_agg bf
 JOIN cpgf_transacao ct ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(ct.nome_portador))
     AND bf.cpf_digitos = ct.cpf_portador_digitos
-WHERE bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
-GROUP BY bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
+GROUP BY bf.nm_favorecido, bf.cpf_favorecido, bf.uf,
+         bf.ultima_parcela, bf.meses_bf,
          ct.nome_portador, ct.cpf_portador
-ORDER BY total_cpgf DESC
-LIMIT 500;
+ORDER BY total_cpgf DESC;
 
 -- Q41: Municipios com maior concentracao de Bolsa Familia per capita
 -- Detecta: possível fraude sistêmica municipal
