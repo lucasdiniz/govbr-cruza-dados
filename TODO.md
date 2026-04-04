@@ -1,96 +1,61 @@
 # TODO - govbr-cruza-dados
 
-## Pendente (por prioridade)
+## Pendente
 
-### Enriquecimento de relatórios com cruzamentos
-1. [x] **Fênix PB × mv_empresa_governo**: 43/390 contrataram governo, R$119.1M total. CONSORCIO SFT R$95.9M.
-2. [x] **Fênix PB × PGFN** (CNPJ completo): 33 empresas R$200.6M dívida, 394 sócios R$133.5B dívida pessoal
-3. [x] **Fênix PB × CEIS/CNEP**: 0 matches — evasão fiscal, não sanções
-4. [x] **Sobrepreço × fornecedores**: Top 15 fornecedores outlier. PRIME CONSULTORIA 324× em 10 contratos R$10.3B. LMM ENGENHARIA R$16.3B.
-5. [x] **Sobrepreço × CEIS/CNEP/PGFN**: 0 matches em todas as bases — fornecedores formalmente regulares.
-6. [x] **Fracassados SES-PB × contratos diretos**: JUSTIZ TERCEIRIZAÇÃO R$40M + EVERYBODY R$12M = R$52M, mesmo grupo familiar (247 empresas). R$13.7M multas CLT.
-7. [x] **Cartel (Q98) × rede societária**: Cartel regional baiano confirmado. 3 empresas no mesmo endereço (Rua Álvaro da França Rocha 66, Salvador). Vínculo CRISTIANE/CRISTINA FELISMINO. 4.551 contratos, 100% BA. 0 sanções.
-8. [x] **Rede societária × mv_empresa_governo**: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B. Top 10 hubs documentados.
-9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
-
-### Deep dives
-10. [x] **Deep dive Sec. Educação MS**: Preço OK (R$25.28 vs R$26.01 nacional). Problema: 4781 dispensas individuais por escola, modelo operacional ineficiente.
-11. [x] **Deep dive SES-PB "planilha sem itens"**: Workaround PNCP para credenciamento, não fraude. R$1.17B via inexigibilidade sem itens = risco de controle.
-
-### Melhorias queries
-12. [x] **Q94 mediana**: Reescrito com PERCENTILE_CONT(0.5) + temp tables (committed 745ee96)
-13. [x] **Investigar itens > R$1B**: Todos 30 examinados são erros de digitação (quantidade = valor unitário). Não é sobrepreço real.
-14. [x] **Série temporal de preços**: Q100 implementado. 22K grupos × semestre, 30 saltos >2× detectados. Obras civis e saúde dominam.
-
-### Infra
-15. [x] **Deploy Azure (Issue #2)**: Workflow reescrito: disk verification, download connectivity test, .initialized só se ETL carregou tabelas, skip_download option, PG auth fix. Portal da Transparência bloqueia Azure IPs — workaround: upload manual via SCP.
+### Deploy Azure
+16. [ ] **Deploy completo**: Benchmark PNCP com requests.Session rodando na VM. Após confirmar velocidade, re-disparar deploy com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`. Workflow timeout aumentado para 12h.
+17. [ ] **Issues #1-#4**: Pendentes execução no banco (Issue #1 tce_pb data_empenho, #3 filtro temporal Q59/Q63, #4 JOINs CPF sem nome). Plano completo em `.claude/plans/twinkling-puzzling-giraffe.md`.
 
 ## Estado do banco local
 - **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
 - Tabelas principais: empresa 66.6M, estabelecimento 69.8M, simples 47M, socio 27M, pgfn_divida 39.9M, tce_pb_servidor 21.7M, bolsa_familia 20.9M, tce_pb_despesa 15.8M, pncp_item 4.71M, pncp_contrato 3.76M
 - **MVs OK**: mv_rede_pb 1.68M, mv_servidor_pb_base 353K, mv_servidor_pb_risco 353K, mv_pessoa_pb 205K, mv_empresa_pb 157K, v_risk_score_pb 135K, mv_municipio_pb_risco 224
-- mv_empresa_governo 690K rows (criada sessao 26)
+- mv_empresa_governo 690K rows
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
 - 93+ queries em queries/*.sql, 28 relatorios em relatorios/
 
+## VM Azure
+- IP: 52.162.207.186, user: govbr, SSH key: `C:\Users\lucas\.ssh\azure_vm.txt`
+- Disco /data: 403GB disponíveis. OS disk: 30GB (9.5% usado).
+- PostgreSQL 16 instalado, data dir em /data/postgresql/16/main
+- Tor + torsocks instalados (fallback para 403)
+- DB vazio (0 tabelas) — ETL nunca completou
+- Dados parciais já baixados: RFB (Empresas0-9, Estabelecimentos0-9, etc.), CPGF 2020-2024, sanções, viagens, TCE-PB, dados PB
+
 ## Concluido (resumo)
-- Issues #1-#5 resolvidas e validadas
-- ETL completo: 15+ fontes, normalizacao, indices
-- Bug tipo_pessoa corrigido em 12_views.sql (PGFN="Pessoa jurídica", CEIS="J", filtros usam IN)
-- Encoding: dados UTF-8 válidos, erro era psql Windows (fix: `2>/dev/null` ou `SET client_encoding TO 'WIN1252'`)
-- pncp_itens ETL completo (4.71M rows)
-- **7/7 MVs + 2 views criadas** (todas completas)
-- 25 relatorios escritos e revisados
-- VM Azure configurada (disk 512GB, PG16), deploy.yml com continue-on-error
+- Issues #1-#5 resolvidas e validadas (código, não executadas no banco)
+- ETL completo local: 15+ fontes, normalizacao, indices
+- 7/7 MVs + 2 views criadas
+- 28 relatorios escritos e revisados
+- 14/14 items de enriquecimento completos (sessão 29)
 
 ## Log recente
 
-### 2026-03-29 (sessao 24)
-- Deploy timeout 5h PNCP API. Fix: abort 20 erros, checkpoint, continue-on-error
-- IDE crash matou processos locais. Fix: run_remaining.ps1 detached
-
-### 2026-04-03 (sessao 25)
-- Diagnostico pos-intervalo: 6/7 MVs OK, mv_empresa_governo falhou (disk space)
-- pncp_item completo: 4.71M rows
-- Deploy 23718465381 "success" mas DB Azure vazio (downloads bloqueados)
-- tipo_pessoa fix linhas 661/668 aplicado (ja commitado)
+### 2026-04-04 (sessao 30)
+- **Bug PNCP 204 encontrado e corrigido**: API retorna HTTP 204 (No Content) para modalidade/semana sem dados. Código antigo tratava como erro → 5 retries × 60s backoff × ~1650 combinações = **28h desperdiçadas**. Fix: retornar resultado vazio para 204.
+- **Python urlopen trava 30s+ em SSL**: curl responde em 1-2s, urlopen trava. Fix: trocado por requests.Session com connection pooling (10 conn, 20 max).
+- **Paralelismo**: 3 semanas simultâneas × 4 modalidades por semana = 12 requests paralelos. Estimativa: 2024 inteiro em ~15min (vs horas antes).
+- Workflow timeout aumentado: job 720min (12h), ETL step 660min (11h). Removido continue-on-error do ETL step.
+- `requests>=2.31` adicionado ao pyproject.toml
+- Processo antigo do deploy (PID 175533, rodando 8h) matado na VM
+- Benchmark em andamento na VM com requests.Session
+- Commits: 451cae2, fed2301, 2697273, 09081dc, 83ab86c, 45a89f1
 
 ### 2026-04-04 (sessao 29)
 - Q100 série temporal: 22K grupos × semestre, 30 saltos >2× detectados
-- SES-PB × JUSTIZ: grupo familiar Justiz González controla 247 empresas (JUSTIZ/GROUPMED/EVERYBODY), recebe R$52M+ via credenciamento com R$13.7M em multas CLT
-- Cartel BA confirmado: 3 empresas no mesmo endereço (Rua Álvaro da França Rocha 66, Salvador), vínculo CRISTIANE/CRISTINA FELISMINO, 4.551 contratos 100% BA, preços idênticos em 3 produtos
-- Sobrepreço × fornecedores: PRIME CONSULTORIA 324× em 10 contratos R$10.3B. 0 sanções CEIS/CNEP/PGFN.
-- Rede societária × governo: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B
-- Deploy Azure: workflow reescrito com disk verify, connectivity test, .initialized guard, skip_download, PG auth fix
-- 4 relatórios enriquecidos com cruzamentos. Q94 reescrito com PERCENTILE_CONT. verify.py atualizado. TODO 14/14 completo.
+- SES-PB × JUSTIZ: 247 empresas, R$52M+, R$13.7M multas CLT
+- Cartel BA: 3 empresas mesmo endereço, 4.551 contratos 100% BA
+- Sobrepreço × fornecedores: PRIME CONSULTORIA 324× R$10.3B. 0 sanções.
+- Rede societária × governo: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS
+- Deploy Azure: workflow reescrito, Tor fallback. 14/14 TODO completo.
+- Commits: 745ee96, 9193d25, cbf81a7, e6af076, 16e1134, 7033552, 5fb0302
 
 ### 2026-04-04 (sessao 28)
-- 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb
-- Q99 fenix nacional: 106.699 pares, 42.694 empresas novas, 35.537 socios. SP(29K) RJ(28K) MG(8.8K) PE(8K). RJ anomalo: 28K pares mas so 3K empresas novas (socios seriais).
-- Cruzamento fenix PB: 43/390 empresas novas contrataram governo (R$119.1M). Top: CONSORCIO SFT R$95.9M
-- PGFN/CEIS cruzamento por cnpj_basico retornou 0 (precisa CNPJ completo ou CPF socio)
-- Deep dive Sec.Educacao MS: preco NÃO é o problema (R$25.28 vs R$26.01 nacional). 96% fracassos via Dispensa individual por escola (4781 processos), apenas 3 via Pregao Eletronico. Hipotese: modelo operacional ineficiente, nao fraude de preco.
-- Deep dive SES-PB: "planilha sem itens" é workaround PNCP para credenciamento, NAO fraude. Mas R$1.17B via inexigibilidade/dispensa sem detalhamento de itens. PB SAUDE R$355M, JUSTIZ R$40M. Risco de controle.
-- Relatorios fenix e fracassados enriquecidos com dados reais dos cruzamentos e deep dives
+- 3 relatorios, Q99 fenix nacional, deep dives Sec.Educacao MS e SES-PB
 
 ### 2026-04-03 (sessao 27)
-- 7 queries pncp_item criadas (Q92-Q98): sobrepreco, fracassados repetidos, variacao UF, concentracao fornecedor, sigiloso, jogo de planilha, precos identicos
-- Q55 fix: filtro UF='PB' reduz cost de 21M para 2.9M. 483 empresas fenix na PB (390 novas, 397 socios, 36 municipios, 174 em <30 dias)
-- Q92 performance: window functions timeout, temp table com MD5 hash funciona (~2min)
-- Dados: 46% dos itens homologados compartilham descricao exata com 10+ outros
-- NCM esparso (1.4%), catalogo quase inexistente (0.1%) — queries usam descricao normalizada
-- Achados: Sec. Educacao MS 974 licitacoes fracassadas arroz; flanela R$22K (388x media); SES-PB planilha vazia R$563M
-- Agentes Sonnet para relatorios falharam (limite de uso Anthropic) — dados coletados, relatorios pendentes
-- Feedback usuario: nao usar metrica errada (AVG vs mediana) por economia; investigar itens >R$1B; adicionar serie temporal
+- 7 queries pncp_item (Q92-Q98), Q55 fix, achados fracassados
 
 ### 2026-04-03 (sessao 26)
-- mv_empresa_governo criada: 690K rows, 5 indices. (1a tentativa falhou maintenance_work_mem 1kB acima max)
-- Q56 (doador->contrato) testada OK: 3 doadores distintos, 322 matches. FM PRODUCOES (PL-SE) mais relevante.
-- Q55 (empresa fenix) adiada: self-join muito pesado, competiria com MV por temp space.
-- Index criado: idx_tse_rec_cnpj_basico_doador (funcional, para Q56)
-- 4 relatorios novos escritos:
-  - relatorio_fracionamento_despesa_pb.md (26K grupos, R$3.6B, ALLFAMED padrao sistematico)
-  - relatorio_risk_score_pb.md (135K entidades, 81 alto risco, medicos dominam)
-  - relatorio_servidor_risco_pb.md (353K servidores, 73 score>=70, todos medicos)
-  - relatorio_rede_societaria_pb.md (1.68M arestas, Cavalcanti hub 28 empresas)
+- mv_empresa_governo, Q56, 4 relatorios novos
