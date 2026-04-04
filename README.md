@@ -1,52 +1,70 @@
 # govbr-cruza-dados
 
-Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, voltado para detecao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes e programas sociais.
+Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, voltado para deteccao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes e programas sociais.
 
 > **Vibe coded** com [Claude Code](https://claude.ai/claude-code) (Opus 4.6) - da modelagem do schema ate o ultimo `INSERT INTO`.
 
 ## O que faz
 
-Carrega ~100GB de dados de **18+ fontes publicas** num banco PostgreSQL (~336M registros, 186GB) e cruza tudo pelo CNPJ/CPF para encontrar padroes suspeitos:
+Carrega ~100GB de dados de **18+ fontes publicas** em um banco PostgreSQL local e cruza tudo por CNPJ/CPF para encontrar padroes suspeitos, conflitos de interesse e anomalias de contratacao:
 
 - **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
 - **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
 - **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude e convenios estaduais PB (~7.8M registros)
-- **PNCP** - licitacoes e contratos publicos (3M contratacoes, 3.7M contratos)
-- **Emendas Parlamentares** - Tesouro + TransfereGov (1.2M registros)
-- **CPGF** - cartao corporativo do governo (645k transacoes)
-- **PGFN** - divida ativa da Uniao (39.9M inscricoes)
-- **TSE** - candidatos + bens + prestacao de contas (2.1M candidatos, 4M bens, 8.3M receitas/despesas)
-- **Bolsa Familia** - beneficiarios e pagamentos (20.9M registros)
+- **PNCP** - licitacoes, contratos e itens publicos
+- **Emendas Parlamentares** - Tesouro + TransfereGov
+- **CPGF** - cartao corporativo do governo
+- **PGFN** - divida ativa da Uniao
+- **TSE** - candidatos, bens e prestacao de contas
+- **Bolsa Familia** - beneficiarios e pagamentos
 - **SIAPE** - servidores federais (cadastro + remuneracao)
 - **BNDES** - emprestimos do banco de desenvolvimento
-- **ComprasNet** - contratos federais historicos (pre-PNCP, 104k contratos incluidos no repo)
+- **ComprasNet** - contratos federais historicos (pre-PNCP, base estatica incluida no repo)
 - **Renuncias Fiscais** - beneficios e isencoes tributarias
-- **Viagens a Servico** - passagens e diarias (3.9M registros)
-- **Sancoes** - CEIS/CEPIM/CNEP (empresas e pessoas sancionadas)
+- **Viagens a Servico** - passagens e diarias
+- **Sancoes** - CEIS, CNEP, CEAF e acordos de leniencia
+
+O repositorio hoje inclui:
+
+- **23 fases de ETL** orquestradas por `python -m etl.run_all`
+- **95 queries SQL** em 14 arquivos tematicos (`Q01-Q100`, com lacunas em `Q52`, `Q69`, `Q73`, `Q75` e `Q76`)
+- **28 relatorios Markdown** derivados dos resultados
+- **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
 
-75 queries prontas organizadas em 11 categorias (764k resultados):
+As queries estao organizadas por dominio de analise:
 
-| Categoria | Queries | Exemplos |
+| Arquivo | Faixa | Tema |
 |---|---|---|
-| **Fraude em licitacao** | Q01-Q08 | Empresas do mesmo grupo disputando mesma licitacao (bid rigging), empresa-fachada recem-criada ganhando contrato grande |
-| **Cartao corporativo** | Q09-Q14 | Portador com gastos concentrados em unico fornecedor, fracionamento de despesa, portador socio de empresa favorecida |
-| **Emendas parlamentares** | Q15-Q20 | Parlamentar que beneficia repetidamente o mesmo favorecido, emenda para empresa com divida ativa |
-| **Redes societarias** | Q21-Q26 | Pessoa socia de muitas empresas fornecedoras, socios laranjas (faixa etaria extrema), cadeia de holdings |
-| **Cruzamento multi-fonte** | Q27-Q32 | Empresa que recebe BNDES + contratos + emendas, empresa inativa recebendo pagamentos |
-| **Fraude eleitoral (TSE)** | Q33-Q37 | Doacao de empresa com divida ativa, candidato que recebe e gasta com mesma empresa, patrimonio incompativel |
-| **Bolsa Familia** | Q38-Q42 | Servidor federal recebendo BF, socio de empresa ativa recebendo BF, candidato com patrimonio recebendo BF |
-| **Superfaturamento** | Q43-Q53 | Sobrepreco valor homologado vs estimado, aditivos suspeitos, dispensas anormais, capital social minimo |
-| **TCE-PB municipal** | Q59-Q77 | Servidor socio de fornecedor (32k), cartel estadual, empresa inativa, sancionado CEIS, fracionamento |
-| **dados.pb estadual** | Q78-Q91 | Auto-contratacao PF/PJ, credor=candidato TSE, empresa dominante estado+municipio, saude sancionado |
-| **Padroes temporais** | transversal | Picos de emendas em anos eleitorais, queima de orcamento dezembro |
+| `fraude_licitacao.sql` | Q01-Q05 | Licitacao, bid rigging, fornecedor dominante, empresa recem-criada |
+| `fraude_emendas.sql` | Q06-Q08, Q20 | Emendas parlamentares, concentracao de favorecidos, divida ativa |
+| `fraude_cpgf.sql` | Q09-Q11, Q19 | Cartao corporativo, concentracao de gastos, conflito com socios, fracionamento |
+| `fraude_cruzamento.sql` | Q12-Q15 | Cruzamento multi-fonte, beneficio triplo, empresa inativa recebendo pagamentos |
+| `fraude_rede_societaria.sql` | Q16-Q18 | Redes societarias, holdings, socios laranjas |
+| `fraude_servidores.sql` | Q21-Q24 | Servidores federais, remuneracao, emendas, conflito de interesses |
+| `fraude_sancoes.sql` | Q25-Q28 | CEIS, CNEP, CEAF e acordos de leniencia |
+| `fraude_viagens.sql` | Q29-Q32 | Viagens a servico, gastos fora do padrao, servidor expulso |
+| `fraude_tse.sql` | Q33-Q37 | Candidatos, doadores, patrimonio, sancoes eleitorais |
+| `fraude_bolsa_familia.sql` | Q38-Q42 | Bolsa Familia, socios, candidatos, concentracao municipal |
+| `fraude_superfaturamento.sql` | Q43-Q58, Q99 | Sobrepreco, aditivos, fracionamento, empresa fenix, ciclo politico-eleitoral |
+| `fraude_tce_pb.sql` | Q59-Q68, Q70-Q72, Q74, Q77 | TCE-PB municipal: despesas, servidores, licitacoes e Bolsa Familia |
+| `fraude_dados_pb.sql` | Q78-Q91 | dados PB estadual: PF/PJ, saude, convenios, dominancia e splitting |
+| `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
+
+Relatorios ja produzidos cobrem temas como:
+
+- pejotizacao medica e conflito entre servidor e fornecedor
+- empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
+- sobrepreco por item no PNCP
+- fracionamento de despesa municipal e estadual
+- risco municipal e score composto na Paraiba
 
 ## Stack
 
 - **Python 3.10+** - ETL com streaming (sem pandas, cabe em 16GB RAM)
-- **PostgreSQL 16** - com pg_trgm para fuzzy match de nomes
-- **psycopg2** - COPY FROM STDIN para carga rapida
+- **PostgreSQL 16** - com `pg_trgm` para fuzzy match de nomes
+- **psycopg2** - `COPY FROM STDIN` para carga rapida
 - **ijson** - parsing incremental de JSONs do PNCP
 
 ## Uso rapido
@@ -62,14 +80,15 @@ pip install -e .
 # 3. Subir PostgreSQL (ou usar um existente)
 docker compose up -d
 
-# 4. Rodar ETL completo (19 fases, ~4-6h dependendo do disco)
+# 4. Rodar ETL completo
+# 23 fases no orquestrador; duracao varia conforme disco, rede e volume ja baixado
 python -m etl.run_all
 
-# 5. Rodar fase especifica (ex: so fase 4 = PNCP)
+# 5. Rodar fase especifica (ex: iniciar na fase 4 = PNCP)
 python -m etl.run_all 4
 
 # 6. Exportar resultados das queries de fraude
-python -m etl.run_queries              # todas as 75 queries
+python -m etl.run_queries              # todas as 95 queries
 python -m etl.run_queries --query Q03  # query especifica
 ```
 
@@ -77,10 +96,10 @@ python -m etl.run_queries --query Q03  # query especifica
 
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Scripts de carga por fonte de dados (22 fases, 18+ fontes)
-queries/       75 queries SQL prontas para investigacao de fraudes
-resultados/    CSVs com resultados das queries (gitignored)
-relatorios/    Investigacoes baseadas nos resultados (Markdown)
+etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
+queries/       95 queries SQL em 14 arquivos tematicos
+resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
+relatorios/    28 investigacoes baseadas nos resultados (Markdown)
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
 ```
 
@@ -92,11 +111,11 @@ A maioria dos dados e baixada automaticamente via `python -m etl.00_download`:
 |-------|-----|----------|
 | Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | Automatico (~30GB) |
 | PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | Automatico (trimestral) |
-| PNCP (licitacoes) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.download_pncp`) |
+| PNCP (licitacoes/contratos/itens) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.download_pncp`) |
 | Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias) |
 | BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | Automatico |
 | TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Manual |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Manual (20.9M rows) |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Manual |
 | TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | Automatico |
 | dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | Automatico |
 | ComprasNet | Incluido no repo (`data/static/`) | N/A |
@@ -115,9 +134,9 @@ CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte
 | dados.pb.gov.br pagamento | `00045678901` | CPF **completo** (11 digitos) |
 | dados.pb.gov.br empenho PF | `***456***` | CPF mascarado (3 digitos centrais) |
 
-O pipeline normaliza automaticamente (fase 14) criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo JOINs por igualdade direta entre fontes. Match por **nome + 6 digitos CPF** virtualmente elimina falsos positivos.
+O pipeline normaliza automaticamente na **fase 17** criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo `JOIN`s por igualdade direta entre fontes.
 
-Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio × servidor × bolsa familia) virtualmente elimina falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), match exato por CPF 11 digitos.
+Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio x servidor x Bolsa Familia) reduz drasticamente falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), o cruzamento usa CPF completo de 11 digitos.
 
 ## Licenca
 
