@@ -176,7 +176,7 @@ A ausência de sanções não implica regularidade de preços — indica apenas 
 | Normalização de descrições apenas por `UPPER(TRIM())` | Itens com unidades diferentes (UN, UNID, Unidade, CX, PCT) são tratados como grupos distintos ou agrupados incorretamente | Implementar dicionário de unidades e clustering de descrições similares |
 | Cobertura de NCM apenas 1,4% | Não é possível usar código NCM como chave de agrupamento na maioria dos casos | Ampliar via enriquecimento por NLP ou mapeamento manual de categorias-chave |
 | ~~Filtro de R$ 1B exclui possíveis sobrepreços reais~~ | ~~Itens acima de R$ 1B descartados~~ | ~~Investigado: todos os 30 itens >R$1B examinados são erros de digitação (quantidade = valor unitário)~~ |
-| Ausência de série temporal | Análise é um corte transversal — não detecta evolução de preço ao longo do tempo no mesmo órgão | Adicionar análise de variação ano a ano por órgão/item |
+| ~~Ausência de série temporal~~ | ~~Análise transversal apenas~~ | ~~Corrigido: Q100 implementa série temporal semestral com mediana. 30 saltos >2× detectados.~~ |
 
 ### 6.2. Próximos Passos Recomendados
 
@@ -184,7 +184,7 @@ A ausência de sanções não implica regularidade de preços — indica apenas 
 2. ~~**Cruzar outliers Q92 com fornecedores vencedores**~~ — **Feito**: Seção 5.1 acima.
 3. ~~**Cruzar com CEIS/CNEP/PGFN**~~ — **Feito**: Seção 5.2, 0 matches em todas as bases.
 4. **Encaminhar os casos de maior valor** (flanela R$ 103M, arma não-letal R$ 448M, PRIME CONSULTORIA R$ 10,3B em 10 contratos) aos órgãos competentes (CGU, TCU) para triagem de investigação formal.
-5. **Implementar série temporal de preços** por órgão/item para detectar evolução anômala ao longo do tempo.
+5. ~~**Implementar série temporal de preços**~~ — **Feito**: Q100 detecta saltos >2× entre semestres consecutivos. 30 saltos identificados, maiores em obras civis (mudança de unidade m² vs total) e saúde (convênios).
 6. **Investigar PRIME CONSULTORIA** (05340639000130): razão média 324× em 10 contratos distintos é o padrão mais consistente de sobrepreço na amostra — merece aprofundamento via rede societária e histórico de contratações.
 
 ---

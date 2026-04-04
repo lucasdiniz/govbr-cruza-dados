@@ -184,7 +184,39 @@ A "planilha sem itens" é um **workaround do sistema PNCP**: credenciamentos e i
 3. **Empresas de terceirização recebendo R$40M via credenciamento**: JUSTIZ TERCEIRIZAÇÃO é empresa de mão de obra genérica recebendo R$40M em contrato de saúde.
 4. **Zero itens reais** nas mesmas contratações: Não há especificação do que está sendo comprado/contratado no nível de item.
 
-**Recomendação revisada:** O padrão "planilha sem itens" não é fraude per se, mas o **volume de R$1,17B em contratos sem detalhamento de itens** representa risco de controle. Priorizar auditoria no contrato PB SAÚDE (R$355M) e nos credenciamentos de R$40M+.
+#### Cruzamento realizado: Fornecedores × PGFN × Rede Societária
+
+O cruzamento dos fornecedores dos contratos "planilha sem itens" com PGFN e base societária revelou:
+
+**PGFN — Fornecedores com dívida ativa:**
+
+| Fornecedor | Contrato (R$) | Dívida PGFN (R$) | Tipo de Dívida |
+|------------|--------------|-------------------|----------------|
+| JUSTIZ TERCEIRIZAÇÃO | 40.001.249 | 13.779.121 | Multa CLT (7 inscrições) |
+| UNIMED JP | 3.252.199 | 248.433.567 | — |
+| CENTRAL DE DIAGNÓSTICO | 4.265.254 | 15.694.090 | — |
+| INSTITUTO VISÃO PARA TODOS | 7.002.057 | 1.287.010 | — |
+
+*Nota: ASTRAZENECA (R$19,2B) e JANSSEN-CILAG (R$4,7B) são disputas tributárias de multinacionais farmacêuticas — padrão diferente.*
+
+**Caso JUSTIZ — Rede societária extraordinária:**
+
+A JUSTIZ TERCEIRIZAÇÃO (CNPJ 06538799000150) é controlada por **Raul Orlando Justiz González** e **Brenda Mercedes Justiz González Henrique**, que possuem uma rede de **247 empresas** registradas na Receita Federal, operando sob 3 marcas:
+
+| Marca | Tipo | Exemplos |
+|-------|------|----------|
+| JUSTIZ TERCEIRIZAÇÃO | Mão de obra | ~80 SCPs (Sociedade em Conta de Participação) |
+| GROUPMED SERVIÇOS DE SAÚDE | Saúde | ~100 SCPs |
+| EVERYBODY LOCAÇÃO DE MÃO DE OBRA | Terceirização | ~50 SCPs |
+
+**Todas as 247 empresas** estão registradas no Rio Grande do Norte. A EVERYBODY (CNPJ 39530745000106) também recebe contrato da SES-PB de R$11.979.200 — ou seja, o mesmo grupo familiar recebe **R$52M+** da SES-PB via credenciamento.
+
+A dívida CLT de R$13,7M (7 inscrições por multa trabalhista) é particularmente grave para uma empresa de terceirização de mão de obra: indica padrão de descumprimento de obrigações trabalhistas enquanto recebe R$40M+ em contratos públicos de saúde.
+
+**Recomendação revisada:** O padrão "planilha sem itens" não é fraude per se, mas o **volume de R$1,17B em contratos sem detalhamento de itens** representa risco de controle. Priorizar:
+1. **Auditoria do grupo JUSTIZ/GROUPMED/EVERYBODY** (247 empresas, R$52M+ via SES-PB, R$13,7M em multas CLT)
+2. **Contrato PB SAÚDE** (R$355M) — Fundação estadual como intermediária
+3. **Verificar vínculos societários** entre todos os fornecedores credenciados da SES-PB
 
 ---
 

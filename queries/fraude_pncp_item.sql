@@ -285,3 +285,57 @@ SELECT
 FROM preco_freq
 ORDER BY contratacoes DESC
 LIMIT 200;
+
+-- Q100: Série temporal de preços — evolução semestral por item
+-- Detecta variações anômalas de preço ao longo do tempo para os itens mais
+-- comprados. Usa PERCENTILE_CONT (mediana) para robustez contra outliers.
+-- Fase 1: calcular mediana por item × semestre
+DROP TABLE IF EXISTS tmp_price_series;
+CREATE TEMP TABLE tmp_price_series AS
+SELECT
+    MD5(UPPER(TRIM(i.descricao)) || i.material_ou_servico) AS desc_hash,
+    UPPER(TRIM(i.descricao))    AS desc_norm,
+    i.material_ou_servico,
+    EXTRACT(YEAR FROM ca.dt_publicacao_pncp)::INT AS ano,
+    CASE WHEN EXTRACT(MONTH FROM ca.dt_publicacao_pncp) <= 6 THEN 1 ELSE 2 END AS semestre,
+    COUNT(*)                     AS n_itens,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY i.valor_unitario_estimado) AS mediana,
+    AVG(i.valor_unitario_estimado) AS media,
+    MIN(i.valor_unitario_estimado) AS minimo,
+    MAX(i.valor_unitario_estimado) AS maximo
+FROM pncp_item i
+JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
+WHERE i.situacao_item_nome = 'Homologado'
+  AND i.valor_unitario_estimado > 0
+  AND i.valor_unitario_estimado <= 10000000
+  AND ca.dt_publicacao_pncp IS NOT NULL
+GROUP BY MD5(UPPER(TRIM(i.descricao)) || i.material_ou_servico),
+         UPPER(TRIM(i.descricao)), i.material_ou_servico,
+         EXTRACT(YEAR FROM ca.dt_publicacao_pncp)::INT,
+         CASE WHEN EXTRACT(MONTH FROM ca.dt_publicacao_pncp) <= 6 THEN 1 ELSE 2 END
+HAVING COUNT(*) >= 10;
+CREATE INDEX ON tmp_price_series(desc_hash, ano, semestre);
+
+-- Fase 2: detectar saltos de preço > 2× entre semestres consecutivos
+SELECT
+    a.desc_norm,
+    a.ano AS ano_anterior,
+    a.semestre AS sem_anterior,
+    a.mediana AS mediana_anterior,
+    a.n_itens AS n_anterior,
+    b.ano AS ano_atual,
+    b.semestre AS sem_atual,
+    b.mediana AS mediana_atual,
+    b.n_itens AS n_atual,
+    ROUND((b.mediana / NULLIF(a.mediana, 0))::NUMERIC, 2) AS razao
+FROM tmp_price_series a
+JOIN tmp_price_series b ON a.desc_hash = b.desc_hash
+WHERE ((a.semestre = 1 AND b.ano = a.ano AND b.semestre = 2)
+    OR (a.semestre = 2 AND b.ano = a.ano + 1 AND b.semestre = 1))
+  AND b.mediana > 2 * a.mediana
+  AND a.n_itens >= 20
+  AND b.n_itens >= 20
+ORDER BY b.mediana - a.mediana DESC
+LIMIT 100;
+
+DROP TABLE tmp_price_series;

@@ -8,7 +8,7 @@
 3. [x] **Fênix PB × CEIS/CNEP**: 0 matches — evasão fiscal, não sanções
 4. [x] **Sobrepreço × fornecedores**: Top 15 fornecedores outlier. PRIME CONSULTORIA 324× em 10 contratos R$10.3B. LMM ENGENHARIA R$16.3B.
 5. [x] **Sobrepreço × CEIS/CNEP/PGFN**: 0 matches em todas as bases — fornecedores formalmente regulares.
-6. [ ] **Fracassados SES-PB × contratos diretos**: "planilha sem itens" fracassa → verificar dispensa/inexigibilidade no mesmo período
+6. [x] **Fracassados SES-PB × contratos diretos**: JUSTIZ TERCEIRIZAÇÃO R$40M + EVERYBODY R$12M = R$52M, mesmo grupo familiar (247 empresas). R$13.7M multas CLT.
 7. [x] **Cartel (Q98) × fornecedores**: FELISMINO 54 contratos, MH COMERCIO 51. Cross-product em 3 itens (pano R$5.83, detergente R$2.41, papel R$25.03).
 8. [x] **Rede societária × mv_empresa_governo**: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B. Top 10 hubs documentados.
 9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
@@ -20,7 +20,7 @@
 ### Melhorias queries
 12. [x] **Q94 mediana**: Reescrito com PERCENTILE_CONT(0.5) + temp tables (committed 745ee96)
 13. [x] **Investigar itens > R$1B**: Todos 30 examinados são erros de digitação (quantidade = valor unitário). Não é sobrepreço real.
-14. [ ] **Série temporal de preços**: Q92/Q94 sem segmentação por período, inflação distorce
+14. [x] **Série temporal de preços**: Q100 implementado. 22K grupos × semestre, 30 saltos >2× detectados. Obras civis e saúde dominam.
 
 ### Infra
 15. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403. Investigar bloqueio IP Azure.
