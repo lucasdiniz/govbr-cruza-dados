@@ -432,29 +432,30 @@ def download_pncp(anos=None):
     last_contratacao = ckpt.get("last_contratacao_date", "")
     last_contrato = ckpt.get("last_contrato_date", "")
 
+    # Session com connection pooling (reutiliza TCP+SSL, ~10x mais rapido)
+    import requests as _requests
+    _session = _requests.Session()
+    _session.headers.update({
+        "User-Agent": _UA,
+        "Accept": "application/json",
+    })
+    _adapter = _requests.adapters.HTTPAdapter(
+        pool_connections=10, pool_maxsize=20,
+        max_retries=_requests.adapters.Retry(total=0),  # retry manual
+    )
+    _session.mount("https://", _adapter)
+
     def _api_get(url, retries=3):
-        """GET via curl (faster than urlopen — reuses OS connection pool).
+        """GET com requests.Session (connection pooling).
         Retorna dict (sucesso), empty dict (204/sem dados), ou None (erro).
         """
-        import subprocess
         for attempt in range(retries):
             try:
-                result = subprocess.run(
-                    ["curl", "-sf", "--max-time", "20", "--compressed",
-                     "-H", f"User-Agent: {_UA}",
-                     "-H", "Accept: application/json",
-                     url],
-                    capture_output=True, timeout=25
-                )
-                if result.returncode == 22:
-                    # curl -f returns 22 for HTTP errors (4xx/5xx)
-                    raise Exception(f"HTTP error (curl exit 22)")
-                raw = result.stdout
-                if not raw or not raw.strip():
+                resp = _session.get(url, timeout=20)
+                if resp.status_code == 204 or not resp.content:
                     return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
-                return json.loads(raw)
-            except json.JSONDecodeError:
-                return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
+                resp.raise_for_status()
+                return resp.json()
             except Exception as e:
                 wait = min(2 ** (attempt + 1), 10)  # 2, 4, 8s
                 err_type = type(e).__name__

@@ -8,6 +8,7 @@ dependencies = [
     "ijson>=3.2",
     "python-dotenv>=1.0",
     "tqdm>=4.66",
+    "requests>=2.31",
 ]
 
 [project.scripts]
