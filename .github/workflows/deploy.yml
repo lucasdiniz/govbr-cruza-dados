@@ -257,14 +257,7 @@ jobs:
 
             # Only mark as initialized if ETL reached the end (even with non-fatal errors)
             # Check if key tables exist as indicator of progress
-            if python3 -c "
-from etl.db import get_conn, table_count
-conn = get_conn()
-# At minimum, need RFB loaded (empresa + estabelecimento)
-n = table_count(conn, 'empresa')
-print(f'empresa: {n}')
-exit(0 if n > 0 else 1)
-" 2>/dev/null; then
+            if python3 -c "from etl.db import get_conn, table_count; conn = get_conn(); n = table_count(conn, 'empresa'); print(f'empresa: {n}'); exit(0 if n > 0 else 1)" 2>/dev/null; then
               touch .initialized
               echo "=== ETL complete, .initialized set ==="
             else
