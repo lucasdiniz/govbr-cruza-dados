@@ -1,9 +1,16 @@
 # TODO - govbr-cruza-dados
 
 ## Pendente (por prioridade)
-1. [x] **Queries pncp_item**: 7 queries criadas (Q92-Q98) em queries/fraude_pncp_item.sql — sobrepreco por item, itens fracassados repetidos, variacao UF, concentracao fornecedor, orcamento sigiloso, jogo de planilha, precos identicos (cartel).
-2. [ ] **Q55 fix**: empresa fenix — query muito pesada (cost 21M, self-join estabelecimento 70M por UPPER(TRIM(logradouro))). Opcoes: index funcional, filtro por UF/estado, ou pre-materializar enderecos normalizados.
-3. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403 (CPGF, SIAPE, CEIS, CNEP, CEAF) + PNCP API 500/empty body da VM. Investigar bloqueio IP Azure.
+1. [ ] **Relatórios pncp_item**: Agentes Sonnet falharam (limite uso). Escrever 3 relatórios:
+   - relatorio_sobrepreco_pncp_item.md (Q92/Q94/Q97 — dados coletados, ver sessao 27)
+   - relatorio_itens_fracassados_pncp.md (Q93/Q96/Q98 — dados coletados)
+   - relatorio_empresa_fenix_pb.md (Q55 — dados coletados)
+2. [ ] **Q94 mediana**: Trocar AVG por PERCENTILE_CONT ou abordagem mais precisa (usuario pediu metrica correta, nao economizar processamento)
+3. [ ] **Investigar itens > R$1B**: Q92 filtra valor_total<=1B como "sanidade" mas pode excluir superfaturamento real. Analisar esses separadamente.
+4. [ ] **Série temporal de preços**: Q92/Q94 nao segmentam por periodo. Inflacao e cambio distorcem comparacao. Adicionar filtro temporal (ex: mesmo ano).
+5. [ ] **Deep dive Sec. Educação MS**: 974 licitacoes fracassadas de arroz em 19 meses. Investigar: preco teto irrealista? falta de fornecedores? direcionamento?
+6. [ ] **Deep dive SES-PB "planilha sem itens"**: 114 submissoes a R$4.9M medio, R$563M total em 595 dias. Muito suspeito.
+7. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403 (CPGF, SIAPE, CEIS, CNEP, CEAF) + PNCP API 500/empty body da VM. Investigar bloqueio IP Azure.
 
 ## Estado do banco local
 - **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
@@ -12,7 +19,7 @@
 - mv_empresa_governo 690K rows (criada sessao 26)
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 93+ queries em queries/*.sql, 21 relatorios em relatorios/
+- 93+ queries em queries/*.sql, 25 relatorios em relatorios/
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas
@@ -38,10 +45,13 @@
 
 ### 2026-04-03 (sessao 27)
 - 7 queries pncp_item criadas (Q92-Q98): sobrepreco, fracassados repetidos, variacao UF, concentracao fornecedor, sigiloso, jogo de planilha, precos identicos
-- Dados: 46% dos itens homologados compartilham descricao exata com 10+ outros (viabiliza comparacao por descricao)
+- Q55 fix: filtro UF='PB' reduz cost de 21M para 2.9M. 483 empresas fenix na PB (390 novas, 397 socios, 36 municipios, 174 em <30 dias)
+- Q92 performance: window functions timeout, temp table com MD5 hash funciona (~2min)
+- Dados: 46% dos itens homologados compartilham descricao exata com 10+ outros
 - NCM esparso (1.4%), catalogo quase inexistente (0.1%) — queries usam descricao normalizada
-- Performance: Q92/Q97 usam window functions (evita self-join), Q94 usa AVG em vez de PERCENTILE_CONT
-- Achados: Sec. Educacao MS com 974 licitacoes fracassadas de arroz; precos identicos nao-redondos de material limpeza em 20+ orgaos
+- Achados: Sec. Educacao MS 974 licitacoes fracassadas arroz; flanela R$22K (388x media); SES-PB planilha vazia R$563M
+- Agentes Sonnet para relatorios falharam (limite de uso Anthropic) — dados coletados, relatorios pendentes
+- Feedback usuario: nao usar metrica errada (AVG vs mediana) por economia; investigar itens >R$1B; adicionar serie temporal
 
 ### 2026-04-03 (sessao 26)
 - mv_empresa_governo criada: 690K rows, 5 indices. (1a tentativa falhou maintenance_work_mem 1kB acima max)

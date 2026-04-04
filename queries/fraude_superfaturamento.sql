@@ -235,7 +235,10 @@ ORDER BY pc.valor_global DESC;
 
 -- Q55: Empresa fênix — empresa baixada com nova empresa no mesmo endereço
 -- Detecta possível uso de empresa fênix para escapar de sanções/dívidas:
--- empresa fechada + nova empresa no mesmo endereço com mesmos sócios
+-- empresa fechada + nova empresa no mesmo endereço com mesmos sócios.
+-- NOTA: self-join em estabelecimento (70M rows) exige filtro por UF.
+-- Sem filtro UF o custo é ~21M (inviável). Com UF='PB' roda em ~30s.
+-- Para rodar em outro estado, troque 'PB' nas duas cláusulas WHERE.
 SELECT e_old.razao_social AS empresa_baixada,
        est_old.cnpj_completo AS cnpj_baixado,
        est_old.dt_situacao AS data_baixa,
@@ -252,19 +255,20 @@ FROM estabelecimento est_old
 JOIN estabelecimento est_new ON UPPER(TRIM(est_old.logradouro)) = UPPER(TRIM(est_new.logradouro))
     AND TRIM(est_old.numero) = TRIM(est_new.numero)
     AND est_old.uf = est_new.uf
-    AND est_old.cnpj_basico != est_new.cnpj_basico
+    AND est_old.cnpj_basico <> est_new.cnpj_basico
 JOIN empresa e_old ON e_old.cnpj_basico = est_old.cnpj_basico
 JOIN empresa e_new ON e_new.cnpj_basico = est_new.cnpj_basico
 JOIN socio s_old ON s_old.cnpj_basico = est_old.cnpj_basico AND s_old.tipo_socio = 2
 JOIN socio s_new ON s_new.cnpj_basico = est_new.cnpj_basico AND s_new.tipo_socio = 2
     AND s_old.cpf_cnpj_norm = s_new.cpf_cnpj_norm
 WHERE est_old.cnpj_ordem = '0001' AND est_new.cnpj_ordem = '0001'
+  AND est_old.uf = 'PB' AND est_new.uf = 'PB'  -- OBRIGATÓRIO: filtro por UF
   AND est_old.situacao_cadastral IN (8, 4)  -- baixada ou inapta
   AND est_new.situacao_cadastral = 2  -- ativa
   AND est_new.dt_inicio_atividade > est_old.dt_situacao
   AND est_new.dt_inicio_atividade - est_old.dt_situacao < 365
-  AND est_old.logradouro IS NOT NULL AND est_old.logradouro != ''
-  AND est_old.numero IS NOT NULL AND est_old.numero != ''
+  AND est_old.logradouro IS NOT NULL AND est_old.logradouro <> ''
+  AND est_old.numero IS NOT NULL AND est_old.numero <> ''
 ORDER BY est_new.dt_inicio_atividade DESC
 LIMIT 500;
 
