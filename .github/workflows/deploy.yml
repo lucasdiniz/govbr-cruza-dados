@@ -31,7 +31,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # Full ETL can take hours
+    timeout-minutes: 720  # Full ETL with PNCP API download needs 8-12h
 
     steps:
       - name: Checkout
@@ -231,7 +231,6 @@ jobs:
 
       # ── First run: full ETL (only once) ──
       - name: First run - Full ETL
-        continue-on-error: true  # Some sources may 403; don't block rest of pipeline
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
             set -e
@@ -268,7 +267,7 @@ jobs:
               exit 1
             fi
           SCRIPT
-        timeout-minutes: 300
+        timeout-minutes: 660
 
       # ── Normal push: apply SQL changes only ──
       - name: Apply SQL (schema + indices + views)
@@ -304,7 +303,7 @@ jobs:
             echo "=== ETL from phase $PHASE ==="
             python -m etl.run_all "$PHASE" 2>&1 | tee /tmp/etl.log
           SCRIPT
-        timeout-minutes: 300
+        timeout-minutes: 660
 
       # ── Run all fraud queries and save results ──
       - name: Run queries

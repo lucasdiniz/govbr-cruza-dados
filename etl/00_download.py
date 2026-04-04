@@ -397,28 +397,15 @@ def download_rfb():
                 _unzip(zip_path, dest)
 
 
-def download_pncp(anos=None, max_runtime_minutes=None):
+def download_pncp(anos=None):
     """PNCP - contratacoes e contratos via API Consulta.
 
     Contratacoes: por data × modalidade (13 modalidades), max 500/pagina.
     Contratos: por data, max 500/pagina.
     Salva JSONs compativeis com etl/04_pncp.py loader.
-
-    max_runtime_minutes: limite de tempo (None = sem limite). Checkpoint salvo
-    automaticamente — re-executar retoma de onde parou.
-    Env var PNCP_MAX_RUNTIME_MINUTES sobrescreve se definida.
     """
     import json
     import time
-
-    env_max = os.environ.get("PNCP_MAX_RUNTIME_MINUTES")
-    if env_max:
-        max_runtime_minutes = int(env_max)
-
-    deadline = None
-    if max_runtime_minutes:
-        deadline = time.time() + max_runtime_minutes * 60
-        print(f"    [info] Limite de tempo: {max_runtime_minutes} minutos")
 
     if anos is None:
         anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
@@ -543,10 +530,6 @@ def download_pncp(anos=None, max_runtime_minutes=None):
     failed_contratacao_weeks = []
     MAX_CONSECUTIVE_ERRORS = 20  # abort if API is down
     for week_start, week_end in _week_ranges(anos):
-        if deadline and time.time() > deadline:
-            print(f"    [timeout] Limite de tempo atingido, parando contratacoes")
-            break
-
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         if de <= last_contratacao:
@@ -591,10 +574,6 @@ def download_pncp(anos=None, max_runtime_minutes=None):
     consecutive_errors = 0
     failed_contrato_weeks = []
     for week_start, week_end in _week_ranges(anos):
-        if deadline and time.time() > deadline:
-            print(f"    [timeout] Limite de tempo atingido, parando contratos")
-            break
-
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         if de <= last_contrato:
