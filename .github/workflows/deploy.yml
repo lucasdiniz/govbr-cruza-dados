@@ -74,11 +74,16 @@ jobs:
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
             set -e
 
-            # Python + git
-            if ! dpkg -s python3-venv >/dev/null 2>&1; then
+            # Python + git + tor (tor = fallback for 403-blocked downloads)
+            if ! dpkg -s python3-venv >/dev/null 2>&1 || ! dpkg -s tor >/dev/null 2>&1; then
               sudo apt update
-              sudo apt install -y python3-venv python3-pip git curl wget gnupg2 lsb-release
+              sudo apt install -y python3-venv python3-pip git curl wget gnupg2 lsb-release tor torsocks
+              sudo systemctl enable tor
+              sudo systemctl start tor
+              echo "=== Tor installed and running ==="
             fi
+            # Ensure tor is running
+            sudo systemctl start tor 2>/dev/null || true
 
             # PostgreSQL 16
             if ! dpkg -s postgresql-16 >/dev/null 2>&1; then
@@ -188,10 +193,14 @@ jobs:
             echo "=== Testing download sources ==="
             # Portal da Transparência (known to block Azure IPs)
             if curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301"; then
-              echo "  Portal Transparencia: OK"
+              echo "  Portal Transparencia: OK (direct)"
             else
-              echo "  Portal Transparencia: BLOCKED (403) — CPGF, viagens, sancoes, emendas, siape, renuncias will fail"
-              echo "  Workaround: download locally and scp to VM, or use 'az storage blob download'"
+              echo "  Portal Transparencia: BLOCKED (direct) — testing Tor fallback..."
+              if torsocks curl -sf -o /dev/null -m 30 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301" 2>/dev/null; then
+                echo "  Portal Transparencia: OK (via Tor) — downloads will auto-fallback"
+              else
+                echo "  Portal Transparencia: BLOCKED (Tor also failed)"
+              fi
             fi
             # RFB (Nextcloud WebDAV)
             if curl -sf -o /dev/null -m 10 -u "YggdBLfdninEJX9:" "https://arquivos.receitafederal.gov.br/public.php/webdav/"; then

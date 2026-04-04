@@ -22,8 +22,11 @@ from tqdm import tqdm
 
 from etl.config import DATA_DIR
 
-_UA = "Mozilla/5.0 (compatible; govbr-etl/1.0)"
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+       "AppleWebKit/537.36 (KHTML, like Gecko) "
+       "Chrome/131.0.0.0 Safari/537.36")
 _TIMEOUT = 300  # 5 min per file
+_TOR_AVAILABLE = None  # lazy-checked on first 403
 
 
 # ── URLs e padroes de download ──────────────────────────────────
@@ -35,8 +38,61 @@ CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
 
 
+def _check_tor():
+    """Verifica se torsocks esta disponivel (lazy check, executado 1 vez)."""
+    global _TOR_AVAILABLE
+    if _TOR_AVAILABLE is None:
+        import subprocess
+        try:
+            r = subprocess.run(["torsocks", "--version"],
+                               capture_output=True, timeout=5)
+            _TOR_AVAILABLE = r.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            _TOR_AVAILABLE = False
+        if _TOR_AVAILABLE:
+            # Verifica se o servico Tor esta rodando
+            try:
+                r = subprocess.run(["systemctl", "is-active", "tor"],
+                                   capture_output=True, timeout=5)
+                _TOR_AVAILABLE = r.stdout.strip() == b"active"
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass  # Pode nao ter systemctl (macOS etc), assume OK
+        print(f"    [tor] {'disponivel' if _TOR_AVAILABLE else 'indisponivel'}")
+    return _TOR_AVAILABLE
+
+
+def _download_via_tor(url, dest_path, timeout=600):
+    """Download via Tor SOCKS proxy (fallback para 403 de IPs datacenter)."""
+    import subprocess
+    print(f"    [tor] tentando via Tor: {dest_path.name}...")
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            ["torsocks", "wget", "-q", "--timeout=120",
+             "--user-agent", _UA,
+             "-O", str(dest_path), url],
+            timeout=timeout, capture_output=True
+        )
+        if result.returncode == 0 and dest_path.exists() and dest_path.stat().st_size > 1000:
+            size_mb = dest_path.stat().st_size / 1e6
+            print(f"    [tor-ok] {dest_path.name} ({size_mb:.1f}MB)")
+            return True
+        else:
+            print(f"    [tor-erro] {dest_path.name}: exit={result.returncode}")
+            if dest_path.exists():
+                dest_path.unlink()
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"    [tor-timeout] {dest_path.name}")
+        if dest_path.exists():
+            dest_path.unlink()
+        return False
+
+
 def _download(url, dest_path, timeout=_TIMEOUT):
-    """Baixa arquivo com User-Agent e timeout. Pula se ja existe."""
+    """Baixa arquivo com User-Agent e timeout. Pula se ja existe.
+    Se receber 403 (IP bloqueado), tenta via Tor automaticamente.
+    """
     if dest_path.exists() and dest_path.stat().st_size > 1000:
         print(f"    [pula] {dest_path.name} (ja existe)")
         return True
@@ -45,14 +101,28 @@ def _download(url, dest_path, timeout=_TIMEOUT):
     print(f"    [baixando] {dest_path.name}...")
 
     try:
-        req = Request(url, headers={"User-Agent": _UA})
+        req = Request(url, headers={
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,*/*",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        })
         with urlopen(req, timeout=timeout) as resp:
             with open(dest_path, "wb") as f:
                 shutil.copyfileobj(resp, f)
         size_mb = dest_path.stat().st_size / 1e6
         print(f"    [ok] {dest_path.name} ({size_mb:.1f}MB)")
         return True
-    except (URLError, HTTPError) as e:
+    except HTTPError as e:
+        if e.code == 403 and _check_tor():
+            # IP provavelmente bloqueado (datacenter), tentar via Tor
+            if dest_path.exists():
+                dest_path.unlink()
+            return _download_via_tor(url, dest_path)
+        print(f"    [erro] {dest_path.name}: {e}")
+        if dest_path.exists():
+            dest_path.unlink()
+        return False
+    except URLError as e:
         print(f"    [erro] {dest_path.name}: {e}")
         if dest_path.exists():
             dest_path.unlink()
