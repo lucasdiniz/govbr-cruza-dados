@@ -397,15 +397,28 @@ def download_rfb():
                 _unzip(zip_path, dest)
 
 
-def download_pncp(anos=None):
+def download_pncp(anos=None, max_runtime_minutes=None):
     """PNCP - contratacoes e contratos via API Consulta.
 
     Contratacoes: por data × modalidade (13 modalidades), max 500/pagina.
     Contratos: por data, max 500/pagina.
     Salva JSONs compativeis com etl/04_pncp.py loader.
+
+    max_runtime_minutes: limite de tempo (None = sem limite). Checkpoint salvo
+    automaticamente — re-executar retoma de onde parou.
+    Env var PNCP_MAX_RUNTIME_MINUTES sobrescreve se definida.
     """
     import json
     import time
+
+    env_max = os.environ.get("PNCP_MAX_RUNTIME_MINUTES")
+    if env_max:
+        max_runtime_minutes = int(env_max)
+
+    deadline = None
+    if max_runtime_minutes:
+        deadline = time.time() + max_runtime_minutes * 60
+        print(f"    [info] Limite de tempo: {max_runtime_minutes} minutos")
 
     if anos is None:
         anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
@@ -433,14 +446,22 @@ def download_pncp(anos=None):
     last_contrato = ckpt.get("last_contrato_date", "")
 
     def _api_get(url, retries=5):
-        """GET com retry e backoff exponencial."""
+        """GET com retry e backoff exponencial.
+        Retorna dict (sucesso), [] (204/sem dados), ou None (erro).
+        """
         for attempt in range(retries):
             try:
-                req = Request(url, headers={"User-Agent": _UA})
+                req = Request(url, headers={
+                    "User-Agent": _UA,
+                    "Accept": "application/json",
+                })
                 with urlopen(req, timeout=120) as resp:
+                    # HTTP 204 = sem dados para essa combinação (legítimo)
+                    if resp.status == 204:
+                        return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
                     raw = resp.read()
                     if not raw or not raw.strip():
-                        raise ValueError("Empty response body")
+                        return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
                     return json.loads(raw)
             except Exception as e:
                 wait = min(2 ** (attempt + 1), 30)  # 2, 4, 8, 16, 30s
@@ -487,16 +508,45 @@ def download_pncp(anos=None):
             if page >= total_pages:
                 break
             page += 1
-            time.sleep(0.5)
+            time.sleep(0.2)
         return all_items
 
-    # ── Contratacoes (por semana × modalidade) ──
+    def _fetch_week_contratacoes(ds, de):
+        """Baixa contratacoes de todas as modalidades para uma semana.
+        Returns (records_list, failed_count).
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        records = []
+        failed = 0
+
+        def _fetch_mod(mod):
+            base_url = (f"{PNCP_API}/contratacoes/publicacao"
+                        f"?dataInicial={ds}&dataFinal={de}"
+                        f"&codigoModalidadeContratacao={mod}")
+            return _fetch_all_pages(base_url, PAGE_SIZE_CONTRATACOES)
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {pool.submit(_fetch_mod, m): m for m in MODALIDADES}
+            for fut in as_completed(futures):
+                items = fut.result()
+                if items is None:
+                    failed += 1
+                elif items:
+                    records.extend(items)
+
+        return records, failed
+
+    # ── Contratacoes (por semana × modalidade, paralelo) ──
     print("  PNCP contratacoes:")
     total_contratacoes = 0
     consecutive_errors = 0
     failed_contratacao_weeks = []
     MAX_CONSECUTIVE_ERRORS = 20  # abort if API is down
     for week_start, week_end in _week_ranges(anos):
+        if deadline and time.time() > deadline:
+            print(f"    [timeout] Limite de tempo atingido, parando contratacoes")
+            break
+
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         if de <= last_contratacao:
@@ -507,17 +557,7 @@ def download_pncp(anos=None):
             consecutive_errors = 0
             continue
 
-        week_records = []
-        failed_mods = 0
-        for mod in MODALIDADES:
-            base_url = (f"{PNCP_API}/contratacoes/publicacao"
-                        f"?dataInicial={ds}&dataFinal={de}"
-                        f"&codigoModalidadeContratacao={mod}")
-            items = _fetch_all_pages(base_url, PAGE_SIZE_CONTRATACOES)
-            if items is None:
-                failed_mods += 1
-            elif items:
-                week_records.extend(items)
+        week_records, failed_mods = _fetch_week_contratacoes(ds, de)
 
         if failed_mods > 0:
             consecutive_errors += 1
@@ -525,7 +565,6 @@ def download_pncp(anos=None):
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 print(f"    [abort] {MAX_CONSECUTIVE_ERRORS} semanas consecutivas com erro, abortando PNCP contratacoes")
                 break
-            # Don't save partial data or advance checkpoint — will retry this week
             print(f"    {ds}-{de}: ERRO em {failed_mods}/{len(MODALIDADES)} modalidades, sera retentado")
             continue
 
@@ -552,6 +591,10 @@ def download_pncp(anos=None):
     consecutive_errors = 0
     failed_contrato_weeks = []
     for week_start, week_end in _week_ranges(anos):
+        if deadline and time.time() > deadline:
+            print(f"    [timeout] Limite de tempo atingido, parando contratos")
+            break
+
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         if de <= last_contrato:
