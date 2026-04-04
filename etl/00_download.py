@@ -433,23 +433,28 @@ def download_pncp(anos=None):
     last_contrato = ckpt.get("last_contrato_date", "")
 
     def _api_get(url, retries=3):
-        """GET com retry e backoff exponencial.
-        Retorna dict (sucesso), [] (204/sem dados), ou None (erro).
+        """GET via curl (faster than urlopen — reuses OS connection pool).
+        Retorna dict (sucesso), empty dict (204/sem dados), ou None (erro).
         """
+        import subprocess
         for attempt in range(retries):
             try:
-                req = Request(url, headers={
-                    "User-Agent": _UA,
-                    "Accept": "application/json",
-                })
-                with urlopen(req, timeout=30) as resp:
-                    # HTTP 204 = sem dados para essa combinação (legítimo)
-                    if resp.status == 204:
-                        return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
-                    raw = resp.read()
-                    if not raw or not raw.strip():
-                        return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
-                    return json.loads(raw)
+                result = subprocess.run(
+                    ["curl", "-sf", "--max-time", "20", "--compressed",
+                     "-H", f"User-Agent: {_UA}",
+                     "-H", "Accept: application/json",
+                     url],
+                    capture_output=True, timeout=25
+                )
+                if result.returncode == 22:
+                    # curl -f returns 22 for HTTP errors (4xx/5xx)
+                    raise Exception(f"HTTP error (curl exit 22)")
+                raw = result.stdout
+                if not raw or not raw.strip():
+                    return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
             except Exception as e:
                 wait = min(2 ** (attempt + 1), 10)  # 2, 4, 8s
                 err_type = type(e).__name__
