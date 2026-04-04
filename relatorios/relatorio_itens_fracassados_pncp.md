@@ -256,7 +256,54 @@ O cruzamento dos itens Q98 com `pncp_contrato` identificou os fornecedores que m
 
 **Padrão cross-product:** A repetição dos mesmos fornecedores em múltiplos itens com preço idêntico não-redondo (pano R$5,83, detergente R$2,41, papel R$25,03) é o indicador mais forte de cartel identificado nesta análise. Não é plausível que empresas independentes convergissem para o mesmo preço não-redondo em 3+ produtos diferentes, em 17-20 órgãos distintos.
 
-**Recomendação:** Encaminhar ao CADE a lista completa de fornecedores com os 3 itens cartelizados (pano, detergente, papel A4), incluindo sobreposição de CNPJs e vínculos societários (FELISMINO × CRISTINA FELISMINO). Verificar se há vínculo societário via base da Receita Federal (socio table).
+#### Cruzamento realizado: Rede societária e geográfica do cartel
+
+**Concentração geográfica — Bahia exclusivo:**
+
+Os 3 itens com preço cartelizado operam **100% na Bahia**:
+
+| Item | Preço | Órgãos BA | Contratações |
+|------|-------|-----------|--------------|
+| Pano de chão | R$ 5,83 | 18 | 77 |
+| Detergente lava-louça | R$ 2,41 | 25 | 91 |
+| Papel A4 75g | R$ 25,03 | 20 | 56 |
+
+**Mesmo endereço — 3 empresas em Rua Álvaro da França Rocha, 66, Cajazeiras, Salvador/BA (CEP 41334-320):**
+
+| Empresa | CNPJ | Contratos totais |
+|---------|------|-----------------|
+| DISTRIBUIDORA FELISMINO LTDA | 39476248000240 | 732 |
+| CRISTINA FELISMINO DOS SANTOS | 30510368000160 | 144 |
+| REAL GLOBAL COMERCIO E IMPORTACAO LTDA | 32177997000146 | 792 |
+
+A sócia da DISTRIBUIDORA FELISMINO é **CRISTIANE FELISMINO DOS SANTOS** (CPF ***604875**) — nome quase idêntico a CRISTINA FELISMINO DOS SANTOS (empresa individual no mesmo endereço). Possível relação familiar direta.
+
+**Outras empresas próximas:** CONTUDO LICITAÇÕES (CEP 41334-200, Cajazeiras, Salvador) e FRANCISCO COSTA DE SANTANA (CEP 41342-245, Salvador) — todas no mesmo bairro.
+
+**Volume total do cartel (contratos PNCP):**
+
+| Fornecedor | Sede | Contratos BA | Contratos fora BA |
+|------------|------|-------------|-------------------|
+| MH COMERCIO | Salvador/BA | 1.670 | 0 |
+| REAL GLOBAL | Salvador/BA | 792 | 0 |
+| DISTRIBUIDORA FELISMINO | Salvador/BA | 732 | 1 (DF) |
+| NAN COMERCIO | Feira de Santana/BA | 509 | 0 |
+| ENIO DOS SANTOS SILVA | Valença/BA | 312 | 5 (DF) |
+| SJ ATENTO | Salvador/BA | 260 | 0 |
+| CRISTINA FELISMINO | Salvador/BA | 144 | 0 |
+| THIAGO MELO DOS SANTOS | Salvador/BA | 91 | 10 |
+| SHOPPEE DA LIMPEZA | Itabuna/BA | 24 | 0 |
+| COMERCIAL UNIDOS | Jequié/BA | 17 | 0 |
+
+**Total: 4.551 contratos**, quase todos na Bahia. Nenhuma empresa tem sanção CEIS/CNEP ou dívida PGFN.
+
+**Conclusão da investigação:** Trata-se de um **cartel regional baiano** de materiais de limpeza e papelaria, operando com preços idênticos não-redondos em 3+ produtos, concentrado em Salvador com pelo menos 3 empresas no mesmo endereço físico e vínculo familiar (Felismino). O padrão é consistente com coordenação de preços em licitações municipais baianas.
+
+**Recomendação:** Encaminhar ao CADE/BA a lista completa dos 10 fornecedores com:
+- Prova de mesmo endereço (3 empresas em Rua Álvaro da França Rocha, 66)
+- Vínculo familiar CRISTIANE/CRISTINA FELISMINO
+- Preços idênticos não-redondos em 3 produtos, 18-25 órgãos, 224 contratações
+- Concentração geográfica 100% Bahia em todos os itens
 
 ---
 

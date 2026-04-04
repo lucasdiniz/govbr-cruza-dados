@@ -9,7 +9,7 @@
 4. [x] **Sobrepreço × fornecedores**: Top 15 fornecedores outlier. PRIME CONSULTORIA 324× em 10 contratos R$10.3B. LMM ENGENHARIA R$16.3B.
 5. [x] **Sobrepreço × CEIS/CNEP/PGFN**: 0 matches em todas as bases — fornecedores formalmente regulares.
 6. [x] **Fracassados SES-PB × contratos diretos**: JUSTIZ TERCEIRIZAÇÃO R$40M + EVERYBODY R$12M = R$52M, mesmo grupo familiar (247 empresas). R$13.7M multas CLT.
-7. [x] **Cartel (Q98) × fornecedores**: FELISMINO 54 contratos, MH COMERCIO 51. Cross-product em 3 itens (pano R$5.83, detergente R$2.41, papel R$25.03).
+7. [x] **Cartel (Q98) × rede societária**: Cartel regional baiano confirmado. 3 empresas no mesmo endereço (Rua Álvaro da França Rocha 66, Salvador). Vínculo CRISTIANE/CRISTINA FELISMINO. 4.551 contratos, 100% BA. 0 sanções.
 8. [x] **Rede societária × mv_empresa_governo**: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B. Top 10 hubs documentados.
 9. [x] **Q99 Fênix nacional**: 106.699 pares, 42.694 empresas novas, 35.537 sócios (2020+). Top: SP(29K), RJ(28K), MG(8.8K), PE(8K).
 
@@ -55,6 +55,14 @@
 - pncp_item completo: 4.71M rows
 - Deploy 23718465381 "success" mas DB Azure vazio (downloads bloqueados)
 - tipo_pessoa fix linhas 661/668 aplicado (ja commitado)
+
+### 2026-04-04 (sessao 29)
+- Q100 série temporal: 22K grupos × semestre, 30 saltos >2× detectados
+- SES-PB × JUSTIZ: grupo familiar Justiz González controla 247 empresas (JUSTIZ/GROUPMED/EVERYBODY), recebe R$52M+ via credenciamento com R$13.7M em multas CLT
+- Cartel BA confirmado: 3 empresas no mesmo endereço (Rua Álvaro da França Rocha 66, Salvador), vínculo CRISTIANE/CRISTINA FELISMINO, 4.551 contratos 100% BA, preços idênticos em 3 produtos
+- Sobrepreço × fornecedores: PRIME CONSULTORIA 324× em 10 contratos R$10.3B. 0 sanções CEIS/CNEP/PGFN.
+- Rede societária × governo: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B
+- 4 relatórios enriquecidos com cruzamentos. Q94 reescrito com PERCENTILE_CONT. TODO 13/14 completo.
 
 ### 2026-04-04 (sessao 28)
 - 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb
