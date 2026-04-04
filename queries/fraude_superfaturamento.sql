@@ -233,12 +233,13 @@ WHERE pc.valor_global > 500000
   )
 ORDER BY pc.valor_global DESC;
 
--- Q55: Empresa fênix — empresa baixada com nova empresa no mesmo endereço
+-- Q55: Empresa fênix PB — empresa baixada com nova empresa no mesmo endereço
 -- Detecta possível uso de empresa fênix para escapar de sanções/dívidas:
 -- empresa fechada + nova empresa no mesmo endereço com mesmos sócios.
 -- NOTA: self-join em estabelecimento (70M rows) exige filtro por UF.
 -- Sem filtro UF o custo é ~21M (inviável). Com UF='PB' roda em ~30s.
 -- Para rodar em outro estado, troque 'PB' nas duas cláusulas WHERE.
+-- Ver Q99 para versão nacional (temp tables com hash).
 SELECT e_old.razao_social AS empresa_baixada,
        est_old.cnpj_completo AS cnpj_baixado,
        est_old.dt_situacao AS data_baixa,
@@ -342,3 +343,80 @@ WHERE UPPER(TRIM(est1.logradouro)) = UPPER(TRIM(est2.logradouro))
   AND cc.valor_estimado > 50000
 ORDER BY cc.valor_estimado DESC
 LIMIT 500;
+
+
+-- Q99: Empresa fênix — versão NACIONAL com temp tables
+-- Mesma lógica da Q55 (mesmo endereço + mesmo sócio + <365 dias), mas viabilizada
+-- para escala nacional via temp tables pré-filtradas + hash indexes.
+-- Filtro temporal: baixas a partir de 2020 (15.7M fechadas nesse período).
+-- Sem esse filtro seriam 39M baixadas — excessivo para temp table.
+-- Estimativa: ~5-10 min dependendo de I/O.
+
+-- Fase 1: matrizes baixadas/inaptas (2020+) com endereço válido
+DROP TABLE IF EXISTS tmp_fenix_closed;
+CREATE TEMP TABLE tmp_fenix_closed AS
+SELECT est.cnpj_basico, est.cnpj_completo, est.uf, est.municipio,
+       est.dt_situacao,
+       UPPER(TRIM(est.logradouro)) AS logradouro_norm,
+       TRIM(est.numero) AS numero_norm,
+       MD5(UPPER(TRIM(est.logradouro)) || '|' || TRIM(est.numero) || '|' || est.uf) AS addr_hash
+FROM estabelecimento est
+WHERE est.cnpj_ordem = '0001'
+  AND est.situacao_cadastral IN (4, 8)  -- baixada ou inapta
+  AND est.dt_situacao >= '2020-01-01'   -- últimos ~6 anos
+  AND est.logradouro IS NOT NULL AND est.logradouro <> ''
+  AND est.numero IS NOT NULL AND est.numero <> ''
+  AND est.dt_situacao IS NOT NULL;
+
+CREATE INDEX ON tmp_fenix_closed(addr_hash);
+CREATE INDEX ON tmp_fenix_closed(cnpj_basico);
+
+-- Fase 2: matrizes ativas abertas a partir de 2020 com endereço válido
+DROP TABLE IF EXISTS tmp_fenix_active;
+CREATE TEMP TABLE tmp_fenix_active AS
+SELECT est.cnpj_basico, est.cnpj_completo, est.uf, est.municipio,
+       est.dt_inicio_atividade,
+       UPPER(TRIM(est.logradouro)) AS logradouro_norm,
+       TRIM(est.numero) AS numero_norm,
+       MD5(UPPER(TRIM(est.logradouro)) || '|' || TRIM(est.numero) || '|' || est.uf) AS addr_hash
+FROM estabelecimento est
+WHERE est.cnpj_ordem = '0001'
+  AND est.situacao_cadastral = 2  -- ativa
+  AND est.dt_inicio_atividade >= '2020-01-01'
+  AND est.logradouro IS NOT NULL AND est.logradouro <> ''
+  AND est.numero IS NOT NULL AND est.numero <> ''
+  AND est.dt_inicio_atividade IS NOT NULL;
+
+CREATE INDEX ON tmp_fenix_active(addr_hash);
+CREATE INDEX ON tmp_fenix_active(cnpj_basico);
+
+-- Fase 3: join via hash de endereço + sócio em comum + janela de 365 dias
+SELECT
+    e_old.razao_social        AS empresa_baixada,
+    c.cnpj_completo           AS cnpj_baixado,
+    c.dt_situacao              AS data_baixa,
+    e_new.razao_social        AS empresa_nova,
+    a.cnpj_completo           AS cnpj_novo,
+    a.dt_inicio_atividade      AS data_abertura_nova,
+    a.dt_inicio_atividade - c.dt_situacao AS dias_entre,
+    s_old.nome                 AS socio_comum,
+    s_old.cpf_cnpj_norm        AS cpf_socio,
+    c.logradouro_norm || ', ' || c.numero_norm AS endereco,
+    c.municipio, c.uf,
+    e_new.capital_social       AS capital_nova
+FROM tmp_fenix_closed c
+JOIN tmp_fenix_active a
+    ON c.addr_hash = a.addr_hash
+   AND c.cnpj_basico <> a.cnpj_basico
+JOIN empresa e_old ON e_old.cnpj_basico = c.cnpj_basico
+JOIN empresa e_new ON e_new.cnpj_basico = a.cnpj_basico
+JOIN socio s_old ON s_old.cnpj_basico = c.cnpj_basico AND s_old.tipo_socio = 2
+JOIN socio s_new ON s_new.cnpj_basico = a.cnpj_basico AND s_new.tipo_socio = 2
+    AND s_old.cpf_cnpj_norm = s_new.cpf_cnpj_norm
+WHERE a.dt_inicio_atividade > c.dt_situacao
+  AND a.dt_inicio_atividade - c.dt_situacao < 365
+ORDER BY a.dt_inicio_atividade DESC
+LIMIT 2000;
+
+DROP TABLE tmp_fenix_closed;
+DROP TABLE tmp_fenix_active;

@@ -5,48 +5,53 @@
 -- =============================================
 
 -- Q92: Sobrepreço por item — preço unitário muito acima da média nacional
--- Usa window functions para calcular média+desvio por descrição exata.
--- Flagga itens com preço > média + 3×desvio (mínimo 10 itens no grupo).
+-- Duas fases: (1) calcula estatísticas por grupo de descrição (temp table),
+-- (2) join com itens individuais via hash MD5 da descrição.
+-- NOTA: versão com window functions estoura memória/tempo em 2.7M itens.
 -- Filtro de sanidade: valor_total <= R$1B (exclui erros de digitação óbvios).
-WITH ranked AS (
-    SELECT
-        numero_controle_pncp,
-        numero_item,
-        descricao,
-        valor_unitario_estimado,
-        quantidade,
-        valor_total,
-        material_ou_servico,
-        cnpj_orgao,
-        AVG(valor_unitario_estimado) OVER w   AS media_grupo,
-        STDDEV(valor_unitario_estimado) OVER w AS desvio_grupo,
-        COUNT(*) OVER w                        AS n_grupo
-    FROM pncp_item
-    WHERE situacao_item_nome = 'Homologado' AND valor_unitario_estimado > 0
-    WINDOW w AS (PARTITION BY UPPER(TRIM(descricao)), material_ou_servico)
-)
+
+-- Fase 1: estatísticas por grupo de descrição
+CREATE TEMP TABLE tmp_item_stats AS
 SELECT
-    r.numero_controle_pncp,
-    r.descricao,
-    r.valor_unitario_estimado,
-    r.quantidade,
-    r.valor_total,
+    MD5(UPPER(TRIM(descricao)) || material_ou_servico) AS desc_hash,
+    UPPER(TRIM(descricao)) AS desc_norm,
+    material_ou_servico,
+    AVG(valor_unitario_estimado) AS media,
+    STDDEV(valor_unitario_estimado) AS desvio,
+    COUNT(*) AS n_grupo
+FROM pncp_item
+WHERE situacao_item_nome = 'Homologado' AND valor_unitario_estimado > 0
+GROUP BY UPPER(TRIM(descricao)), material_ou_servico
+HAVING COUNT(*) >= 10;
+
+CREATE INDEX ON tmp_item_stats(desc_hash);
+
+-- Fase 2: itens outlier vs grupo
+SELECT
+    i.numero_controle_pncp,
+    i.descricao,
+    i.valor_unitario_estimado,
+    i.quantidade,
+    i.valor_total,
     ca.cnpj_orgao,
     ca.orgao_razao_social,
     ca.uf,
     ca.municipio_nome,
-    ROUND(r.media_grupo::numeric, 2)    AS media_nacional,
-    ROUND((r.valor_unitario_estimado / NULLIF(r.media_grupo, 0))::numeric, 1) AS vezes_media,
-    r.n_grupo
-FROM ranked r
-JOIN pncp_contratacao ca ON ca.numero_controle_pncp = r.numero_controle_pncp
-WHERE r.n_grupo >= 10
-  AND r.media_grupo >= 1
-  AND r.valor_total >= 10000
-  AND r.valor_total <= 1000000000      -- sanidade: exclui erros de digitação > R$1B
-  AND r.valor_unitario_estimado > r.media_grupo + 3 * COALESCE(NULLIF(r.desvio_grupo, 0), r.media_grupo)
-ORDER BY r.valor_total DESC
+    ROUND(s.media::numeric, 2)    AS media_nacional,
+    ROUND((i.valor_unitario_estimado / NULLIF(s.media, 0))::numeric, 1) AS vezes_media,
+    s.n_grupo
+FROM pncp_item i
+JOIN tmp_item_stats s ON MD5(UPPER(TRIM(i.descricao)) || i.material_ou_servico) = s.desc_hash
+JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
+WHERE i.situacao_item_nome = 'Homologado'
+  AND s.media >= 1
+  AND i.valor_total >= 10000
+  AND i.valor_total <= 1000000000      -- sanidade: exclui erros de digitação > R$1B
+  AND i.valor_unitario_estimado > s.media + 3 * COALESCE(NULLIF(s.desvio, 0), s.media)
+ORDER BY i.valor_total DESC
 LIMIT 200;
+
+DROP TABLE tmp_item_stats;
 
 
 -- Q93: Itens desertos ou fracassados repetidos no mesmo órgão
