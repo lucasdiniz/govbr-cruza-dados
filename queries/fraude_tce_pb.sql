@@ -152,9 +152,11 @@ SELECT d.municipio,
        SUM(d.valor_pago) AS total_pago_tce,
        SUM(d.valor_pago) - pc.valor_global AS diferenca,
        pc.dt_assinatura, pc.dt_vigencia_fim
+-- FIX #14: usar CNPJ completo (14 dígitos) no join do órgão em vez de 8
+-- 8 dígitos agrupava todas sub-unidades (saúde + educação), inflando total_pago_tce
 FROM pncp_contrato pc
 JOIN tce_pb_despesa d ON d.cnpj_basico = pc.cnpj_basico_fornecedor
-    AND LEFT(pc.cnpj_orgao, 8) = LEFT(d.codigo_ug, 8)
+    AND d.codigo_ug = pc.cnpj_orgao
 WHERE pc.uf = 'PB'
   AND pc.valor_global > 50000
   AND d.ano >= 2022

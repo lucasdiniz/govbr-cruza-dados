@@ -219,6 +219,7 @@ FROM pb_pagamento pp
 JOIN pgfn_divida pg ON pp.cnpj_basico = LEFT(pg.cpf_cnpj_norm, 8)
 WHERE pp.cnpj_basico IS NOT NULL
   AND LENGTH(pg.cpf_cnpj_norm) = 14
+  AND LENGTH(REPLACE(pp.cpfcnpj_credor, '.', '')) >= 14  -- FIX #13: only PJ creditors, exclude PF/CPF collision
   AND pp.valor_pagamento > 0
 GROUP BY pp.cpfcnpj_credor, pp.nome_credor,
          pg.numero_inscricao, pg.tipo_devedor, pg.situacao_inscricao,

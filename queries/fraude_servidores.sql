@@ -12,6 +12,7 @@ JOIN pncp_contrato pc ON pc.cnpj_basico_fornecedor = s.cnpj_basico
 WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
   AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos != '000000'
   AND pc.valor_global > 10000
+  AND pc.valor_global < 10000000000  -- FIX #5: cap para excluir valores absurdos (R$10bi)
 ORDER BY pc.valor_global DESC
 LIMIT 20;
 

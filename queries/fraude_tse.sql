@@ -65,16 +65,36 @@ ORDER BY crescimento DESC
 LIMIT 200;
 
 -- Q36: Candidato com sanção ativa (CEIS/CNEP) ainda concorrendo
--- Detecta: candidato que deveria estar impedido
+-- Detecta: candidato pessoalmente sancionado OU sócio de empresa sancionada
+-- FIX #10: join original ia apenas por empresa; agora inclui sanção pessoal via CPF
 SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
        tc.ds_situacao_candidatura,
        cs.categoria_sancao, cs.codigo_sancao, cs.orgao_sancionador,
-       cs.dt_inicio_sancao, cs.dt_final_sancao
+       cs.dt_inicio_sancao, cs.dt_final_sancao,
+       CASE WHEN cs.cpf_cnpj_norm = tc.cpf_digitos THEN 'pessoal'
+            ELSE 'empresa_socia' END AS tipo_sancao
+FROM tse_candidato tc
+JOIN ceis_sancao cs ON cs.cpf_cnpj_norm = tc.cpf_digitos
+WHERE tc.cpf IS NOT NULL AND tc.cpf NOT IN ('-1', '-4', '')
+  AND tc.cpf_digitos IS NOT NULL AND tc.cpf_digitos != '000000'
+
+UNION ALL
+
+SELECT tc.nm_candidato, tc.cpf, tc.ds_cargo, tc.sg_partido, tc.sg_uf, tc.ano_eleicao,
+       tc.ds_situacao_candidatura,
+       cs.categoria_sancao, cs.codigo_sancao, cs.orgao_sancionador,
+       cs.dt_inicio_sancao, cs.dt_final_sancao,
+       'empresa_socia' AS tipo_sancao
 FROM tse_candidato tc
 JOIN socio s ON s.cpf_cnpj_socio = tc.cpf
+  AND s.tipo_socio = 2
+  AND s.qualificacao IN ('22', '49')  -- sócio-administrador / sócio
 JOIN ceis_sancao cs ON LEFT(cs.cpf_cnpj_sancionado, 8) = s.cnpj_basico
 WHERE tc.cpf IS NOT NULL AND tc.cpf NOT IN ('-1', '-4', '')
-ORDER BY tc.ano_eleicao DESC, tc.nm_candidato;
+  AND NOT EXISTS (  -- evita duplicata com a parte pessoal
+    SELECT 1 FROM ceis_sancao cs2 WHERE cs2.cpf_cnpj_norm = tc.cpf_digitos
+  )
+ORDER BY ano_eleicao DESC, nm_candidato;
 
 -- Q37: Candidato que recebeu emendas parlamentares para empresas onde é sócio
 -- Detecta: auto-benefício via emendas

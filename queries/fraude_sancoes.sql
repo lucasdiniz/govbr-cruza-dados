@@ -11,14 +11,18 @@ WHERE (cs.dt_final_sancao IS NULL OR pc.dt_assinatura <= cs.dt_final_sancao)
 ORDER BY pc.valor_global DESC
 LIMIT 20;
 
--- Q26: Empresa punida pela Lei Anticorrupcao (CNEP) que recebe emendas
+-- Q26: Empresa punida pela Lei Anticorrupcao (CNEP) que recebe emendas durante vigência da sanção
+-- FIX #11: adicionado filtro temporal — emenda deve cair dentro do período da sanção
 SELECT cn.nome_sancionado, cn.cpf_cnpj_sancionado,
        cn.categoria_sancao, cn.valor_multa,
+       cn.dt_inicio_sancao, cn.dt_final_sancao,
        ef.nome_autor, ef.codigo_emenda,
        ef.uf_favorecido, ef.municipio_favorecido,
-       ef.valor_recebido
+       ef.valor_recebido, ef.ano_mes
 FROM cnep_sancao cn
 JOIN emenda_favorecido ef ON cn.cpf_cnpj_norm = ef.codigo_favorecido
+WHERE ef.ano_mes >= TO_CHAR(cn.dt_inicio_sancao, 'YYYY/MM')
+  AND (cn.dt_final_sancao IS NULL OR ef.ano_mes <= TO_CHAR(cn.dt_final_sancao, 'YYYY/MM'))
 ORDER BY ef.valor_recebido DESC
 LIMIT 20;
 
@@ -37,7 +41,8 @@ WHERE ce.cpf_cnpj_norm IS NOT NULL AND ce.cpf_cnpj_norm != '000000'
 ORDER BY ce.dt_inicio_sancao DESC
 LIMIT 20;
 
--- Q28: Empresa com acordo de leniencia que volta a ganhar contratos
+-- Q28: Empresa com acordo de leniencia ativo que volta a ganhar contratos
+-- FIX #11: filtrar apenas acordos não cumpridos/encerrados + contratos durante vigência
 SELECT al.razao_social_rfb, al.cnpj_sancionado,
        al.situacao_acordo, al.dt_inicio_acordo, al.dt_fim_acordo,
        pc.uf AS uf_contrato, pc.municipio_nome AS municipio_contrato,
@@ -45,5 +50,7 @@ SELECT al.razao_social_rfb, al.cnpj_sancionado,
 FROM acordo_leniencia al
 JOIN pncp_contrato pc ON al.cnpj_norm = pc.ni_fornecedor
 WHERE pc.dt_assinatura > al.dt_inicio_acordo
+  AND (al.dt_fim_acordo IS NULL OR pc.dt_assinatura <= al.dt_fim_acordo)
+  AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado', 'cumprido', 'encerrado')
 ORDER BY pc.valor_global DESC
 LIMIT 20;

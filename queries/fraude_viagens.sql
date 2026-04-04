@@ -1,4 +1,6 @@
 -- Q29: Servidor que viaja para cidade onde empresa dele tem sede
+-- FIX #5: filtro qualificacao (sócio-administrador/sócio) para reduzir ruído
+-- FIX #8: match por município (antes era só UF, gerando falsos positivos)
 SELECT v.nome_viajante, v.cpf_viajante, v.cargo,
        v.nome_orgao_solicitante, v.destinos, v.dt_inicio,
        v.valor_diarias + COALESCE(v.valor_passagens, 0) AS custo_viagem,
@@ -6,14 +8,15 @@ SELECT v.nome_viajante, v.cpf_viajante, v.cargo,
 FROM viagem v
 JOIN socio s ON v.cpf_viajante_digitos = s.cpf_cnpj_norm
   AND s.tipo_socio = 2
+  AND s.qualificacao IN ('22', '49')  -- sócio-administrador, sócio
   AND v.cpf_viajante_digitos IS NOT NULL AND v.cpf_viajante_digitos != '000000'
   AND UPPER(TRIM(v.nome_viajante)) = UPPER(TRIM(s.nome))
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
-WHERE v.destinos ILIKE '%' || est.uf || '%'
+  AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
+WHERE v.destinos ILIKE '%' || est.municipio || '%'
   AND v.valor_diarias > 500
-ORDER BY custo_viagem DESC
-LIMIT 20;
+ORDER BY custo_viagem DESC;
 
 -- Q30: Servidor que mais gasta com viagens
 SELECT cpf_viajante, nome_viajante, cargo,

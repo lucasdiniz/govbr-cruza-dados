@@ -85,6 +85,7 @@ WITH limites AS (
     codigo_unidade_gestora, nome_unidade_gestora, valor_transacao
   FROM cpgf_transacao
   WHERE valor_transacao > 0
+    AND cpf_portador IS NOT NULL AND cpf_portador != ''  -- FIX #5: excluir transações sigilosas
 )
 SELECT * FROM (
   SELECT 'dia' AS granularidade,

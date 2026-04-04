@@ -80,16 +80,19 @@ LIMIT 100;
 
 -- Q42: Candidato a vereador/prefeito que recebe Bolsa Familia
 -- Detecta: incompatibilidade — candidato com patrimônio declarado recebendo BF
+-- FIX #12: join por cpf_digitos (antes era só nome+UF, gerando falsos positivos massivos)
 SELECT bf.nm_favorecido, bf.cpf_favorecido, bf.uf, bf.valor_parcela,
        tc.nm_candidato, tc.ds_cargo, tc.sg_partido, tc.ano_eleicao,
        COALESCE(pb.total_bens, 0) AS patrimonio_declarado
 FROM bolsa_familia bf
-JOIN tse_candidato tc ON UPPER(TRIM(bf.nm_favorecido)) = UPPER(TRIM(tc.nm_candidato))
+JOIN tse_candidato tc ON bf.cpf_digitos = tc.cpf_digitos
     AND bf.uf = tc.sg_uf
 LEFT JOIN (
     SELECT sq_candidato, ano_eleicao, SUM(valor_bem) AS total_bens
     FROM tse_bem_candidato GROUP BY sq_candidato, ano_eleicao
 ) pb ON pb.sq_candidato = tc.sq_candidato AND pb.ano_eleicao = tc.ano_eleicao
-WHERE pb.total_bens > 50000  -- patrimonio > 50k e recebe BF
+WHERE bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
+  AND tc.cpf_digitos IS NOT NULL AND tc.cpf_digitos != '000000'
+  AND pb.total_bens > 50000  -- patrimonio > 50k e recebe BF
 ORDER BY pb.total_bens DESC
 LIMIT 500;

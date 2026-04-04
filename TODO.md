@@ -3,7 +3,7 @@
 ## Pendente
 
 ### Deploy Azure
-16. [ ] **Verificar benchmark PNCP e disparar deploy**: Benchmark PNCP 2024 rodando na VM (PID 189716, iniciou 19:13 UTC). Checar: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186 "ls /home/govbr/data/pncp/contratacoes_2024*.json | wc -l"`. Se 2024 completou (~52 JSONs contratacoes + ~52 contratos), disparar deploy: `gh workflow run deploy.yml -f etl_phase=all -f clean=true`.
+16. [ ] **Verificar benchmark PNCP e disparar deploy**: Benchmark PNCP 2024 rodando na VM (PID 189716, iniciou 19:13 UTC). Checar: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186 "ls /home/govbr/data/pncp/contratacoes_2024*.json | wc -l"`. Se 2024 completou (~52 JSONs contratacoes + ~52 contratos), disparar deploy: `gh workflow run deploy.yml -f etl_phase=all` (sem clean — dados já existem na VM).
 17. [ ] **Issues #1-#4**: Pendentes execução no banco local. Plano detalhado em `.claude/plans/twinkling-puzzling-giraffe.md`.
 
 ## Handoff técnico sessão 30
