@@ -23,7 +23,7 @@
 14. [x] **Série temporal de preços**: Q100 implementado. 22K grupos × semestre, 30 saltos >2× detectados. Obras civis e saúde dominam.
 
 ### Infra
-15. [ ] **Deploy Azure (Issue #2)**: DB vazio. Downloads 403. Investigar bloqueio IP Azure.
+15. [x] **Deploy Azure (Issue #2)**: Workflow reescrito: disk verification, download connectivity test, .initialized só se ETL carregou tabelas, skip_download option, PG auth fix. Portal da Transparência bloqueia Azure IPs — workaround: upload manual via SCP.
 
 ## Estado do banco local
 - **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
@@ -62,7 +62,8 @@
 - Cartel BA confirmado: 3 empresas no mesmo endereço (Rua Álvaro da França Rocha 66, Salvador), vínculo CRISTIANE/CRISTINA FELISMINO, 4.551 contratos 100% BA, preços idênticos em 3 produtos
 - Sobrepreço × fornecedores: PRIME CONSULTORIA 324× em 10 contratos R$10.3B. 0 sanções CEIS/CNEP/PGFN.
 - Rede societária × governo: RUDIMAR R$49.2B, LINCOLN THIAGO 3 CEIS + R$1.4B
-- 4 relatórios enriquecidos com cruzamentos. Q94 reescrito com PERCENTILE_CONT. TODO 13/14 completo.
+- Deploy Azure: workflow reescrito com disk verify, connectivity test, .initialized guard, skip_download, PG auth fix
+- 4 relatórios enriquecidos com cruzamentos. Q94 reescrito com PERCENTILE_CONT. verify.py atualizado. TODO 14/14 completo.
 
 ### 2026-04-04 (sessao 28)
 - 3 relatorios escritos: sobrepreco_pncp_item, itens_fracassados_pncp, empresa_fenix_pb

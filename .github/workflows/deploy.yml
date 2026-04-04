@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_download:
+        description: 'Skip download phase (use pre-uploaded data in DATA_DIR)'
+        required: false
+        type: boolean
+        default: false
 
 env:
   VM_USER: govbr
@@ -50,7 +55,8 @@ jobs:
             rm -f ${{ env.PROJECT_DIR }}/.initialized
             # Drop all tables (keep database)
             if command -v psql &> /dev/null; then
-              psql -d govbr -c "
+              cd ${{ env.PROJECT_DIR }} && source .env 2>/dev/null || true
+              PGPASSWORD="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}" psql -U govbr -d govbr -c "
                 DO \$\$ DECLARE r RECORD;
                 BEGIN
                   FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
@@ -127,9 +133,10 @@ jobs:
             # Write .env from secrets
             echo "${{ secrets.ENV_FILE }}" > .env
 
-            # Ensure data dir
+            # Ensure data dir (prefer /data disk if mounted)
             source .env
-            mkdir -p "${DATA_DIR:-/home/govbr/data}"
+            DATA="${DATA_DIR:-/data/raw-data}"
+            mkdir -p "$DATA"
 
             # Pull latest
             git fetch origin main
@@ -143,17 +150,79 @@ jobs:
             pip install --upgrade pip -q
             pip install -e . -q
 
-            # Disk space check
-            AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1048576)}')
-            echo "Disk available: ${AVAIL_GB}GB"
-            if [ "$AVAIL_GB" -lt 20 ]; then
-              echo "::warning::Low disk space: ${AVAIL_GB}GB available"
+            echo "Setup complete. Data dir: $DATA"
+          SCRIPT
+
+      # ── Verify data disk ──
+      - name: Verify data disk
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
+            set -e
+            echo "=== Disk status ==="
+            df -h / /data 2>/dev/null || df -h /
+
+            # Ensure /data exists and has space
+            if mountpoint -q /data 2>/dev/null; then
+              AVAIL_GB=$(df --output=avail /data | tail -1 | awk '{print int($1/1048576)}')
+              echo "Data disk: ${AVAIL_GB}GB available"
+            else
+              echo "WARNING: /data not mounted as separate disk, using OS disk"
+              AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1048576)}')
+              echo "OS disk: ${AVAIL_GB}GB available"
+              # Create /data on OS disk if missing
+              sudo mkdir -p /data
+              sudo chown $USER:$USER /data
             fi
+
+            if [ "$AVAIL_GB" -lt 50 ]; then
+              echo "::error::Insufficient disk space: ${AVAIL_GB}GB (need 50GB+)"
+              exit 1
+            fi
+          SCRIPT
+
+      # ── Test download connectivity ──
+      - name: Test download sources
+        continue-on-error: true
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
+            echo "=== Testing download sources ==="
+            # Portal da Transparência (known to block Azure IPs)
+            if curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301"; then
+              echo "  Portal Transparencia: OK"
+            else
+              echo "  Portal Transparencia: BLOCKED (403) — CPGF, viagens, sancoes, emendas, siape, renuncias will fail"
+              echo "  Workaround: download locally and scp to VM, or use 'az storage blob download'"
+            fi
+            # RFB (Nextcloud WebDAV)
+            if curl -sf -o /dev/null -m 10 -u "YggdBLfdninEJX9:" "https://arquivos.receitafederal.gov.br/public.php/webdav/"; then
+              echo "  RFB/CNPJ: OK"
+            else
+              echo "  RFB/CNPJ: BLOCKED"
+            fi
+            # PNCP API
+            if curl -sf -o /dev/null -m 10 "https://pncp.gov.br/api/consulta/v1/contratos?dataInicial=20240101&dataFinal=20240107&pagina=1&tamanhoPagina=1"; then
+              echo "  PNCP API: OK"
+            else
+              echo "  PNCP API: BLOCKED"
+            fi
+            # TCE-PB
+            if curl -sf -o /dev/null -m 10 "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/despesas/despesas-2024.zip"; then
+              echo "  TCE-PB: OK"
+            else
+              echo "  TCE-PB: BLOCKED"
+            fi
+            # PGFN
+            if curl -sf -o /dev/null -m 10 "https://dadosabertos.pgfn.gov.br/"; then
+              echo "  PGFN: OK"
+            else
+              echo "  PGFN: BLOCKED"
+            fi
+            echo "=== Done ==="
           SCRIPT
 
       # ── First run: full ETL (only once) ──
       - name: First run - Full ETL
-        continue-on-error: true  # PNCP API may timeout; don't block rest of pipeline
+        continue-on-error: true  # Some sources may 403; don't block rest of pipeline
         run: |
           ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
             set -e
@@ -166,8 +235,36 @@ jobs:
 
             echo "=== First run: full ETL ==="
             source venv/bin/activate
-            python -m etl.run_all 2>&1 | tee /tmp/etl.log || true
-            touch .initialized
+
+            # Skip downloads if data pre-uploaded or if flag set
+            SKIP_DL="${{ inputs.skip_download }}"
+            if [ "$SKIP_DL" = "true" ]; then
+              echo "Skipping download phase (skip_download=true)"
+              python -m etl.run_all 2 2>&1 | tee /tmp/etl.log  # Start from phase 2 (schema)
+            else
+              python -m etl.run_all 2>&1 | tee /tmp/etl.log
+            fi
+            ETL_EXIT=$?
+
+            # Only mark as initialized if ETL reached the end (even with non-fatal errors)
+            # Check if key tables exist as indicator of progress
+            if python3 -c "
+from etl.db import get_conn, table_count
+conn = get_conn()
+# At minimum, need RFB loaded (empresa + estabelecimento)
+n = table_count(conn, 'empresa')
+print(f'empresa: {n}')
+exit(0 if n > 0 else 1)
+" 2>/dev/null; then
+              touch .initialized
+              echo "=== ETL complete, .initialized set ==="
+            else
+              echo "=== ETL incomplete: key tables missing. NOT setting .initialized ==="
+              echo "=== Re-run with: gh workflow run deploy.yml ==="
+              # Show what tables exist
+              python -m etl.verify 2>/dev/null || true
+              exit 1
+            fi
           SCRIPT
         timeout-minutes: 300
 

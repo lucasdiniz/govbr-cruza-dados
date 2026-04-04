@@ -4,11 +4,13 @@ from etl.db import get_conn, table_count
 
 TABLES = [
     "empresa", "estabelecimento", "socio", "simples",
-    "pncp_contratacao", "pncp_contrato",
+    "pncp_contratacao", "pncp_contrato", "pncp_item",
     "tce_pb_despesa", "tce_pb_servidor", "tce_pb_licitacao", "tce_pb_receita",
-    "emenda_parlamentar", "cpgf_transacao", "pgfn_inscricao",
-    "bndes_contrato", "comprasnet_contrato",
+    "emenda_parlamentar", "cpgf_transacao", "pgfn_divida",
+    "bndes_contrato",
     "bolsa_familia", "siape_cadastro", "viagem",
+    "ceis_sancao", "cnep_sancao", "ceaf_expulsao",
+    "tse_candidato", "tse_receita_candidato",
 ]
 
 
