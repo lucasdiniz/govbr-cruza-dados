@@ -78,43 +78,57 @@ LIMIT 200;
 
 
 -- Q94: Variação de preço entre UFs para mesmo item
--- Compara preço médio de itens idênticos (descrição exata) entre estados.
+-- Compara mediana de preço de itens idênticos (descrição exata) entre estados.
 -- Razão > 5× entre UFs pode indicar sobrepreço regional.
--- Usa AVG em vez de PERCENTILE_CONT por performance.
-WITH uf_prices AS (
-    SELECT
-        UPPER(TRIM(i.descricao))    AS desc_norm,
-        i.material_ou_servico,
-        ca.uf,
-        COUNT(*)                     AS n_itens,
-        AVG(i.valor_unitario_estimado) AS media_uf
-    FROM pncp_item i
-    JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
-    WHERE i.situacao_item_nome = 'Homologado'
-      AND i.valor_unitario_estimado > 0
-      AND i.valor_unitario_estimado <= 10000000   -- sanidade
-    GROUP BY UPPER(TRIM(i.descricao)), i.material_ou_servico, ca.uf
-    HAVING COUNT(*) >= 5
-)
+-- Usa PERCENTILE_CONT(0.5) (mediana) — mais robusta que AVG contra outliers.
+-- Duas fases com temp table para viabilizar PERCENTILE_CONT em escala.
+
+-- Fase 1: mediana por (descrição, material_ou_servico, UF)
+DROP TABLE IF EXISTS tmp_uf_prices;
+CREATE TEMP TABLE tmp_uf_prices AS
+SELECT
+    MD5(UPPER(TRIM(i.descricao)) || i.material_ou_servico) AS desc_hash,
+    UPPER(TRIM(i.descricao))    AS desc_norm,
+    i.material_ou_servico,
+    ca.uf,
+    COUNT(*)                     AS n_itens,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY i.valor_unitario_estimado) AS mediana_uf,
+    AVG(i.valor_unitario_estimado) AS media_uf
+FROM pncp_item i
+JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
+WHERE i.situacao_item_nome = 'Homologado'
+  AND i.valor_unitario_estimado > 0
+  AND i.valor_unitario_estimado <= 10000000   -- sanidade
+GROUP BY UPPER(TRIM(i.descricao)), i.material_ou_servico, ca.uf,
+         MD5(UPPER(TRIM(i.descricao)) || i.material_ou_servico)
+HAVING COUNT(*) >= 5;
+
+CREATE INDEX ON tmp_uf_prices(desc_hash, material_ou_servico);
+
+-- Fase 2: pares de UFs com razão de mediana > 5×
 SELECT
     a.desc_norm,
     a.uf            AS uf_cara,
-    ROUND(a.media_uf::numeric, 2)    AS preco_caro,
+    ROUND(a.mediana_uf::numeric, 2)  AS mediana_cara,
+    ROUND(a.media_uf::numeric, 2)    AS media_cara,
     a.n_itens       AS n_caro,
     b.uf            AS uf_barata,
-    ROUND(b.media_uf::numeric, 2)    AS preco_barato,
+    ROUND(b.mediana_uf::numeric, 2)  AS mediana_barata,
+    ROUND(b.media_uf::numeric, 2)    AS media_barata,
     b.n_itens       AS n_barato,
-    ROUND((a.media_uf / NULLIF(b.media_uf, 0))::numeric, 1) AS razao
-FROM uf_prices a
-JOIN uf_prices b
-    ON a.desc_norm = b.desc_norm
+    ROUND((a.mediana_uf / NULLIF(b.mediana_uf, 0))::numeric, 1) AS razao_mediana
+FROM tmp_uf_prices a
+JOIN tmp_uf_prices b
+    ON a.desc_hash = b.desc_hash
    AND a.material_ou_servico = b.material_ou_servico
    AND a.uf < b.uf                    -- evitar pares duplicados
-WHERE a.media_uf > 5 * b.media_uf     -- razão mínima 5×
-  AND b.media_uf >= 1                  -- baseline mínimo R$1
-  AND a.media_uf * a.n_itens >= 100000 -- impacto financeiro mínimo R$100K
-ORDER BY (a.media_uf - b.media_uf) * a.n_itens DESC
+WHERE a.mediana_uf > 5 * b.mediana_uf -- razão mínima 5× na mediana
+  AND b.mediana_uf >= 1               -- baseline mínimo R$1
+  AND a.mediana_uf * a.n_itens >= 100000 -- impacto financeiro mínimo R$100K
+ORDER BY (a.mediana_uf - b.mediana_uf) * a.n_itens DESC
 LIMIT 200;
+
+DROP TABLE tmp_uf_prices;
 
 
 -- Q95: Fornecedor dominante por tipo de item — concentração de mercado

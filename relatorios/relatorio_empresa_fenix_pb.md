@@ -150,14 +150,27 @@ Das 390 empresas novas, **43 (11%) efetivamente firmaram contratos públicos**, 
 - **MN COMERCIO**: sócio Mateus Nunes fecha DUAS empresas (CNPJ anterior + MATEUS COMERCIO) e abre a terceira, que já acumula R$4M em contratos.
 - **DIEGO ROCHA** (R$2,3M): empresa anterior era comércio de **pescados**, nova empresa é genérica (LTDA). Intervalo de apenas 5 dias.
 
-### 5.2. Empresas fênix × dívida PGFN e sanções CEIS/CNEP
+### 5.2. Empresas fênix × dívida PGFN
 
-O cruzamento pelo `cnpj_basico` da empresa antiga retornou **0 matches** tanto para PGFN quanto para CEIS/CNEP. Isso pode indicar:
-- As empresas antigas foram baixadas antes de acumular dívida registrada no sistema federal
-- O join precisa ser pelo CNPJ completo (14 dígitos) em vez de basico (8 dígitos)
-- A dívida pode estar no CPF do sócio, não no CNPJ da empresa
+O cruzamento com CNPJ completo (14 dígitos) revelou **33 empresas fênix com dívida ativa na PGFN**, totalizando **R$ 200,6 milhões** em dívida consolidada. Adicionalmente, **394 dos 397 sócios** (99,2%) possuem dívida pessoal na PGFN somando **R$ 133,5 bilhões** (majoritariamente como corresponsáveis).
 
-**Próximo passo:** refazer cruzamento usando CNPJ completo e/ou CPF do sócio na tabela pgfn_divida.
+**Top empresas fênix com dívida PGFN (pela empresa antiga):**
+
+| Empresa baixada | Empresa nova | Dias | Sócio | Dívida PGFN | Situação |
+|----------------|-------------|------|-------|-------------|----------|
+| SOTERO CONTABILIDADE | JANUSA SOTERO CONTABILIDADE | 15 | Janusa C. G. Sotero | R$ 65.938.820 | Ativa ajuizada |
+| FAST IT SERVIÇOS | TRIADE SOLUTIONS TELECOM | 56 | Rogieston Araujo Alves | R$ 14.169.545 | A ser ajuizada |
+| MF SERVIÇOS | CONSTRUTORA TRANSPETRUS | 131 | Gustavo Almeida Martins | R$ 13.052.514 | Negociada SISPAR |
+| RMA SUPORTE TI | RMA SISTEMAS TI | 4 | Rodrigo O. Marcondes | R$ 6.002.508 | Negociada SISPAR |
+| BENTO & PEREIRA ADVOGADOS | BENTO PEREIRA SOC. ADVOCACIA | 14 | Ednelton H. Bento Pereira | R$ 1.071.645 | Em cobrança |
+
+**Caso destaque — JANUSA SOTERO**: empresa de contabilidade pública fechou com R$65,9M em dívida PGFN e reabriu 15 dias depois sob novo CNPJ. A nova empresa acumula R$1,7M em contratos com o governo da PB (conforme cruzamento 5.1). Padrão clássico de empresa fênix para evasão fiscal.
+
+**Caso destaque — RMA SUPORTE**: empresa de TI fechou e reabriu em **4 dias** com mesmo sócio e mesma razão social (apenas substituiu "SUPORTE E MANUTENCAO" por "SISTEMAS E MANUTENCAO"). Dívida PGFN de R$6M na empresa antiga.
+
+### 5.3. Empresas fênix × sanções CEIS/CNEP
+
+O cruzamento com CNPJ completo retornou **0 matches** para CEIS e CNEP. Nenhuma empresa fênix PB tinha sanção registrada no cadastro federal antes de ser baixada. As sanções não foram o motivador do padrão fênix nesta amostra — a **evasão fiscal (PGFN)** é o driver principal.
 
 ---
 
@@ -168,7 +181,7 @@ O cruzamento pelo `cnpj_basico` da empresa antiga retornou **0 matches** tanto p
 | Escopo restrito à PB | Sócios que abrem empresas em outros estados não são capturados | Q99 nacional criada (em execução) |
 | CNAE exato pode ser restritivo | Sócio que muda subclasse da CNAE não é capturado | Pendente |
 | ~~Não verifica contratação efetiva~~ | ~~390 empresas não verificadas~~ | **Resolvido**: 43 contrataram governo (R$119,1M) |
-| Cruzamento PGFN/CEIS incompleto | Join por cnpj_basico retornou 0 — pode precisar de CNPJ completo ou CPF do sócio | Pendente: refazer com CNPJ 14 dígitos |
+| ~~Cruzamento PGFN/CEIS incompleto~~ | ~~Join por cnpj_basico retornou 0~~ | **Resolvido**: 33 com dívida PGFN (R$200,6M), 0 CEIS/CNEP |
 | Dados CNPJ têm defasagem | Receita Federal publica com atraso | Usar API CNPJ para verificação pontual |
 | Endereço como ancoragem | A query usa endereço + sócio, o que exclui casos onde o endereço mudou | Considerar versão somente por sócio + CNAE |
 
