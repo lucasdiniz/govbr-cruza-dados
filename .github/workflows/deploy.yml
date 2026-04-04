@@ -1,17 +1,18 @@
 name: Deploy to Azure VM
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '*.md'
-      - '.claude/**'
+  # TODO: Re-enable push trigger when VM is ready (disk resized, PG installed, downloads automated)
+  # push:
+  #   branches: [main]
+  #   paths-ignore:
+  #     - '*.md'
+  #     - '.claude/**'
   workflow_dispatch:
     inputs:
       etl_phase:
         description: 'ETL phase: "sql" (schema+views only), phase number (e.g. "17"), or "all" (full ETL)'
         required: false
-        default: 'all'
+        default: 'sql'
       clean:
         description: 'Clean previous failed state before deploying'
         required: false
