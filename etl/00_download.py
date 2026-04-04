@@ -432,7 +432,7 @@ def download_pncp(anos=None):
     last_contratacao = ckpt.get("last_contratacao_date", "")
     last_contrato = ckpt.get("last_contrato_date", "")
 
-    def _api_get(url, retries=5):
+    def _api_get(url, retries=3):
         """GET com retry e backoff exponencial.
         Retorna dict (sucesso), [] (204/sem dados), ou None (erro).
         """
@@ -442,7 +442,7 @@ def download_pncp(anos=None):
                     "User-Agent": _UA,
                     "Accept": "application/json",
                 })
-                with urlopen(req, timeout=120) as resp:
+                with urlopen(req, timeout=30) as resp:
                     # HTTP 204 = sem dados para essa combinação (legítimo)
                     if resp.status == 204:
                         return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
@@ -451,7 +451,7 @@ def download_pncp(anos=None):
                         return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
                     return json.loads(raw)
             except Exception as e:
-                wait = min(2 ** (attempt + 1), 30)  # 2, 4, 8, 16, 30s
+                wait = min(2 ** (attempt + 1), 10)  # 2, 4, 8s
                 err_type = type(e).__name__
                 if attempt < retries - 1:
                     print(f"    [retry {attempt+1}/{retries}] {err_type}: {e} (wait {wait}s)")
