@@ -2,6 +2,32 @@
 
 ## Pendente
 
+### Bugs de download/ETL (sessao 33 — diagnosticados na VM)
+
+Cada fonte abaixo tem um problema específico que impede a carga correta no banco.
+
+24. [x] **RFB: nomes de arquivos mudaram** — ZIPs baixados OK, mas arquivos dentro mudaram de `Empresas0.csv` para `K3241.K03200Y0.D60314.EMPRECSV`. ETL procura `*.csv` e não encontra. **Fix:** renomeação automática em `download_rfb()` (commit 64c497c).
+25. [ ] **PGFN: nomes de arquivos mudaram** — ZIPs baixados/extraídos OK, mas CSVs dentro se chamam `arquivo_lai_PREV_*.csv`, `arquivo_lai_SIDA_*.csv`, `arquivo_lai_FGTS_*.csv`. ETL procura `pgfn_*.csv`. Fix: renomear ou adaptar glob no ETL (`07_pgfn.py` linha 15).
+26. [ ] **Sancoes: download bloqueado (IP Azure)** — Portal da Transparência bloqueia IP da VM (403). Tor fallback também falha (exit=8). CSVs antigos existem (20260324) mas novos não baixam. Fix: (a) reconfigurar Tor na VM, ou (b) usar proxy alternativo, ou (c) aceitar dados de 2026-03 como recentes o suficiente.
+27. [ ] **SIAPE: download parcial bloqueado** — Meses 2026-01 e 2026-02 OK (já existiam). Meses 2026-03+ bloqueados (mesmo problema Tor/403). ETL carrega os 2 meses disponíveis (617K cadastro, 508K remuneração). Fix: mesmo que Sanções — resolver bloqueio Tor.
+28. [ ] **TSE: download não automatizado** — Não existe `download_tse()` em `00_download.py`. Dados precisam ser baixados manualmente de dadosabertos.tse.jus.br. Fix: implementar download automático ou documentar processo manual.
+29. [ ] **Bolsa Família: download não automatizado** — Não existe `download_bolsa_familia()` em `00_download.py`. Dados precisam ser baixados manualmente do Portal da Transparência. Fix: implementar download automático.
+30. [ ] **Renúncias: ETL não encontra CSVs** — Arquivos existem na VM (`2020_RenúnciasFiscais.csv` com acento) mas ETL procura `*_RenunciasFiscais.csv` (sem acento). Glob não bate por causa do acento no nome. Fix: adaptar glob ou renomear.
+31. [x] **PNCP: numeric overflow** — DECIMAL(15,2) no schema era pequeno demais. Fix: DECIMAL(20,2) (commit 811c1ee).
+32. [x] **BNDES: formato CSV mudou** — Staging com 34 colunas fixas, CSV novo tem menos. Fix: detecção dinâmica de colunas (commit 811c1ee).
+33. [x] **Indices: ordem errada** — Fase 6 criava índices em colunas que só existem na fase 17. Fix: movidos para `15_normalizar.py` (commit 811c1ee).
+34. [x] **SyntaxWarning \d** — Python 3.12+ rejeita `\d` em strings normais. Fix: `\\d` em 7 arquivos (commit 811c1ee).
+35. [x] **Validação pós-download** — Pipeline não falhava quando dados faltavam. Fix: `validate_downloads()` em `00_download.py` (commit 811c1ee).
+
+### Fontes OK na VM (referência)
+- **CPGF**: 73 CSVs, 725K registros carregados ✓
+- **Viagens**: 28 CSVs, 1.6M registros carregados ✓
+- **Emendas**: 3 CSVs extraídos, carregado OK ✓
+- **TCE-PB**: 36 CSVs, ~39M registros carregados ✓
+- **Dados PB**: 1264 CSVs, ~5.8M registros carregados ✓
+- **PNCP**: 246 contratações + 240 contratos JSONs, carregado (overflow corrigido) ✓
+- **BNDES**: 2 CSVs, formato corrigido ✓
+
 ### ETL dados.pb.gov.br (12 datasets novos)
 21. [ ] **Download todos os datasets** — baixar CSVs de 2020-2026 para os 12 datasets atualizados:
    - SIAF: `empenho_original` (até 2025/10), `pagamento`, `pagamento_anulacao`, `liquidacaodespesa`, `liquidacaodespesadescontos`, `empenho_anulacao`, `empenho_suplementacao`
@@ -14,62 +40,36 @@
 23. [ ] **Queries de cruzamento** — novas queries usando dados estaduais granulares
 
 ### Deploy Azure
-16. [x] **Deploy disparado** — workflow rodando (`gh workflow run deploy.yml -f etl_phase=all`), run 23986177971
+16. [x] **Deploy disparado** — self-hosted runner configurado via `setup-runner.yml`. Deploy com live logs.
 17. [ ] **Issues #1-#4**: Pendentes execução no banco local. Plano detalhado em `.claude/plans/twinkling-puzzling-giraffe.md`.
-18. [ ] **Formalizar Q58 por UF**: Criar variante estavel para recortes estaduais sem depender de ajuste de planner em sessao. A exportacao nacional atual da Q58 continua sendo uma amostra top-500 por valor.
+18. [ ] **Formalizar Q58 por UF**: Criar variante estavel para recortes estaduais sem depender de ajuste de planner em sessao.
 19. [ ] **Corrigir agregacao monetaria da Q17**: Deduplicar por base de CNPJ antes de somar PNCP/emendas/BNDES por holding.
-20. [ ] **Endurecer relatorio do ciclo politico-financeiro**: A versao exploratoria ja foi produzida em `relatorios/relatorio_ciclo_politico_financeiro_exploratorio.md`, mas `Q56`, `Q57` e `Q79` ainda precisam saneamento para uma versao final mais afirmativa.
+20. [ ] **Endurecer relatorio do ciclo politico-financeiro**: Q56, Q57 e Q79 precisam saneamento para versao final.
 
-## Handoff técnico sessão 30
+## Handoff técnico sessão 33
 
 ### SSH na VM Azure
 ```bash
-# Preparar key (fazer 1x por sessão)
 cp /c/Users/lucas/.ssh/azure_vm.txt /tmp/azure_vm_key && chmod 600 /tmp/azure_vm_key
-# Conectar
 ssh -i /tmp/azure_vm_key govbr@52.162.207.186
-# Na VM: projeto em /home/govbr/govbr-project, venv em venv/, dados em /home/govbr/data
+# dados em /home/govbr/data, projeto em /home/govbr/govbr-project
 ```
 
-### O que foi corrigido no download PNCP (etl/00_download.py)
-1. **Bug 204**: `_api_get()` tratava HTTP 204 como erro (5 retries × 60s = 28h desperdiçadas). Fix: retorna `{"data":[], ...}` para 204.
-2. **urlopen→requests.Session**: Python urlopen travava 30s+ em SSL. requests.Session com pool (10 conn, 20 max) responde em 1-2s consistente.
-3. **Paralelismo 2 níveis**: 3 semanas simultâneas (`PARALLEL_WEEKS=3`) × 4 modalidades/semana (`ThreadPoolExecutor(max_workers=4)` em `_fetch_week_contratacoes`).
-4. **Checkpoint por batch**: `_download_one_week_contratacoes` e `_download_one_week_contratos` são thread-safe, salvam JSON individualmente. Checkpoint avança por batch.
-5. **Timeout/retries**: API timeout 20s, 3 retries, backoff max 10s.
+### Deploy: 3 workflows
+- **Setup Self-Hosted Runner** (`setup-runner.yml`): instala runner na VM (1x)
+- **Deploy to Azure VM** (`deploy.yml`): ETL completo com live logs, sem limite de tempo
+- **Secrets necessários**: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`
 
-### Benchmark na VM (resultados parciais)
-- **Antes (urlopen + bug 204)**: 1 semana em 9 min → impossível completar
-- **Depois (requests + paralelo)**: 3 semanas em 7 min (~2.3 min/semana)
-- **Estimativa 2021-2026 (275 semanas)**: ~10h contratações + contratos. Cabe no timeout de 12h.
-- **Semanas grandes** (14MB+) são o bottleneck — muitas páginas, paginação sequencial dentro de cada semana
-
-### Workflow deploy (.github/workflows/deploy.yml)
-- Job timeout: 720min (12h). ETL step: 660min (11h).
-- **Sem continue-on-error** — pipeline falha se download falhar (requisito do usuário)
-- `skip_download` input disponível mas NÃO usar — PNCP precisa baixar
-
-### Feedback do usuário (sessão 30)
-- **Não é aceitável falhar em baixar parte dos dados** — pipeline deve completar tudo ou falhar
-- **Não usar timeout/max_runtime no download** — aumentar timeout do workflow se necessário
-- **Não fazer upload manual** — tudo automatizado
+### Estado da VM (2026-04-05)
+- Deploy run 23994305748 rodando (~8h+), ETL na fase de normalização/índices
+- Tabelas carregadas: CPGF 725K, PNCP ~3K (overflow impediu carga completa), SIAPE 617K+508K, Sanções 22K+1.5K+4K, Viagens 1.6M+2.7M, TCE-PB ~39M, Dados PB ~5.8M
+- Tabelas VAZIAS por bugs de download: RFB (0), PGFN (0), TSE (0), Bolsa Família (0), Renúncias (0)
 
 ## Estado do banco local
 - **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
-- Tabelas principais: empresa 66.6M, estabelecimento 69.8M, simples 47M, socio 27M, pgfn_divida 39.9M, tce_pb_servidor 21.7M, bolsa_familia 20.9M, tce_pb_despesa 15.8M, pncp_item 4.71M, pncp_contrato 3.76M
-- **MVs OK**: mv_rede_pb 1.68M, mv_servidor_pb_base 353K, mv_servidor_pb_risco 353K, mv_pessoa_pb 205K, mv_empresa_pb 157K, v_risk_score_pb 135K, mv_municipio_pb_risco 224
-- mv_empresa_governo 690K rows
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
 - 95 queries em queries/*.sql, 32 relatorios em relatorios/
-
-## VM Azure
-- IP: 52.162.207.186, user: govbr, SSH key: `C:\Users\lucas\.ssh\azure_vm.txt`
-- Disco /data: 403GB disponíveis. OS disk: 30GB (9.5% usado).
-- PG16 instalado (data dir /data/postgresql/16/main). DB vazio (0 tabelas).
-- Tor + torsocks instalados. requests instalado no venv.
-- Dados parciais baixados: RFB completo (Empresas0-9, Estabelecimentos0-9, Socios0-9, Simples, etc.), CPGF 2020-2024, sanções (CEIS/CNEP/CEAF), viagens, TCE-PB, dados PB, PGFN, emendas
-- PNCP parcial: contratacoes 2021-ago a 2024-jan (~3 semanas), contratos ainda não baixados
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas (código, não executadas no banco)
@@ -78,33 +78,29 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 
 ## Log recente
 
+### 2026-04-05 (sessao 33)
+- Deploy reescrito: setup-runner.yml (automatiza runner) + deploy.yml (self-hosted, live logs)
+- README atualizado com fluxo de deploy 1-click
+- Diagnosticados 11 bugs no ETL da VM (5 corrigidos, 6 pendentes)
+- Fixes: PNCP overflow, BNDES colunas, indices ordem, \d warnings, validação downloads, RFB renomeação
+- Pendentes: PGFN nomes, Sancões/SIAPE bloqueio Tor, TSE/BF não automatizados, Renúncias acento
+
 ### 2026-04-05 (sessao 32)
 - Relatorio `ciclo_politico_financeiro_exploratorio` produzido
-- Recorte PB testado e documentado como insuficiente com as regras atuais (`Q56_PB=0`, `Q57_PB/PB=0`, `Q72=0`, `Q37=0`)
-- Caso forte validado em `Q56`: `FM PRODUCOES E EVENTOS LTDA` e contratos pos-eleicao ligados a doacao para `VALMIR DOS SANTOS COSTA`
-- README e TODO atualizados para refletir o novo relatorio e as pendencias tecnicas restantes
+- Caso forte validado em `Q56`: `FM PRODUCOES E EVENTOS LTDA`
 
 ### 2026-04-04 (sessao 31)
-- Q58 otimizada com novos indices em `sql/19_indices_queries.sql` e ajuste de filtros em `queries/fraude_superfaturamento.sql`
-- Variante PB da Q58 usada para analise local; helper exportado para sustentar os cruzamentos dos relatorios
-- Relatorio `empresas_relacionadas_concorrencia` produzido em versao PB e nacional
-- README e TODO atualizados para refletir o estado atual
+- Q58 otimizada, relatorio `empresas_relacionadas_concorrencia` PB e nacional
 
 ### 2026-04-04 (sessao 30)
-- Bug PNCP 204 + urlopen SSL corrigidos. requests.Session + paralelismo.
-- Workflow timeout 12h. Removido continue-on-error.
-- Benchmark PNCP na VM: ~2.3 min/semana (7.5x speedup)
+- Bug PNCP 204 + urlopen SSL corrigidos. Benchmark VM: ~2.3 min/semana
 - Commits: 451cae2, fed2301, 2697273, 09081dc, 83ab86c, 45a89f1, ccefdb9
 
 ### 2026-04-04 (sessao 29)
-- Q100 série temporal, cartel BA, JUSTIZ network, sobrepreço fornecedores
-- Deploy workflow reescrito. 14/14 TODO completo. Tor fallback.
+- Q100, deploy workflow, Tor fallback
 
 ### 2026-04-04 (sessao 28)
-- 3 relatorios, Q99 fenix nacional, deep dives Sec.Educacao MS e SES-PB
+- 3 relatorios, Q99 fenix nacional
 
 ### 2026-04-03 (sessao 27)
-- 7 queries pncp_item (Q92-Q98), Q55 fix, achados fracassados
-
-### 2026-04-03 (sessao 26)
-- mv_empresa_governo, Q56, 4 relatorios novos
+- 7 queries pncp_item (Q92-Q98), Q55 fix
