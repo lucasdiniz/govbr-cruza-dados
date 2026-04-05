@@ -34,7 +34,7 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 
 ### ETL dados.pb.gov.br (12 datasets novos)
 21. [ ] **Download todos os datasets** — já implementado em `download_dados_pb()` no `etl/00_download.py`. Baixa 13 datasets mensais + 2 anuais via API `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`. Nota: `Diarias` case-sensitive (D maiúsculo).
-22. [x] **ETL carga no banco** — schema, loaders e índices implementados para `pagamento_anulacao`, `liquidacaodespesa`, `liquidacaodespesadescontos`, `empenho_anulacao`, `empenho_suplementacao`, `dotacao`, `liquidacao_cge`, `aditivos_contrato`, `aditivos_convenio`, `diarias` e `unidade_gestora`. Validado em schema temporário no banco local com carga real de 2025.
+22. [x] **ETL carga no banco** — 16 tabelas pb_* carregadas localmente (~14.4M registros). Fix: linhas curtas (quebra de linha em campos texto) agora ignoradas em `_staging_load_from_data`.
 23. [ ] **Queries de cruzamento** — novas queries usando dados estaduais granulares
 
 ### Deploy Azure

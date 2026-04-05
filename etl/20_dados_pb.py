@@ -108,7 +108,11 @@ def _staging_load_from_data(conn, staging, csv_data, n_cols, delimiter=";"):
         if len(row) > n_cols:
             row = row[:n_cols]
         elif len(row) < n_cols:
-            row = row + [""] * (n_cols - len(row))
+            # Skip short rows — they are continuation lines from multiline
+            # text fields (e.g. OBJETO_ADITIVO with embedded newlines) that
+            # the csv.reader split incorrectly; padding them shifts columns
+            # and causes type errors on INSERT.
+            continue
 
         escaped = [_clean_val(val) for val in row]
         buf.write(("\t".join(escaped) + "\n").encode("utf-8"))
