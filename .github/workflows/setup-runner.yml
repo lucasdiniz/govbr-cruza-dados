@@ -30,7 +30,33 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Check current runner status
+        id: precheck
+        run: |
+          RUNNER_JSON=$(gh api "repos/${{ github.repository }}/actions/runners" --jq '.runners[] | select(.name=="azure-vm")' 2>/dev/null || true)
+          if [ -z "$RUNNER_JSON" ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "status=missing" >> "$GITHUB_OUTPUT"
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          STATUS=$(echo "$RUNNER_JSON" | jq -r '.status // "missing"')
+          BUSY=$(echo "$RUNNER_JSON" | jq -r '.busy // false')
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "busy=$BUSY" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN != '' && secrets.RUNNER_ADMIN_TOKEN || github.token }}
+
+      - name: Skip if runner is already healthy
+        if: ${{ steps.precheck.outputs.status == 'online' }}
+        run: |
+          echo "Runner azure-vm already online. Skipping repair."
+          echo "Runner busy: ${{ steps.precheck.outputs.busy }}"
+
       - name: Setup SSH
+        if: ${{ steps.precheck.outputs.status != 'online' }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
@@ -40,6 +66,7 @@ jobs:
 
       - name: Get runner registration token
         id: token
+        if: ${{ steps.precheck.outputs.status != 'online' }}
         run: |
           TOKEN=$(gh api -X POST "repos/${{ github.repository }}/actions/runners/registration-token" --jq '.token') || {
             echo "::error::Failed to mint self-hosted runner registration token."
@@ -52,6 +79,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN != '' && secrets.RUNNER_ADMIN_TOKEN || github.token }}
 
       - name: Install and register runner on VM
+        if: ${{ steps.precheck.outputs.status != 'online' }}
         run: |
           ssh ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << SCRIPT
             set -e
@@ -131,6 +159,7 @@ jobs:
           SCRIPT
 
       - name: Verify runner is online
+        if: ${{ steps.precheck.outputs.status != 'online' }}
         run: |
           sleep 15
           RUNNER_JSON=$(gh api "repos/${{ github.repository }}/actions/runners" --jq '.runners[] | select(.name=="azure-vm")')
@@ -149,7 +178,13 @@ jobs:
         run: |
           echo "## Self-Hosted Runner Setup / Repair" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Runner **azure-vm** installed or repaired on \`${{ secrets.VM_HOST }}\`." >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.precheck.outputs.status }}" = "online" ]; then
+            echo "Runner **azure-vm** already online. Repair skipped." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Runner busy: \`${{ steps.precheck.outputs.busy }}\`." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Runner **azure-vm** installed or repaired on \`${{ secrets.VM_HOST }}\`." >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "You can safely re-run this workflow whenever the self-hosted runner stops pulling queued jobs." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
