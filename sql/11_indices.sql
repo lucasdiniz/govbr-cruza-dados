@@ -29,9 +29,7 @@ CREATE INDEX idx_socio_cpf_cnpj ON socio(cpf_cnpj_socio)
 CREATE INDEX idx_socio_nome ON socio USING gin(nome gin_trgm_ops)
     WHERE nome IS NOT NULL;
 CREATE INDEX idx_socio_tipo ON socio(tipo_socio);
--- Composite: cpf_digitos_6 + nome normalizado (para JOINs com mv_servidor_pb_base/mv_pessoa_pb)
-CREATE INDEX idx_socio_norm_nome ON socio(cpf_cnpj_norm, UPPER(TRIM(nome)))
-    WHERE cpf_cnpj_norm IS NOT NULL AND cpf_cnpj_norm <> '000000';
+-- NOTA: idx_socio_norm_nome depende de cpf_cnpj_norm, criado na fase 17 (15_normalizar.py)
 
 -- =============================================
 -- PNCP: Contratação
@@ -99,9 +97,7 @@ CREATE INDEX idx_pgfn_nome ON pgfn_divida USING gin(nome_devedor gin_trgm_ops);
 -- =============================================
 -- Bolsa Família
 -- =============================================
--- Composite: cpf_digitos_6 + nome normalizado (para JOINs com mv_servidor_pb_base/mv_pessoa_pb)
-CREATE INDEX idx_bf_cpf_nome ON bolsa_familia(cpf_digitos, UPPER(TRIM(nm_favorecido)))
-    WHERE cpf_digitos IS NOT NULL;
+-- NOTA: idx_bf_cpf_nome depende de cpf_digitos, criado na fase 17 (15_normalizar.py)
 
 -- =============================================
 -- Renúncias Fiscais
@@ -146,16 +142,8 @@ CREATE INDEX idx_obs_fonte ON pessoa_observacao(fonte, fonte_id);
 CREATE UNIQUE INDEX idx_merge_par ON pessoa_merge(pessoa_a_id, pessoa_b_id);
 CREATE INDEX idx_merge_status ON pessoa_merge(status);
 
--- =============================================
--- Compostos: CPF digitos + nome (para JOINs Issue #4)
--- Evita falsos positivos em JOINs por CPF mascarado (6 digitos)
--- =============================================
-CREATE INDEX idx_cpgf_portador_cpf_nome ON cpgf_transacao(cpf_portador_digitos, UPPER(TRIM(nome_portador)))
-    WHERE cpf_portador_digitos IS NOT NULL AND cpf_portador_digitos != '000000';
-CREATE INDEX idx_siape_cpf_nome ON siape_cadastro(cpf_digitos, UPPER(TRIM(nome)))
-    WHERE cpf_digitos IS NOT NULL AND cpf_digitos != '000000';
-CREATE INDEX idx_viagem_cpf_nome ON viagem(cpf_viajante_digitos, UPPER(TRIM(nome_viajante)))
-    WHERE cpf_viajante_digitos IS NOT NULL AND cpf_viajante_digitos != '000000';
+-- NOTA: Compostos CPF digitos + nome movidos para fase 17 (15_normalizar.py)
+-- idx_cpgf_portador_cpf_nome, idx_siape_cpf_nome, idx_viagem_cpf_nome
 
 -- =============================================
 -- Funcional: CNPJ basico do doador TSE (para Q56)

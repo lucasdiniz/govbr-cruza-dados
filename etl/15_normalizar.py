@@ -129,6 +129,10 @@ def run():
         _exec(conn, "idx pncp_cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pnpc_contrato_cnpj_basico ON pncp_contrato(cnpj_basico_fornecedor)", autocommit=True)
         _exec(conn, "idx emfav_cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_emfav_cnpj_basico ON emenda_favorecido(cnpj_basico_favorecido)", autocommit=True)
 
+        # Compostos: cpf_norm + nome (movidos de 11_indices.sql pois dependem de colunas criadas aqui)
+        _exec(conn, "idx socio_norm_nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_socio_norm_nome ON socio(cpf_cnpj_norm, UPPER(TRIM(nome))) WHERE cpf_cnpj_norm IS NOT NULL AND cpf_cnpj_norm <> '000000'", autocommit=True)
+        _exec(conn, "idx bf_cpf_nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bf_cpf_nome ON bolsa_familia(cpf_digitos, UPPER(TRIM(nm_favorecido))) WHERE cpf_digitos IS NOT NULL", autocommit=True)
+
         print("\n  === Fase 3: Índices funcionais para queries ===")
 
         _exec(conn, "idx pncp LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_forn_left8 ON pncp_contrato (LEFT(ni_fornecedor, 8))", autocommit=True)

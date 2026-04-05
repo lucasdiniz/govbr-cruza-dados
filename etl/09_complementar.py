@@ -34,7 +34,15 @@ def load_bndes(conn):
         return
 
     staging = "_stg_bndes"
-    cols = ", ".join(f"c{i} TEXT" for i in range(34))
+
+    # Detectar número de colunas do primeiro arquivo (formato muda entre anos)
+    first_file = sorted(files)[0]
+    with open(first_file, "r", encoding="latin1") as f:
+        header_line = f.readline()
+    ncols = len(header_line.split(";"))
+    print(f"    BNDES: detectado {ncols} colunas no CSV")
+
+    cols = ", ".join(f"c{i} TEXT" for i in range(ncols))
     with conn.cursor() as cur:
         cur.execute(f"DROP TABLE IF EXISTS {staging}")
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
@@ -49,34 +57,53 @@ def load_bndes(conn):
                 cur.copy_expert(copy_sql, f)
         conn.commit()
 
+    # Mapeamento coluna CSV → coluna destino + transformação
+    # O CSV do BNDES muda de formato entre anos (30-34 colunas)
+    col_map = [
+        ("cliente", "TRIM(c0)"),
+        ("cnpj", "TRIM(c1)"),
+        ("descricao_projeto", "TRIM(c2)"),
+        ("uf", "TRIM(c3)"),
+        ("municipio", "TRIM(c4)"),
+        ("municipio_codigo", "TRIM(c5)"),
+        ("numero_contrato", "TRIM(c6)"),
+        ("dt_contratacao", "safe_to_date(TRIM(c7), 'YYYY-MM-DD')"),
+        ("valor_contratado", "CASE WHEN TRIM(c8) = '' THEN NULL ELSE CAST(REPLACE(REPLACE(TRIM(c8), '.', ''), ',', '.') AS NUMERIC) END"),
+        ("valor_desembolsado", "CASE WHEN TRIM(c9) = '' THEN NULL ELSE CAST(REPLACE(REPLACE(TRIM(c9), '.', ''), ',', '.') AS NUMERIC) END"),
+        ("fonte_recurso", "TRIM(c10)"),
+        ("custo_financeiro", "TRIM(c11)"),
+        ("juros", "TRIM(c12)"),
+        ("prazo_carencia_meses", r"CASE WHEN TRIM(c13) ~ '^\d+$' THEN CAST(TRIM(c13) AS INT) ELSE NULL END"),
+        ("prazo_amortizacao_meses", r"CASE WHEN TRIM(c14) ~ '^\d+$' THEN CAST(TRIM(c14) AS INT) ELSE NULL END"),
+        ("modalidade_apoio", "TRIM(c15)"),
+        ("forma_apoio", "TRIM(c16)"),
+        ("produto", "TRIM(c17)"),
+        ("instrumento_financeiro", "TRIM(c18)"),
+        ("inovacao", "TRIM(c19)"),
+        ("area_operacional", "TRIM(c20)"),
+        ("setor_cnae", "TRIM(c21)"),
+        ("subsetor_cnae", "TRIM(c22)"),
+        ("subsetor_cnae_codigo", "TRIM(c23)"),
+        ("setor_bndes", "TRIM(c24)"),
+        ("subsetor_bndes", "TRIM(c25)"),
+        ("porte_cliente", "TRIM(c26)"),
+        ("natureza_cliente", "TRIM(c27)"),
+        ("instituicao_credenciada", "TRIM(c28)"),
+        ("cnpj_instituicao", "TRIM(c29)"),
+        ("tipo_garantia", "TRIM(c30)"),
+        ("tipo_excepcionalidade", "TRIM(c31)"),
+        ("situacao_contrato", "TRIM(c32)"),
+    ]
+
+    # Usar apenas colunas que existem no staging (c0..c{ncols-1})
+    usable = col_map[:ncols]
+    dest_cols = ", ".join(d for d, _ in usable)
+    src_exprs = ", ".join(e for _, e in usable)
+
     with conn.cursor() as cur:
         cur.execute(f"""
-            INSERT INTO bndes_contrato (
-                cliente, cnpj, descricao_projeto, uf, municipio, municipio_codigo,
-                numero_contrato, dt_contratacao, valor_contratado, valor_desembolsado,
-                fonte_recurso, custo_financeiro, juros, prazo_carencia_meses,
-                prazo_amortizacao_meses, modalidade_apoio, forma_apoio, produto,
-                instrumento_financeiro, inovacao, area_operacional,
-                setor_cnae, subsetor_cnae, subsetor_cnae_codigo,
-                setor_bndes, subsetor_bndes, porte_cliente, natureza_cliente,
-                instituicao_credenciada, cnpj_instituicao,
-                tipo_garantia, tipo_excepcionalidade, situacao_contrato
-            )
-            SELECT
-                TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
-                TRIM(c6),
-                safe_to_date(TRIM(c7), 'YYYY-MM-DD'),
-                CASE WHEN TRIM(c8) = '' THEN NULL
-                     ELSE CAST(REPLACE(REPLACE(TRIM(c8), '.', ''), ',', '.') AS NUMERIC) END,
-                CASE WHEN TRIM(c9) = '' THEN NULL
-                     ELSE CAST(REPLACE(REPLACE(TRIM(c9), '.', ''), ',', '.') AS NUMERIC) END,
-                TRIM(c10), TRIM(c11), TRIM(c12),
-                CASE WHEN TRIM(c13) ~ '^\d+$' THEN CAST(TRIM(c13) AS INT) ELSE NULL END,
-                CASE WHEN TRIM(c14) ~ '^\d+$' THEN CAST(TRIM(c14) AS INT) ELSE NULL END,
-                TRIM(c15), TRIM(c16), TRIM(c17), TRIM(c18), TRIM(c19), TRIM(c20),
-                TRIM(c21), TRIM(c22), TRIM(c23), TRIM(c24), TRIM(c25),
-                TRIM(c26), TRIM(c27), TRIM(c28), TRIM(c29),
-                TRIM(c30), TRIM(c31), TRIM(c32)
+            INSERT INTO bndes_contrato ({dest_cols})
+            SELECT {src_exprs}
             FROM {staging}
         """)
     conn.commit()
@@ -176,7 +203,7 @@ def load_comprasnet(conn):
                 valor_acumulado, situacao
             )
             SELECT
-                CASE WHEN TRIM(c0) ~ '^\d+$' THEN CAST(TRIM(c0) AS INT) ELSE NULL END,
+                CASE WHEN TRIM(c0) ~ '^\\d+$' THEN CAST(TRIM(c0) AS INT) ELSE NULL END,
                 TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6), TRIM(c7), TRIM(c8), TRIM(c9),
                 TRIM(c10), TRIM(c11), TRIM(c12), TRIM(c13),
@@ -189,7 +216,7 @@ def load_comprasnet(conn):
                 safe_to_date(TRIM(c31), 'YYYY-MM-DD'),
                 CASE WHEN TRIM(c32) = '' THEN NULL ELSE CAST(TRIM(c32) AS NUMERIC) END,
                 CASE WHEN TRIM(c33) = '' THEN NULL ELSE CAST(TRIM(c33) AS NUMERIC) END,
-                CASE WHEN TRIM(c34) ~ '^\d+$' THEN CAST(TRIM(c34) AS INT) ELSE NULL END,
+                CASE WHEN TRIM(c34) ~ '^\\d+$' THEN CAST(TRIM(c34) AS INT) ELSE NULL END,
                 CASE WHEN TRIM(c35) = '' THEN NULL ELSE CAST(TRIM(c35) AS NUMERIC) END,
                 CASE WHEN TRIM(c36) = '' THEN NULL ELSE CAST(TRIM(c36) AS NUMERIC) END,
                 TRIM(c37)

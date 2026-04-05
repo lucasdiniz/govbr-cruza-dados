@@ -852,6 +852,68 @@ DOWNLOADERS = {
 }
 
 
+def validate_downloads():
+    """Valida que todos os dados criticos foram baixados.
+
+    Retorna lista de erros (vazia = tudo OK).
+    """
+    errors = []
+
+    def _check(desc, pattern_or_path, min_count=1):
+        if isinstance(pattern_or_path, Path):
+            if not pattern_or_path.exists() or pattern_or_path.stat().st_size < 100:
+                errors.append(f"{desc}: arquivo nao encontrado ({pattern_or_path})")
+        else:
+            found = list(DATA_DIR.glob(pattern_or_path))
+            if len(found) < min_count:
+                errors.append(f"{desc}: esperado >={min_count} arquivos para '{pattern_or_path}', encontrado {len(found)}")
+
+    # RFB (essencial — sem isso nao tem CNPJ)
+    _check("RFB Empresas", "rfb/Empresas*.csv", min_count=1)
+    _check("RFB Estabelecimentos", "rfb/Estabelecimentos*.csv", min_count=1)
+    _check("RFB Socios", "rfb/Socios*.csv", min_count=1)
+    _check("RFB Simples", "rfb/Simples.csv")
+    _check("RFB Dominio", "rfb/Cnaes.csv")
+
+    # PNCP
+    _check("PNCP contratacoes", "pncp/*.json", min_count=10)
+    _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
+
+    # Emendas
+    _check("Emendas Tesouro", "emendas/emendas_tesouro.csv")
+    _check("TransfereGov convenios", "emendas/transferegov_convenios.csv")
+
+    # CPGF
+    _check("CPGF", "cpgf/*.csv", min_count=5)
+
+    # PGFN
+    _check("PGFN", "pgfn/pgfn_*.csv", min_count=1)
+
+    # Sancoes
+    for nome in ("ceis", "cnep", "ceaf", "acordos"):
+        _check(f"Sancoes {nome}", f"sancoes/{nome}*.csv", min_count=1)
+
+    # SIAPE
+    _check("SIAPE Cadastro", "siape/*_Cadastro.csv", min_count=1)
+    _check("SIAPE Remuneracao", "siape/*_Remuneracao.csv", min_count=1)
+
+    # Viagens
+    _check("Viagens", "viagens/*.csv", min_count=1)
+
+    # TCE-PB
+    _check("TCE-PB despesas", "tce_pb/despesas-*.csv", min_count=1)
+    _check("TCE-PB servidores", "tce_pb/servidores-*.csv", min_count=1)
+
+    # Dados PB
+    _check("Dados PB pagamento", "dados_pb/pagamento-*.csv", min_count=5)
+    _check("Dados PB empenho", "dados_pb/empenho-*.csv", min_count=5)
+
+    # BNDES
+    _check("BNDES", "bndes/operacoes-financiamento-*.csv", min_count=1)
+
+    return errors
+
+
 def run():
     print("=" * 60)
     print("Download de dados brutos")
@@ -875,19 +937,44 @@ def run():
 
     sources = only if only else DOWNLOADERS.keys()
 
+    download_errors = []
     for source in sources:
         if source not in DOWNLOADERS:
             print(f"  AVISO: fonte '{source}' desconhecida, pulando.")
             continue
 
         fn = DOWNLOADERS[source]
-        # Passar anos se a funcao aceita
-        if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp"):
-            fn(anos=anos)
-        elif source == "siape" and anos:
-            fn(meses=[f"{a}01" for a in anos])
-        else:
-            fn()
+        try:
+            if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp"):
+                fn(anos=anos)
+            elif source == "siape" and anos:
+                fn(meses=[f"{a}01" for a in anos])
+            else:
+                fn()
+        except Exception as e:
+            print(f"  ERRO no download de {source}: {e}")
+            download_errors.append((source, str(e)))
+
+    if download_errors:
+        print(f"\n{'='*60}")
+        print(f"FALHA: {len(download_errors)} fonte(s) falharam no download:")
+        for src, err in download_errors:
+            print(f"  - {src}: {err}")
+        print(f"{'='*60}")
+        raise RuntimeError(f"Download falhou para: {', '.join(s for s, _ in download_errors)}")
+
+    # Validacao pos-download (apenas quando rodando tudo, nao com --only)
+    if not only:
+        print("\n  Validando downloads...")
+        validation_errors = validate_downloads()
+        if validation_errors:
+            print(f"\n{'='*60}")
+            print(f"FALHA: {len(validation_errors)} validacao(oes) de download:")
+            for err in validation_errors:
+                print(f"  - {err}")
+            print(f"{'='*60}")
+            raise RuntimeError(f"Validacao pos-download falhou: {len(validation_errors)} fonte(s) incompletas")
+        print("  Todos os downloads validados com sucesso.")
 
     print("\nDownloads concluidos.")
 

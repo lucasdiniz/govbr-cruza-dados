@@ -114,7 +114,7 @@ def load_candidatos(conn, year):
                     ds_situacao_candidatura
                 )
                 SELECT
-                    CASE WHEN TRIM(c2) ~ '^\d+$' THEN CAST(TRIM(c2) AS SMALLINT) ELSE NULL END,
+                    CASE WHEN TRIM(c2) ~ '^\\d+$' THEN CAST(TRIM(c2) AS SMALLINT) ELSE NULL END,
                     TRIM(c10), TRIM(c12), TRIM(c13), TRIM(c14),
                     TRIM(c15), TRIM(c16), TRIM(c17), TRIM(c18),
                     TRIM(c19), TRIM(c20),
@@ -125,7 +125,7 @@ def load_candidatos(conn, year):
                     TRIM(c48), TRIM(c49),
                     TRIM(c23)
                 FROM {staging}
-                WHERE TRIM(c2) ~ '^\d+$'
+                WHERE TRIM(c2) ~ '^\\d+$'
             """)
         conn.commit()
 
@@ -163,14 +163,14 @@ def load_bens(conn, year):
                     cd_tipo_bem, ds_tipo_bem, ds_bem, valor_bem
                 )
                 SELECT
-                    CASE WHEN TRIM(c2) ~ '^\d+$' THEN CAST(TRIM(c2) AS SMALLINT) ELSE NULL END,
+                    CASE WHEN TRIM(c2) ~ '^\\d+$' THEN CAST(TRIM(c2) AS SMALLINT) ELSE NULL END,
                     TRIM(c8), TRIM(c11), TRIM(c12),
                     TRIM(c13), TRIM(c14), TRIM(c15),
                     CASE WHEN TRIM(c16) ~ '^-?[\\d.,]+$' AND TRIM(c16) != ''
                          THEN CAST(REPLACE(REPLACE(TRIM(c16),'.',''),',','.') AS NUMERIC)
                          ELSE NULL END
                 FROM {staging}
-                WHERE TRIM(c2) ~ '^\d+$'
+                WHERE TRIM(c2) ~ '^\\d+$'
             """)
         conn.commit()
 

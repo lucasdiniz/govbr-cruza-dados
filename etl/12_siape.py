@@ -159,27 +159,27 @@ def load_remuneracao(conn):
                 verbas_desligamento, total_verbas_indenizatorias
             )
             SELECT
-                CASE WHEN TRIM(c0) ~ '^\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
-                CASE WHEN TRIM(c1) ~ '^\d+$' THEN CAST(TRIM(c1) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c0) ~ '^\\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c1) ~ '^\\d+$' THEN CAST(TRIM(c1) AS SMALLINT) ELSE NULL END,
                 TRIM(c2), TRIM(c3), TRIM(c4),
                 -- Pega so colunas R$ (indices pares a partir de c5), ignora U$ (impares)
-                CASE WHEN TRIM(c5) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c5),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c7) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c7),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c9) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c9),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c11) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c11),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c13) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c13),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c15) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c15),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c17) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c17),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c19) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c19),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c21) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c21),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c23) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c23),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c25) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c25),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c27) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c27),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c29) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c29),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c31) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c31),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c33) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c33),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c35) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c35),'.',''),',','.') AS NUMERIC) ELSE NULL END,
-                CASE WHEN TRIM(c37) ~ '^-?[\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c37),'.',''),',','.') AS NUMERIC) ELSE NULL END
+                CASE WHEN TRIM(c5) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c5),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c7) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c7),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c9) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c9),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c11) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c11),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c13) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c13),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c15) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c15),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c17) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c17),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c19) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c19),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c21) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c21),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c23) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c23),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c25) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c25),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c27) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c27),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c29) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c29),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c31) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c31),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c33) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c33),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c35) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c35),'.',''),',','.') AS NUMERIC) ELSE NULL END,
+                CASE WHEN TRIM(c37) ~ '^-?[\\d.,]+$' THEN CAST(REPLACE(REPLACE(TRIM(c37),'.',''),',','.') AS NUMERIC) ELSE NULL END
             FROM {staging}
             WHERE TRIM(c2) IS NOT NULL AND TRIM(c2) != ''
         """)

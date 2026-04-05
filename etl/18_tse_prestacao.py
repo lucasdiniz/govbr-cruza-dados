@@ -134,7 +134,7 @@ def load_receitas(conn, year):
                     ds_genero, ds_cor_raca
                 )
                 SELECT
-                    CASE WHEN TRIM(c2) ~ '^\d+$' THEN TRIM(c2)::SMALLINT ELSE NULL END,
+                    CASE WHEN TRIM(c2) ~ '^\\d+$' THEN TRIM(c2)::SMALLINT ELSE NULL END,
                     NULLIF(TRIM(c12), ''),
                     NULLIF(TRIM(c11), ''),
                     NULLIF(TRIM(c15), ''),
@@ -162,16 +162,16 @@ def load_receitas(conn, year):
                     NULLIF(TRIM(c49), ''),
                     NULLIF(TRIM(c51), ''),
                     NULLIF(TRIM(c53), ''),
-                    CASE WHEN TRIM(c54) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$'
+                    CASE WHEN TRIM(c54) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
                          THEN safe_to_date(TRIM(c54), 'DD/MM/YYYY') ELSE NULL END,
                     NULLIF(TRIM(c55), ''),
-                    CASE WHEN TRIM(c56) ~ '^[\d.,]+$' AND TRIM(c56) != ''
+                    CASE WHEN TRIM(c56) ~ '^[\\d.,]+$' AND TRIM(c56) != ''
                          THEN CAST(REPLACE(REPLACE(TRIM(c56),'.',''),',','.') AS NUMERIC)
                          ELSE NULL END,
                     NULLIF(TRIM(c58), ''),
                     NULLIF(TRIM(c59), '')
                 FROM {staging}
-                WHERE TRIM(c2) ~ '^\d+$'
+                WHERE TRIM(c2) ~ '^\\d+$'
             """)
         conn.commit()
 
@@ -239,7 +239,7 @@ def load_despesas(conn, year):
                     ds_despesa, vr_pagto_despesa
                 )
                 SELECT
-                    CASE WHEN TRIM(c2) ~ '^\d+$' THEN TRIM(c2)::SMALLINT ELSE NULL END,
+                    CASE WHEN TRIM(c2) ~ '^\\d+$' THEN TRIM(c2)::SMALLINT ELSE NULL END,
                     NULLIF(TRIM(c12), ''),
                     NULLIF(TRIM(c11), ''),
                     NULLIF(TRIM(c13), ''),
@@ -250,14 +250,14 @@ def load_despesas(conn, year):
                     NULLIF(TRIM(c22), ''),
                     NULLIF(TRIM(c23), ''),
                     NULLIF(TRIM(c24), ''),
-                    CASE WHEN TRIM(c25) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$'
+                    CASE WHEN TRIM(c25) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
                          THEN safe_to_date(TRIM(c25), 'DD/MM/YYYY') ELSE NULL END,
                     NULLIF(TRIM(c26), ''),
-                    CASE WHEN TRIM(c27) ~ '^[\d.,]+$' AND TRIM(c27) != ''
+                    CASE WHEN TRIM(c27) ~ '^[\\d.,]+$' AND TRIM(c27) != ''
                          THEN CAST(REPLACE(REPLACE(TRIM(c27),'.',''),',','.') AS NUMERIC)
                          ELSE NULL END
                 FROM {staging}
-                WHERE TRIM(c2) ~ '^\d+$'
+                WHERE TRIM(c2) ~ '^\\d+$'
             """)
         conn.commit()
 

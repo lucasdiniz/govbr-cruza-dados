@@ -48,7 +48,7 @@ def run():
                     SELECT
                         TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4),
                         TRIM(c5), TRIM(c6), TRIM(c7), TRIM(c8), TRIM(c9),
-                        CASE WHEN TRIM(c10) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$' THEN safe_to_date(TRIM(c10), 'DD/MM/YYYY') ELSE NULL END,
+                        CASE WHEN TRIM(c10) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$' THEN safe_to_date(TRIM(c10), 'DD/MM/YYYY') ELSE NULL END,
                         TRIM(c11),
                         CASE WHEN TRIM(c12) = '' THEN NULL
                              ELSE CAST(REPLACE(REPLACE(TRIM(c12), '.', ''), ',', '.') AS NUMERIC)

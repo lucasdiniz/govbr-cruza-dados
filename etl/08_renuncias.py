@@ -84,7 +84,7 @@ def _load_renuncias_fiscais(conn, filepath):
                 descricao, tributo, forma_tributacao, valor_renuncia
             )
             SELECT
-                CASE WHEN TRIM(c0) ~ '^\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c0) ~ '^\\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
                 TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5), TRIM(c6), TRIM(c7),
                 TRIM(c8), TRIM(c9), TRIM(c10), TRIM(c11), TRIM(c12), TRIM(c13),
                 CASE WHEN TRIM(c14) ~ '^[\\d.,-]+$' AND TRIM(c14) != ''
@@ -113,9 +113,9 @@ def _load_habilitadas(conn, filepath):
             SELECT
                 TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4),
                 TRIM(c5), TRIM(c6), TRIM(c7), TRIM(c8), TRIM(c9),
-                CASE WHEN TRIM(c10) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$'
+                CASE WHEN TRIM(c10) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
                      THEN safe_to_date(TRIM(c10), 'DD/MM/YYYY') ELSE NULL END,
-                CASE WHEN TRIM(c11) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$'
+                CASE WHEN TRIM(c11) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
                      THEN safe_to_date(TRIM(c11), 'DD/MM/YYYY') ELSE NULL END
             FROM {staging}
         """)
@@ -138,7 +138,7 @@ def _load_imunes(conn, filepath):
                 tipo_entidade, beneficio_fiscal
             )
             SELECT
-                CASE WHEN TRIM(c0) ~ '^\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c0) ~ '^\\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
                 TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6), TRIM(c7), TRIM(c8), TRIM(c9)
             FROM {staging}
@@ -161,7 +161,7 @@ def _load_beneficiarios(conn, filepath):
                 cnae_codigo, cnae_descricao, municipio, uf, valor_renuncia
             )
             SELECT
-                CASE WHEN TRIM(c0) ~ '^\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c0) ~ '^\\d+$' THEN CAST(TRIM(c0) AS SMALLINT) ELSE NULL END,
                 TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6), TRIM(c7),
                 CASE WHEN TRIM(c8) ~ '^[\\d.,-]+$' AND TRIM(c8) != ''
