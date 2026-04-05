@@ -69,7 +69,40 @@ Relatorios ja produzidos cobrem temas como:
 - **psycopg2** - `COPY FROM STDIN` para carga rapida
 - **ijson** - parsing incremental de JSONs do PNCP
 
-## Uso rapido
+## Deploy (1 click)
+
+O jeito mais facil de rodar o projeto e via GitHub Actions em uma VM Ubuntu:
+
+### Pre-requisitos
+
+1. **VM Ubuntu** com SSH (testado em Azure Standard_D4s_v3, 16GB RAM, disco de dados 400GB+ montado em `/data`)
+2. **Fork** deste repositorio
+3. **Configurar 4 secrets** no repositorio (Settings > Secrets > Actions):
+   - `VM_HOST` — IP ou hostname da VM
+   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr` na VM
+   - `DB_PASSWORD` — senha do PostgreSQL
+   - `ENV_FILE` — conteudo do `.env` (ver `.env.example`)
+
+### Execucao
+
+```bash
+# Passo 1: Instalar o runner na VM (1x)
+# Actions > "Setup Self-Hosted Runner" > Run workflow
+
+# Passo 2: Rodar o ETL completo
+# Actions > "Deploy to Azure VM" > Run workflow (etl_phase=all)
+```
+
+O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa ~100GB de dados de 18+ fontes e popula o banco. Live logs disponiveis no GitHub Actions durante toda a execucao. Duracao tipica: 10-20h dependendo da rede.
+
+Opcoes do deploy:
+- `etl_phase=all` — ETL completo (download + carga + queries)
+- `etl_phase=sql` — apenas schema, indices e views (rapido)
+- `etl_phase=N` — iniciar na fase N (ex: `4` para PNCP)
+- `skip_download=true` — pular downloads (usar dados ja existentes na VM)
+- `clean=true` — limpar estado anterior (apaga tabelas, permite re-ETL do zero)
+
+### Uso local
 
 ```bash
 # 1. Configurar
@@ -83,7 +116,6 @@ pip install -e .
 docker compose up -d
 
 # 4. Rodar ETL completo
-# 23 fases no orquestrador; duracao varia conforme disco, rede e volume ja baixado
 python -m etl.run_all
 
 # 5. Rodar fase especifica (ex: iniciar na fase 4 = PNCP)
