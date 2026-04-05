@@ -1056,8 +1056,9 @@ def validate_downloads():
     _check("PNCP contratacoes", "pncp/*.json", min_count=10)
     _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
 
-    _check_any("Emendas Tesouro", ["emendas/emendas_tesouro.csv", "emendas_tesouro.csv"])
-    _check_any("TransfereGov convenios", ["emendas/transferegov_convenios.csv", "transferegov_convenios.csv"])
+    _check_any("Emendas Tesouro", ["emendas/emendas_tesouro.csv", "emendas/*emendas*tesouro*.csv", "emendas_tesouro.csv", "*emendas*tesouro*.csv"])
+    _check_any("TransfereGov convenios", ["emendas/transferegov_convenios.csv", "emendas/*transferegov*convenio*.csv", "transferegov_convenios.csv", "*convenio*.csv"])
+    _check_any("TransfereGov favorecidos", ["emendas/transferegov_favorecidos.csv", "emendas/*transferegov*favorecid*.csv", "transferegov_favorecidos.csv", "*favorecid*.csv"])
 
     _check("CPGF", "cpgf/*.csv", min_count=5)
     _check_any("PGFN", ["pgfn/arquivo_lai_*.csv", "pgfn/pgfn_*.csv", "pgfn_*.csv"], min_count=1)

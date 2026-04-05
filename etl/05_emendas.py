@@ -23,6 +23,16 @@ def _resolve_input(*names: str) -> Path | None:
     return None
 
 
+def _resolve_input_glob(*patterns: str) -> Path | None:
+    search_dirs = [EMENDAS_DIR, DATA_DIR]
+    for pattern in patterns:
+        for base in search_dirs:
+            matches = sorted(base.glob(pattern))
+            if matches:
+                return matches[0]
+    return None
+
+
 def _copy_csv_with_header(conn, filepath, table, encoding="utf-8"):
     """COPY FROM de CSV com header, delimitador ;, campos quoted."""
     copy_sql = f"""COPY {table} FROM STDIN
@@ -37,6 +47,8 @@ def _copy_csv_with_header(conn, filepath, table, encoding="utf-8"):
 def load_emendas_tesouro(conn):
     """Carrega emendas_tesouro.csv → emenda_tesouro."""
     filepath = _resolve_input("emendas_tesouro.csv")
+    if filepath is None:
+        filepath = _resolve_input_glob("*emendas*tesouro*.csv", "*tesouro*.csv")
     if filepath is None:
         print("    AVISO: emendas_tesouro.csv não encontrado.")
         return
@@ -68,10 +80,10 @@ def load_emendas_tesouro(conn):
             )
             SELECT
                 TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3),
-                CASE WHEN TRIM(c4) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$'
+                CASE WHEN TRIM(c4) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$'
                      THEN safe_to_date(TRIM(c4), 'DD/MM/YYYY') ELSE NULL END,
-                CASE WHEN TRIM(c5) ~ '^\d+$' THEN CAST(TRIM(c5) AS SMALLINT) ELSE NULL END,
-                CASE WHEN TRIM(c6) ~ '^\d+$' THEN CAST(TRIM(c6) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c5) ~ '^\\d+$' THEN CAST(TRIM(c5) AS SMALLINT) ELSE NULL END,
+                CASE WHEN TRIM(c6) ~ '^\\d+$' THEN CAST(TRIM(c6) AS SMALLINT) ELSE NULL END,
                 TRIM(c7), TRIM(c8), TRIM(c9), TRIM(c10), TRIM(c11), TRIM(c12),
                 TRIM(c13),
                 CASE WHEN TRIM(c14) ~ '^[\d.,-]+$' AND TRIM(c14) != ''
@@ -91,6 +103,8 @@ def load_emendas_tesouro(conn):
 def load_convenios(conn):
     """Carrega transferegov_convenios.csv → emenda_convenio."""
     filepath = _resolve_input("transferegov_convenios.csv")
+    if filepath is None:
+        filepath = _resolve_input_glob("*transferegov*convenio*.csv", "*convenio*.csv")
     if filepath is None:
         print("    AVISO: transferegov_convenios.csv não encontrado.")
         return
@@ -121,7 +135,7 @@ def load_convenios(conn):
             SELECT
                 TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
                 TRIM(c6),
-                CASE WHEN TRIM(c7) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$' THEN safe_to_date(TRIM(c7), 'DD/MM/YYYY') ELSE NULL END,
+                CASE WHEN TRIM(c7) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$' THEN safe_to_date(TRIM(c7), 'DD/MM/YYYY') ELSE NULL END,
                 TRIM(c8), TRIM(c9), TRIM(c10),
                 CASE WHEN TRIM(c11) = '' THEN NULL
                      ELSE CAST(REPLACE(REPLACE(TRIM(c11), '.', ''), ',', '.') AS NUMERIC)
@@ -140,6 +154,8 @@ def load_convenios(conn):
 def load_favorecidos(conn):
     """Carrega transferegov_favorecidos.csv → emenda_favorecido."""
     filepath = _resolve_input("transferegov_favorecidos.csv")
+    if filepath is None:
+        filepath = _resolve_input_glob("*transferegov*favorecid*.csv", "*favorecid*.csv")
     if filepath is None:
         print("    AVISO: transferegov_favorecidos.csv não encontrado.")
         return

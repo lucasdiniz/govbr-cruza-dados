@@ -60,6 +60,69 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 18. [ ] **Formalizar Q58 por UF**
 19. [ ] **Corrigir agregacao monetaria da Q17**
 20. [ ] **Endurecer relatorio do ciclo politico-financeiro**
+21. [ ] **Revisar/arquivar relatorios invalidos** conforme classificacao abaixo
+22. [ ] **Padronizar citacao `razao social + CNPJ` nos relatorios ativos**
+23. [ ] **Corrigir relatorios com CNPJ nao encontrado na base RFB local**
+
+### Catalogo de relatorios - revisao de validade (sessao 36)
+
+#### Relatorios validos no estado atual
+- `relatorio_falsos_positivos_pb.md`
+- `relatorio_pejotizacao_campina_grande.md`
+- `relatorio_contratos_fim_de_semana_pb.md`
+- `relatorio_capital_minimo_contratos_pb.md`
+- `relatorio_fracionamento_despesa_pb.md`
+- `relatorio_empresa_fenix_pb.md`
+- `relatorio_sobrepreco_pncp_item.md`
+- `relatorio_sancionados_recebendo_pb.md`
+- `relatorio_tratoraco_codevasf_pb.md`
+- `relatorio_pejotizacao_saude_municipal_pb.md`
+- `relatorio_conflito_cartao_corporativo.md`
+- `relatorio_empresas_inativas_fornecedoras_pb.md`
+- `relatorio_empresas_relacionadas_concorrencia_pb.md`
+- `relatorio_empresas_relacionadas_concorrencia_nacional.md`
+- `relatorio_aditivos_abusivos_estado_pb.md`
+- `relatorio_fornecedores_irregulares_estado_pb.md`
+
+#### Relatorios invalidos ou nao publicaveis no estado atual
+- `relatorio_servidor_bolsa_familia_pb.md` - depende fortemente de `Q74` (CPF parcial + nome), risco alto de falso positivo
+- `relatorio_laranjas_bolsa_familia_pb.md` - mesma fragilidade de `Q39/Q74`, alem de CNPJs nao encontrados
+- `relatorio_risco_municipal_pb.md` - score usa indicador quebrado (`sem licitacao` zerado para todos)
+- `relatorio_servidor_risco_pb.md` - herda ruido forte de `Q74` e score composto
+- `relatorio_risk_score_pb.md` - herda problemas de score e mistura sinais ainda nao endurecidos
+- `relatorio_servidor_socio_fornecedor_pb.md` - superado pela versao corrigida de `Q59` em `relatorio_pejotizacao_saude_municipal_pb.md`
+- `relatorio_servidor_estadual_socio_fornecedor_pb.md` - depende de match nominal fraco (`Q109`)
+- `relatorio_ciclo_politico_financeiro_exploratorio.md` - exploratorio, nao publicavel como peca final
+- `relatorio_rede_societaria_pb.md` - bom como mapa analitico, fraco como relatorio investigativo conclusivo
+- `relatorio_itens_fracassados_pncp.md` - texto ainda forte demais para a prova atual e com mistura de hipoteses nao estabilizadas
+
+### Auditoria de identificadores em relatorios (sessao 36)
+
+Script criado:
+- `scripts/audit_report_identifiers.py`
+
+Objetivo:
+- extrair `CNPJ` e `CPF` citados em `relatorios/*.md`
+- validar `CNPJ -> razao social` contra a base local da RFB (`empresa` + `estabelecimento`)
+- classificar como `match`, `suspeito`, `sem_nome_no_relatorio` ou `nao_encontrado_rfb`
+
+Achados principais:
+- a maioria dos CNPJs citados nominalmente bate com a razao social na base local
+- o problema mais comum nao e CNPJ trocado, e sim **CNPJ citado sem nome oficial ao lado**
+- relatorios devem preferir sempre `razao social oficial + CNPJ`
+
+Casos que exigem correcao manual imediata:
+- `relatorio_laranjas_bolsa_familia_pb.md`
+  - `00.803.795/0001-00` (`ETHIC REPRESENTACOES COMERCIAIS LTDA`) -> `nao_encontrado_rfb`
+  - `15.739.000/0001-76` (`SUCATAS HOSPITALARES COMERCIO E RECICLAGEM LTDA`) -> `nao_encontrado_rfb`
+  - `50.839.309/0001-08` (`OLHO DAGUA DO CAPIM SPE LTDA`) -> `nao_encontrado_rfb`
+  - `45.474.398/0001-83` -> `nao_encontrado_rfb`
+- `relatorio_falsos_positivos_pb.md`
+  - `09.261.843/0001-16` aparece como `suspeito` por uso de sigla (`PaqTcPB`) em vez da razao social completa `FUNDACAO PARQUE TECNOLOGICO DA PARAIBA`
+
+Observacoes:
+- `CPF` completo raramente aparece nos relatorios; validacao automatica de CPF ainda e limitada
+- varios relatorios saem como `sem_nome_no_relatorio` porque so citam o numero do CNPJ; isso reduz auditabilidade, mas nao significa mismatch
 
 ## Handoff técnico sessão 34
 
