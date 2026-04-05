@@ -1,12 +1,6 @@
 name: Deploy to Azure VM
 
 on:
-  # TODO: Re-enable push trigger when VM is ready (disk resized, PG installed, downloads automated)
-  # push:
-  #   branches: [main]
-  #   paths-ignore:
-  #     - '*.md'
-  #     - '.claude/**'
   workflow_dispatch:
     inputs:
       etl_phase:
@@ -25,312 +19,266 @@ on:
         default: false
 
 env:
-  VM_USER: govbr
   PROJECT_DIR: /home/govbr/govbr-project
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 720  # Full ETL with PNCP API download needs 8-12h
+    runs-on: [self-hosted, linux, azure]
+    timeout-minutes: 1440  # 24h — no hosted runner limits
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
       # ── Clean previous failed state (manual trigger only) ──
       - name: Clean previous state
         if: inputs.clean == true
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            echo "=== Cleaning previous deploy state ==="
-            rm -f ${{ env.PROJECT_DIR }}/.initialized
-            # Drop all tables (keep database)
-            if command -v psql &> /dev/null; then
-              cd ${{ env.PROJECT_DIR }} && source .env 2>/dev/null || true
-              PGPASSWORD="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}" psql -U govbr -d govbr -c "
-                DO \$\$ DECLARE r RECORD;
-                BEGIN
-                  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                  END LOOP;
-                END \$\$;
-              " || true
-            fi
-            echo "=== Clean complete ==="
-          SCRIPT
+          set -e
+          echo "=== Cleaning previous deploy state ==="
+          rm -f ${{ env.PROJECT_DIR }}/.initialized
+          if command -v psql &> /dev/null; then
+            cd ${{ env.PROJECT_DIR }} && source .env 2>/dev/null || true
+            PGPASSWORD="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}" psql -U govbr -d govbr -c "
+              DO \$\$ DECLARE r RECORD;
+              BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                  EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                END LOOP;
+              END \$\$;
+            " || true
+          fi
+          echo "=== Clean complete ==="
 
       # ── Install PostgreSQL 16 + system deps ──
       - name: Install system dependencies
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
+          set -e
 
-            # Python + git + tor (tor = fallback for 403-blocked downloads)
-            if ! dpkg -s python3-venv >/dev/null 2>&1 || ! dpkg -s tor >/dev/null 2>&1; then
-              sudo apt update
-              sudo apt install -y python3-venv python3-pip git curl wget gnupg2 lsb-release tor torsocks
-              sudo systemctl enable tor
-              sudo systemctl start tor
-              echo "=== Tor installed and running ==="
-            fi
-            # Ensure tor is running
-            sudo systemctl start tor 2>/dev/null || true
+          # Python + git + tor
+          if ! dpkg -s python3-venv >/dev/null 2>&1 || ! dpkg -s tor >/dev/null 2>&1; then
+            sudo apt update
+            sudo apt install -y python3-venv python3-pip git curl wget gnupg2 lsb-release tor torsocks
+            sudo systemctl enable tor
+            sudo systemctl start tor
+            echo "=== Tor installed and running ==="
+          fi
+          sudo systemctl start tor 2>/dev/null || true
 
-            # PostgreSQL 16
-            if ! dpkg -s postgresql-16 >/dev/null 2>&1; then
-              echo "=== Installing PostgreSQL 16 ==="
-              sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-              wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
-              sudo apt update
-              sudo apt install -y postgresql-16 postgresql-contrib-16
+          # PostgreSQL 16
+          if ! dpkg -s postgresql-16 >/dev/null 2>&1; then
+            echo "=== Installing PostgreSQL 16 ==="
+            sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+            sudo apt update
+            sudo apt install -y postgresql-16 postgresql-contrib-16
 
-              # Move data dir to /data disk (OS disk is only 30GB)
-              sudo systemctl stop postgresql
-              sudo mkdir -p /data/postgresql/16/main
-              sudo chown -R postgres:postgres /data/postgresql
-              sudo rsync -av /var/lib/postgresql/16/main/ /data/postgresql/16/main/
-              sudo sed -i "s|data_directory = '/var/lib/postgresql/16/main'|data_directory = '/data/postgresql/16/main'|" /etc/postgresql/16/main/postgresql.conf
-              sudo systemctl start postgresql
-              echo "=== PG data dir moved to /data ==="
-
-              # Create user + database
-              sudo -u postgres createuser -s govbr 2>/dev/null || true
-              sudo -u postgres createdb -O govbr govbr 2>/dev/null || true
-              sudo -u postgres psql -c "ALTER USER govbr WITH PASSWORD '${{ secrets.DB_PASSWORD }}';"
-              sudo -u postgres psql -d govbr -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-
-              # Tuning for 16GB RAM VM
-              echo -e "shared_buffers = 4GB\neffective_cache_size = 12GB\nwork_mem = 512MB\nmaintenance_work_mem = 1GB\nmax_wal_size = 4GB\ncheckpoint_completion_target = 0.9\nrandom_page_cost = 1.1" | sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null
-
-              # Allow local connections with password
-              sudo sed -i 's/local\s\+all\s\+all\s\+peer/local all all md5/' /etc/postgresql/16/main/pg_hba.conf
-              sudo systemctl restart postgresql
-              echo "=== PostgreSQL 16 installed ==="
-            fi
-
-            # Ensure running
+            # Move data dir to /data disk (OS disk is only 30GB)
+            sudo systemctl stop postgresql
+            sudo mkdir -p /data/postgresql/16/main
+            sudo chown -R postgres:postgres /data/postgresql
+            sudo rsync -av /var/lib/postgresql/16/main/ /data/postgresql/16/main/
+            sudo sed -i "s|data_directory = '/var/lib/postgresql/16/main'|data_directory = '/data/postgresql/16/main'|" /etc/postgresql/16/main/postgresql.conf
             sudo systemctl start postgresql
-          SCRIPT
+            echo "=== PG data dir moved to /data ==="
+
+            # Create user + database
+            sudo -u postgres createuser -s govbr 2>/dev/null || true
+            sudo -u postgres createdb -O govbr govbr 2>/dev/null || true
+            sudo -u postgres psql -c "ALTER USER govbr WITH PASSWORD '${{ secrets.DB_PASSWORD }}';"
+            sudo -u postgres psql -d govbr -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+
+            # Tuning for 16GB RAM VM
+            echo -e "shared_buffers = 4GB\neffective_cache_size = 12GB\nwork_mem = 512MB\nmaintenance_work_mem = 1GB\nmax_wal_size = 4GB\ncheckpoint_completion_target = 0.9\nrandom_page_cost = 1.1" | sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null
+
+            # Allow local connections with password
+            sudo sed -i 's/local\s\+all\s\+all\s\+peer/local all all md5/' /etc/postgresql/16/main/pg_hba.conf
+            sudo systemctl restart postgresql
+            echo "=== PostgreSQL 16 installed ==="
+          fi
+
+          sudo systemctl start postgresql
 
       # ── Deploy code + install deps ──
       - name: Deploy code
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
+          set -e
 
-            # Clone if missing
-            if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
-              cd /home/${{ env.VM_USER }}
-              git clone https://github.com/lucasdiniz/govbr-cruza-dados.git govbr-project
-            fi
+          # Clone if missing
+          if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
+            cd /home/govbr
+            git clone https://github.com/lucasdiniz/govbr-cruza-dados.git govbr-project
+          fi
 
-            cd ${{ env.PROJECT_DIR }}
+          cd ${{ env.PROJECT_DIR }}
 
-            # Write .env from secrets
-            echo "${{ secrets.ENV_FILE }}" > .env
+          # Write .env from secrets
+          echo "${{ secrets.ENV_FILE }}" > .env
 
-            # Ensure data dir (prefer /data disk if mounted)
-            source .env
-            DATA="${DATA_DIR:-/data/raw-data}"
-            mkdir -p "$DATA"
+          # Ensure data dir
+          source .env
+          DATA="${DATA_DIR:-/data/raw-data}"
+          mkdir -p "$DATA"
 
-            # Pull latest
-            git fetch origin main
-            git reset --hard origin/main
+          # Pull latest
+          git fetch origin main
+          git reset --hard origin/main
 
-            # Python venv
-            if [ ! -d "venv" ]; then
-              python3 -m venv venv
-            fi
-            source venv/bin/activate
-            pip install --upgrade pip -q
-            pip install -e . -q
+          # Python venv
+          if [ ! -d "venv" ]; then
+            python3 -m venv venv
+          fi
+          source venv/bin/activate
+          pip install --upgrade pip -q
+          pip install -e . -q
 
-            echo "Setup complete. Data dir: $DATA"
-          SCRIPT
+          echo "Setup complete. Data dir: $DATA"
 
       # ── Verify data disk ──
       - name: Verify data disk
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            echo "=== Disk status ==="
-            df -h / /data 2>/dev/null || df -h /
+          set -e
+          echo "=== Disk status ==="
+          df -h / /data 2>/dev/null || df -h /
 
-            # Ensure /data exists and has space
-            if mountpoint -q /data 2>/dev/null; then
-              AVAIL_GB=$(df --output=avail /data | tail -1 | awk '{print int($1/1048576)}')
-              echo "Data disk: ${AVAIL_GB}GB available"
-            else
-              echo "WARNING: /data not mounted as separate disk, using OS disk"
-              AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1048576)}')
-              echo "OS disk: ${AVAIL_GB}GB available"
-              # Create /data on OS disk if missing
-              sudo mkdir -p /data
-              sudo chown $USER:$USER /data
-            fi
+          if mountpoint -q /data 2>/dev/null; then
+            AVAIL_GB=$(df --output=avail /data | tail -1 | awk '{print int($1/1048576)}')
+            echo "Data disk: ${AVAIL_GB}GB available"
+          else
+            echo "WARNING: /data not mounted as separate disk, using OS disk"
+            AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1048576)}')
+            echo "OS disk: ${AVAIL_GB}GB available"
+            sudo mkdir -p /data
+            sudo chown $USER:$USER /data
+          fi
 
-            if [ "$AVAIL_GB" -lt 50 ]; then
-              echo "::error::Insufficient disk space: ${AVAIL_GB}GB (need 50GB+)"
-              exit 1
-            fi
-          SCRIPT
+          if [ "$AVAIL_GB" -lt 50 ]; then
+            echo "::error::Insufficient disk space: ${AVAIL_GB}GB (need 50GB+)"
+            exit 1
+          fi
 
       # ── Test download connectivity ──
       - name: Test download sources
         continue-on-error: true
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            echo "=== Testing download sources ==="
-            # Portal da Transparência (known to block Azure IPs)
-            if curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301"; then
-              echo "  Portal Transparencia: OK (direct)"
+          echo "=== Testing download sources ==="
+          if curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301"; then
+            echo "  Portal Transparencia: OK (direct)"
+          else
+            echo "  Portal Transparencia: BLOCKED (direct) — testing Tor fallback..."
+            if torsocks curl -sf -o /dev/null -m 30 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301" 2>/dev/null; then
+              echo "  Portal Transparencia: OK (via Tor)"
             else
-              echo "  Portal Transparencia: BLOCKED (direct) — testing Tor fallback..."
-              if torsocks curl -sf -o /dev/null -m 30 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301" 2>/dev/null; then
-                echo "  Portal Transparencia: OK (via Tor) — downloads will auto-fallback"
-              else
-                echo "  Portal Transparencia: BLOCKED (Tor also failed)"
-              fi
+              echo "  Portal Transparencia: BLOCKED (Tor also failed)"
             fi
-            # RFB (Nextcloud WebDAV)
-            if curl -sf -o /dev/null -m 10 -u "YggdBLfdninEJX9:" "https://arquivos.receitafederal.gov.br/public.php/webdav/"; then
-              echo "  RFB/CNPJ: OK"
-            else
-              echo "  RFB/CNPJ: BLOCKED"
-            fi
-            # PNCP API
-            if curl -sf -o /dev/null -m 10 "https://pncp.gov.br/api/consulta/v1/contratos?dataInicial=20240101&dataFinal=20240107&pagina=1&tamanhoPagina=1"; then
-              echo "  PNCP API: OK"
-            else
-              echo "  PNCP API: BLOCKED"
-            fi
-            # TCE-PB
-            if curl -sf -o /dev/null -m 10 "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/despesas/despesas-2024.zip"; then
-              echo "  TCE-PB: OK"
-            else
-              echo "  TCE-PB: BLOCKED"
-            fi
-            # PGFN
-            if curl -sf -o /dev/null -m 10 "https://dadosabertos.pgfn.gov.br/"; then
-              echo "  PGFN: OK"
-            else
-              echo "  PGFN: BLOCKED"
-            fi
-            echo "=== Done ==="
-          SCRIPT
+          fi
+          if curl -sf -o /dev/null -m 10 -u "YggdBLfdninEJX9:" "https://arquivos.receitafederal.gov.br/public.php/webdav/"; then
+            echo "  RFB/CNPJ: OK"
+          else
+            echo "  RFB/CNPJ: BLOCKED"
+          fi
+          if curl -sf -o /dev/null -m 10 "https://pncp.gov.br/api/consulta/v1/contratos?dataInicial=20240101&dataFinal=20240107&pagina=1&tamanhoPagina=1"; then
+            echo "  PNCP API: OK"
+          else
+            echo "  PNCP API: BLOCKED"
+          fi
+          if curl -sf -o /dev/null -m 10 "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados/despesas/despesas-2024.zip"; then
+            echo "  TCE-PB: OK"
+          else
+            echo "  TCE-PB: BLOCKED"
+          fi
+          if curl -sf -o /dev/null -m 10 "https://dadosabertos.pgfn.gov.br/"; then
+            echo "  PGFN: OK"
+          else
+            echo "  PGFN: BLOCKED"
+          fi
+          echo "=== Done ==="
 
       # ── First run: full ETL (only once) ──
       - name: First run - Full ETL
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
+          set -e
+          cd ${{ env.PROJECT_DIR }}
 
-            if [ -f ".initialized" ]; then
-              echo "Already initialized, skipping first-run ETL"
-              exit 0
-            fi
+          if [ -f ".initialized" ]; then
+            echo "Already initialized, skipping first-run ETL"
+            exit 0
+          fi
 
-            echo "=== First run: full ETL ==="
-            source venv/bin/activate
+          echo "=== First run: full ETL ==="
+          source venv/bin/activate
 
-            # Skip downloads if data pre-uploaded or if flag set
-            SKIP_DL="${{ inputs.skip_download }}"
-            if [ "$SKIP_DL" = "true" ]; then
-              echo "Skipping download phase (skip_download=true)"
-              python -m etl.run_all 2 2>&1 | tee /tmp/etl.log  # Start from phase 2 (schema)
-            else
-              python -m etl.run_all 2>&1 | tee /tmp/etl.log
-            fi
-            ETL_EXIT=$?
+          SKIP_DL="${{ inputs.skip_download }}"
+          if [ "$SKIP_DL" = "true" ]; then
+            echo "Skipping download phase (skip_download=true)"
+            python -m etl.run_all 2 2>&1 | tee /tmp/etl.log
+          else
+            python -m etl.run_all 2>&1 | tee /tmp/etl.log
+          fi
 
-            # Only mark as initialized if ETL reached the end (even with non-fatal errors)
-            # Check if key tables exist as indicator of progress
-            if python3 -c "from etl.db import get_conn, table_count; conn = get_conn(); n = table_count(conn, 'empresa'); print(f'empresa: {n}'); exit(0 if n > 0 else 1)" 2>/dev/null; then
-              touch .initialized
-              echo "=== ETL complete, .initialized set ==="
-            else
-              echo "=== ETL incomplete: key tables missing. NOT setting .initialized ==="
-              echo "=== Re-run with: gh workflow run deploy.yml ==="
-              # Show what tables exist
-              python -m etl.verify 2>/dev/null || true
-              exit 1
-            fi
-          SCRIPT
-        timeout-minutes: 660
+          if python3 -c "from etl.db import get_conn, table_count; conn = get_conn(); n = table_count(conn, 'empresa'); print(f'empresa: {n}'); exit(0 if n > 0 else 1)" 2>/dev/null; then
+            touch .initialized
+            echo "=== ETL complete, .initialized set ==="
+          else
+            echo "=== ETL incomplete: key tables missing. NOT setting .initialized ==="
+            python -m etl.verify 2>/dev/null || true
+            exit 1
+          fi
+        timeout-minutes: 1380  # 23h
 
       # ── Normal push: apply SQL changes only ──
       - name: Apply SQL (schema + indices + views)
         if: github.event_name == 'push' || inputs.etl_phase == 'sql'
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
+          set -e
+          cd ${{ env.PROJECT_DIR }}
 
-            if [ ! -f ".initialized" ]; then
-              echo "Not initialized yet, skipping SQL-only step"
-              exit 0
-            fi
+          if [ ! -f ".initialized" ]; then
+            echo "Not initialized yet, skipping SQL-only step"
+            exit 0
+          fi
 
-            source venv/bin/activate
-            echo "=== Applying SQL changes ==="
-            python -m etl.01_schema 2>&1 || true
-            python -m etl.10_indices 2>&1 || true
-            python -m etl.15_normalizar 2>&1 || true
-            python -m etl.21_views 2>&1 || true
-          SCRIPT
+          source venv/bin/activate
+          echo "=== Applying SQL changes ==="
+          python -m etl.01_schema 2>&1 || true
+          python -m etl.10_indices 2>&1 || true
+          python -m etl.15_normalizar 2>&1 || true
+          python -m etl.21_views 2>&1 || true
 
       # ── Manual: run ETL from specific phase ──
       - name: Run ETL from phase ${{ inputs.etl_phase }}
         if: github.event_name == 'workflow_dispatch' && inputs.etl_phase != 'sql' && inputs.etl_phase != 'all'
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
-            source venv/bin/activate
+          set -e
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
 
-            PHASE="${{ inputs.etl_phase }}"
-            echo "=== ETL from phase $PHASE ==="
-            python -m etl.run_all "$PHASE" 2>&1 | tee /tmp/etl.log
-          SCRIPT
-        timeout-minutes: 660
+          PHASE="${{ inputs.etl_phase }}"
+          echo "=== ETL from phase $PHASE ==="
+          python -m etl.run_all "$PHASE" 2>&1 | tee /tmp/etl.log
+        timeout-minutes: 1380
 
       # ── Run all fraud queries and save results ──
       - name: Run queries
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
+          set -e
+          cd ${{ env.PROJECT_DIR }}
 
-            if [ ! -f ".initialized" ]; then
-              echo "Not initialized yet, skipping queries"
-              exit 0
-            fi
+          if [ ! -f ".initialized" ]; then
+            echo "Not initialized yet, skipping queries"
+            exit 0
+          fi
 
-            source venv/bin/activate
-            echo "=== Running all queries ==="
-            python -m etl.run_queries 2>&1 | tail -50
-          SCRIPT
+          source venv/bin/activate
+          echo "=== Running all queries ==="
+          python -m etl.run_queries 2>&1 | tail -50
         timeout-minutes: 60
 
       # ── Always: verify ──
       - name: Verify database
         if: always()
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ env.VM_USER }}@${{ secrets.VM_HOST }} << 'SCRIPT'
-            set -e
-            cd ${{ env.PROJECT_DIR }}
-            source venv/bin/activate
-
-            python3 -m etl.verify
-          SCRIPT
+          set -e
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          python3 -m etl.verify
