@@ -1,8 +1,8 @@
 name: Setup Self-Hosted Runner
 
-# Run this ONCE to install the GitHub Actions runner on your VM.
-# After this, the Deploy workflow will run directly on the VM
-# with full live logs and no time limits.
+# Run this to install OR repair the GitHub Actions runner on your VM.
+# The workflow is intentionally idempotent: it can be re-run safely whenever
+# the runner appears online in GitHub but stops picking queued jobs.
 #
 # Required secrets:
 #   VM_HOST    - IP or hostname of the VM
@@ -44,15 +44,24 @@ jobs:
             set -e
 
             RUNNER_DIR="/home/govbr/actions-runner"
+            REPO_URL="https://github.com/${{ github.repository }}"
 
-            # Skip if runner is already running and registered
-            if [ -f "\$RUNNER_DIR/.runner" ] && sudo systemctl is-active --quiet actions.runner.* 2>/dev/null; then
-              echo "=== Runner already installed and running, skipping ==="
-              sudo systemctl status actions.runner.* --no-pager || true
-              exit 0
-            fi
+            runner_service_name() {
+              if [ -d "\$RUNNER_DIR/.service" ]; then
+                find "\$RUNNER_DIR/.service" -maxdepth 1 -type f -name '*.service' -printf '%f\n' | head -n1
+              fi
+            }
 
-            echo "=== Installing GitHub Actions runner ==="
+            service_status() {
+              local svc="\$(runner_service_name)"
+              if [ -n "\$svc" ]; then
+                sudo systemctl is-active "\$svc" 2>/dev/null || true
+              else
+                echo "missing"
+              fi
+            }
+
+            echo "=== Ensuring GitHub Actions runner is installed and healthy ==="
 
             # Download runner
             mkdir -p "\$RUNNER_DIR"
@@ -64,43 +73,63 @@ jobs:
               rm -f runner.tar.gz
             fi
 
-            # Unregister previous runner if exists (ignore errors)
+            # Stop existing service if present. A runner can appear "online" in GitHub
+            # while the local listener is wedged and no longer pulling jobs.
+            EXISTING_SVC="\$(runner_service_name)"
+            if [ -n "\$EXISTING_SVC" ]; then
+              echo "=== Existing runner service: \$EXISTING_SVC (\$(service_status)) ==="
+              sudo systemctl stop "\$EXISTING_SVC" 2>/dev/null || true
+              sudo systemctl disable "\$EXISTING_SVC" 2>/dev/null || true
+            fi
+
+            # Remove previous registration if exists. Re-registering on every run is cheap
+            # and avoids stale or half-broken registrations on the GitHub side.
             if [ -f ".runner" ]; then
               ./config.sh remove --token "${{ steps.token.outputs.runner_token }}" 2>/dev/null || true
             fi
 
             # Register
-            ./config.sh --url "https://github.com/${{ github.repository }}" \
+            ./config.sh --url "\$REPO_URL" \
               --token "${{ steps.token.outputs.runner_token }}" \
               --name "azure-vm" \
               --labels "self-hosted,linux,azure" \
               --unattended --replace
 
             # Install and start as service
-            sudo ./svc.sh install 2>/dev/null || true
+            sudo ./svc.sh uninstall 2>/dev/null || true
+            sudo ./svc.sh install
             sudo ./svc.sh start
 
-            echo "=== Runner installed and running ==="
-            sudo ./svc.sh status
+            NEW_SVC="\$(runner_service_name)"
+            echo "=== Runner service after repair: \$NEW_SVC ==="
+            sudo ./svc.sh status || true
+            if [ -n "\$NEW_SVC" ]; then
+              sudo systemctl --no-pager --full status "\$NEW_SVC" || true
+            fi
           SCRIPT
 
       - name: Verify runner is online
         run: |
-          sleep 10
-          RUNNER=$(gh api "repos/${{ github.repository }}/actions/runners" --jq '.runners[] | select(.name=="azure-vm") | .status')
-          if [ "$RUNNER" = "online" ]; then
+          sleep 15
+          RUNNER_JSON=$(gh api "repos/${{ github.repository }}/actions/runners" --jq '.runners[] | select(.name=="azure-vm")')
+          STATUS=$(echo "$RUNNER_JSON" | jq -r '.status // ""')
+          BUSY=$(echo "$RUNNER_JSON" | jq -r '.busy // false')
+          if [ "$STATUS" = "online" ]; then
             echo "Runner is ONLINE"
+            echo "Runner busy: $BUSY"
           else
-            echo "::warning::Runner status: $RUNNER (may take a minute to appear online)"
+            echo "::warning::Runner status: $STATUS (may take a minute to appear online)"
           fi
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Summary
         run: |
-          echo "## Self-Hosted Runner Setup" >> $GITHUB_STEP_SUMMARY
+          echo "## Self-Hosted Runner Setup / Repair" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Runner **azure-vm** installed on \`${{ secrets.VM_HOST }}\`." >> $GITHUB_STEP_SUMMARY
+          echo "Runner **azure-vm** installed or repaired on \`${{ secrets.VM_HOST }}\`." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "You can now run the **Deploy to Azure VM** workflow." >> $GITHUB_STEP_SUMMARY
+          echo "You can safely re-run this workflow whenever the self-hosted runner stops pulling queued jobs." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "After this, run the **Deploy to Azure VM** workflow." >> $GITHUB_STEP_SUMMARY
           echo "It will execute directly on the VM with full live logs and no time limits." >> $GITHUB_STEP_SUMMARY
