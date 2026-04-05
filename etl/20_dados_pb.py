@@ -1,7 +1,7 @@
 """Carrega dados do portal dados.pb.gov.br (pagamento, empenho, contratos, saude, convenios).
 
 Fonte: https://dados.pb.gov.br/app/
-API: https://dados.pb.gov.br:443/getcsv?nome={dataset}&exercicio={ano}&mes={mes}
+Download: etl/00_download.py (download_dados_pb)
 Formato: CSV com ; separador, valores decimais com ponto, datas ISO (YYYY-MM-DD)
 CPF formatado (000.123.456-78), CNPJ formatado (12.345.678/0001-90)
 
@@ -16,14 +16,11 @@ import csv
 import io
 import sys
 from pathlib import Path
-from urllib.request import urlopen
-from urllib.error import URLError, HTTPError
 
 from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
 
 
-PB_BASE = "https://dados.pb.gov.br:443/getcsv"
 ANOS = range(2018, 2027)
 MESES = range(1, 13)
 
@@ -55,36 +52,8 @@ def _clean_val(val):
     return val
 
 
-def _download_csv(nome, exercicio, mes=None, mes_inicio=None, mes_fim=None):
-    """Baixa CSV da API e retorna linhas (generator)."""
-    params = f"nome={nome}&exercicio={exercicio}"
-    if mes is not None:
-        params += f"&mes={mes}"
-    if mes_inicio is not None:
-        params += f"&mes_inicio={mes_inicio}"
-    if mes_fim is not None:
-        params += f"&mes_fim={mes_fim}"
-
-    url = f"{PB_BASE}?{params}"
-    try:
-        resp = urlopen(url, timeout=120)
-        data = resp.read().decode("utf-8", errors="replace")
-        if not data.strip():
-            return None
-        return data
-    except (URLError, HTTPError):
-        return None
-
-
-def _save_csv(data, filepath):
-    """Salva CSV em disco para cache."""
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(data)
-
-
 def _load_csv(filepath):
-    """Carrega CSV de disco se existir."""
+    """Carrega CSV de disco. Download feito por etl/00_download.py."""
     if filepath.exists() and filepath.stat().st_size > 100:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
@@ -146,10 +115,7 @@ def load_pagamento(conn, anos):
             cache = PB_DIR / f"pagamento_{ano}_{mes:02d}.csv"
             data = _load_csv(cache)
             if data is None:
-                data = _download_csv("pagamento", ano, mes=mes)
-                if data is None:
-                    continue
-                _save_csv(data, cache)
+                continue
 
             staging = "_stg_pb_pagamento"
             n = _staging_load_from_data(conn, staging, data, 12)
@@ -197,10 +163,7 @@ def load_empenho(conn, anos):
             cache = PB_DIR / f"empenho_{ano}_{mes:02d}.csv"
             data = _load_csv(cache)
             if data is None:
-                data = _download_csv("empenho_original", ano, mes=mes)
-                if data is None:
-                    continue
-                _save_csv(data, cache)
+                continue
 
             staging = "_stg_pb_empenho"
             n = _staging_load_from_data(conn, staging, data, 41)
@@ -273,11 +236,8 @@ def load_contratos(conn, anos):
         cache = PB_DIR / f"contratos_{ano}.csv"
         data = _load_csv(cache)
         if data is None:
-            data = _download_csv("contratos", ano)
-            if data is None:
-                print(f"    contratos-{ano}: sem dados")
-                continue
-            _save_csv(data, cache)
+            print(f"    contratos-{ano}: sem dados (rodar 00_download primeiro)")
+            continue
 
         staging = "_stg_pb_contrato"
         n = _staging_load_from_data(conn, staging, data, 20)
@@ -332,10 +292,7 @@ def load_saude(conn, anos):
             cache = PB_DIR / f"saude_{ano}_{mes:02d}.csv"
             data = _load_csv(cache)
             if data is None:
-                data = _download_csv("pagamentos_gestao_pactuada_saude", ano, mes=mes)
-                if data is None:
-                    continue
-                _save_csv(data, cache)
+                continue
 
             staging = "_stg_pb_saude"
             n = _staging_load_from_data(conn, staging, data, 15)
@@ -383,11 +340,8 @@ def load_convenios(conn, anos):
         cache = PB_DIR / f"convenios_{ano}.csv"
         data = _load_csv(cache)
         if data is None:
-            data = _download_csv("convenios", ano, mes_inicio=1, mes_fim=12)
-            if data is None:
-                print(f"    convenios-{ano}: sem dados")
-                continue
-            _save_csv(data, cache)
+            print(f"    convenios-{ano}: sem dados (rodar 00_download primeiro)")
+            continue
 
         staging = "_stg_pb_convenio"
         n = _staging_load_from_data(conn, staging, data, 16)
