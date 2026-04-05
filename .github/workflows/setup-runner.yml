@@ -76,18 +76,11 @@ jobs:
 
             echo "=== Ensuring GitHub Actions runner is installed and healthy ==="
 
-            # Download runner
+            # Stop existing service if present. A runner can appear "online" in GitHub
+            # while the local listener is wedged and no longer pulling jobs.
             mkdir -p "\$RUNNER_DIR"
             cd "\$RUNNER_DIR"
 
-            if [ ! -f "run.sh" ]; then
-              curl -sL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" -o runner.tar.gz
-              tar xzf runner.tar.gz
-              rm -f runner.tar.gz
-            fi
-
-            # Stop existing service if present. A runner can appear "online" in GitHub
-            # while the local listener is wedged and no longer pulling jobs.
             EXISTING_SVC="\$(runner_service_name)"
             if [ -n "\$EXISTING_SVC" ]; then
               echo "=== Existing runner service: \$EXISTING_SVC (\$(service_status)) ==="
@@ -107,16 +100,17 @@ jobs:
             pkill -f '/usr/lib/postgresql/.*/psql -U govbr -d govbr' 2>/dev/null || true
             sleep 2
 
-            # Remove previous registration if exists. Re-registering on every run is cheap
-            # and avoids stale or half-broken registrations on the GitHub side.
-            if [ -f ".runner" ]; then
-              ./config.sh remove --token "${{ steps.token.outputs.runner_token }}" 2>/dev/null || true
-            fi
-
-            # Register
+            # Reset total do diretório do runner. É mais previsível do que tentar
+            # remover seletivamente arquivos de configuração residuais.
             sudo ./svc.sh uninstall 2>/dev/null || true
-            rm -f .runner .credentials .credentials_rsaparams
-            rm -rf .service
+            cd /home/govbr
+            rm -rf "\$RUNNER_DIR"
+            mkdir -p "\$RUNNER_DIR"
+            cd "\$RUNNER_DIR"
+
+            curl -sL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" -o runner.tar.gz
+            tar xzf runner.tar.gz
+            rm -f runner.tar.gz
 
             ./config.sh --url "\$REPO_URL" \
               --token "${{ steps.token.outputs.runner_token }}" \
