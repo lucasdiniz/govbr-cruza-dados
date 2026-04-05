@@ -5,7 +5,7 @@ DROP TABLE IF EXISTS pncp_contrato CASCADE;
 DROP TABLE IF EXISTS pncp_contratacao CASCADE;
 
 CREATE TABLE pncp_contratacao (
-    numero_controle_pncp     VARCHAR(50) PRIMARY KEY,
+    numero_controle_pncp     TEXT PRIMARY KEY,
     cnpj_orgao               CHAR(14),
     orgao_razao_social       VARCHAR(200),
     poder                    CHAR(1),
@@ -13,12 +13,12 @@ CREATE TABLE pncp_contratacao (
     uf                       CHAR(2),
     municipio_nome           VARCHAR(200),
     municipio_ibge           INT,
-    codigo_unidade           VARCHAR(30),
+    codigo_unidade           VARCHAR(100),
     nome_unidade             VARCHAR(200),
     ano_compra               INTEGER,
     sequencial_compra        INT,
-    numero_compra            VARCHAR(50),
-    processo                 VARCHAR(50),
+    numero_compra            TEXT,
+    processo                 TEXT,
     objeto                   TEXT,
     modalidade_id            SMALLINT,
     modalidade_nome          VARCHAR(100),
@@ -35,8 +35,8 @@ CREATE TABLE pncp_contratacao (
 );
 
 CREATE TABLE pncp_contrato (
-    numero_controle_pncp        VARCHAR(50) PRIMARY KEY,
-    numero_controle_contratacao VARCHAR(50),
+    numero_controle_pncp        TEXT PRIMARY KEY,
+    numero_controle_contratacao TEXT,
     cnpj_orgao                  CHAR(14),
     orgao_razao_social          VARCHAR(200),
     poder                       CHAR(1),
@@ -44,7 +44,7 @@ CREATE TABLE pncp_contrato (
     uf                          CHAR(2),
     municipio_nome              VARCHAR(200),
     municipio_ibge              INT,
-    codigo_unidade              VARCHAR(30),
+    codigo_unidade              VARCHAR(100),
     nome_unidade                VARCHAR(200),
     tipo_contrato               VARCHAR(100),
     categoria_processo          VARCHAR(100),
@@ -54,7 +54,7 @@ CREATE TABLE pncp_contrato (
     pais_fornecedor             VARCHAR(10),
     receita                     BOOLEAN,
     objeto                      TEXT,
-    processo                    VARCHAR(50),
+    processo                    TEXT,
     valor_inicial               DECIMAL(20,2),
     valor_global                DECIMAL(20,2),
     valor_acumulado             DECIMAL(20,2),

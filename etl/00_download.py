@@ -822,7 +822,10 @@ def download_dados_pb(anos=None):
 
     PB_BASE = "https://dados.pb.gov.br:443/getcsv"
     today = date.today()
-    current_ym = today.year * 100 + today.month
+    if today.month == 1:
+        current_ym = (today.year - 1) * 100 + 12
+    else:
+        current_ym = today.year * 100 + (today.month - 1)
 
     # Datasets mensais: (nome_api, prefixo_arquivo)
     monthly = [
@@ -1053,11 +1056,11 @@ def validate_downloads():
     _check("PNCP contratacoes", "pncp/*.json", min_count=10)
     _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
 
-    _check("Emendas Tesouro", "emendas/emendas_tesouro.csv")
-    _check("TransfereGov convenios", "emendas/transferegov_convenios.csv")
+    _check_any("Emendas Tesouro", ["emendas/emendas_tesouro.csv", "emendas_tesouro.csv"])
+    _check_any("TransfereGov convenios", ["emendas/transferegov_convenios.csv", "transferegov_convenios.csv"])
 
     _check("CPGF", "cpgf/*.csv", min_count=5)
-    _check_any("PGFN", ["pgfn/arquivo_lai_*.csv", "pgfn/pgfn_*.csv"], min_count=1)
+    _check_any("PGFN", ["pgfn/arquivo_lai_*.csv", "pgfn/pgfn_*.csv", "pgfn_*.csv"], min_count=1)
 
     _check("Sancoes CEIS", "sancoes/*_CEIS.csv", min_count=1)
     _check("Sancoes CNEP", "sancoes/*_CNEP.csv", min_count=1)
@@ -1098,7 +1101,7 @@ def validate_downloads():
         )
 
     _check("Bolsa Familia", "bolsa_familia/*_NovoBolsaFamilia.csv", min_count=1)
-    _check("BNDES", "bndes/operacoes-financiamento-*.csv", min_count=1)
+    _check_any("BNDES", ["bndes/operacoes-financiamento-*.csv", "bndes.csv"], min_count=1)
 
     return errors
 

@@ -1,12 +1,88 @@
-"""Fase 5.1: Carrega dados da PGFN (Dívida Ativa da União).
+"""Fase 5.1: Carrega dados da PGFN (Divida Ativa da Uniao)."""
 
-Fonte: pgfn_0..5.csv (delimitador ;, com header, encoding Latin-1, ~6.3GB total)
-"""
+import csv
+import re
+from pathlib import Path
 
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
-from etl.db import get_conn, table_count
+from etl.db import copy_csv_streaming, get_conn, table_count
+
+
+EXPECTED_COLS = [
+    "cpf_cnpj", "tipo_pessoa", "tipo_devedor", "nome_devedor",
+    "uf_devedor", "unidade_responsavel", "numero_inscricao",
+    "tipo_situacao_inscricao", "situacao_inscricao",
+    "receita_principal", "dt_inscricao", "indicador_ajuizado",
+    "valor_consolidado",
+]
+
+HEADER_ALIASES = {
+    "cpf_cnpj": {"cpfcnpj"},
+    "tipo_pessoa": {"tipopessoa"},
+    "tipo_devedor": {"tipodevedor"},
+    "nome_devedor": {"nomedevedor"},
+    "uf_devedor": {"ufdevedor", "ufdodevedor"},
+    "unidade_responsavel": {"unidaderesponsavel"},
+    "numero_inscricao": {"numeroinscricao"},
+    "tipo_situacao_inscricao": {"tiposituacaoinscricao"},
+    "situacao_inscricao": {"situacaoinscricao"},
+    "receita_principal": {"receitaprincipal"},
+    "dt_inscricao": {"datainscricao", "dtinscricao"},
+    "indicador_ajuizado": {"indicadorajuizado"},
+    "valor_consolidado": {"valorconsolidado"},
+}
+
+
+def _normalize_header(value: str) -> str:
+    value = value.strip().lower()
+    return re.sub(r"[^a-z0-9]", "", value)
+
+
+def _copy_escape(val):
+    if val is None:
+        return "\\N"
+    val = str(val).strip()
+    if val == "":
+        return "\\N"
+    return val.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "")
+
+
+def _resolve_header_positions(header: list[str]) -> dict[str, int | None]:
+    normalized = {_normalize_header(name): idx for idx, name in enumerate(header)}
+    positions = {}
+    for dest, aliases in HEADER_ALIASES.items():
+        positions[dest] = next((normalized[a] for a in aliases if a in normalized), None)
+    return positions
+
+
+def _iter_pgfn_rows(filepath: Path):
+    skipped = 0
+
+    with open(filepath, "r", encoding="latin1", errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        header = next(reader, None)
+        if not header:
+            return
+
+        positions = _resolve_header_positions(header)
+        missing = [col for col in EXPECTED_COLS if positions[col] is None]
+        if missing:
+            raise RuntimeError(f"{filepath.name}: colunas PGFN ausentes no header: {', '.join(missing)}")
+
+        for row in reader:
+            if not row or all(not c.strip() for c in row):
+                continue
+            try:
+                values = [row[positions[col]] if positions[col] < len(row) else None for col in EXPECTED_COLS]
+            except Exception:
+                skipped += 1
+                continue
+            yield "\t".join(_copy_escape(v) for v in values) + "\n"
+
+    if skipped:
+        print(f"      AVISO: {filepath.name}: {skipped} linha(s) malformada(s) puladas")
 
 
 def run():
@@ -15,7 +91,6 @@ def run():
         pgfn_dir = DATA_DIR / "pgfn"
         files = sorted(pgfn_dir.glob("arquivo_lai_*.csv")) if pgfn_dir.exists() else []
         if not files:
-            # Fallback: busca no DATA_DIR raiz (layout antigo)
             files = sorted(DATA_DIR.glob("pgfn_*.csv"))
         if not files:
             print("    AVISO: Nenhum arquivo PGFN encontrado (pgfn/ ou pgfn_*.csv).")
@@ -33,12 +108,12 @@ def run():
                 )""")
             conn.commit()
 
-            copy_sql = f"""COPY {staging} FROM STDIN
-                WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
-            with open(filepath, "rb") as f:
-                with conn.cursor() as cur:
-                    cur.copy_expert(copy_sql, f)
-            conn.commit()
+            copy_csv_streaming(
+                conn,
+                staging,
+                [f"c{i}" for i in range(13)],
+                _iter_pgfn_rows(filepath),
+            )
 
             with conn.cursor() as cur:
                 cur.execute(f"""

@@ -6,15 +6,47 @@ Fontes:
 Holdings removido: redundante com socio WHERE tipo_socio=1 (PJ socio de PJ)
 """
 
+import csv
 import gzip
 import shutil
 from pathlib import Path
 
 from etl.config import DATA_DIR
-from etl.db import get_conn, table_count
+from etl.db import copy_csv_streaming, get_conn, table_count
 
 # comprasnet.csv.gz no repo (data/static/)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
+
+
+def _copy_escape(val):
+    if val is None:
+        return "\\N"
+    val = str(val).strip()
+    if val == "":
+        return "\\N"
+    return val.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "")
+
+
+def _iter_csv_as_tsv(filepath: Path, expected_cols: int, encoding: str = "latin1", delimiter: str = ";"):
+    """Lê CSV com parser tolerante e emite linhas TSV para COPY.
+
+    Campos com número inesperado de colunas são pulados para evitar abortar o ETL.
+    """
+    skipped = 0
+
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=delimiter, quotechar='"')
+        next(reader, None)  # header
+        for row in reader:
+            if not row or all(not c.strip() for c in row):
+                continue
+            if len(row) != expected_cols:
+                skipped += 1
+                continue
+            yield "\t".join(_copy_escape(v) for v in row) + "\n"
+
+    if skipped:
+        print(f"      AVISO: {filepath.name}: {skipped} linha(s) malformada(s) puladas")
 
 
 def load_bndes(conn):
@@ -48,14 +80,14 @@ def load_bndes(conn):
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
     conn.commit()
 
-    copy_sql = f"""COPY {staging} FROM STDIN
-        WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
     for filepath in sorted(files):
         print(f"    Carregando {filepath.name}...")
-        with open(filepath, "rb") as f:
-            with conn.cursor() as cur:
-                cur.copy_expert(copy_sql, f)
-        conn.commit()
+        copy_csv_streaming(
+            conn,
+            staging,
+            [f"c{i}" for i in range(ncols)],
+            _iter_csv_as_tsv(filepath, ncols, encoding="latin1", delimiter=";"),
+        )
 
     # Mapeamento coluna CSV → coluna destino + transformação
     # O CSV do BNDES muda de formato entre anos (30-34 colunas)
