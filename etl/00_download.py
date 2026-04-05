@@ -396,6 +396,51 @@ def download_rfb():
             if _download_rfb_webdav(url, zip_path):
                 _unzip(zip_path, dest)
 
+    # Renomear arquivos extraidos (RFB mudou formato dos nomes dentro dos ZIPs)
+    # Formato novo: K3241.K03200Y0.D60314.EMPRECSV → Empresas0.csv
+    _rfb_rename_map = {
+        "EMPRECSV": "Empresas",
+        "ESTABELE": "Estabelecimentos",
+        "SOCIOCSV": "Socios",
+    }
+    for f in dest.iterdir():
+        if f.suffix == ".zip" or f.name.endswith(".csv"):
+            continue
+        name = f.name
+        # Arquivos numerados (Y0-Y9)
+        for suffix, prefix in _rfb_rename_map.items():
+            if name.endswith(suffix):
+                # Extrair indice do Y0-Y9
+                idx = name.split("Y")[-1].split(".")[0] if "Y" in name else "0"
+                new_name = f"{prefix}{idx}.csv"
+                new_path = dest / new_name
+                if not new_path.exists():
+                    f.rename(new_path)
+                    print(f"    [renomeia] {name} → {new_name}")
+                break
+        # Dominio: F.K03200$Z.D60314.CNAECSV → Cnaes.csv etc.
+        _rfb_domain_map = {
+            "CNAECSV": "Cnaes.csv",
+            "MOTICSV": "Motivos.csv",
+            "MUNICCSV": "Municipios.csv",
+            "NATJUCSV": "Naturezas.csv",
+            "PAISCSV": "Paises.csv",
+            "QUALSCSV": "Qualificacoes.csv",
+        }
+        for suffix, target in _rfb_domain_map.items():
+            if name.endswith(suffix):
+                new_path = dest / target
+                if not new_path.exists():
+                    f.rename(new_path)
+                    print(f"    [renomeia] {name} → {target}")
+                break
+        # Simples: F.K03200$W.SIMPLES.CSV.D60314 → Simples.csv
+        if "SIMPLES" in name:
+            new_path = dest / "Simples.csv"
+            if not new_path.exists():
+                f.rename(new_path)
+                print(f"    [renomeia] {name} → Simples.csv")
+
 
 def download_pncp(anos=None):
     """PNCP - contratacoes e contratos via API Consulta.
