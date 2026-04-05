@@ -92,8 +92,20 @@ jobs:
             if [ -n "\$EXISTING_SVC" ]; then
               echo "=== Existing runner service: \$EXISTING_SVC (\$(service_status)) ==="
               sudo systemctl stop "\$EXISTING_SVC" 2>/dev/null || true
+              sudo systemctl kill "\$EXISTING_SVC" 2>/dev/null || true
               sudo systemctl disable "\$EXISTING_SVC" 2>/dev/null || true
+              sudo systemctl reset-failed "\$EXISTING_SVC" 2>/dev/null || true
             fi
+
+            # Jobs cancelados podem deixar filhos vivos fora do listener principal.
+            # Sem matar esses processos, o runner para mas continua "already configured"
+            # e o listener novo nao assume a fila corretamente.
+            pkill -f '/home/govbr/actions-runner/_work/' 2>/dev/null || true
+            pkill -f 'python -m etl.run_all' 2>/dev/null || true
+            pkill -f 'python3 -m etl.run_all' 2>/dev/null || true
+            pkill -f 'python3 -m etl.verify' 2>/dev/null || true
+            pkill -f '/usr/lib/postgresql/.*/psql -U govbr -d govbr' 2>/dev/null || true
+            sleep 2
 
             # Remove previous registration if exists. Re-registering on every run is cheap
             # and avoids stale or half-broken registrations on the GitHub side.
