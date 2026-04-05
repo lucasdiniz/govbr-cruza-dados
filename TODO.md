@@ -7,7 +7,7 @@
 17. [ ] **Issues #1-#4**: Pendentes execução no banco local. Plano detalhado em `.claude/plans/twinkling-puzzling-giraffe.md`.
 18. [ ] **Formalizar Q58 por UF**: Criar variante estavel para recortes estaduais sem depender de ajuste de planner em sessao. A exportacao nacional atual da Q58 continua sendo uma amostra top-500 por valor.
 19. [ ] **Corrigir agregacao monetaria da Q17**: Deduplicar por base de CNPJ antes de somar PNCP/emendas/BNDES por holding.
-20. [ ] **Produzir relatorio do ciclo politico-financeiro**: Consolidar `Q56`, `Q57`, `Q72` e `Q79` em um relatorio unico.
+20. [ ] **Endurecer relatorio do ciclo politico-financeiro**: A versao exploratoria ja foi produzida em `relatorios/relatorio_ciclo_politico_financeiro_exploratorio.md`, mas `Q56`, `Q57` e `Q79` ainda precisam saneamento para uma versao final mais afirmativa.
 
 ## Handoff técnico sessão 30
 
@@ -50,7 +50,7 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - mv_empresa_governo 690K rows
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 95 queries em queries/*.sql, 31 relatorios em relatorios/
+- 95 queries em queries/*.sql, 32 relatorios em relatorios/
 
 ## VM Azure
 - IP: 52.162.207.186, user: govbr, SSH key: `C:\Users\lucas\.ssh\azure_vm.txt`
@@ -63,9 +63,15 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas (código, não executadas no banco)
 - ETL completo local: 15+ fontes, normalizacao, indices
-- 7/7 MVs + 2 views criadas. 31 relatorios. 14/14 enriquecimentos.
+- 7/7 MVs + 2 views criadas. 32 relatorios. 14/14 enriquecimentos.
 
 ## Log recente
+
+### 2026-04-05 (sessao 32)
+- Relatorio `ciclo_politico_financeiro_exploratorio` produzido
+- Recorte PB testado e documentado como insuficiente com as regras atuais (`Q56_PB=0`, `Q57_PB/PB=0`, `Q72=0`, `Q37=0`)
+- Caso forte validado em `Q56`: `FM PRODUCOES E EVENTOS LTDA` e contratos pos-eleicao ligados a doacao para `VALMIR DOS SANTOS COSTA`
+- README e TODO atualizados para refletir o novo relatorio e as pendencias tecnicas restantes
 
 ### 2026-04-04 (sessao 31)
 - Q58 otimizada com novos indices em `sql/19_indices_queries.sql` e ajuste de filtros em `queries/fraude_superfaturamento.sql`
