@@ -2,8 +2,19 @@
 
 ## Pendente
 
+### ETL dados.pb.gov.br (12 datasets novos)
+21. [ ] **Download todos os datasets** — baixar CSVs de 2020-2026 para os 12 datasets atualizados:
+   - SIAF: `empenho_original` (até 2025/10), `pagamento`, `pagamento_anulacao`, `liquidacaodespesa`, `liquidacaodespesadescontos`, `empenho_anulacao`, `empenho_suplementacao`
+   - CGE: `dotacao`, `liquidacao`
+   - SIGA: `aditivos_contrato`, `aditivos_convenio`, `convenios`
+   - Dimensão: `unidade_gestora_dadospb`
+   - API: `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`
+   - Nota: `Diarias` case-sensitive (D maiúsculo). `contratos`/`resumo_folha` descartados (dados parados 2022-2023)
+22. [ ] **ETL carga no banco** — criar tabelas, importar CSVs, normalizar, índices
+23. [ ] **Queries de cruzamento** — novas queries usando dados estaduais granulares
+
 ### Deploy Azure
-16. [ ] **Verificar benchmark PNCP e disparar deploy**: Benchmark PNCP 2024 rodando na VM (PID 189716, iniciou 19:13 UTC). Checar: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186 "ls /home/govbr/data/pncp/contratacoes_2024*.json | wc -l"`. Se 2024 completou (~52 JSONs contratacoes + ~52 contratos), disparar deploy: `gh workflow run deploy.yml -f etl_phase=all` (sem clean — dados já existem na VM).
+16. [x] **Deploy disparado** — workflow rodando (`gh workflow run deploy.yml -f etl_phase=all`), run 23986177971
 17. [ ] **Issues #1-#4**: Pendentes execução no banco local. Plano detalhado em `.claude/plans/twinkling-puzzling-giraffe.md`.
 18. [ ] **Formalizar Q58 por UF**: Criar variante estavel para recortes estaduais sem depender de ajuste de planner em sessao. A exportacao nacional atual da Q58 continua sendo uma amostra top-500 por valor.
 19. [ ] **Corrigir agregacao monetaria da Q17**: Deduplicar por base de CNPJ antes de somar PNCP/emendas/BNDES por holding.

@@ -723,11 +723,21 @@ def download_dados_pb(anos=None):
     today = date.today()
     current_ym = today.year * 100 + today.month
 
-    # Datasets mensais
+    # Datasets mensais: (nome_api, prefixo_arquivo)
     monthly = [
         ("pagamento", "pagamento"),
         ("empenho_original", "empenho"),
         ("pagamentos_gestao_pactuada_saude", "saude"),
+        ("pagamento_anulacao", "pagamento_anulacao"),
+        ("liquidacaodespesa", "liquidacaodespesa"),
+        ("liquidacaodespesadescontos", "liquidacaodespesadescontos"),
+        ("empenho_anulacao", "empenho_anulacao"),
+        ("empenho_suplementacao", "empenho_suplementacao"),
+        ("dotacao", "dotacao"),
+        ("liquidacao", "liquidacao_cge"),
+        ("aditivos_contrato", "aditivos_contrato"),
+        ("aditivos_convenio", "aditivos_convenio"),
+        ("Diarias", "diarias"),  # Case-sensitive! D maiúsculo
     ]
 
     print("  dados.pb.gov.br:")
@@ -772,23 +782,30 @@ def download_dados_pb(anos=None):
         except (URLError, HTTPError):
             pass
 
-    # Convenios (por ano)
-    for ano in anos:
-        fname = f"convenios_{ano}.csv"
-        fpath = dest / fname
-        if fpath.exists() and fpath.stat().st_size > 100:
-            continue
-        url = f"{PB_BASE}?nome=convenios&exercicio={ano}&mes_inicio=1&mes_fim=12"
-        try:
-            req = Request(url, headers={"User-Agent": _UA})
-            resp = urlopen(req, timeout=120)
-            data = resp.read()
-            if len(data) > 100:
-                with open(fpath, "wb") as f:
-                    f.write(data)
-                print(f"    [ok] {fname} ({len(data)/1024:.0f}KB)")
-        except (URLError, HTTPError):
-            pass
+    # Datasets anuais (sem mes): (nome_api, prefixo)
+    yearly = [
+        ("convenios", "convenios"),
+        ("unidade_gestora_dadospb", "unidade_gestora"),
+    ]
+    for api_nome, file_prefix in yearly:
+        for ano in anos:
+            fname = f"{file_prefix}_{ano}.csv"
+            fpath = dest / fname
+            if fpath.exists() and fpath.stat().st_size > 100:
+                continue
+            url = f"{PB_BASE}?nome={api_nome}&exercicio={ano}"
+            if api_nome == "convenios":
+                url += "&mes_inicio=1&mes_fim=12"
+            try:
+                req = Request(url, headers={"User-Agent": _UA})
+                resp = urlopen(req, timeout=120)
+                data = resp.read()
+                if len(data) > 100:
+                    with open(fpath, "wb") as f:
+                        f.write(data)
+                    print(f"    [ok] {fname} ({len(data)/1024:.0f}KB)")
+            except (URLError, HTTPError):
+                pass
 
 
 def download_complementar():
