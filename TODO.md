@@ -35,7 +35,18 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 ### ETL dados.pb.gov.br (12 datasets novos)
 21. [ ] **Download todos os datasets** — já implementado em `download_dados_pb()` no `etl/00_download.py`. Baixa 13 datasets mensais + 2 anuais via API `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`. Nota: `Diarias` case-sensitive (D maiúsculo).
 22. [x] **ETL carga no banco** — 16 tabelas pb_* carregadas localmente (~14.4M registros). Fix: linhas curtas (quebra de linha em campos texto) agora ignoradas em `_staging_load_from_data`.
-23. [ ] **Queries de cruzamento** — novas queries usando dados estaduais granulares
+23. [ ] **Queries de cruzamento (Q101-Q111)** — novos cruzamentos com datasets pb_* ampliados:
+    - Q101: Aditivos abusivos — contratos cujo total aditivo supera % do valor original
+    - Q102: Fornecedor sancionado recebendo do estado — pb_pagamento × ceis/cnep
+    - Q103: Fornecedor com dívida ativa PGFN recebendo do estado
+    - Q104: Duplo pagamento — mesma NF em duas liquidações diferentes
+    - Q105: Ciclo empenho→anulação→re-empenho no mesmo credor
+    - Q106: Diárias estaduais × viagens federais — mesmo período/destino
+    - Q107: Fornecedor PB que doa para campanha TSE (ciclo contrato→doação)
+    - Q108: Conveniada com dívida ativa federal
+    - Q109: Servidor estadual sócio de fornecedor do estado
+    - Q110: Dotação vs execução — empenho/pagamento acima da dotação
+    - Q111: View mv_fornecedor_pb_perfil — visão 360° do fornecedor
 
 ### Deploy Azure
 16. [x] **Deploy configurado** — self-hosted runner via `setup-runner.yml`, deploy via `deploy.yml` com live logs
