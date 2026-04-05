@@ -738,6 +738,62 @@ def download_renuncias(anos=None):
             _unzip(zip_path, dest)
 
 
+def download_tse(anos=None):
+    """TSE - candidatos, bens declarados e prestacao de contas por ano."""
+    if anos is None:
+        anos = [2020, 2022, 2024]
+    dest = DATA_DIR / "tse"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    tse_base = "https://cdn.tse.jus.br/estatistica/sead/odsele"
+    anos_suportados = {2020, 2022, 2024}
+
+    print("  TSE:")
+    for ano in sorted(set(int(a) for a in anos)):
+        if ano not in anos_suportados:
+            print(f"    [aviso] ano {ano} nao mapeado para download do TSE, pulando")
+            continue
+
+        arquivos = [
+            (f"{tse_base}/consulta_cand/consulta_cand_{ano}.zip",
+             dest / f"consulta_cand_{ano}.zip"),
+            (f"{tse_base}/bem_candidato/bem_candidato_{ano}.zip",
+             dest / f"bem_candidato_{ano}.zip"),
+        ]
+        if ano in (2022, 2024):
+            arquivos.append(
+                (f"{tse_base}/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_{ano}.zip",
+                 dest / f"prestacao_contas_candidatos_{ano}.zip")
+            )
+
+        for url, zip_path in arquivos:
+            _download(url, zip_path, timeout=1800)
+
+
+def download_bolsa_familia(anos=None):
+    """Novo Bolsa Familia (mensal) - Portal da Transparencia."""
+    if anos is None:
+        anos = range(2023, CURRENT_YEAR + 1)
+    dest = DATA_DIR / "bolsa_familia"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    current_ym = int(f"{date.today().year}{date.today().month:02d}")
+    start_ym = 202303
+
+    print("  Novo Bolsa Familia:")
+    for ano in anos:
+        for mes in range(1, 13):
+            ym = int(f"{ano}{mes:02d}")
+            if ym < start_ym:
+                continue
+            if ym > current_ym:
+                break
+            url = f"{TRANSPARENCIA_BASE}/novo-bolsa-familia/{ym}"
+            zip_path = dest / f"novo_bf_{ym}.zip"
+            if _download(url, zip_path):
+                _unzip(zip_path, dest)
+
+
 def download_tce_pb(anos=None):
     """TCE-PB - Dados consolidados (despesas, servidores, licitacoes, receitas)."""
     if anos is None:
@@ -891,13 +947,15 @@ DOWNLOADERS = {
     "rfb": download_rfb,
     "pncp": download_pncp,
     "renuncias": download_renuncias,
+    "tse": download_tse,
+    "bolsa_familia": download_bolsa_familia,
     "tce_pb": download_tce_pb,
     "dados_pb": download_dados_pb,
     "complementar": download_complementar,
 }
 
 
-def validate_downloads():
+def _validate_downloads_legacy():
     """Valida que todos os dados criticos foram baixados.
 
     Retorna lista de erros (vazia = tudo OK).
@@ -959,6 +1017,92 @@ def validate_downloads():
     return errors
 
 
+def validate_downloads():
+    """Valida que todos os dados criticos foram baixados."""
+    errors = []
+
+    def _glob_ok(pattern):
+        return [
+            path for path in DATA_DIR.glob(pattern)
+            if path.exists() and (path.is_dir() or path.stat().st_size >= 100)
+        ]
+
+    def _check(desc, pattern_or_path, min_count=1):
+        if isinstance(pattern_or_path, Path):
+            if not pattern_or_path.exists() or pattern_or_path.stat().st_size < 100:
+                errors.append(f"{desc}: arquivo nao encontrado ({pattern_or_path})")
+        else:
+            found = _glob_ok(pattern_or_path)
+            if len(found) < min_count:
+                errors.append(f"{desc}: esperado >={min_count} arquivos para '{pattern_or_path}', encontrado {len(found)}")
+
+    def _check_any(desc, patterns, min_count=1):
+        found = []
+        for pattern in patterns:
+            found.extend(_glob_ok(pattern))
+        if len(found) < min_count:
+            joined = "' ou '".join(patterns)
+            errors.append(f"{desc}: esperado >={min_count} arquivos para '{joined}', encontrado {len(found)}")
+
+    _check("RFB Empresas", "rfb/Empresas*.csv", min_count=1)
+    _check("RFB Estabelecimentos", "rfb/Estabelecimentos*.csv", min_count=1)
+    _check("RFB Socios", "rfb/Socios*.csv", min_count=1)
+    _check("RFB Simples", "rfb/Simples.csv")
+    _check("RFB Dominio", "rfb/Cnaes.csv")
+
+    _check("PNCP contratacoes", "pncp/*.json", min_count=10)
+    _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
+
+    _check("Emendas Tesouro", "emendas/emendas_tesouro.csv")
+    _check("TransfereGov convenios", "emendas/transferegov_convenios.csv")
+
+    _check("CPGF", "cpgf/*.csv", min_count=5)
+    _check_any("PGFN", ["pgfn/arquivo_lai_*.csv", "pgfn/pgfn_*.csv"], min_count=1)
+
+    _check("Sancoes CEIS", "sancoes/*_CEIS.csv", min_count=1)
+    _check("Sancoes CNEP", "sancoes/*_CNEP.csv", min_count=1)
+    _check("Sancoes CEAF/Expulsoes", "sancoes/*_Expulsoes.csv", min_count=1)
+    _check("Sancoes Acordos", "sancoes/*_Acordos.csv", min_count=1)
+
+    _check("SIAPE Cadastro", "siape/*_Cadastro.csv", min_count=1)
+    _check("SIAPE Remuneracao", "siape/*_Remuneracao.csv", min_count=1)
+    _check("Viagens", "viagens/*.csv", min_count=1)
+
+    _check("TCE-PB despesas", "tce_pb/despesas-*.csv", min_count=1)
+    _check("TCE-PB servidores", "tce_pb/servidores-*.csv", min_count=1)
+
+    _check("Dados PB pagamento", "dados_pb/pagamento_*.csv", min_count=5)
+    _check("Dados PB empenho", "dados_pb/empenho_*.csv", min_count=5)
+
+    for ano in (2020, 2022, 2024):
+        _check_any(
+            f"TSE candidatos {ano}",
+            [f"tse/consulta_cand_{ano}.zip", f"tse/cand_{ano}/consulta_cand_{ano}_*.csv"],
+            min_count=1,
+        )
+        _check_any(
+            f"TSE bens {ano}",
+            [f"tse/bem_candidato_{ano}.zip", f"tse/bens_{ano}/bem_candidato_{ano}_*.csv"],
+            min_count=1,
+        )
+    for ano in (2022, 2024):
+        _check_any(
+            f"TSE prestacao receitas {ano}",
+            [f"tse/prestacao_contas_candidatos_{ano}.zip", f"tse/prestacao_{ano}/receitas_candidatos_{ano}_*.csv"],
+            min_count=1,
+        )
+        _check_any(
+            f"TSE prestacao despesas {ano}",
+            [f"tse/prestacao_contas_candidatos_{ano}.zip", f"tse/prestacao_{ano}/despesas_pagas_candidatos_{ano}_*.csv"],
+            min_count=1,
+        )
+
+    _check("Bolsa Familia", "bolsa_familia/*_NovoBolsaFamilia.csv", min_count=1)
+    _check("BNDES", "bndes/operacoes-financiamento-*.csv", min_count=1)
+
+    return errors
+
+
 def run():
     print("=" * 60)
     print("Download de dados brutos")
@@ -990,7 +1134,7 @@ def run():
 
         fn = DOWNLOADERS[source]
         try:
-            if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp"):
+            if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp", "tse", "bolsa_familia"):
                 fn(anos=anos)
             elif source == "siape" and anos:
                 fn(meses=[f"{a}01" for a in anos])

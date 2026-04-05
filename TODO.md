@@ -10,8 +10,8 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 25. [x] **PGFN: nomes de arquivos mudaram** — Fix: glob adaptado para `pgfn/arquivo_lai_*.csv` com fallback `pgfn_*.csv` (sessão 34)
 26. [ ] **Sancoes: download bloqueado (IP Azure)** — Portal da Transparência bloqueia IP da VM (403). Tor fallback falha (exit=8, Tor connection refused). CSVs antigos existem na VM em `/home/govbr/data/sancoes/` (20260324 e 20260327 e 20260403). O ETL (`etl/13_sancoes.py`) faz glob `*_CEIS.csv` etc. e encontra os antigos. **Status**: Sanções carregaram 22K CEIS + 1.5K CNEP + 4K CEAF do cache antigo. Fix: (a) reconfigurar Tor na VM (`sudo systemctl restart tor`, verificar `torrc`), ou (b) aceitar dados de 2026-03 como suficientes.
 27. [ ] **SIAPE: download parcial bloqueado** — Meses 2026-01 e 2026-02 OK (já existiam). Meses 2026-03+ bloqueados (mesmo 403/Tor). ETL carregou 617K cadastro + 508K remuneração dos 2 meses disponíveis. Fix: mesmo que Sanções — resolver bloqueio Tor no Portal da Transparência.
-28. [ ] **TSE: download não automatizado** — Não existe `download_tse()` em `etl/00_download.py`. Fonte: `dadosabertos.tse.jus.br/dados-abertos/candidatos/`. ETL espera em `DATA_DIR`: `candidatos_2020.csv`, `candidatos_2022.csv`, `candidatos_2024.csv` + `bens_*.csv`. O `etl/16_tse.py` e `etl/18_tse_prestacao.py` fazem a carga. Fix: implementar download automático similar ao CPGF (ZIP por ano).
-29. [ ] **Bolsa Família: download não automatizado** — Não existe `download_bolsa_familia()` em `etl/00_download.py`. Fonte: Portal da Transparência, mesma URL base que CPGF (`/download-de-dados/novo-bolsa-familia/YYYYMM`). ETL espera `*_NovoBolsaFamilia.csv` em `DATA_DIR`. O `etl/17_bolsa_familia.py` faz a carga. Fix: implementar download — CUIDADO: mesmo bloqueio 403 da Azure pode afetar.
+28. [x] **TSE: download automatizado** — `download_tse()` implementado em `etl/00_download.py`. Baixa ZIPs oficiais do CDN do TSE para 2020, 2022 e 2024 (`consulta_cand`, `bem_candidato` e `prestacao_de_contas_eleitorais_candidatos` para 2022/2024), salvando com os nomes que `etl/16_tse.py` e `etl/18_tse_prestacao.py` esperam.
+29. [x] **Bolsa Família: download automatizado** — `download_bolsa_familia()` implementado em `etl/00_download.py`. Baixa `/download-de-dados/novo-bolsa-familia/YYYYMM`, extrai o ZIP e deixa `*_NovoBolsaFamilia.csv` prontos para `etl/17_bolsa_familia.py`. Observação: o mesmo bloqueio 403 da Azure ainda pode afetar meses novos.
 30. [x] **Renúncias: ETL não encontra CSVs (acento)** — Fix: `_glob_renuncias()` busca com/sem acento em `renuncias/` e DATA_DIR raiz (sessão 34)
 
 ### Corrigidos nesta sessão
@@ -20,7 +20,8 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 32. [x] **BNDES: formato CSV mudou** — Fix: detecção dinâmica de colunas (commit 811c1ee)
 33. [x] **Indices: ordem errada** — Fix: movidos para `15_normalizar.py` (commit 811c1ee)
 34. [x] **SyntaxWarning \d** — Fix: `\\d` em 7 arquivos (commit 811c1ee)
-35. [x] **Validação pós-download** — Fix: `validate_downloads()` em `00_download.py` (commit 811c1ee)
+35. [x] **Validação pós-download** — `validate_downloads()` alinhada ao formato real dos loaders: PGFN (`arquivo_lai_*.csv`), Sanções (`*_CEIS.csv`, `*_CNEP.csv`, `*_Expulsoes.csv`, `*_Acordos.csv`), dados.pb com underscore, TSE (ZIP ou extraído) e Bolsa Família (`*_NovoBolsaFamilia.csv`)
+36. [x] **Workflow deploy: smoke test e Tor** — `deploy.yml` agora reinicia `tor` antes do ETL e testa também TSE CDN e Novo Bolsa Família no smoke test
 
 ### Fontes OK na VM (referência)
 - **CPGF**: 73 CSVs, 725K registros ✓
@@ -46,10 +47,10 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 ## Handoff técnico sessão 33
 
 ### Próximos passos (ordem sugerida)
-1. **Corrigir PGFN e Renúncias** (fácil, ~15min cada) — só adaptar nomes/globs
-2. **Resolver bloqueio Tor** para Sanções/SIAPE/Bolsa Família — reconfigurar Tor na VM ou usar proxy
-3. **Implementar download TSE e Bolsa Família** — adicionar funções ao `00_download.py`
-4. **Re-deploy** após fixes — `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+1. **Resolver bloqueio Tor** para Sanções/SIAPE/Bolsa Família — reconfigurar Tor na VM ou aceitar cache existente onde fizer sentido
+2. **Re-deploy** com o código atualizado — `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+3. **Validar TSE e Bolsa Família na VM** — confirmar que os ZIPs/CSVs foram baixados e que `etl/16_tse.py`, `etl/17_bolsa_familia.py` e `etl/18_tse_prestacao.py` popularam as tabelas
+4. **Rodar `etl.verify` e contagens-chave** após o deploy
 5. Depois: ETL carga dos 12 novos datasets dados.pb.gov.br (item 22)
 
 ### Deploy atual na VM
@@ -72,7 +73,7 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - Secrets no repo: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`
 
 ### Arquivos-chave modificados nesta sessão
-- `etl/00_download.py` — renomeação RFB, validação pós-download, download dados.pb.gov.br
+- `etl/00_download.py` — renomeação RFB, download TSE, download Bolsa Família, validação pós-download realinhada, download dados.pb.gov.br
 - `etl/07_pgfn.py` — fix \d (PGFN glob ainda pendente)
 - `etl/08_renuncias.py` — fix \d (glob acento ainda pendente)
 - `etl/09_complementar.py` — BNDES staging dinâmico, fix \d
@@ -80,7 +81,7 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - `etl/20_dados_pb.py` — download removido (centralizado no 00_download)
 - `sql/03_schema_pncp.sql` — DECIMAL(15,2) → DECIMAL(20,2)
 - `sql/11_indices.sql` — índices dependentes de normalização removidos
-- `.github/workflows/deploy.yml` — reescrito para self-hosted runner
+- `.github/workflows/deploy.yml` — self-hosted runner, restart do Tor antes do ETL, smoke test com TSE CDN e Novo Bolsa Família
 - `.github/workflows/setup-runner.yml` — novo, automatiza instalação do runner
 
 ### Commits desta sessão (10)

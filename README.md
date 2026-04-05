@@ -146,10 +146,10 @@ A maioria dos dados e baixada automaticamente via `python -m etl.00_download`:
 | Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | Automatico (~30GB) |
 | PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | Automatico (trimestral) |
 | PNCP (licitacoes/contratos/itens) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.download_pncp`) |
-| Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias) |
+| Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias, Novo Bolsa Familia) |
 | BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | Automatico |
-| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Manual |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Manual |
+| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Automatico (ZIPs por ano para candidatos, bens e prestacao) |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (mensal, com extracao do ZIP) |
 | TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | Automatico |
 | dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | Automatico |
 | ComprasNet | Incluido no repo (`data/static/`) | N/A |
