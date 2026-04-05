@@ -7,12 +7,12 @@
 Cada fonte abaixo tem um problema específico que impede a carga correta no banco.
 O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrigir.
 
-25. [ ] **PGFN: nomes de arquivos mudaram** — ZIPs baixados/extraídos OK, mas CSVs dentro se chamam `arquivo_lai_PREV_*.csv`, `arquivo_lai_SIDA_*.csv`, `arquivo_lai_FGTS_*.csv`. ETL (`etl/07_pgfn.py:15`) procura `pgfn_*.csv` e não encontra. **Na VM**: 19 CSVs em `/home/govbr/data/pgfn/arquivo_lai_*.csv`. Fix: adaptar glob em `07_pgfn.py` ou renomear em `download_pgfn()`.
+25. [x] **PGFN: nomes de arquivos mudaram** — Fix: glob adaptado para `pgfn/arquivo_lai_*.csv` com fallback `pgfn_*.csv` (sessão 34)
 26. [ ] **Sancoes: download bloqueado (IP Azure)** — Portal da Transparência bloqueia IP da VM (403). Tor fallback falha (exit=8, Tor connection refused). CSVs antigos existem na VM em `/home/govbr/data/sancoes/` (20260324 e 20260327 e 20260403). O ETL (`etl/13_sancoes.py`) faz glob `*_CEIS.csv` etc. e encontra os antigos. **Status**: Sanções carregaram 22K CEIS + 1.5K CNEP + 4K CEAF do cache antigo. Fix: (a) reconfigurar Tor na VM (`sudo systemctl restart tor`, verificar `torrc`), ou (b) aceitar dados de 2026-03 como suficientes.
 27. [ ] **SIAPE: download parcial bloqueado** — Meses 2026-01 e 2026-02 OK (já existiam). Meses 2026-03+ bloqueados (mesmo 403/Tor). ETL carregou 617K cadastro + 508K remuneração dos 2 meses disponíveis. Fix: mesmo que Sanções — resolver bloqueio Tor no Portal da Transparência.
 28. [ ] **TSE: download não automatizado** — Não existe `download_tse()` em `etl/00_download.py`. Fonte: `dadosabertos.tse.jus.br/dados-abertos/candidatos/`. ETL espera em `DATA_DIR`: `candidatos_2020.csv`, `candidatos_2022.csv`, `candidatos_2024.csv` + `bens_*.csv`. O `etl/16_tse.py` e `etl/18_tse_prestacao.py` fazem a carga. Fix: implementar download automático similar ao CPGF (ZIP por ano).
 29. [ ] **Bolsa Família: download não automatizado** — Não existe `download_bolsa_familia()` em `etl/00_download.py`. Fonte: Portal da Transparência, mesma URL base que CPGF (`/download-de-dados/novo-bolsa-familia/YYYYMM`). ETL espera `*_NovoBolsaFamilia.csv` em `DATA_DIR`. O `etl/17_bolsa_familia.py` faz a carga. Fix: implementar download — CUIDADO: mesmo bloqueio 403 da Azure pode afetar.
-30. [ ] **Renúncias: ETL não encontra CSVs (acento)** — Arquivos existem na VM em `/home/govbr/data/renuncias/` com acento: `2020_RenúnciasFiscais.csv`. ETL (`etl/08_renuncias.py:182`) faz glob `*_RenunciasFiscais.csv` (sem acento). Glob não bate. Fix: adaptar glob para aceitar ambas as formas, ou renomear no download. Mesma questão para `*_RenúnciasFiscaisPorBeneficiário.csv`.
+30. [x] **Renúncias: ETL não encontra CSVs (acento)** — Fix: `_glob_renuncias()` busca com/sem acento em `renuncias/` e DATA_DIR raiz (sessão 34)
 
 ### Corrigidos nesta sessão
 24. [x] **RFB: nomes de arquivos mudaram** — Fix: renomeação automática em `download_rfb()` (commit 64c497c)

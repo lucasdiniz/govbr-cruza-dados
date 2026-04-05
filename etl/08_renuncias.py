@@ -1,10 +1,10 @@
 """Fase 5.3: Carrega dados de renuncias fiscais (multiplos anos).
 
 Fontes:
-  - 20XX_RenunciasFiscais.csv
+  - 20XX_RenunciasFiscais.csv (ou RenúnciasFiscais com acento)
   - 20XX_EmpresasHabilitadas.csv
   - 20XX_EmpresasImunesOuIsentas.csv
-  - 20XX_RenunciasFiscaisPorBeneficiario.csv
+  - 20XX_RenunciasFiscaisPorBeneficiario.csv (ou com acento)
 """
 
 import csv
@@ -14,6 +14,19 @@ from tqdm import tqdm
 
 from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
+
+
+def _glob_renuncias(base_dir, pattern_sem_acento, pattern_com_acento):
+    """Busca arquivos com ou sem acento, em subdir renuncias/ ou DATA_DIR raiz."""
+    for d in [base_dir / "renuncias", base_dir]:
+        if not d.exists():
+            continue
+        files = sorted(d.glob(pattern_com_acento))
+        if not files:
+            files = sorted(d.glob(pattern_sem_acento))
+        if files:
+            return files
+    return []
 
 
 def _staging_load(conn, staging, n_cols, filepath):
@@ -179,22 +192,22 @@ def _load_beneficiarios(conn, filepath):
 def run():
     conn = get_conn()
     try:
-        files = sorted(DATA_DIR.glob("*_RenunciasFiscais.csv"))
+        files = _glob_renuncias(DATA_DIR, "*_RenunciasFiscais.csv", "*_Ren\u00fanciasFiscais.csv")
         for f in tqdm(files, desc="    Renuncias Fiscais"):
             _load_renuncias_fiscais(conn, f)
         print(f"    renuncia_fiscal: {table_count(conn, 'renuncia_fiscal')} registros")
 
-        files = sorted(DATA_DIR.glob("*_EmpresasHabilitadas.csv"))
+        files = _glob_renuncias(DATA_DIR, "*_EmpresasHabilitadas.csv", "*_EmpresasHabilitadas.csv")
         for f in tqdm(files, desc="    Empresas Habilitadas"):
             _load_habilitadas(conn, f)
         print(f"    empresa_habilitada: {table_count(conn, 'empresa_habilitada')} registros")
 
-        files = sorted(DATA_DIR.glob("*_EmpresasImunesOuIsentas.csv"))
+        files = _glob_renuncias(DATA_DIR, "*_EmpresasImunesOuIsentas.csv", "*_EmpresasImunesOuIsentas.csv")
         for f in tqdm(files, desc="    Empresas Imunes"):
             _load_imunes(conn, f)
         print(f"    empresa_imune: {table_count(conn, 'empresa_imune')} registros")
 
-        files = sorted(DATA_DIR.glob("*_RenunciasFiscaisPorBeneficiario.csv"))
+        files = _glob_renuncias(DATA_DIR, "*_RenunciasFiscaisPorBeneficiario.csv", "*_Ren\u00fanciasFiscaisPorBenefici\u00e1rio.csv")
         for f in tqdm(files, desc="    Renuncias Beneficiario"):
             _load_beneficiarios(conn, f)
         print(f"    renuncia_beneficiario: {table_count(conn, 'renuncia_beneficiario')} registros")

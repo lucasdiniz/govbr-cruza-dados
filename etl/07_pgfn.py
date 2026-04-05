@@ -12,9 +12,13 @@ from etl.db import get_conn, table_count
 def run():
     conn = get_conn()
     try:
-        files = sorted(DATA_DIR.glob("pgfn_*.csv"))
+        pgfn_dir = DATA_DIR / "pgfn"
+        files = sorted(pgfn_dir.glob("arquivo_lai_*.csv")) if pgfn_dir.exists() else []
         if not files:
-            print("    AVISO: Nenhum arquivo pgfn_*.csv encontrado.")
+            # Fallback: busca no DATA_DIR raiz (layout antigo)
+            files = sorted(DATA_DIR.glob("pgfn_*.csv"))
+        if not files:
+            print("    AVISO: Nenhum arquivo PGFN encontrado (pgfn/ ou pgfn_*.csv).")
             return
 
         staging = "_stg_pgfn"
