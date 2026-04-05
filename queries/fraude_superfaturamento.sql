@@ -335,14 +335,16 @@ JOIN estabelecimento est2 ON est2.cnpj_basico = pc2.cnpj_basico_fornecedor AND e
 JOIN empresa e1 ON e1.cnpj_basico = pc1.cnpj_basico_fornecedor
 JOIN empresa e2 ON e2.cnpj_basico = pc2.cnpj_basico_fornecedor
 JOIN pncp_contratacao cc ON cc.numero_controle_pncp = pc1.numero_controle_contratacao
-WHERE UPPER(TRIM(est1.logradouro)) = UPPER(TRIM(est2.logradouro))
-  AND TRIM(est1.numero) = TRIM(est2.numero)
-  AND est1.uf = est2.uf
-  AND est1.logradouro IS NOT NULL AND est1.logradouro != ''
-  AND est1.numero IS NOT NULL AND est1.numero != ''
-  AND cc.valor_estimado > 50000
-ORDER BY cc.valor_estimado DESC
-LIMIT 500;
+  WHERE UPPER(TRIM(est1.logradouro)) = UPPER(TRIM(est2.logradouro))
+    AND TRIM(est1.numero) = TRIM(est2.numero)
+    AND est1.uf = est2.uf
+    AND est1.logradouro IS NOT NULL AND est1.logradouro != ''
+    AND est1.numero IS NOT NULL AND est1.numero != ''
+    AND est2.logradouro IS NOT NULL AND est2.logradouro != ''
+    AND est2.numero IS NOT NULL AND est2.numero != ''
+    AND cc.valor_estimado > 50000
+  ORDER BY cc.valor_estimado DESC
+  LIMIT 500;
 
 
 -- Q99: Empresa fênix — versão NACIONAL com temp tables

@@ -5,6 +5,9 @@
 ### Deploy Azure
 16. [ ] **Verificar benchmark PNCP e disparar deploy**: Benchmark PNCP 2024 rodando na VM (PID 189716, iniciou 19:13 UTC). Checar: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186 "ls /home/govbr/data/pncp/contratacoes_2024*.json | wc -l"`. Se 2024 completou (~52 JSONs contratacoes + ~52 contratos), disparar deploy: `gh workflow run deploy.yml -f etl_phase=all` (sem clean — dados já existem na VM).
 17. [ ] **Issues #1-#4**: Pendentes execução no banco local. Plano detalhado em `.claude/plans/twinkling-puzzling-giraffe.md`.
+18. [ ] **Formalizar Q58 por UF**: Criar variante estavel para recortes estaduais sem depender de ajuste de planner em sessao. A exportacao nacional atual da Q58 continua sendo uma amostra top-500 por valor.
+19. [ ] **Corrigir agregacao monetaria da Q17**: Deduplicar por base de CNPJ antes de somar PNCP/emendas/BNDES por holding.
+20. [ ] **Produzir relatorio do ciclo politico-financeiro**: Consolidar `Q56`, `Q57`, `Q72` e `Q79` em um relatorio unico.
 
 ## Handoff técnico sessão 30
 
@@ -47,7 +50,7 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - mv_empresa_governo 690K rows
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 93+ queries em queries/*.sql, 28 relatorios em relatorios/
+- 95 queries em queries/*.sql, 31 relatorios em relatorios/
 
 ## VM Azure
 - IP: 52.162.207.186, user: govbr, SSH key: `C:\Users\lucas\.ssh\azure_vm.txt`
@@ -60,9 +63,15 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas (código, não executadas no banco)
 - ETL completo local: 15+ fontes, normalizacao, indices
-- 7/7 MVs + 2 views criadas. 28 relatorios. 14/14 enriquecimentos.
+- 7/7 MVs + 2 views criadas. 31 relatorios. 14/14 enriquecimentos.
 
 ## Log recente
+
+### 2026-04-04 (sessao 31)
+- Q58 otimizada com novos indices em `sql/19_indices_queries.sql` e ajuste de filtros em `queries/fraude_superfaturamento.sql`
+- Variante PB da Q58 usada para analise local; helper exportado para sustentar os cruzamentos dos relatorios
+- Relatorio `empresas_relacionadas_concorrencia` produzido em versao PB e nacional
+- README e TODO atualizados para refletir o estado atual
 
 ### 2026-04-04 (sessao 30)
 - Bug PNCP 204 + urlopen SSL corrigidos. requests.Session + paralelismo.

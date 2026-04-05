@@ -28,7 +28,7 @@ O repositorio hoje inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
 - **95 queries SQL** em 14 arquivos tematicos (`Q01-Q100`, com lacunas em `Q52`, `Q69`, `Q73`, `Q75` e `Q76`)
-- **28 relatorios Markdown** derivados dos resultados
+- **31 relatorios Markdown** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
@@ -58,6 +58,7 @@ Relatorios ja produzidos cobrem temas como:
 - empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
 - sobrepreco por item no PNCP
 - fracionamento de despesa municipal e estadual
+- empresas relacionadas competindo entre si ou recebendo juntas, em recorte PB e nacional
 - risco municipal e score composto na Paraiba
 
 ## Stack
@@ -99,7 +100,7 @@ sql/           Schema do banco (extensoes, tabelas, indices, views materializada
 etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
 queries/       95 queries SQL em 14 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    28 investigacoes baseadas nos resultados (Markdown)
+relatorios/    31 investigacoes baseadas nos resultados (Markdown)
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
 ```
 

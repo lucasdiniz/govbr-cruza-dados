@@ -79,3 +79,58 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_viagem_dt_inicio
 -- Composite: estabelecimento matriz ativa (usado em Q39 e outras)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_ativa
     ON estabelecimento (cnpj_basico) WHERE cnpj_ordem = '0001' AND situacao_cadastral = '2';
+
+-- =============================================
+-- Q58: empresas com mesmo endereco na mesma contratacao PNCP
+-- Gargalos observados no EXPLAIN:
+-- 1) self-join de pncp_contrato por numero_controle_contratacao
+-- 2) join de est1 por cnpj_basico + matriz
+-- 3) lookup de est2 por UF + endereco normalizado
+-- =============================================
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_contratacao_cnpj_basico
+    ON pncp_contrato (numero_controle_contratacao, cnpj_basico_fornecedor)
+    WHERE cnpj_basico_fornecedor IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_cnpj_endereco
+    ON estabelecimento (cnpj_basico)
+    INCLUDE (cnpj_completo, municipio, uf, logradouro, numero)
+    WHERE cnpj_ordem = '0001'
+      AND logradouro IS NOT NULL AND logradouro <> ''
+      AND numero IS NOT NULL AND numero <> '';
+
+-- Q58 usa JOIN de cnpj_basico::text (RFB = bpchar, PNCP = text).
+-- Sem indice por expressao, o planner cai em Seq Scan em estabelecimento/empresa.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_cnpj_text_endereco
+    ON estabelecimento ((cnpj_basico::text))
+    INCLUDE (cnpj_completo, municipio, uf, logradouro, numero)
+    WHERE cnpj_ordem = '0001'
+      AND logradouro IS NOT NULL AND logradouro <> ''
+      AND numero IS NOT NULL AND numero <> '';
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_endereco_norm
+    ON estabelecimento (uf, UPPER(TRIM(logradouro)), TRIM(numero), cnpj_basico)
+    INCLUDE (cnpj_completo, municipio)
+    WHERE cnpj_ordem = '0001'
+      AND logradouro IS NOT NULL AND logradouro <> ''
+      AND numero IS NOT NULL AND numero <> '';
+
+-- Q58 compara cnpj + endereco normalizado no Merge Join.
+-- Ter cnpj e endereco em indices separados ainda deixa o planner fazer Seq Scan
+-- completo em estabelecimento; este indice cobre a chave composta real.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_estab_matriz_cnpj_text_endereco_norm
+    ON estabelecimento ((cnpj_basico::text), UPPER(TRIM(logradouro)), TRIM(numero), uf)
+    INCLUDE (cnpj_completo, municipio)
+    WHERE cnpj_ordem = '0001'
+      AND logradouro IS NOT NULL AND logradouro <> ''
+      AND numero IS NOT NULL AND numero <> '';
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_empresa_cnpj_text_razao
+    ON empresa ((cnpj_basico::text))
+    INCLUDE (razao_social);
+
+-- Quando a análise restringe Q58 por UF, o planner precisa conseguir começar
+-- pelo subconjunto de contratacoes já ordenado por valor e com a chave de join.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contratacao_uf_valor_numero
+    ON pncp_contratacao (uf, valor_estimado DESC, numero_controle_pncp)
+    WHERE valor_estimado > 50000;
