@@ -15,6 +15,53 @@ QUERIES_DIR = Path(__file__).resolve().parent.parent / "queries"
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "resultados"
 
 
+def split_sql_statements(sql_text):
+    """Divide um bloco SQL em statements, preservando ';' dentro de strings."""
+    statements = []
+    current = []
+    in_single = False
+    in_double = False
+    i = 0
+
+    while i < len(sql_text):
+        ch = sql_text[i]
+
+        if ch == "'" and not in_double:
+            # Trata aspas simples escapadas por duplicacao ('')
+            if in_single and i + 1 < len(sql_text) and sql_text[i + 1] == "'":
+                current.append(ch)
+                current.append(sql_text[i + 1])
+                i += 2
+                continue
+            in_single = not in_single
+            current.append(ch)
+            i += 1
+            continue
+
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            current.append(ch)
+            i += 1
+            continue
+
+        if ch == ";" and not in_single and not in_double:
+            stmt = "".join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+            i += 1
+            continue
+
+        current.append(ch)
+        i += 1
+
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+
+    return statements
+
+
 def extract_queries(sql_text):
     """Extrai queries individuais de um arquivo SQL, separadas por '-- Qxx:'."""
     pattern = r"(-- Q(\d+): ([^\n]+)\n.*?)(?=-- Q\d+:|$)"
@@ -42,18 +89,28 @@ def run_query(conn, num, title, sql, results_dir):
     cur = conn.cursor()
     try:
         t0 = time.time()
-        cur.execute(sql)
-        rows = cur.fetchall()
+        latest_rows = None
+        latest_cols = None
+
+        for stmt in split_sql_statements(sql):
+            cur.execute(stmt)
+            if cur.description:
+                latest_rows = cur.fetchall()
+                latest_cols = [d[0] for d in cur.description]
+
         elapsed = time.time() - t0
-        cols = [d[0] for d in cur.description]
+
+        if latest_rows is None or latest_cols is None:
+            print(f"  Q{num:02d}: sem CSV exportavel ({elapsed:.1f}s) -> artefato SQL")
+            return 0
 
         with open(outpath, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f, delimiter=";")
-            w.writerow(cols)
-            w.writerows(rows)
+            w.writerow(latest_cols)
+            w.writerows(latest_rows)
 
-        print(f"  Q{num:02d}: {len(rows):>7,} resultados ({elapsed:.1f}s) -> {filename}")
-        return len(rows)
+        print(f"  Q{num:02d}: {len(latest_rows):>7,} resultados ({elapsed:.1f}s) -> {filename}")
+        return len(latest_rows)
     except Exception as e:
         conn.rollback()
         print(f"  Q{num:02d}: ERRO - {e}")
