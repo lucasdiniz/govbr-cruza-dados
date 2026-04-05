@@ -81,8 +81,11 @@ def _staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
 
 
 def _get_files(pattern: str) -> list[Path]:
-    """Retorna arquivos ordenados pelo nome."""
-    files = sorted(DATA_DIR.glob(pattern))
+    """Retorna arquivos ordenados pelo nome. Busca em rfb/ e raiz."""
+    rfb_dir = DATA_DIR / "rfb"
+    files = sorted(rfb_dir.glob(pattern)) if rfb_dir.exists() else []
+    if not files:
+        files = sorted(DATA_DIR.glob(pattern))
     return files
 
 
@@ -109,17 +112,17 @@ def load_empresas(conn):
                     TRIM(c1),
                     NULLIF(TRIM(c2), ''),
                     NULLIF(TRIM(c3), ''),
-                    CASE WHEN TRIM(c4) ~ '^[\d.,]+$' AND TRIM(c4) != ''
+                    CASE WHEN TRIM(c4) ~ '^[\\d.,]+$' AND TRIM(c4) != ''
                          THEN CAST(REPLACE(TRIM(c4), ',', '.') AS DECIMAL(15,2))
                          ELSE NULL
                     END,
-                    CASE WHEN TRIM(c5) ~ '^\d{{1,2}}$'
+                    CASE WHEN TRIM(c5) ~ '^\\d{{1,2}}$'
                          THEN CAST(TRIM(c5) AS SMALLINT)
                          ELSE NULL
                     END,
                     NULLIF(TRIM(c6), '')
                 FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\d+$'
+                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
                 ON CONFLICT (cnpj_basico) DO NOTHING
             """)
         conn.commit()
@@ -159,15 +162,15 @@ def load_estabelecimentos(conn):
                     LPAD(TRIM(c0), 8, '0'),
                     LPAD(TRIM(c1), 4, '0'),
                     LPAD(TRIM(c2), 2, '0'),
-                    CASE WHEN TRIM(c3) ~ '^\d+$' THEN CAST(TRIM(c3) AS SMALLINT) ELSE NULL END,
+                    CASE WHEN TRIM(c3) ~ '^\\d+$' THEN CAST(TRIM(c3) AS SMALLINT) ELSE NULL END,
                     NULLIF(TRIM(c4), ''),
-                    CASE WHEN TRIM(c5) ~ '^\d+$' THEN CAST(TRIM(c5) AS SMALLINT) ELSE NULL END,
-                    CASE WHEN TRIM(c6) ~ '^\d{{8}}$' AND TRIM(c6) != '00000000'
+                    CASE WHEN TRIM(c5) ~ '^\\d+$' THEN CAST(TRIM(c5) AS SMALLINT) ELSE NULL END,
+                    CASE WHEN TRIM(c6) ~ '^\\d{{8}}$' AND TRIM(c6) != '00000000'
                          THEN safe_to_date(TRIM(c6), 'YYYYMMDD') ELSE NULL END,
                     NULLIF(TRIM(c7), ''),
                     NULLIF(TRIM(c8), ''),
                     NULLIF(TRIM(c9), ''),
-                    CASE WHEN TRIM(c10) ~ '^\d{{8}}$' AND TRIM(c10) != '00000000'
+                    CASE WHEN TRIM(c10) ~ '^\\d{{8}}$' AND TRIM(c10) != '00000000'
                          THEN safe_to_date(TRIM(c10), 'YYYYMMDD') ELSE NULL END,
                     NULLIF(TRIM(c11), ''),
                     NULLIF(TRIM(c12), ''),
@@ -187,10 +190,10 @@ def load_estabelecimentos(conn):
                     NULLIF(TRIM(c26), ''),
                     NULLIF(TRIM(c27), ''),
                     NULLIF(TRIM(c28), ''),
-                    CASE WHEN TRIM(c29) ~ '^\d{{8}}$' AND TRIM(c29) != '00000000'
+                    CASE WHEN TRIM(c29) ~ '^\\d{{8}}$' AND TRIM(c29) != '00000000'
                          THEN safe_to_date(TRIM(c29), 'YYYYMMDD') ELSE NULL END
                 FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\d+$'
+                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
                 ON CONFLICT (cnpj_basico, cnpj_ordem, cnpj_dv) DO NOTHING
             """)
         conn.commit()
@@ -224,19 +227,19 @@ def load_socios(conn):
                 )
                 SELECT
                     LPAD(TRIM(c0), 8, '0'),
-                    CASE WHEN TRIM(c1) ~ '^\d+$' THEN CAST(TRIM(c1) AS SMALLINT) ELSE NULL END,
+                    CASE WHEN TRIM(c1) ~ '^\\d+$' THEN CAST(TRIM(c1) AS SMALLINT) ELSE NULL END,
                     NULLIF(TRIM(c2), ''),
                     NULLIF(TRIM(c3), ''),
                     NULLIF(TRIM(c4), ''),
-                    CASE WHEN TRIM(c5) ~ '^\d{{8}}$' AND TRIM(c5) != '00000000'
+                    CASE WHEN TRIM(c5) ~ '^\\d{{8}}$' AND TRIM(c5) != '00000000'
                          THEN safe_to_date(TRIM(c5), 'YYYYMMDD') ELSE NULL END,
                     NULLIF(TRIM(c6), ''),
                     NULLIF(TRIM(c7), ''),
                     NULLIF(TRIM(c8), ''),
                     NULLIF(TRIM(c9), ''),
-                    CASE WHEN TRIM(c10) ~ '^\d+$' THEN CAST(TRIM(c10) AS SMALLINT) ELSE NULL END
+                    CASE WHEN TRIM(c10) ~ '^\\d+$' THEN CAST(TRIM(c10) AS SMALLINT) ELSE NULL END
                 FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\d+$'
+                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
             """)
         conn.commit()
 
@@ -249,7 +252,9 @@ def load_socios(conn):
 
 def load_simples(conn):
     """Carrega Simples.csv → tabela simples."""
-    filepath = DATA_DIR / "Simples.csv"
+    filepath = DATA_DIR / "rfb" / "Simples.csv"
+    if not filepath.exists():
+        filepath = DATA_DIR / "Simples.csv"
     if not filepath.exists():
         print("    AVISO: Simples.csv não encontrado.")
         return
@@ -267,17 +272,17 @@ def load_simples(conn):
             SELECT
                 LPAD(TRIM(c0), 8, '0'),
                 NULLIF(TRIM(c1), ''),
-                CASE WHEN TRIM(c2) ~ '^\d{{8}}$' AND TRIM(c2) != '00000000'
+                CASE WHEN TRIM(c2) ~ '^\\d{{8}}$' AND TRIM(c2) != '00000000'
                      THEN safe_to_date(TRIM(c2), 'YYYYMMDD') ELSE NULL END,
-                CASE WHEN TRIM(c3) ~ '^\d{{8}}$' AND TRIM(c3) != '00000000'
+                CASE WHEN TRIM(c3) ~ '^\\d{{8}}$' AND TRIM(c3) != '00000000'
                      THEN safe_to_date(TRIM(c3), 'YYYYMMDD') ELSE NULL END,
                 NULLIF(TRIM(c4), ''),
-                CASE WHEN TRIM(c5) ~ '^\d{{8}}$' AND TRIM(c5) != '00000000'
+                CASE WHEN TRIM(c5) ~ '^\\d{{8}}$' AND TRIM(c5) != '00000000'
                      THEN safe_to_date(TRIM(c5), 'YYYYMMDD') ELSE NULL END,
-                CASE WHEN TRIM(c6) ~ '^\d{{8}}$' AND TRIM(c6) != '00000000'
+                CASE WHEN TRIM(c6) ~ '^\\d{{8}}$' AND TRIM(c6) != '00000000'
                      THEN safe_to_date(TRIM(c6), 'YYYYMMDD') ELSE NULL END
             FROM {staging}
-            WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\d+$'
+            WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
             ON CONFLICT (cnpj_basico) DO NOTHING
         """)
     conn.commit()

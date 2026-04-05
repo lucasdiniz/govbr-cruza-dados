@@ -21,7 +21,9 @@ DOMAIN_TABLES = [
 
 def load_domain_table(conn, filename: str, table: str, columns: list[str]):
     """Carrega uma tabela de domínio (arquivo pequeno, cabe na RAM)."""
-    filepath = DATA_DIR / filename
+    filepath = DATA_DIR / "rfb" / filename
+    if not filepath.exists():
+        filepath = DATA_DIR / filename
     if not filepath.exists():
         print(f"    AVISO: {filename} não encontrado, pulando.")
         return

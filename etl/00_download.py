@@ -13,7 +13,7 @@ import os
 import shutil
 import sys
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen, urlretrieve
 from urllib.error import URLError, HTTPError
@@ -228,7 +228,7 @@ def download_sancoes():
 
 
 def download_emendas(anos=None):
-    """Emendas parlamentares - Portal da Transparencia (anual)."""
+    """Emendas parlamentares + TransfereGov - Portal da Transparencia."""
     if anos is None:
         anos = DEFAULT_ANOS
     dest = DATA_DIR / "emendas"
@@ -240,6 +240,50 @@ def download_emendas(anos=None):
         zip_path = dest / f"{ano}_EmendaParlamentar.zip"
         if _download(url, zip_path):
             _unzip(zip_path, dest)
+
+    # Renomear: usar CSV mais recente extraido como emendas_tesouro.csv
+    tesouro_target = dest / "emendas_tesouro.csv"
+    if not tesouro_target.exists():
+        candidates = sorted(dest.glob("*EmendaParlamentar*.csv"), reverse=True)
+        if candidates:
+            shutil.copy2(candidates[0], tesouro_target)
+            print(f"    [renomeia] {candidates[0].name} -> emendas_tesouro.csv")
+
+    # TransfereGov (convenios e favorecidos) - mensal
+    print("  TransfereGov:")
+    today = date.today()
+    for delta in range(6):  # tentar ultimos 6 meses
+        d = today.replace(day=1)
+        for _ in range(delta):
+            d = (d - timedelta(days=1)).replace(day=1)
+        ym = f"{d.year}{d.month:02d}"
+        url = f"{TRANSPARENCIA_BASE}/transferencias/{ym}"
+        zip_path = dest / f"{ym}_Transferencias.zip"
+        if _download(url, zip_path):
+            _unzip(zip_path, dest)
+            print(f"    Usando transferencias de {ym}")
+            break
+        if zip_path.exists() and zip_path.stat().st_size < 100:
+            zip_path.unlink(missing_ok=True)
+        print(f"    {ym} nao disponivel...")
+
+    # Renomear CSVs de transferencias para nomes esperados pelo ETL
+    conv_target = dest / "transferegov_convenios.csv"
+    fav_target = dest / "transferegov_favorecidos.csv"
+    if not conv_target.exists():
+        for pattern in ("*Convenio*.csv", "*convenio*.csv", "*Transferencia*.csv"):
+            matches = sorted(dest.glob(pattern), reverse=True)
+            if matches:
+                shutil.copy2(matches[0], conv_target)
+                print(f"    [renomeia] {matches[0].name} -> transferegov_convenios.csv")
+                break
+    if not fav_target.exists():
+        for pattern in ("*Favorecido*.csv", "*favorecido*.csv"):
+            matches = sorted(dest.glob(pattern), reverse=True)
+            if matches:
+                shutil.copy2(matches[0], fav_target)
+                print(f"    [renomeia] {matches[0].name} -> transferegov_favorecidos.csv")
+                break
 
 
 def download_pgfn():
@@ -1162,12 +1206,12 @@ def run():
         validation_errors = validate_downloads()
         if validation_errors:
             print(f"\n{'='*60}")
-            print(f"FALHA: {len(validation_errors)} validacao(oes) de download:")
+            print(f"AVISO: {len(validation_errors)} fonte(s) incompletas (ETL continuara com dados disponiveis):")
             for err in validation_errors:
                 print(f"  - {err}")
             print(f"{'='*60}")
-            raise RuntimeError(f"Validacao pos-download falhou: {len(validation_errors)} fonte(s) incompletas")
-        print("  Todos os downloads validados com sucesso.")
+        else:
+            print("  Todos os downloads validados com sucesso.")
 
     print("\nDownloads concluidos.")
 

@@ -51,10 +51,10 @@ def run():
                     )
                     SELECT
                         TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3), TRIM(c4), TRIM(c5),
-                        CASE WHEN TRIM(c6) ~ '^\d+$' THEN CAST(TRIM(c6) AS SMALLINT) ELSE NULL END,
-                        CASE WHEN TRIM(c7) ~ '^\d+$' THEN CAST(TRIM(c7) AS SMALLINT) ELSE NULL END,
+                        CASE WHEN TRIM(c6) ~ '^\\d+$' THEN CAST(TRIM(c6) AS SMALLINT) ELSE NULL END,
+                        CASE WHEN TRIM(c7) ~ '^\\d+$' THEN CAST(TRIM(c7) AS SMALLINT) ELSE NULL END,
                         TRIM(c8), TRIM(c9), TRIM(c10), TRIM(c11), TRIM(c12),
-                        CASE WHEN TRIM(c13) ~ '^\d{{2}}/\d{{2}}/\d{{4}}$' THEN safe_to_date(TRIM(c13), 'DD/MM/YYYY') ELSE NULL END,
+                        CASE WHEN TRIM(c13) ~ '^\\d{{2}}/\\d{{2}}/\\d{{4}}$' THEN safe_to_date(TRIM(c13), 'DD/MM/YYYY') ELSE NULL END,
                         CASE WHEN TRIM(c14) = '' THEN NULL
                              ELSE CAST(REPLACE(REPLACE(TRIM(c14), '.', ''), ',', '.') AS NUMERIC)
                         END

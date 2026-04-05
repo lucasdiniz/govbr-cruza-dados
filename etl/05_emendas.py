@@ -86,7 +86,7 @@ def load_emendas_tesouro(conn):
                 CASE WHEN TRIM(c6) ~ '^\\d+$' THEN CAST(TRIM(c6) AS SMALLINT) ELSE NULL END,
                 TRIM(c7), TRIM(c8), TRIM(c9), TRIM(c10), TRIM(c11), TRIM(c12),
                 TRIM(c13),
-                CASE WHEN TRIM(c14) ~ '^[\d.,-]+$' AND TRIM(c14) != ''
+                CASE WHEN TRIM(c14) ~ '^[\\d.,-]+$' AND TRIM(c14) != ''
                      THEN CAST(REPLACE(REPLACE(TRIM(c14), '.', ''), ',', '.') AS NUMERIC)
                      ELSE NULL END
             FROM {staging}
