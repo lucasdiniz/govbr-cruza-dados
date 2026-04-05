@@ -101,8 +101,16 @@ Este modelo é particularmente prevalente em municípios pequenos onde a carênc
 
 Os valores de "total recebido" foram calculados por consulta direta à tabela de despesas (e não pela query Q59 original, que possui JOIN explosion que infla os valores — ver Issue #5).
 
+## 7. Corroboração Externa
+
+Há lastro externo relevante para o padrão descrito neste relatório, ainda que não necessariamente para cada empresa individual listada. O **MPT-PB** instaurou inquérito civil para investigar irregularidades em contratos com profissionais de saúde no Hospital de Trauma de João Pessoa, com menção expressa ao fenômeno da **“pejotização”** de médicos, isto é, recontratação mediante constituição de pessoa jurídica para manutenção das mesmas atividades. Além disso, em **Campina Grande**, MPT, MPPB, MPF e MPC firmaram TAC com o município para realização de concurso público e substituição de contratações temporárias de médicos.
+
+Essas fontes não comprovam, por si só, os casos específicos da Q59, mas reforçam que o padrão de contratação precária e potencial pejotização na saúde pública paraibana já foi objeto de atuação formal de órgãos de controle e persecução.
+
 ## Fontes
 1. **TCE-PB (SAGRES):** Servidores e despesas municipais 2022-2026
 2. **Receita Federal (QSA):** Quadro de sócios e administradores
 3. **Receita Federal (CNPJ):** Dados cadastrais de empresas e estabelecimentos
 4. **Query Q59:** `resultados/q59_servidor_municipal_que_socio_de_empresa_fornecedora_do_mesmo.csv`
+5. **MPT-PB:** investigação sobre pejotização de profissionais de saúde no Hospital de Trauma: [notícia oficial](https://www.prt13.mpt.mp.br/informe-se/mpt-pb-na-midia/2-uncategorised/984-mpt-ouve-sindicatos-sobre-irregularidades-em-contratos-firmados-com-profissionais-de-saude-do-hospital-de-trauma)
+6. **MPT-PB / MPPB / MPF / MPC:** TAC com Campina Grande para concurso e substituição de contratações temporárias de médicos: [notícia oficial](https://www.prt13.mpt.mp.br/informe-se/2-uncategorised/1110-ministerio-publico-firma-tac-com-municipio-de-campina-grande-para-realizacao-de-concurso-publico-e-contratacao-de-medicos)

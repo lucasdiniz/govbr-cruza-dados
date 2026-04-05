@@ -106,3 +106,6 @@ O cruzamento validado por CPF + nome confirma que **quase 1.000 servidores feder
 2. **Receita Federal (QSA):** Quadro de sócios e administradores, cadastro de empresas e estabelecimentos
 3. **Query Q10:** `resultados/q10_portador_de_cart_o_que_s_cio_de_empresa_fornecedora.csv`
 4. **Metodologia:** Validação dupla CPF parcial (6 dígitos centrais) + nome completo (UPPER TRIM)
+5. **CGU:** orientações institucionais sobre conflito de interesses no Poder Executivo federal: [página institucional](https://www.gov.br/cgu/pt-br/centrais-de-conteudo/campanhas/integridade-publica/conflito-de-interesses)
+6. **CGU:** manual de tratamento de conflito de interesses para órgãos federais: [notícia oficial](https://www.gov.br/cgu/pt-br/assuntos/noticias/2022/06/cgu-lanca-manual-de-tratamento-de-conflito-de-interesses)
+7. **TCU:** material recente sobre integridade em contratações e gestão de conflitos de interesse: [documento do TCU](https://btcu.apps.tcu.gov.br/api/obterDocumentoPdf/75119406)

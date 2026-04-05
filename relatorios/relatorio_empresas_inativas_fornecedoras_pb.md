@@ -73,7 +73,7 @@ Das 690.734 empresas presentes em fontes governamentais, **155.535 (22,5%)** pos
 - **Municípios atendidos:** 144
 - **Análise:** 144 municípios em um estado com 223 — cobertura de 65%. Capital de R$100K. Empresa individual baixada com penetração estadual atípica.
 
-### 2.10. Estanislau Chaves Neto — R$ 8,1M
+### 2.10. Estanislau Chaves Neto - R$ 8,1M
 - **CNPJ:** 32.236.303/XXXX-XX | **Situação:** Inapta (4) | **Capital:** R$ 80.000 | **Início:** 2018
 - **Total recebido (TCE-PB):** R$ 8.089.641
 - **Municípios atendidos:** 5
@@ -81,7 +81,33 @@ Das 690.734 empresas presentes em fontes governamentais, **155.535 (22,5%)** pos
 
 ---
 
-## 3. Padrões Observados
+## 3. Estudos de Caso Municipais
+
+Os dois casos abaixo estavam em um relatório antigo mais estreito e foram incorporados aqui porque representam versões localizadas do mesmo problema estrutural: contratação ou pagamento a CNPJ baixado.
+
+### 3.1. Princesa Isabel/PB - serviços de sonorização e eventos
+
+- **Fornecedor:** Roberlandia Andrelino (Diniz Som)
+- **CNPJ usado no contrato:** 30.848.514/0001-62
+- **Situação cadastral:** Baixada desde 15/08/2023
+- **Valor citado no caso local:** R$ 58.500,00
+- **Contexto:** após a baixa do primeiro CNPJ, a mesma titular abriu novo CNPJ ativo em dezembro de 2023 e continuou operando contratos públicos.
+
+### 3.2. Riacho dos Cavalos/PB - serviços gráficos
+
+- **Fornecedor:** Samara Saldanha de Oliveira (S. S. Gráfica e Brindes)
+- **CNPJ usado no contrato:** 37.259.260/0001-96
+- **Situação cadastral:** Baixada
+- **Valor citado no caso local:** R$ 49.060,00
+- **Contexto:** a mesma titular abriu três CNPJs em sequência, com dois já baixados e um terceiro ativo em 2026.
+
+### 3.3. Leitura dos estudos de caso
+
+Esses casos têm valor principalmente como evidência de falha operacional de controle cadastral. Eles não alteram a conclusão macro do relatório, mas mostram que o padrão não se limita aos grandes volumes agregados: ele também aparece em contratações pontuais, com CNPJ baixado já no momento do vínculo público.
+
+---
+
+## 4. Padrões Observados
 
 1. **Falsos positivos por reestruturação**: Delegacia RFB e Energisa estão baixadas por reestruturação corporativa, não por irregularidade. Representam ~R$480M dos R$500M+ identificados
 2. **Empresas individuais com alto volume**: Aleff Souza, Rosildo de Lima, Edilane Carvalho e Estanislau Chaves são empresas de pessoa física que receberam R$8-12M cada de múltiplos municípios, estando inaptas ou baixadas
@@ -90,7 +116,7 @@ Das 690.734 empresas presentes em fontes governamentais, **155.535 (22,5%)** pos
 
 ---
 
-## 4. Enquadramento Legal
+## 5. Enquadramento Legal
 
 - **Lei 14.133/21, art. 62, I**: Vedada a contratação de empresa com situação irregular perante a Receita Federal
 - **IN RFB 2.119/22, art. 39**: Empresa inapta tem CNPJ com restrição para emissão de notas fiscais
@@ -98,7 +124,7 @@ Das 690.734 empresas presentes em fontes governamentais, **155.535 (22,5%)** pos
 
 ---
 
-## 5. Recomendações
+## 6. Recomendações
 
 1. **TCE-PB**: Incluir verificação automática de situação cadastral RFB no momento da liquidação de empenhos
 2. **Prefeituras**: Implementar consulta ao CNPJ antes de novos pagamentos a credores com situação irregular
@@ -109,3 +135,5 @@ Das 690.734 empresas presentes em fontes governamentais, **155.535 (22,5%)** pos
 2. **TCE-PB SAGRES:** Despesas municipais 2018-2026
 3. **PNCP:** Contratos públicos
 4. **mv_empresa_governo:** View materializada com cruzamento de 9 fontes
+5. **Portal Nacional de Contratações Públicas (PNCP):** Contrato 2025 citado no caso de Riacho dos Cavalos.
+6. **Portal da Transparência de Riacho dos Cavalos/PB:** Contrato 010/2026 e publicação municipal.

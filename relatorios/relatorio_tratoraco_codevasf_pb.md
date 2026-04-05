@@ -35,7 +35,8 @@ Os valores identificados pelo algoritmo coincidem com o padrão documentado pelo
 Este relatório limita-se a apontar a concentração de recursos e a correlação com investigações oficiais já documentadas. A apuração de responsabilidades individuais compete aos órgãos de controle (CGU, TCU, MPF, PF).
 
 ## Fontes
-1. **CGU/TCU:** Acórdão 1181/2025-TCU-Plenário (irregularidades Codevasf).
-2. **Reportagens investigativas:** Dossiê "Tratoraço" (Estadão, Metrópoles) documentando sobrepreço nos contratos XCMG.
-3. **Portal da Transparência:** Repasses da bancada da Paraíba (Emendas RP9).
-4. **Arquivos do Projeto:** `resultados/q08_concentra_o_mesmo_autor_beneficia_repetidamente_o_mesmo_favo.csv`
+1. **TCU:** pesquisa documental com referências a representações e cautelares sobre pregões da Codevasf para máquinas pesadas, incluindo menções à XCMG: [pesquisa TCU](https://pesquisa.apps.tcu.gov.br/documento/acordao-completo/in%252087%252F2020/%2520%2520/DTRELEVANCIA%2520desc%252C%2520NUMACORDAOINT%2520desc/3)
+2. **Portal da Transparência:** contrato federal recente com a XCMG Brasil para fornecimento de máquinas pesadas: [contrato XCMG](https://portaldatransparencia.gov.br/contratos/713715770)
+3. **Codevasf:** documentação recente de impugnação envolvendo a XCMG em pregão para tratores agrícolas: [documento oficial](https://editais2025.codevasf.gov.br/licitacoes/sede-brasilia-df/pregao_eletronico/editais-publicados-em-2025/edital-nb0-90017-2025/comunica_o_aoexternanai472025.pdf)
+4. **Reportagens investigativas:** dossiês do “Tratoraço” em veículos como Estadão e Metrópoles.
+5. **Arquivos do Projeto:** `resultados/q08_concentra_o_mesmo_autor_beneficia_repetidamente_o_mesmo_favo.csv`

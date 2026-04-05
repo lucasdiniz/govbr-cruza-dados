@@ -31,6 +31,23 @@ O cruzamento apontou que a Sra. **Maria do Desterro Formiga Flavio** (São José
 * **Queimadas/PB:**
   * **Carlos Alberto de Luna Candido:** Beneficiário de R$ 600,00, consta como sócio de cinco empresas distintas com Capital de R$ 200.000,00 cada: *LUNA PUBLICIDADES LTDA*, *LIVRARIA LUNA LTDA*, *ALBERTO LUNA ASSISTENCIA TECNICA LTDA*, *LUNA SOLUCOES DIGITAIS LTDA* e *ADEGA LUNA LTDA*.
 
+## 3. Estudo de Caso Local: Teixeira/PB
+
+O recorte municipal de Teixeira, antes tratado em relatório separado, foi incorporado aqui por ter a mesma base metodológica da `Q39` e não justificar um arquivo autônomo.
+
+* **VC Construções e Locações Ltda**
+  * **CNPJ:** 07.481.663/0001-14
+  * **Sócia identificada:** Clecia Kaline Ferreira Santos
+  * **Benefício social:** R$ 600,00/mês
+  * **Capital social:** R$ 1.500.000,00
+  * **Leitura:** beneficiária de programa social inserida no quadro societário de construtora com capital milionário e atuação em obras públicas locais.
+
+* **Yasmed Serviços de Gestão em Saúde Ltda**
+  * **CNPJ:** 45.474.398/0001-83
+  * **Sócia identificada:** Jarleyde Alves Ferreira
+  * **Capital social:** R$ 1.000.000,00
+  * **Leitura:** moradora de Teixeira/PB listada como sócia de empresa de gestão em saúde originária de outro estado, sinal compatível com sócia formal sem participação econômica real.
+
 ## 4. Nota Metodológica
 A incompatibilidade entre benefício social e participação societária não constitui, por si só, prova de irregularidade. Possíveis explicações incluem:
 - Uso do CPF do beneficiário sem seu conhecimento (fraude contra o titular)

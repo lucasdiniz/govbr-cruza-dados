@@ -181,6 +181,14 @@ Os **1.033 servidores** com flag_multi_empresa sao socios de 3 ou mais empresas 
 | Cajazeiras | GUSTAVO ANACLETO LOURENCO COELHO (R$1,95M) | — |
 | Guarabira | RAFAEL DE ARRUDA SOUSA PINTO (conflito) | — |
 
+### 6.1. Nota sobre o antigo relatorio de terceiro setor
+
+O relatorio isolado sobre concentracao de repasses ao terceiro setor foi incorporado conceitualmente a esta camada de score. O principal ponto que vale preservar e o seguinte:
+
+- o `Instituto Walfredo Guedes Pereira` concentra repasses em escala estadual e, por isso, merece leitura conjunta com indicadores de governanca e vinculos pessoais;
+- concentracao isolada de repasses, sem sancao, sem conflito formal e sem irregularidade documental adicional, nao e suficiente para sustentar conclusao forte;
+- por isso, o tema passa a ser tratado como **sinal contextual de risco** e nao mais como relatorio autonomo.
+
 ---
 
 ## 7. Limitacoes

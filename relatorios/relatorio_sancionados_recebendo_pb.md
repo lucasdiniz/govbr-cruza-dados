@@ -90,7 +90,13 @@ A análise revela um padrão claro:
 2. **MPF/MP-PB:** Investigar os gestores municipais dos 5 casos acima por improbidade administrativa
 3. **CGU:** Notificar as 199 prefeituras sobre a obrigação legal de consulta ao CEIS antes de qualquer contratação
 
+## 6. Corroboração Externa
+
+Além do cruzamento automatizado, o tema deste relatório encontra apoio institucional em fontes oficiais de controle. A CGU mantém orientação pública sobre CEIS/CNEP e sanções aplicáveis a empresas contratadas pelo poder público, e casos recentes como o da **ICE Cartões Especiais Ltda** mostram que empresas sancionadas continuam aparecendo em contratações públicas mesmo após penalidades formais. Embora o caso ICE não seja municipal na Paraíba, ele reforça a plausibilidade do padrão descrito aqui: bases sancionatórias oficiais nem sempre impedem automaticamente novas contratações ou empenhos.
+
 ## Fontes
 1. **CEIS (Cadastro de Empresas Inidôneas e Suspensas):** Portal da Transparência, dados atualizados mar/2026
 2. **TCE-PB (SAGRES):** Despesas municipais 2018-2026
 3. **Query Q65:** `resultados/q65_fornecedor_sancionado_ceis_cnep_recebendo_pagamento_municipa.csv`
+4. **CGU:** informações públicas sobre conflito de interesses e integridade em contratações: [página institucional](https://www.gov.br/cgu/pt-br/centrais-de-conteudo/campanhas/integridade-publica/conflito-de-interesses)
+5. **CGE-MS:** resolução sancionatória contra ICE Cartões Especiais Ltda: [PDF oficial](https://www.cge.ms.gov.br/wp-content/uploads/2025/02/Resolucao-CGE-no-125-2025-Penalidade-PAR-ICE-PSG-INOVVATI-SITE.pdf)

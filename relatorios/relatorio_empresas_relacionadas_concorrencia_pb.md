@@ -99,6 +99,14 @@ O ponto a verificar manualmente e se houve:
 - lances ou propostas com comportamento coordenado
 - sobreposicao de representantes, procuradores ou documentacao
 
+### 3.4. Contexto historico do grupo em Joao Pessoa
+
+O relatorio antigo sobre equipamentos medicos em Joao Pessoa foi absorvido aqui porque tratava do mesmo nucleo factual com base mais estreita. O que permanece relevante e:
+
+- o grupo `PRIME HOLDING` ja aparecia associado a certames de equipamentos medicos e diagnostico por imagem no municipio;
+- a `ALFA MED SISTEMAS MEDICOS LTDA` tambem aparece com presenca relevante em contratos municipais na Paraiba;
+- o valor investigativo do caso nao esta em afirmar "cartel", mas em documentar **participacao simultanea de controladas do mesmo grupo no mesmo mercado publico sensivel**.
+
 ---
 
 ## 4. Caso 2: Bossuet Wanderley, 411 - rede medica que compete e recebe em escala
