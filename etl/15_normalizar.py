@@ -242,6 +242,42 @@ def run():
         _exec(conn, "pb_conv: UPDATE cnpj_basico",
               "UPDATE pb_convenio SET cnpj_basico = LEFT(cnpj_convenente, 8) WHERE cnpj_basico IS NULL AND LENGTH(cnpj_convenente) = 14")
 
+        # pb_liquidacao_despesa: cnpj_basico (PJ; CPF pode vir mascarado)
+        _exec(conn, "pb_liq_desp: ADD cnpj_basico",
+              "ALTER TABLE pb_liquidacao_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_liq_desp: UPDATE cnpj_basico",
+              "UPDATE pb_liquidacao_despesa SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+
+        # pb_empenho_anulacao: cnpj_basico + nome_upper
+        _exec(conn, "pb_emp_anul: ADD cnpj_basico",
+              "ALTER TABLE pb_empenho_anulacao ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_emp_anul: UPDATE cnpj_basico",
+              "UPDATE pb_empenho_anulacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+        _exec(conn, "pb_emp_anul: ADD nome_upper",
+              "ALTER TABLE pb_empenho_anulacao ADD COLUMN IF NOT EXISTS nome_upper TEXT")
+        _exec(conn, "pb_emp_anul: UPDATE nome_upper",
+              "UPDATE pb_empenho_anulacao SET nome_upper = UPPER(TRIM(nome_credor)) WHERE nome_upper IS NULL AND nome_credor IS NOT NULL")
+
+        # pb_empenho_suplementacao: cnpj_basico + nome_upper
+        _exec(conn, "pb_emp_supl: ADD cnpj_basico",
+              "ALTER TABLE pb_empenho_suplementacao ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_emp_supl: UPDATE cnpj_basico",
+              "UPDATE pb_empenho_suplementacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+        _exec(conn, "pb_emp_supl: ADD nome_upper",
+              "ALTER TABLE pb_empenho_suplementacao ADD COLUMN IF NOT EXISTS nome_upper TEXT")
+        _exec(conn, "pb_emp_supl: UPDATE nome_upper",
+              "UPDATE pb_empenho_suplementacao SET nome_upper = UPPER(TRIM(nome_credor)) WHERE nome_upper IS NULL AND nome_credor IS NOT NULL")
+
+        # pb_diaria: cnpj_basico + nome_upper
+        _exec(conn, "pb_diaria: ADD cnpj_basico",
+              "ALTER TABLE pb_diaria ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
+        _exec(conn, "pb_diaria: UPDATE cnpj_basico",
+              "UPDATE pb_diaria SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+        _exec(conn, "pb_diaria: ADD nome_upper",
+              "ALTER TABLE pb_diaria ADD COLUMN IF NOT EXISTS nome_upper TEXT")
+        _exec(conn, "pb_diaria: UPDATE nome_upper",
+              "UPDATE pb_diaria SET nome_upper = UPPER(TRIM(nome_credor)) WHERE nome_upper IS NULL AND nome_credor IS NOT NULL")
+
         print("\n  === Fase 8: dados.pb.gov.br índices ===")
 
         _exec(conn, "idx pb_pag cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_pag_cnpj_basico ON pb_pagamento(cnpj_basico)", autocommit=True)
@@ -251,6 +287,13 @@ def run():
         _exec(conn, "idx pb_ctr cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_ctr_cnpj_basico ON pb_contrato(cnpj_basico)", autocommit=True)
         _exec(conn, "idx pb_saude cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_saude_cnpj_basico ON pb_saude(cnpj_basico)", autocommit=True)
         _exec(conn, "idx pb_conv cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_conv_cnpj_basico ON pb_convenio(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_liq_desp cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_liq_desp_cnpj_basico ON pb_liquidacao_despesa(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_emp_anul cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_anul_cnpj_basico ON pb_empenho_anulacao(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_emp_anul nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_anul_nome_upper ON pb_empenho_anulacao(nome_upper)", autocommit=True)
+        _exec(conn, "idx pb_emp_supl cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_supl_cnpj_basico ON pb_empenho_suplementacao(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_emp_supl nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_supl_nome_upper ON pb_empenho_suplementacao(nome_upper)", autocommit=True)
+        _exec(conn, "idx pb_diaria cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_diaria_cnpj_basico ON pb_diaria(cnpj_basico)", autocommit=True)
+        _exec(conn, "idx pb_diaria nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_diaria_nome_upper ON pb_diaria(nome_upper)", autocommit=True)
 
         print("\n  Normalização e índices concluídos.")
 

@@ -171,28 +171,14 @@ jobs:
       - name: Test download sources
         continue-on-error: true
         run: |
-          set +e
-          echo "=== Testing download sources ==="
+          set -e
           sudo systemctl restart tor 2>/dev/null || true
           systemctl is-active tor >/dev/null 2>&1 \
             && echo "  Tor service: ACTIVE" \
             || echo "  Tor service: INACTIVE"
-          curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/cpgf/202301" \
-            && echo "  Portal Transparencia: OK" \
-            || echo "  Portal Transparencia: BLOCKED (Tor fallback available)"
-          curl -sf -o /dev/null -m 10 "https://pncp.gov.br/api/consulta/v1/contratos?dataInicial=20240101&dataFinal=20240107&pagina=1&tamanhoPagina=1" \
-            && echo "  PNCP API: OK" \
-            || echo "  PNCP API: BLOCKED"
-          curl -sf -o /dev/null -m 10 "https://dados.pb.gov.br/getcsv?nome=empenho_original&exercicio=2025&mes=01" \
-            && echo "  Dados PB: OK" \
-            || echo "  Dados PB: BLOCKED"
-          curl -sf -o /dev/null -m 15 "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2024.zip" \
-            && echo "  TSE CDN: OK" \
-            || echo "  TSE CDN: BLOCKED"
-          curl -sf -o /dev/null -m 10 "https://portaldatransparencia.gov.br/download-de-dados/novo-bolsa-familia/202402" \
-            && echo "  Novo Bolsa Familia: OK" \
-            || echo "  Novo Bolsa Familia: BLOCKED (Tor fallback available)"
-          echo "=== Done ==="
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          python -m etl.probe_sources
 
       # ── Full ETL (first run or etl_phase=all) ──
       - name: "ETL: Full pipeline"

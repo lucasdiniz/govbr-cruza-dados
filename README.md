@@ -10,7 +10,7 @@ Carrega ~100GB de dados de **18+ fontes publicas** em um banco PostgreSQL local 
 
 - **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
 - **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
-- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude e convenios estaduais PB (~7.8M registros)
+- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude, convenios e 11 datasets auxiliares estaduais PB
 - **PNCP** - licitacoes, contratos e itens publicos
 - **Emendas Parlamentares** - Tesouro + TransfereGov
 - **CPGF** - cartao corporativo do governo

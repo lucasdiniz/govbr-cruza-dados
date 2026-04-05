@@ -34,7 +34,7 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 
 ### ETL dados.pb.gov.br (12 datasets novos)
 21. [ ] **Download todos os datasets** — já implementado em `download_dados_pb()` no `etl/00_download.py`. Baixa 13 datasets mensais + 2 anuais via API `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`. Nota: `Diarias` case-sensitive (D maiúsculo).
-22. [ ] **ETL carga no banco** — criar tabelas para novos datasets (pagamento_anulacao, liquidacao, dotacao, aditivos, etc.)
+22. [x] **ETL carga no banco** — schema, loaders e índices implementados para `pagamento_anulacao`, `liquidacaodespesa`, `liquidacaodespesadescontos`, `empenho_anulacao`, `empenho_suplementacao`, `dotacao`, `liquidacao_cge`, `aditivos_contrato`, `aditivos_convenio`, `diarias` e `unidade_gestora`. Validado em schema temporário no banco local com carga real de 2025.
 23. [ ] **Queries de cruzamento** — novas queries usando dados estaduais granulares
 
 ### Deploy Azure
@@ -51,7 +51,7 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 2. **Re-deploy** com o código atualizado — `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
 3. **Validar TSE e Bolsa Família na VM** — confirmar que os ZIPs/CSVs foram baixados e que `etl/16_tse.py`, `etl/17_bolsa_familia.py` e `etl/18_tse_prestacao.py` popularam as tabelas
 4. **Rodar `etl.verify` e contagens-chave** após o deploy
-5. Depois: ETL carga dos 12 novos datasets dados.pb.gov.br (item 22)
+5. Depois: novas queries usando os datasets adicionais de dados.pb.gov.br (item 23)
 
 ### Deploy atual na VM
 - **Run**: 23994305748 (disparado ~04:40 UTC 2026-04-05, self-hosted runner)
@@ -78,7 +78,10 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - `etl/08_renuncias.py` — fix \d (glob acento ainda pendente)
 - `etl/09_complementar.py` — BNDES staging dinâmico, fix \d
 - `etl/15_normalizar.py` — índices movidos de 11_indices.sql
-- `etl/20_dados_pb.py` — download removido (centralizado no 00_download)
+- `etl/20_dados_pb.py` — download removido (centralizado no 00_download), loaders ampliados para 11 datasets adicionais
+- `sql/20_schema_dados_pb.sql` — schema ampliado para 16 tabelas `pb_*`
+- `etl/15_normalizar.py` — normalização ampliada para os novos blocos de dados.pb com CNPJ/nome
+- `etl/probe_sources.py` — novo probe completo das fontes remotas usadas no ETL
 - `sql/03_schema_pncp.sql` — DECIMAL(15,2) → DECIMAL(20,2)
 - `sql/11_indices.sql` — índices dependentes de normalização removidos
 - `.github/workflows/deploy.yml` — self-hosted runner, restart do Tor antes do ETL, smoke test com TSE CDN e Novo Bolsa Família
