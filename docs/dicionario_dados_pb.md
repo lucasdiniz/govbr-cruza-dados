@@ -124,13 +124,22 @@ API: `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`
 | dispensa_licitacao | DADOS-PB - Motivo Dispensa | Justificativas de dispensa |
 | convenios | SIGA - Convênios Estado-Municípios | Convênios (já temos pb_convenio) |
 
-## Datasets ainda não descobertos (nome da API)
+### 7. pagamento_anulacao (SIAF - Anulações de Autorização de Pagamento)
+- **Colunas**: EXERCICIO, CODIGO_UNIDADE_GESTORA, NUMERO_EMPENHO, NUMERO_GUIA_DEVOLUCAO, NUMERO_AUTORIZACAO_PAGAMENTO, DATA_DOCUMENTO, VALOR_DOCUMENTO, CODIGO_TIPO_DOCUMENTO, DESCRICAO_TIPO_DOCUMENTO
+- **Cruzamentos**: NUMERO_EMPENHO → empenho_original. NUMERO_AUTORIZACAO_PAGAMENTO → pagamento.
 
-- Despesas - Autorizações de Pagamento (SIAF)
-- Despesas - Anulações de Autorização de Pagamento (SIAF)
-- Despesa - Descontos Pagamento (SIAF)
-- Despesa - Liquidação (SIAF)
-- Unidade Gestora (DADOS-PB)
+### 8. liquidacaodespesa (SIAF - Liquidação de Despesa)
+- **Colunas**: NU_EXERCICIO, DATA_MOV, CD_ORGAO, NU_EMPENHO, DOCUMENTO, DOCUMENTO_ORIGEM, ANO_DOC_ORIGEM_LD, TIPO_LIQUIDACAO, CD_CREDOR, CPF_CNPJ, TIPO_DOC_FISCAL, NUM_NOTAFISCAL, DATA_NF, CD_INSC_RP, ANO_INSC_RP, CD_ORGAO_EXTINTO, VALOR
+- **Cruzamentos**: CPF_CNPJ × empresa/socio. NU_EMPENHO → empenho_original. Ciclo completo: empenho→liquidação→pagamento.
+
+### 9. liquidacaodespesadescontos (SIAF - Descontos de Pagamento)
+- **Colunas**: Exercicio, CD_Orgao, Num_Empenho, Num_Doc, DAT_PAGAMENTO, TP_PG, Cod_Desconto, Desconto, COD_ORGAO_PGT, VL_Desconto
+- **Cruzamentos**: Num_Empenho → empenho_original.
+
+### 10. unidade_gestora_dadospb (DADOS-PB - Unidade Gestora)
+- **Granularidade**: anual (sem parâmetro mes)
+- **Colunas**: EXERCICIO, CODIGO_UNIDADE_GESTORA, SIGLA_UNIDADE_GESTORA, NOME_UNIDADE_GESTORA, TIPO_ADMINISTRACAO_UNIDADE_GESTORA
+- **Uso**: Tabela dimensão para decodificar CODIGO_UNIDADE_GESTORA nos outros datasets.
 
 ## Tabelas de domínio (referência)
 
