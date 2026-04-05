@@ -6,8 +6,21 @@ Fontes:
   - transferegov_favorecidos.csv (delimitador ;, com header, quoted)
 """
 
+from pathlib import Path
+
 from etl.config import DATA_DIR, RFB_ENCODING
 from etl.db import get_conn, table_count
+
+
+EMENDAS_DIR = DATA_DIR / "emendas"
+
+
+def _resolve_input(*names: str) -> Path | None:
+    for name in names:
+        for candidate in (EMENDAS_DIR / name, DATA_DIR / name):
+            if candidate.exists():
+                return candidate
+    return None
 
 
 def _copy_csv_with_header(conn, filepath, table, encoding="utf-8"):
@@ -23,8 +36,8 @@ def _copy_csv_with_header(conn, filepath, table, encoding="utf-8"):
 
 def load_emendas_tesouro(conn):
     """Carrega emendas_tesouro.csv → emenda_tesouro."""
-    filepath = DATA_DIR / "emendas_tesouro.csv"
-    if not filepath.exists():
+    filepath = _resolve_input("emendas_tesouro.csv")
+    if filepath is None:
         print("    AVISO: emendas_tesouro.csv não encontrado.")
         return
 
@@ -77,8 +90,8 @@ def load_emendas_tesouro(conn):
 
 def load_convenios(conn):
     """Carrega transferegov_convenios.csv → emenda_convenio."""
-    filepath = DATA_DIR / "transferegov_convenios.csv"
-    if not filepath.exists():
+    filepath = _resolve_input("transferegov_convenios.csv")
+    if filepath is None:
         print("    AVISO: transferegov_convenios.csv não encontrado.")
         return
 
@@ -126,8 +139,8 @@ def load_convenios(conn):
 
 def load_favorecidos(conn):
     """Carrega transferegov_favorecidos.csv → emenda_favorecido."""
-    filepath = DATA_DIR / "transferegov_favorecidos.csv"
-    if not filepath.exists():
+    filepath = _resolve_input("transferegov_favorecidos.csv")
+    if filepath is None:
         print("    AVISO: transferegov_favorecidos.csv não encontrado.")
         return
 
