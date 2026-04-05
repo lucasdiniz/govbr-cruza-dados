@@ -35,14 +35,14 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 ### ETL dados.pb.gov.br (12 datasets novos)
 21. [ ] **Download todos os datasets** — já implementado em `download_dados_pb()` no `etl/00_download.py`. Baixa 13 datasets mensais + 2 anuais via API `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`. Nota: `Diarias` case-sensitive (D maiúsculo).
 22. [x] **ETL carga no banco** — 16 tabelas pb_* carregadas localmente (~14.4M registros). Fix: linhas curtas (quebra de linha em campos texto) agora ignoradas em `_staging_load_from_data`.
-23. [ ] **Queries de cruzamento (Q101-Q111)** — novos cruzamentos com datasets pb_* ampliados:
+23. [x] **Queries de cruzamento (Q101-Q111)** — novos cruzamentos com datasets pb_* ampliados:
     - Q101: Aditivos abusivos — contratos cujo total aditivo supera % do valor original
-    - Q102: Fornecedor sancionado recebendo do estado — pb_pagamento × ceis/cnep
+    - Q102: Fornecedor sancionado recebendo do estado — pb_empenho × ceis/cnep
     - Q103: Fornecedor com dívida ativa PGFN recebendo do estado
     - Q104: Duplo pagamento — mesma NF em duas liquidações diferentes
     - Q105: Ciclo empenho→anulação→re-empenho no mesmo credor
     - Q106: Diárias estaduais × viagens federais — mesmo período/destino
-    - Q107: Fornecedor PB que doa para campanha TSE (ciclo contrato→doação)
+    - Q107: Fornecedor PB que doa para campanha TSE (ciclo empenho→doação)
     - Q108: Conveniada com dívida ativa federal
     - Q109: Servidor estadual sócio de fornecedor do estado
     - Q110: Dotação vs execução — empenho/pagamento acima da dotação
@@ -55,27 +55,53 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 19. [ ] **Corrigir agregacao monetaria da Q17**
 20. [ ] **Endurecer relatorio do ciclo politico-financeiro**
 
-## Handoff técnico sessão 33
+## Handoff técnico sessão 34
+
+### O que foi feito
+1. **ETL dados.pb completo localmente** — 16 tabelas pb_* com ~14.4M registros carregadas. Fix: linhas curtas em `_staging_load_from_data` (commit 48d0984).
+2. **Q101-Q111 escritas** em `queries/fraude_dados_pb_novos.sql` (commit 510c2cb).
+3. **Normalização rodando** — `python -m etl.15_normalizar` em execução no banco local. Estava bloqueada por query antiga de 14h no `socio`, cancelada manualmente. Agora está no UPDATE do pb_pagamento.
+
+### Validação das queries (banco local)
+| Query | Status | Observação |
+|-------|--------|------------|
+| Q101 aditivos | OK | Resultados fortes: UNIPLACAS R$10 → R$1.5B aditivos |
+| Q102 sancionado CEIS | OK | Reescrita para `pb_empenho`; 52 grupos encontrados |
+| Q103 PGFN | OK | Reescrita para `pb_empenho`; 2757 grupos encontrados |
+| Q104 NF dupla | OK | Encontra NFs duplicadas. Filtro `!~ '^0+$'` adicionado para remover NF zerada |
+| Q105 ciclo anulação | OK | Funciona, PBPREV domina (esperado) |
+| Q106 diárias × viagens | OK | Detecta sobreposição por nome. Funciona! |
+| Q107 doador TSE | OK | Reescrita para `pb_empenho`; 1 caso encontrado |
+| Q108 convênio PGFN | OK | Bayeux, Campina Grande com dívidas bilionárias |
+| Q109 servidor sócio | OK | Query reescrita sem `LATERAL`; 577 grupos encontrados |
+| Q110 suplementações | OK | Reformulada: concentração de suplementações por credor |
+| Q111 view perfil | OK | Alias `tem_cnep` corrigido; MV criada e `REFRESH` executado (18.306 linhas) |
+
+### Descoberta crítica: pb_pagamento tem apenas 1 CNPJ PJ
+- `pb_pagamento` tem 3.9M registros mas **apenas 1 CNPJ de PJ** (02221962 = secretarias do governo). Todo o resto são PF (CPF).
+- **pb_empenho tem 18K CNPJs PJ distintos** — é a tabela correta para cruzamentos PJ.
+- **Q102, Q103, Q107 foram reescritas** para usar `pb_empenho` em vez de `pb_pagamento` no match por CNPJ.
+- pb_pagamento ainda é útil para matches PF (CPF completo, 11 dígitos).
+
+### Correções de schema descobertas
+- **PGFN `cpf_cnpj`** é formatado com pontos/traço (ex: `08.064.568/0001-88`). `cpf_cnpj_norm` é 6 dígitos (CPF parcial), NÃO cnpj_basico. Precisa `REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g')` para extrair dígitos. CTE `pgfn_pj` já implementada em Q103/Q108.
+- **CEIS/CNEP `cpf_cnpj_norm`** é CNPJ completo 14 dígitos. Match via `LEFT(cpf_cnpj_norm, 8)`. `tipo_pessoa='J'` para filtrar PJ.
 
 ### Próximos passos (ordem sugerida)
-1. **Resolver bloqueio Tor** para Sanções/SIAPE/Bolsa Família — reconfigurar Tor na VM ou aceitar cache existente onde fizer sentido
-2. **Re-deploy** com o código atualizado — `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
-3. **Validar TSE e Bolsa Família na VM** — confirmar que os ZIPs/CSVs foram baixados e que `etl/16_tse.py`, `etl/17_bolsa_familia.py` e `etl/18_tse_prestacao.py` popularam as tabelas
-4. **Rodar `etl.verify` e contagens-chave** após o deploy
-5. Depois: novas queries usando os datasets adicionais de dados.pb.gov.br (item 23)
+1. **Produzir relatórios dos novos datasets PB** — Q101/Q102/Q103/Q104/Q105/Q108/Q109/Q110/Q111 já estão operacionais
+2. **Formalizar a exportação/runner** para `queries/fraude_dados_pb_novos.sql` no fluxo padrão de `etl.run_queries`
+3. **Re-deploy VM** — run 24002741785 usa código antigo (headSha 296981b). Após terminar, disparar novo com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+4. Bugs infra pendentes: Sanções/SIAPE bloqueio Tor (#26, #27)
 
-### Deploy atual na VM
-- **Run**: 23994305748 (disparado ~04:40 UTC 2026-04-05, self-hosted runner)
-- **Status**: in_progress, ETL na fase 17 (normalização TCE-PB). Rodando há ~9h.
-- **Nota**: esse deploy usou código ANTES dos fixes (commits 811c1ee, 64c497c). Vai falhar em PNCP (overflow), BNDES (colunas), e índices (ordem). Os dados baixados na VM estão OK — só o código do ETL precisa atualizar.
-- **Para re-deploy**: esperar este terminar (ou cancelar com `gh run cancel 23994305748`), depois disparar novo com código atualizado.
+### Deploy VM
+- **Run atual**: 24002741785 — headSha antigo 296981b (não inclui commits desta sessão)
+- **Código atualizado no main**: commits 48d0984 (fix dados_pb short rows) e 510c2cb (Q101-Q111)
+- **Fixes locais adicionais ainda não publicados**: reescritas Q102/Q103/Q107/Q109, índices novos em `sql/19_indices_queries.sql`, correção da Q111 e `REFRESH` local da MV
 
 ### SSH na VM Azure
 ```bash
 cp /c/Users/lucas/.ssh/azure_vm.txt /tmp/azure_vm_key && chmod 600 /tmp/azure_vm_key
 ssh -i /tmp/azure_vm_key govbr@52.162.207.186
-# dados em /home/govbr/data, projeto em /home/govbr/govbr-project, venv em venv/
-# log do ETL: tail -f /tmp/etl.log
 ```
 
 ### Deploy: workflows GitHub Actions
@@ -83,55 +109,45 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - **Deploy to Azure VM** (`deploy.yml`): ETL completo com live logs, sem limite de tempo
 - Secrets no repo: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`
 
-### Arquivos-chave modificados nesta sessão
-- `etl/00_download.py` — renomeação RFB, download TSE, download Bolsa Família, validação pós-download realinhada, download dados.pb.gov.br
-- `etl/07_pgfn.py` — fix \d (PGFN glob ainda pendente)
-- `etl/08_renuncias.py` — fix \d (glob acento ainda pendente)
-- `etl/09_complementar.py` — BNDES staging dinâmico, fix \d
-- `etl/15_normalizar.py` — índices movidos de 11_indices.sql
-- `etl/20_dados_pb.py` — download removido (centralizado no 00_download), loaders ampliados para 11 datasets adicionais
-- `sql/20_schema_dados_pb.sql` — schema ampliado para 16 tabelas `pb_*`
-- `etl/15_normalizar.py` — normalização ampliada para os novos blocos de dados.pb com CNPJ/nome
-- `etl/probe_sources.py` — novo probe completo das fontes remotas usadas no ETL
-- `sql/03_schema_pncp.sql` — DECIMAL(15,2) → DECIMAL(20,2)
-- `sql/11_indices.sql` — índices dependentes de normalização removidos
-- `.github/workflows/deploy.yml` — self-hosted runner, restart do Tor antes do ETL, smoke test com TSE CDN e Novo Bolsa Família
-- `.github/workflows/setup-runner.yml` — novo, automatiza instalação do runner
-
-### Commits desta sessão (10)
+### Commits sessão 34
 ```
-67674ba docs: TODO com diagnóstico completo de bugs de download/ETL por fonte
-64c497c fix: renomeia arquivos RFB extraídos (formato novo mainframe → .csv)
-811c1ee fix: 4 bugs ETL — PNCP overflow, BNDES colunas, indices ordem, \d warnings
-74aa780 docs: atualiza README com deploy 1-click via GitHub Actions
-34ce6c4 feat: setup-runner.yml automatiza instalação do self-hosted runner
-b0266e6 refactor: deploy via SSH + ETL desacoplado (nohup) na VM
-e0cec55 refactor: deploy.yml para self-hosted runner na VM Azure
-aea12d6 refactor: centraliza download no 00_download, remove do 20_dados_pb
-ada934c feat: adiciona 10 novos datasets dados.pb.gov.br ao download
-76768fd docs: completa dicionário dados.pb.gov.br — 18 datasets mapeados
+48d0984 fix: skip short rows in dados_pb ETL (multiline text fields)
+510c2cb feat: Q101-Q111 queries para novos datasets dados.pb
 ```
 
 ## Estado do banco local
-- **~336M registros** em 15+ fontes. DB size: 205 GB. C: 91GB livres.
+- **~350M registros** em 16+ fontes (inclui 14.4M novos dados.pb). DB size: ~210 GB.
 - PostgreSQL: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos: G:\govbr-dados-brutos (HDD)
-- 95 queries em queries/*.sql, 32 relatorios em relatorios/
+- 106 queries em queries/*.sql, 32 relatorios em relatorios/
+- **Normalização concluída para o bloco pb_*** — colunas `cnpj_basico`/`nome_upper` já disponíveis nas tabelas usadas por Q102-Q111
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas e validadas (código, não executadas no banco)
-- ETL completo local: 15+ fontes, normalizacao, indices
+- ETL completo local: 16+ fontes, normalizacao, indices
 - 7/7 MVs + 2 views criadas. 32 relatorios. 14/14 enriquecimentos.
 
 ## Log recente
 
+### 2026-04-05 (sessao 34)
+- ETL dados.pb: 16 tabelas pb_* carregadas localmente (~14.4M registros)
+- Fix: linhas curtas em _staging_load_from_data (quebra de linha em campos texto)
+- Q101-Q111 implementadas em queries/fraude_dados_pb_novos.sql
+- Validação: Q101, Q104, Q105, Q106, Q108, Q110 funcionam. Q102/Q103/Q107 precisam usar pb_empenho (pb_pagamento tem só 1 CNPJ PJ)
+- Descoberta: pb_pagamento = quase 100% PF; pb_empenho = 18K CNPJs PJ
+- Normalização rodando (foi desbloqueada ao cancelar query PNCP de 14h)
+
+### 2026-04-05 (continuação sessao 34)
+- Q102, Q103 e Q107 reescritas para usar `pb_empenho` em vez de `pb_pagamento`
+- Índices adicionados em `sql/19_indices_queries.sql` para `pb_empenho`, CEIS/CNEP, PGFN, TSE e `socio(tipo_socio, nome_upper, cnpj_basico)`
+- Validação local: Q102 = 52 grupos, Q103 = 2757 grupos, Q107 = 1 caso
+- Q109 reescrita para remover `JOIN LATERAL` explosivo; agora retorna 577 grupos em ~12s
+- Q111 corrigida (`tem_cnep`), MV criada com sucesso e `REFRESH MATERIALIZED VIEW` executado: 18.306 linhas
+
 ### 2026-04-05 (sessao 33)
-- Deploy reescrito: setup-runner.yml (automatiza runner) + deploy.yml (self-hosted, live logs)
-- README atualizado com fluxo de deploy 1-click
+- Deploy reescrito: setup-runner.yml + deploy.yml (self-hosted, live logs)
 - Diagnosticados 11 bugs no ETL da VM (6 corrigidos, 6 pendentes)
 - Fixes: PNCP overflow, BNDES colunas, indices ordem, \d warnings, validação downloads, RFB renomeação
-- Pendentes: PGFN nomes, Sancões/SIAPE bloqueio Tor, TSE/BF não automatizados, Renúncias acento
-- Causa raiz dos "dados faltando": RFB mudou nomes dentro dos ZIPs, Portal Transparência bloqueia IP Azure
 
 ### 2026-04-05 (sessao 32)
 - Relatorio `ciclo_politico_financeiro_exploratorio` produzido
@@ -142,12 +158,3 @@ ada934c feat: adiciona 10 novos datasets dados.pb.gov.br ao download
 
 ### 2026-04-04 (sessao 30)
 - Bug PNCP 204 + urlopen SSL corrigidos. Benchmark VM: ~2.3 min/semana
-
-### 2026-04-04 (sessao 29)
-- Q100, deploy workflow, Tor fallback
-
-### 2026-04-04 (sessao 28)
-- 3 relatorios, Q99 fenix nacional
-
-### 2026-04-03 (sessao 27)
-- 7 queries pncp_item (Q92-Q98), Q55 fix

@@ -134,3 +134,37 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_empresa_cnpj_text_razao
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contratacao_uf_valor_numero
     ON pncp_contratacao (uf, valor_estimado DESC, numero_controle_pncp)
     WHERE valor_estimado > 50000;
+
+-- =============================================
+-- Q102/Q103/Q107/Q111: cruzamentos dos novos dados PB com sancoes/PGFN/TSE
+-- =============================================
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_emp_cnpj_data_valor
+    ON pb_empenho (cnpj_basico, data_empenho)
+    INCLUDE (valor_empenho, exercicio)
+    WHERE cnpj_basico IS NOT NULL
+      AND valor_empenho > 0;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ceis_cnpj_basico_j
+    ON ceis_sancao (LEFT(cpf_cnpj_norm, 8))
+    WHERE tipo_pessoa = 'J'
+      AND cpf_cnpj_norm IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cnep_cnpj_basico_j
+    ON cnep_sancao (LEFT(cpf_cnpj_norm, 8))
+    WHERE tipo_pessoa = 'J'
+      AND cpf_cnpj_norm IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_cnpj_basico_digits_j
+    ON pgfn_divida (LEFT(REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g'), 8))
+    WHERE tipo_pessoa LIKE '%jur%'
+      AND cpf_cnpj IS NOT NULL;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tse_receita_uf_doador_left8
+    ON tse_receita_candidato (sg_uf, LEFT(cpf_cnpj_doador, 8))
+    WHERE cpf_cnpj_doador IS NOT NULL
+      AND LENGTH(cpf_cnpj_doador) >= 14;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_socio_tipo_nome_upper_cnpj
+    ON socio (tipo_socio, UPPER(TRIM(nome)), cnpj_basico)
+    WHERE nome IS NOT NULL;

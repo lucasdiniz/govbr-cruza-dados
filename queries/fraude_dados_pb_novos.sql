@@ -37,15 +37,15 @@ WHERE c.valor_original > 0
   AND agg.total_aditivos > c.valor_original * 0.5
 ORDER BY agg.total_aditivos DESC;
 
--- Q102: Fornecedor sancionado (CEIS/CNEP) recebendo pagamentos do estado da PB
--- Empresa com sancao federal vigente que continua recebendo do governo estadual.
+-- Q102: Fornecedor sancionado (CEIS/CNEP) recebendo empenhos do estado da PB
+-- Empresa com sancao federal vigente que continua sendo contratada/empenhada pelo estado.
 -- Usa cnpj_basico para match (8 primeiros digitos).
-SELECT pp.cnpj_basico,
+SELECT pe.cnpj_basico,
        e.razao_social,
-       SUM(pp.valor_pagamento) AS total_recebido,
-       COUNT(*) AS qtd_pagamentos,
-       MIN(pp.data_pagamento) AS primeiro_pagamento,
-       MAX(pp.data_pagamento) AS ultimo_pagamento,
+       SUM(pe.valor_empenho) AS total_empenhado,
+       COUNT(*) AS qtd_empenhos,
+       MIN(pe.data_empenho) AS primeiro_empenho,
+       MAX(pe.data_empenho) AS ultimo_empenho,
        s.nome_sancionado,
        s.categoria_sancao,
        s.orgao_sancionador,
@@ -53,24 +53,24 @@ SELECT pp.cnpj_basico,
        s.dt_final_sancao,
        s.fundamentacao_legal,
        'CEIS' AS origem_sancao
-FROM pb_pagamento pp
-JOIN empresa e ON e.cnpj_basico = pp.cnpj_basico
-JOIN ceis_sancao s ON LEFT(s.cpf_cnpj_norm, 8) = pp.cnpj_basico AND s.tipo_pessoa = 'J'
-WHERE pp.cnpj_basico IS NOT NULL
-  AND pp.valor_pagamento > 0
-  AND (s.dt_final_sancao IS NULL OR s.dt_final_sancao >= pp.data_pagamento)
-GROUP BY pp.cnpj_basico, e.razao_social,
+FROM pb_empenho pe
+JOIN empresa e ON e.cnpj_basico = pe.cnpj_basico
+JOIN ceis_sancao s ON LEFT(s.cpf_cnpj_norm, 8) = pe.cnpj_basico AND s.tipo_pessoa = 'J'
+WHERE pe.cnpj_basico IS NOT NULL
+  AND pe.valor_empenho > 0
+  AND (s.dt_final_sancao IS NULL OR s.dt_final_sancao >= pe.data_empenho)
+GROUP BY pe.cnpj_basico, e.razao_social,
          s.nome_sancionado, s.categoria_sancao, s.orgao_sancionador,
          s.dt_inicio_sancao, s.dt_final_sancao, s.fundamentacao_legal
 
 UNION ALL
 
-SELECT pp.cnpj_basico,
+SELECT pe.cnpj_basico,
        e.razao_social,
-       SUM(pp.valor_pagamento),
+       SUM(pe.valor_empenho),
        COUNT(*),
-       MIN(pp.data_pagamento),
-       MAX(pp.data_pagamento),
+       MIN(pe.data_empenho),
+       MAX(pe.data_empenho),
        s.nome_sancionado,
        s.categoria_sancao,
        s.orgao_sancionador,
@@ -78,19 +78,19 @@ SELECT pp.cnpj_basico,
        s.dt_final_sancao,
        s.fundamentacao_legal,
        'CNEP'
-FROM pb_pagamento pp
-JOIN empresa e ON e.cnpj_basico = pp.cnpj_basico
-JOIN cnep_sancao s ON LEFT(s.cpf_cnpj_norm, 8) = pp.cnpj_basico AND s.tipo_pessoa = 'J'
-WHERE pp.cnpj_basico IS NOT NULL
-  AND pp.valor_pagamento > 0
-  AND (s.dt_final_sancao IS NULL OR s.dt_final_sancao >= pp.data_pagamento)
-GROUP BY pp.cnpj_basico, e.razao_social,
+FROM pb_empenho pe
+JOIN empresa e ON e.cnpj_basico = pe.cnpj_basico
+JOIN cnep_sancao s ON LEFT(s.cpf_cnpj_norm, 8) = pe.cnpj_basico AND s.tipo_pessoa = 'J'
+WHERE pe.cnpj_basico IS NOT NULL
+  AND pe.valor_empenho > 0
+  AND (s.dt_final_sancao IS NULL OR s.dt_final_sancao >= pe.data_empenho)
+GROUP BY pe.cnpj_basico, e.razao_social,
          s.nome_sancionado, s.categoria_sancao, s.orgao_sancionador,
          s.dt_inicio_sancao, s.dt_final_sancao, s.fundamentacao_legal
-ORDER BY total_recebido DESC;
+ORDER BY total_empenhado DESC;
 
 -- Q103: Fornecedor com divida ativa na PGFN recebendo do estado
--- Empresa devedora da Uniao que recebe pagamentos do governo da PB.
+-- Empresa devedora da Uniao que recebe empenhos do governo da PB.
 -- Pode indicar laranja, empresa de fachada, ou irregularidade na habilitacao.
 -- Usa CTE para extrair cnpj_basico da PGFN uma unica vez.
 WITH pgfn_pj AS (
@@ -103,22 +103,22 @@ WITH pgfn_pj AS (
     WHERE tipo_pessoa LIKE '%jur%'
     GROUP BY LEFT(REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g'), 8)
 )
-SELECT pp.cnpj_basico,
+SELECT pe.cnpj_basico,
        e.razao_social,
-       SUM(pp.valor_pagamento) AS total_recebido_pb,
-       COUNT(*) AS qtd_pagamentos,
+       SUM(pe.valor_empenho) AS total_empenhado_pb,
+       COUNT(*) AS qtd_empenhos,
        pgfn.qtd_inscricoes,
        pgfn.total_divida,
        pgfn.tipos_divida,
        pgfn.situacoes
-FROM pb_pagamento pp
-JOIN empresa e ON e.cnpj_basico = pp.cnpj_basico
-JOIN pgfn_pj pgfn ON pgfn.cnpj_basico = pp.cnpj_basico
-WHERE pp.cnpj_basico IS NOT NULL
-  AND pp.valor_pagamento > 0
-GROUP BY pp.cnpj_basico, e.razao_social,
+FROM pb_empenho pe
+JOIN empresa e ON e.cnpj_basico = pe.cnpj_basico
+JOIN pgfn_pj pgfn ON pgfn.cnpj_basico = pe.cnpj_basico
+WHERE pe.cnpj_basico IS NOT NULL
+  AND pe.valor_empenho > 0
+GROUP BY pe.cnpj_basico, e.razao_social,
          pgfn.qtd_inscricoes, pgfn.total_divida, pgfn.tipos_divida, pgfn.situacoes
-HAVING SUM(pp.valor_pagamento) > 10000
+HAVING SUM(pe.valor_empenho) > 10000
 ORDER BY pgfn.total_divida DESC;
 
 -- Q104: Duplo pagamento — mesma nota fiscal liquidada mais de uma vez
@@ -200,32 +200,33 @@ ORDER BY d.valor_empenho + v.valor_diarias DESC;
 -- Q107: Fornecedor PB que doa para campanha TSE (ciclo contrato > doacao)
 -- Empresa que recebe pagamentos do estado e tambem doou para campanhas.
 -- Indica possivel retorno politico: contrato estadual → doacao eleitoral.
-SELECT pp.cnpj_basico,
+SELECT pe.cnpj_basico,
        e.razao_social,
-       SUM(pp.valor_pagamento) AS total_recebido_estado,
-       COUNT(DISTINCT pp.exercicio) AS anos_recebimento,
+       SUM(pe.valor_empenho) AS total_empenhado_estado,
+       COUNT(DISTINCT pe.exercicio) AS anos_empenho,
        tse.qtd_doacoes,
        tse.total_doado,
        tse.candidatos_beneficiados,
        tse.partidos
-FROM pb_pagamento pp
-JOIN empresa e ON e.cnpj_basico = pp.cnpj_basico
+FROM pb_empenho pe
+JOIN empresa e ON e.cnpj_basico = pe.cnpj_basico
 JOIN LATERAL (
     SELECT COUNT(*) AS qtd_doacoes,
            SUM(r.vr_receita) AS total_doado,
            STRING_AGG(DISTINCT r.nm_candidato, '; ') AS candidatos_beneficiados,
            STRING_AGG(DISTINCT r.sg_partido, ', ') AS partidos
     FROM tse_receita_candidato r
-    WHERE LEFT(r.cpf_cnpj_doador, 8) = pp.cnpj_basico
+    WHERE LEFT(r.cpf_cnpj_doador, 8) = pe.cnpj_basico
+      AND LENGTH(r.cpf_cnpj_doador) >= 14
       AND r.sg_uf = 'PB'
 ) tse ON tse.qtd_doacoes > 0
-WHERE pp.cnpj_basico IS NOT NULL
-  AND pp.valor_pagamento > 0
-GROUP BY pp.cnpj_basico, e.razao_social,
+WHERE pe.cnpj_basico IS NOT NULL
+  AND pe.valor_empenho > 0
+GROUP BY pe.cnpj_basico, e.razao_social,
          tse.qtd_doacoes, tse.total_doado,
          tse.candidatos_beneficiados, tse.partidos
-HAVING SUM(pp.valor_pagamento) > 50000
-ORDER BY SUM(pp.valor_pagamento) DESC;
+HAVING SUM(pe.valor_empenho) > 50000
+ORDER BY SUM(pe.valor_empenho) DESC;
 
 -- Q108: Convenio estadual com entidade devedora da Uniao (PGFN)
 -- Entidade convenente que tem divida ativa federal — risco de desvio.
@@ -259,6 +260,15 @@ ORDER BY pgfn.total_divida DESC;
 -- Q109: Servidor estadual (credor PF) e socio de empresa que tambem fornece ao estado
 -- Similar a Q78, mas usando pb_diaria (que tem nome do servidor recebendo diaria)
 -- cruzado com socio → empresa → pb_empenho.
+WITH emp_agg AS (
+    SELECT pe.cnpj_basico,
+           SUM(pe.valor_empenho) AS total_empenhado_empresa,
+           COUNT(*) AS qtd_empenhos_empresa
+    FROM pb_empenho pe
+    WHERE pe.cnpj_basico IS NOT NULL
+      AND pe.valor_empenho > 0
+    GROUP BY pe.cnpj_basico
+)
 SELECT d.nome_credor AS nome_servidor,
        d.cpfcnpj_credor AS cpf_servidor,
        COUNT(DISTINCT d.numero_empenho) AS qtd_diarias,
@@ -275,12 +285,7 @@ JOIN socio s ON d.nome_upper = UPPER(TRIM(s.nome))
     AND d.nome_upper IS NOT NULL
     AND LENGTH(d.nome_upper) > 5
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN LATERAL (
-    SELECT SUM(pe.valor_empenho) AS total_empenhado_empresa,
-           COUNT(*) AS qtd_empenhos_empresa
-    FROM pb_empenho pe
-    WHERE pe.cnpj_basico = e.cnpj_basico
-) emp_agg ON emp_agg.total_empenhado_empresa > 0
+JOIN emp_agg ON emp_agg.cnpj_basico = e.cnpj_basico
 GROUP BY d.nome_credor, d.cpfcnpj_credor,
          s.qualificacao, e.razao_social, e.cnpj_basico, e.capital_social,
          emp_agg.total_empenhado_empresa, emp_agg.qtd_empenhos_empresa
@@ -346,7 +351,7 @@ SELECT e.cnpj_basico,
        COALESCE(adi.valor_aditivos, 0) AS valor_aditivos,
        -- Sancoes
        COALESCE(san.tem_ceis, FALSE) AS tem_ceis,
-       COALESCE(san.tem_cnep, FALSE) AS tem_cnep,
+       COALESCE(san_cnep.tem_cnep, FALSE) AS tem_cnep,
        -- Divida PGFN
        COALESCE(pgfn.total_divida, 0) AS divida_pgfn,
        COALESCE(pgfn.qtd_inscricoes_pgfn, 0) AS qtd_inscricoes_pgfn,
@@ -355,7 +360,7 @@ SELECT e.cnpj_basico,
        COALESCE(tse.qtd_doacoes_tse, 0) AS qtd_doacoes_tse,
        -- Score de risco (quanto mais flags, maior)
        (CASE WHEN COALESCE(san.tem_ceis, FALSE) THEN 1 ELSE 0 END
-        + CASE WHEN COALESCE(san.tem_cnep, FALSE) THEN 1 ELSE 0 END
+        + CASE WHEN COALESCE(san_cnep.tem_cnep, FALSE) THEN 1 ELSE 0 END
         + CASE WHEN COALESCE(pgfn.total_divida, 0) > 100000 THEN 1 ELSE 0 END
         + CASE WHEN COALESCE(tse.total_doado_tse, 0) > 0 THEN 1 ELSE 0 END
         + CASE WHEN COALESCE(adi.valor_aditivos, 0) > COALESCE(ctr.valor_contratos, 0) * 0.5 THEN 1 ELSE 0 END
