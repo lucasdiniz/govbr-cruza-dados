@@ -174,8 +174,7 @@ GROUP BY d.municipio, pc.orgao_razao_social, pc.cnpj_orgao,
          pc.nome_fornecedor, pc.ni_fornecedor, pc.objeto,
          pc.valor_global, pc.dt_assinatura, pc.dt_vigencia_fim
 HAVING ABS(SUM(d.valor_pago) - pc.valor_global) > pc.valor_global * 0.25
-ORDER BY ABS(SUM(d.valor_pago) - pc.valor_global) DESC
-LIMIT 500;
+ORDER BY ABS(SUM(d.valor_pago) - pc.valor_global) DESC;
 
 -- Q65: Fornecedor sancionado (CEIS/CNEP) recebendo pagamento municipal
 -- Detecta empresa com sanção ativa no CEIS que continua recebendo de municípios PB
@@ -236,8 +235,7 @@ GROUP BY d.cpf_cnpj, d.nome_credor, d.municipio,
          pg.numero_inscricao, pg.tipo_devedor, pg.situacao_inscricao,
          pg.valor_consolidado
 HAVING SUM(d.valor_pago) > 50000
-ORDER BY pg.valor_consolidado DESC
-LIMIT 500;
+ORDER BY pg.valor_consolidado DESC;
 
 -- Q68: Licitação TCE-PB com proponente único (competição fictícia)
 -- Detecta licitações onde apenas um proponente participou — pode indicar
@@ -258,8 +256,7 @@ WHERE l.ano_licitacao >= 2022
       HAVING COUNT(DISTINCT l2.cpf_cnpj_proponente) = 1
   )
   AND l.valor_ofertado > 50000
-ORDER BY l.valor_ofertado DESC
-LIMIT 500;
+ORDER BY l.valor_ofertado DESC;
 
 -- Q70: Empresa inativa/baixada recebendo pagamento municipal
 -- Irregularidade objetiva: empresa com situação cadastral diferente de "ativa" na RFB
@@ -348,8 +345,7 @@ WHERE tc.ds_cargo = 'PREFEITO'
 GROUP BY tc.nm_candidato, tc.nm_ue, d.municipio,
          tr.nr_cnpj_prestador, tr.nm_doador, tr.cpf_cnpj_doador,
          tr.vr_receita, tr.ds_receita
-ORDER BY total_recebido_municipio DESC
-LIMIT 500;
+ORDER BY total_recebido_municipio DESC;
 
 -- Q74: Servidor municipal recebendo Bolsa Família
 -- Detecta possível fraude BF: servidor público (com renda) que não deveria receber benefício social
@@ -365,8 +361,7 @@ JOIN bolsa_familia bf ON sv.cpf_digitos_6 = bf.cpf_digitos
 WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
   AND sv.valor_vantagem > 1500
   AND sv.ano_mes >= '2024-01'
-ORDER BY sv.valor_vantagem DESC
-LIMIT 500;
+ORDER BY sv.valor_vantagem DESC;
 
 -- Q77: Fracionamento de despesa municipal — mesmo credor, mesmo elemento, mesmo mês
 -- Detecta possível fracionamento para evitar licitação: múltiplos empenhos pequenos
@@ -387,5 +382,4 @@ WHERE d.ano >= 2022
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor, d.elemento_despesa, d.ano, d.mes
 HAVING COUNT(*) >= 3
    AND SUM(d.valor_empenhado) > 50000
-ORDER BY total_empenhado DESC
-LIMIT 500;
+ORDER BY total_empenhado DESC;

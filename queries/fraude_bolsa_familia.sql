@@ -18,7 +18,6 @@ LEFT JOIN siape_remuneracao sr ON sr.id_servidor_portal = sc.id_servidor_portal
 WHERE bf.uf = sc.uf_exercicio
   AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
 ORDER BY sr.remuneracao_basica_bruta DESC NULLS LAST
-LIMIT 500;
 
 -- Q39: Sócio de empresa ativa recebendo Bolsa Familia
 -- Detecta: pessoa com participação societária em empresa comercial ativa não deveria receber BF
@@ -48,7 +47,6 @@ WHERE e.porte IN (3, 5)  -- medio ou grande porte
   AND bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
   AND e.natureza_juridica NOT IN ('3999', '4090', '4120', '3085', '3069', '3220')
 ORDER BY e.capital_social DESC NULLS LAST
-LIMIT 500;
 
 -- Q40: Beneficiário Bolsa Familia que também recebe CPGF (cartão corporativo)
 -- Detecta: uso indevido — mesma pessoa recebendo benefício social e usando cartão do governo
@@ -84,8 +82,7 @@ SELECT bf.uf, bf.nm_municipio, bf.cd_municipio_siafi,
        ROUND(AVG(bf.valor_parcela), 2) AS media_parcela
 FROM bolsa_familia bf
 GROUP BY bf.uf, bf.nm_municipio, bf.cd_municipio_siafi
-ORDER BY qtd_beneficiarios DESC
-LIMIT 100;
+ORDER BY qtd_beneficiarios DESC;
 
 -- Q42: Candidato a vereador/prefeito que recebe Bolsa Familia
 -- Detecta: incompatibilidade — candidato com patrimônio declarado recebendo BF
@@ -103,5 +100,4 @@ LEFT JOIN (
 WHERE bf.cpf_digitos IS NOT NULL AND bf.cpf_digitos != ''
   AND tc.cpf_digitos IS NOT NULL AND tc.cpf_digitos != '000000'
   AND pb.total_bens > 50000  -- patrimonio > 50k e recebe BF
-ORDER BY pb.total_bens DESC
-LIMIT 500;
+ORDER BY pb.total_bens DESC;

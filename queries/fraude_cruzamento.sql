@@ -16,8 +16,7 @@ JOIN (
     FROM emenda_favorecido WHERE tipo_favorecido != 'PESSOA FISICA'
     GROUP BY LEFT(codigo_favorecido, 8)
 ) em ON em.cnpj8 = e.cnpj_basico
-ORDER BY total_geral DESC
-LIMIT 100;
+ORDER BY total_geral DESC;
 
 -- Q13: Fornecedor histórico: mesmo CNPJ no ComprasNet E no PNCP
 SELECT cc.fornecedor_cnpj_cpf, cc.fornecedor_nome,

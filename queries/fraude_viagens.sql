@@ -29,8 +29,7 @@ FROM viagem
 WHERE valor_diarias > 0
 GROUP BY cpf_viajante, nome_viajante, cargo, nome_orgao_solicitante
 HAVING SUM(valor_diarias + COALESCE(valor_passagens, 0)) > 100000
-ORDER BY custo_total DESC
-LIMIT 20;
+ORDER BY custo_total DESC;
 
 -- Q31: Viagens urgentes com alto valor (possivel fraude para evitar licitacao de passagem)
 SELECT nome_viajante, cpf_viajante, cargo,
@@ -40,8 +39,7 @@ SELECT nome_viajante, cpf_viajante, cargo,
 FROM viagem
 WHERE viagem_urgente = 'SIM'
   AND (valor_diarias + COALESCE(valor_passagens, 0)) > 10000
-ORDER BY (valor_diarias + COALESCE(valor_passagens, 0)) DESC
-LIMIT 20;
+ORDER BY (valor_diarias + COALESCE(valor_passagens, 0)) DESC;
 
 -- Q32: Servidor expulso (CEAF) que ainda faz viagens a servico
 -- FIX #6: adicionado match por nome para evitar falsos positivos em CPF 6-dígitos

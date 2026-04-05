@@ -42,8 +42,7 @@ JOIN LATERAL (
 GROUP BY pf.nome_credor, pf.cpfcnpj_credor,
          s.qualificacao, e.razao_social, est.cnpj_completo,
          e.capital_social, pj_agg.total_recebido_pj, pj_agg.qtd_pagamentos_pj
-ORDER BY SUM(pf.valor_pagamento) + pj_agg.total_recebido_pj DESC
-LIMIT 500;
+ORDER BY SUM(pf.valor_pagamento) + pj_agg.total_recebido_pj DESC;
 
 -- Q79: Credor PF do estado é candidato ou doador TSE
 -- Detecta conexão política direta: pessoa que recebe pagamento estadual
@@ -62,8 +61,7 @@ WHERE LENGTH(pp.cpfcnpj_credor) = 11
 GROUP BY pp.nome_credor, pp.cpfcnpj_credor,
          tc.nm_candidato, tc.ds_cargo, tc.sg_partido,
          tc.ano_eleicao, tc.ds_sit_tot_turno, tc.nm_ue
-ORDER BY total_recebido_estado DESC
-LIMIT 500;
+ORDER BY total_recebido_estado DESC;
 
 -- Q80: Credor PF do estado recebe Bolsa Família — valores altos = suspeito
 -- Detecta fraude BF: pessoa que recebe pagamentos estaduais significativos
@@ -82,8 +80,7 @@ WHERE pp.cpf_digitos_6 IS NOT NULL
 GROUP BY pp.nome_credor, pp.cpfcnpj_credor,
          bf.nm_favorecido, bf.cpf_favorecido, bf.nm_municipio, bf.valor_parcela
 HAVING SUM(pp.valor_pagamento) > 10000
-ORDER BY total_recebido_estado DESC
-LIMIT 500;
+ORDER BY total_recebido_estado DESC;
 
 -- Q81: Credor PF sancionado (CEIS/CNEP) recebendo pagamento estadual
 -- Match exato: CPF 11 dígitos do pb_pagamento = cpf_cnpj_norm do CEIS
@@ -143,8 +140,7 @@ WHERE pp.cpf_digitos_6 IS NOT NULL
 GROUP BY pp.nome_credor, pp.cpfcnpj_credor,
          sc.nome, sc.cpf, sc.org_exercicio, sr.remuneracao_basica_bruta
 HAVING SUM(pp.valor_pagamento) > 10000
-ORDER BY total_recebido_estado DESC
-LIMIT 500;
+ORDER BY total_recebido_estado DESC;
 
 -- Q83: Empresa dominante — recebe do estado E de municípios via cnpj_basico
 -- Detecta empresas com presença em AMBOS os níveis: empenhos estaduais (pb_empenho)
@@ -180,8 +176,7 @@ JOIN tce_agg tce ON tce.cnpj_basico = pb.cnpj_basico
 JOIN empresa e ON e.cnpj_basico = pb.cnpj_basico
 JOIN estabelecimento est ON est.cnpj_basico = pb.cnpj_basico
     AND est.cnpj_ordem = '0001'
-ORDER BY total_combinado DESC
-LIMIT 500;
+ORDER BY total_combinado DESC;
 
 -- Q84: Contratada estadual inativa/inapta na RFB
 -- Irregularidade objetiva: empresa com contrato estadual mas situação cadastral
@@ -225,8 +220,7 @@ GROUP BY pp.cpfcnpj_credor, pp.nome_credor,
          pg.numero_inscricao, pg.tipo_devedor, pg.situacao_inscricao,
          pg.valor_consolidado
 HAVING SUM(pp.valor_pagamento) > 50000
-ORDER BY pg.valor_consolidado DESC
-LIMIT 500;
+ORDER BY pg.valor_consolidado DESC;
 
 -- Q86: Fornecedor saúde sancionado — pb_saude × CEIS
 -- Setor saúde é alto risco para fraude. Detecta credores de saúde estadual
@@ -267,8 +261,7 @@ JOIN tce_pb_servidor sv ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
 WHERE pc.cnpj_basico IS NOT NULL
   AND s.cpf_cnpj_norm IS NOT NULL AND s.cpf_cnpj_norm != ''
   AND sv.ano_mes >= '2022-01'
-ORDER BY pc.valor_original DESC
-LIMIT 500;
+ORDER BY pc.valor_original DESC;
 
 -- Q88: Servidor municipal que recebe pagamento estadual como PF
 -- Detecta duplo vínculo: pessoa é servidor em município PB (TCE-PB)
@@ -291,8 +284,7 @@ GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
          sv.descricao_cargo, sv.tipo_cargo, sv.valor_vantagem,
          pp.nome_credor, pp.cpfcnpj_credor, pp.tipo_despesa
 HAVING SUM(pp.valor_pagamento) > 5000
-ORDER BY total_recebido_estado DESC
-LIMIT 500;
+ORDER BY total_recebido_estado DESC;
 
 -- Q89: Convênio estado→município com despesas suspeitas
 -- Detecta municípios que receberam convênio estadual e tiveram despesas atípicas
@@ -318,8 +310,7 @@ JOIN LATERAL (
       AND d.valor_empenhado > 0
 ) tce_agg ON tce_agg.total_empenhado_periodo > cv.valor_concedente * 0.5
 WHERE cv.valor_concedente > 100000
-ORDER BY tce_agg.total_empenhado_periodo DESC
-LIMIT 500;
+ORDER BY tce_agg.total_empenhado_periodo DESC;
 
 -- Q90: Empenhos estaduais abaixo do limite de dispensa — fracionamento
 -- Detecta padrão de empenhos estaduais com valor logo abaixo do limite de dispensa
@@ -342,8 +333,7 @@ GROUP BY pe.nome_credor, pe.cpfcnpj_credor, pe.exercicio,
          pe.codigo_modalidade_licitacao
 HAVING COUNT(*) >= 3
    AND SUM(pe.valor_empenho) > 100000
-ORDER BY total_empenhado DESC
-LIMIT 500;
+ORDER BY total_empenhado DESC;
 
 -- Q91: Mesmo credor, múltiplos pagamentos no mesmo dia — possível splitting
 -- Detecta pagamentos fracionados no mesmo dia para o mesmo credor (PF ou PJ)
@@ -361,5 +351,4 @@ WHERE pp.valor_pagamento > 0
 GROUP BY pp.cpfcnpj_credor, pp.nome_credor, pp.data_pagamento
 HAVING COUNT(*) >= 5
    AND SUM(pp.valor_pagamento) > 50000
-ORDER BY total_dia DESC
-LIMIT 500;
+ORDER BY total_dia DESC;

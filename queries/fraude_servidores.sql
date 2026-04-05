@@ -13,8 +13,7 @@ WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
   AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos != '000000'
   AND pc.valor_global > 10000
   AND pc.valor_global < 10000000000  -- FIX #5: cap para excluir valores absurdos (R$10bi)
-ORDER BY pc.valor_global DESC
-LIMIT 20;
+ORDER BY pc.valor_global DESC;
 
 -- Q22: Servidor que usa cartão corporativo em empresa onde é sócio
 SELECT sc.nome, sc.cpf, sc.org_exercicio,
@@ -47,8 +46,7 @@ SELECT sc.nome, sc.cpf, sc.descricao_cargo, sc.org_exercicio,
 FROM siape_remuneracao sr
 JOIN siape_cadastro sc ON sc.id_servidor_portal = sr.id_servidor_portal
 WHERE sr.remuneracao_basica_bruta > 46000  -- teto ~R$46k em 2024
-ORDER BY total_bruto DESC
-LIMIT 20;
+ORDER BY total_bruto DESC;
 
 -- Q24: Servidor favorecido por emenda parlamentar
 -- Match por nome + 6 dígitos centrais do CPF (emenda PF tem CPF mascarado)
@@ -63,5 +61,4 @@ JOIN emenda_favorecido ef ON UPPER(TRIM(sc.nome)) = UPPER(TRIM(ef.nome_favorecid
 WHERE sc.situacao_vinculo = 'ATIVO PERMANENTE'
   AND sc.cpf_digitos IS NOT NULL AND sc.cpf_digitos <> ''
   AND ef.valor_recebido > 10000
-ORDER BY ef.valor_recebido DESC
-LIMIT 500;
+ORDER BY ef.valor_recebido DESC;

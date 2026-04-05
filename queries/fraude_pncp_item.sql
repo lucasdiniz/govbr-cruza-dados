@@ -48,8 +48,7 @@ WHERE i.situacao_item_nome = 'Homologado'
   AND i.valor_total >= 10000
   AND i.valor_total <= 1000000000      -- sanidade: exclui erros de digitação > R$1B
   AND i.valor_unitario_estimado > s.media + 3 * COALESCE(NULLIF(s.desvio, 0), s.media)
-ORDER BY i.valor_total DESC
-LIMIT 200;
+ORDER BY i.valor_total DESC;
 
 DROP TABLE tmp_item_stats;
 
@@ -73,8 +72,7 @@ JOIN pncp_contratacao ca ON ca.numero_controle_pncp = i.numero_controle_pncp
 WHERE i.situacao_item_nome IN ('Fracassado', 'Deserto')
 GROUP BY i.cnpj_orgao, ca.orgao_razao_social, ca.uf, UPPER(TRIM(i.descricao))
 HAVING COUNT(DISTINCT i.numero_controle_pncp) >= 3
-ORDER BY vezes_fracassou DESC
-LIMIT 200;
+ORDER BY vezes_fracassou DESC;
 
 
 -- Q94: Variação de preço entre UFs para mesmo item
@@ -125,8 +123,7 @@ JOIN tmp_uf_prices b
 WHERE a.mediana_uf > 5 * b.mediana_uf -- razão mínima 5× na mediana
   AND b.mediana_uf >= 1               -- baseline mínimo R$1
   AND a.mediana_uf * a.n_itens >= 100000 -- impacto financeiro mínimo R$100K
-ORDER BY (a.mediana_uf - b.mediana_uf) * a.n_itens DESC
-LIMIT 200;
+ORDER BY (a.mediana_uf - b.mediana_uf) * a.n_itens DESC;
 
 DROP TABLE tmp_uf_prices;
 
@@ -172,8 +169,7 @@ FROM item_wins w
 JOIN item_totals t ON t.desc_norm = w.desc_norm
 WHERE w.itens_ganhos::float / t.total_itens > 0.5  -- >50% do mercado
   AND t.total_valor >= 100000                        -- mercado >= R$100K
-ORDER BY w.valor_total_ganho DESC
-LIMIT 200;
+ORDER BY w.valor_total_ganho DESC;
 
 
 -- Q96: Orçamento sigiloso em compras de alto valor
@@ -203,8 +199,7 @@ LEFT JOIN pncp_contrato co ON co.numero_controle_contratacao = ca.numero_control
 WHERE i.orcamento_sigiloso = TRUE
   AND i.situacao_item_nome = 'Homologado'
   AND (i.valor_total >= 500000 OR co.valor_global >= 500000)
-ORDER BY COALESCE(co.valor_global, i.valor_total) DESC
-LIMIT 200;
+ORDER BY COALESCE(co.valor_global, i.valor_total) DESC;
 
 
 -- Q97: Jogo de planilha — item com preço outlier dentro da mesma contratação
@@ -253,8 +248,7 @@ WHERE ci.n_itens >= 5
   AND ci.valor_total >= 50000
   AND ci.valor_total <= 1000000000     -- sanidade: exclui erros de digitação > R$1B
   AND ci.valor_total > 0.3 * ci.valor_total_contratacao  -- item domina >30% do valor
-ORDER BY ci.valor_total DESC
-LIMIT 200;
+ORDER BY ci.valor_total DESC;
 
 
 -- Q98: Preço unitário idêntico (não-redondo) em múltiplas contratações independentes
@@ -288,8 +282,7 @@ SELECT
     ocorrencias,
     ufs
 FROM preco_freq
-ORDER BY contratacoes DESC
-LIMIT 200;
+ORDER BY contratacoes DESC;
 
 -- Q100: Série temporal de preços — evolução semestral por item
 -- Detecta variações anômalas de preço ao longo do tempo para os itens mais
@@ -340,7 +333,6 @@ WHERE ((a.semestre = 1 AND b.ano = a.ano AND b.semestre = 2)
   AND b.mediana > 2 * a.mediana
   AND a.n_itens >= 20
   AND b.n_itens >= 20
-ORDER BY b.mediana - a.mediana DESC
-LIMIT 100;
+ORDER BY b.mediana - a.mediana DESC;
 
 DROP TABLE tmp_price_series;

@@ -8,8 +8,7 @@ FROM ceis_sancao cs
 JOIN pncp_contrato pc ON cs.cpf_cnpj_norm = pc.ni_fornecedor
 WHERE (cs.dt_final_sancao IS NULL OR pc.dt_assinatura <= cs.dt_final_sancao)
   AND pc.dt_assinatura >= cs.dt_inicio_sancao
-ORDER BY pc.valor_global DESC
-LIMIT 20;
+ORDER BY pc.valor_global DESC;
 
 -- Q26: Empresa punida pela Lei Anticorrupcao (CNEP) que recebe emendas durante vigência da sanção
 -- FIX #11: adicionado filtro temporal — emenda deve cair dentro do período da sanção
@@ -23,8 +22,7 @@ FROM cnep_sancao cn
 JOIN emenda_favorecido ef ON cn.cpf_cnpj_norm = ef.codigo_favorecido
 WHERE ef.ano_mes >= TO_CHAR(cn.dt_inicio_sancao, 'YYYY/MM')
   AND (cn.dt_final_sancao IS NULL OR ef.ano_mes <= TO_CHAR(cn.dt_final_sancao, 'YYYY/MM'))
-ORDER BY ef.valor_recebido DESC
-LIMIT 20;
+ORDER BY ef.valor_recebido DESC;
 
 -- Q27: Servidor expulso (CEAF) que ainda aparece como socio de empresa
 SELECT ce.nome_sancionado, ce.cpf_cnpj_sancionado,
@@ -38,8 +36,7 @@ JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 WHERE ce.cpf_cnpj_norm IS NOT NULL AND ce.cpf_cnpj_norm != '000000'
-ORDER BY ce.dt_inicio_sancao DESC
-LIMIT 20;
+ORDER BY ce.dt_inicio_sancao DESC;
 
 -- Q28: Empresa com acordo de leniencia ativo que volta a ganhar contratos
 -- FIX #11: filtrar apenas acordos não cumpridos/encerrados + contratos durante vigência
@@ -52,5 +49,4 @@ JOIN pncp_contrato pc ON al.cnpj_norm = pc.ni_fornecedor
 WHERE pc.dt_assinatura > al.dt_inicio_acordo
   AND (al.dt_fim_acordo IS NULL OR pc.dt_assinatura <= al.dt_fim_acordo)
   AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado', 'cumprido', 'encerrado')
-ORDER BY pc.valor_global DESC
-LIMIT 20;
+ORDER BY pc.valor_global DESC;

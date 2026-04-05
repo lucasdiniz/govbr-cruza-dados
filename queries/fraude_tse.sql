@@ -61,8 +61,7 @@ JOIN (
 WHERE tc1.cpf IS NOT NULL AND tc1.cpf NOT IN ('-1', '-4', '')
   AND p1.total_bens > 0
   AND p2.total_bens > p1.total_bens * 5  -- cresceu mais de 500%
-ORDER BY crescimento DESC
-LIMIT 200;
+ORDER BY crescimento DESC;
 
 -- Q36: Candidato com sanção ativa (CEIS/CNEP) ainda concorrendo
 -- Detecta: candidato pessoalmente sancionado OU sócio de empresa sancionada

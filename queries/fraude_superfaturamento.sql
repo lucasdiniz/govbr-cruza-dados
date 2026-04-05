@@ -176,8 +176,7 @@ WHERE pc.uf != est.uf
   AND cc.modalidade_nome IN ('Dispensa', 'Inexigibilidade')
   AND pc.valor_global > 100000
   AND pc.dt_assinatura >= '2022-01-01'
-ORDER BY pc.valor_global DESC
-LIMIT 500;
+ORDER BY pc.valor_global DESC;
 
 -- Q50: Fornecedor com mesmo endereço do órgão contratante
 -- Detecta empresa operando no mesmo endereço do órgão — possível empresa de fachada
@@ -270,8 +269,7 @@ WHERE est_old.cnpj_ordem = '0001' AND est_new.cnpj_ordem = '0001'
   AND est_new.dt_inicio_atividade - est_old.dt_situacao < 365
   AND est_old.logradouro IS NOT NULL AND est_old.logradouro <> ''
   AND est_old.numero IS NOT NULL AND est_old.numero <> ''
-ORDER BY est_new.dt_inicio_atividade DESC
-LIMIT 500;
+ORDER BY est_new.dt_inicio_atividade DESC;
 
 -- Q56: Doador de campanha → contrato PNCP
 -- Detecta quid pro quo: empresa doou para candidato e depois recebeu contrato público
@@ -289,8 +287,7 @@ WHERE LENGTH(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g')) >= 14
   AND tr.vr_receita > 10000
   AND pc.valor_global > 100000
   AND pc.dt_assinatura > MAKE_DATE(tr.ano_eleicao, 1, 1)
-ORDER BY pc.valor_global DESC
-LIMIT 500;
+ORDER BY pc.valor_global DESC;
 
 -- Q57: Ciclo emenda parlamentar → doação TSE
 -- Detecta possível ciclo: empresa recebe emenda parlamentar e depois doa para campanha
@@ -313,8 +310,7 @@ WHERE ef.cnpj_basico_favorecido IS NOT NULL
 GROUP BY ef.nome_autor, ef.tipo_emenda, ef.nome_favorecido, ef.codigo_favorecido,
          tr.nm_candidato, tr.sg_partido, tr.ds_cargo, tr.ano_eleicao,
          tr.cpf_cnpj_doador, tr.nm_doador
-ORDER BY total_emenda DESC
-LIMIT 500;
+ORDER BY total_emenda DESC;
 
 -- Q58: Fornecedores com mesmo endereço participando da mesma contratação PNCP
 -- Detecta possível simulação de concorrência (bid rigging): empresas no mesmo endereço
@@ -417,8 +413,7 @@ JOIN socio s_new ON s_new.cnpj_basico = a.cnpj_basico AND s_new.tipo_socio = 2
     AND s_old.cpf_cnpj_norm = s_new.cpf_cnpj_norm
 WHERE a.dt_inicio_atividade > c.dt_situacao
   AND a.dt_inicio_atividade - c.dt_situacao < 365
-ORDER BY a.dt_inicio_atividade DESC
-LIMIT 2000;
+ORDER BY a.dt_inicio_atividade DESC;
 
 DROP TABLE tmp_fenix_closed;
 DROP TABLE tmp_fenix_active;
