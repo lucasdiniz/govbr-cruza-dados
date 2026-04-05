@@ -7,6 +7,11 @@ name: Setup Self-Hosted Runner
 # Required secrets:
 #   VM_HOST    - IP or hostname of the VM
 #   VM_SSH_KEY - Private SSH key for the VM user (govbr)
+# Optional secrets:
+#   RUNNER_ADMIN_TOKEN - PAT/classic token with permission to manage self-hosted
+#                        runners for this repository. Recommended because the
+#                        default GITHUB_TOKEN may not be allowed to mint runner
+#                        registration tokens in some repo/app configurations.
 
 on:
   workflow_dispatch:
@@ -36,11 +41,15 @@ jobs:
       - name: Get runner registration token
         id: token
         run: |
-          TOKEN=$(gh api -X POST "repos/${{ github.repository }}/actions/runners/registration-token" --jq '.token')
+          TOKEN=$(gh api -X POST "repos/${{ github.repository }}/actions/runners/registration-token" --jq '.token') || {
+            echo "::error::Failed to mint self-hosted runner registration token."
+            echo "::error::If this repository blocks the default GITHUB_TOKEN for runner administration, configure the Actions secret RUNNER_ADMIN_TOKEN with repo admin access to self-hosted runners."
+            exit 1
+          }
           echo "::add-mask::$TOKEN"
           echo "runner_token=$TOKEN" >> "$GITHUB_OUTPUT"
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN != '' && secrets.RUNNER_ADMIN_TOKEN || github.token }}
 
       - name: Install and register runner on VM
         run: |
@@ -125,7 +134,7 @@ jobs:
             echo "::warning::Runner status: $STATUS (may take a minute to appear online)"
           fi
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN != '' && secrets.RUNNER_ADMIN_TOKEN || github.token }}
 
       - name: Summary
         run: |

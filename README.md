@@ -77,11 +77,13 @@ O jeito mais facil de rodar o projeto e via GitHub Actions em uma VM Ubuntu:
 
 1. **VM Ubuntu** com SSH (testado em Azure Standard_D4s_v3, 16GB RAM, disco de dados 400GB+ montado em `/data`)
 2. **Fork** deste repositorio
-3. **Configurar 4 secrets** no repositorio (Settings > Secrets > Actions):
+3. **Configurar 4 secrets obrigatorios** no repositorio (Settings > Secrets > Actions):
    - `VM_HOST` — IP ou hostname da VM
    - `VM_SSH_KEY` — chave SSH privada do usuario `govbr` na VM
    - `DB_PASSWORD` — senha do PostgreSQL
    - `ENV_FILE` — conteudo do `.env` (ver `.env.example`)
+4. **Configurar 1 secret opcional recomendado**:
+   - `RUNNER_ADMIN_TOKEN` — PAT usado pelo workflow `Setup Self-Hosted Runner` para instalar/reparar o self-hosted runner quando o `GITHUB_TOKEN` nao tiver permissao de emitir registration token
 
 ### Execucao
 

@@ -117,6 +117,7 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - **Setup Self-Hosted Runner** (`setup-runner.yml`): instala runner na VM (rodar 1x)
 - **Deploy to Azure VM** (`deploy.yml`): ETL completo com live logs, sem limite de tempo
 - Secrets no repo: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`
+- Secret opcional recomendado para reparo do runner: `RUNNER_ADMIN_TOKEN`
 
 ### Commits sessão 34
 ```
