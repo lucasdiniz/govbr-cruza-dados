@@ -22,6 +22,12 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 34. [x] **SyntaxWarning \d** — Fix: `\\d` em 7 arquivos (commit 811c1ee)
 35. [x] **Validação pós-download** — `validate_downloads()` alinhada ao formato real dos loaders: PGFN (`arquivo_lai_*.csv`), Sanções (`*_CEIS.csv`, `*_CNEP.csv`, `*_Expulsoes.csv`, `*_Acordos.csv`), dados.pb com underscore, TSE (ZIP ou extraído) e Bolsa Família (`*_NovoBolsaFamilia.csv`)
 36. [x] **Workflow deploy: smoke test e Tor** — `deploy.yml` agora reinicia `tor` antes do ETL e testa também TSE CDN e Novo Bolsa Família no smoke test
+37. [x] **Emendas: loader aceita layout novo/antigo** — `etl/05_emendas.py` agora busca tanto em `DATA_DIR/emendas/` quanto na raiz (`etl: fix emendas paths and optional indices`, commit `b81bf92`)
+38. [x] **Índices: tolerar tabelas ausentes** — `etl/10_indices.py` agora pula índices cujas tabelas ainda não existem, em vez de abortar a fase inteira (commit `b81bf92`)
+39. [x] **PNCP: identificadores e processo maiores** — `sql/03_schema_pncp.sql` ampliado para evitar `value too long for type character varying(50)` em `pncp_contrato` (commit `ced083b`)
+40. [x] **BNDES: parser tolerante para CSV malformado** — `etl/09_complementar.py` trocado de `COPY` bruto para parser CSV em Python + staging TSV, pulando linhas quebradas (commit `ced083b`)
+41. [x] **PGFN: loader por header real** — `etl/07_pgfn.py` agora detecta layout pelo header e mapeia colunas dinamicamente, evitando `extra data after last expected column` (commit `ced083b`)
+42. [x] **dados.pb: não exigir mês corrente** — `download_dados_pb()` agora para no último mês completo, reduzindo falsos `[erro]` de publicação parcial (commit `ced083b`)
 
 ### Fontes OK na VM (referência)
 - **CPGF**: 73 CSVs, 725K registros ✓
@@ -90,13 +96,16 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 ### Próximos passos (ordem sugerida)
 1. **Produzir relatórios dos novos datasets PB** — Q101/Q102/Q103/Q104/Q105/Q108/Q109/Q110/Q111 já estão operacionais
 2. **Formalizar a exportação/runner** para `queries/fraude_dados_pb_novos.sql` no fluxo padrão de `etl.run_queries`
-3. **Re-deploy VM** — run 24002741785 usa código antigo (headSha 296981b). Após terminar, disparar novo com `gh workflow run deploy.yml -f etl_phase=all -f clean=true`
+3. **Re-deploy VM com `main` atual** — validar se os fixes `b81bf92` e `ced083b` eliminam os erros de Emendas/PNCP/BNDES/PGFN/Índices
 4. Bugs infra pendentes: Sanções/SIAPE bloqueio Tor (#26, #27)
 
 ### Deploy VM
-- **Run atual**: 24002741785 — headSha antigo 296981b (não inclui commits desta sessão)
-- **Código atualizado no main**: commits 48d0984 (fix dados_pb short rows) e 510c2cb (Q101-Q111)
-- **Fixes locais adicionais ainda não publicados**: reescritas Q102/Q103/Q107/Q109, índices novos em `sql/19_indices_queries.sql`, correção da Q111 e `REFRESH` local da MV
+- **Run problemático documentado**: 24002741785 — headSha antigo `296981b`
+- **Código atualizado no `origin/main`**: `ced083b`
+- **Fixes já publicados após o run antigo**:
+  - `402220b` validação final das Q102-Q111
+  - `b81bf92` paths de emendas + índices tolerantes
+  - `ced083b` hardening de PNCP/BNDES/PGFN/validação
 
 ### SSH na VM Azure
 ```bash
@@ -143,6 +152,15 @@ ssh -i /tmp/azure_vm_key govbr@52.162.207.186
 - Validação local: Q102 = 52 grupos, Q103 = 2757 grupos, Q107 = 1 caso
 - Q109 reescrita para remover `JOIN LATERAL` explosivo; agora retorna 577 grupos em ~12s
 - Q111 corrigida (`tem_cnep`), MV criada com sucesso e `REFRESH MATERIALIZED VIEW` executado: 18.306 linhas
+
+### 2026-04-05 (sessao 35)
+- Loader de emendas ajustado para aceitar arquivos na raiz e em `DATA_DIR/emendas`
+- Fase de índices ajustada para pular tabelas ainda ausentes em vez de abortar
+- Schema PNCP ampliado para identificadores/processo longos
+- Loader BNDES trocado para parser CSV tolerante com skip de linhas malformadas
+- Loader PGFN reescrito para mapear colunas dinamicamente pelo header
+- `download_dados_pb()` e `validate_downloads()` ajustados para não exigir o mês corrente e aceitar layouts antigo/novo de BNDES/PGFN/Emendas
+- Commits publicados em `origin/main`: `b81bf92`, `ced083b`
 
 ### 2026-04-05 (sessao 33)
 - Deploy reescrito: setup-runner.yml + deploy.yml (self-hosted, live logs)
