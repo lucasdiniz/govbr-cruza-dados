@@ -102,6 +102,10 @@ jobs:
             fi
 
             # Register
+            sudo ./svc.sh uninstall 2>/dev/null || true
+            rm -f .runner .credentials .credentials_rsaparams
+            rm -rf .service
+
             ./config.sh --url "\$REPO_URL" \
               --token "${{ steps.token.outputs.runner_token }}" \
               --name "azure-vm" \
@@ -109,7 +113,6 @@ jobs:
               --unattended --replace
 
             # Install and start as service
-            sudo ./svc.sh uninstall 2>/dev/null || true
             sudo ./svc.sh install
             sudo ./svc.sh start
 
