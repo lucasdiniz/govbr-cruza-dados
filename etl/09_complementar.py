@@ -8,14 +8,93 @@ Holdings removido: redundante com socio WHERE tipo_socio=1 (PJ socio de PJ)
 
 import csv
 import gzip
+import re
 import shutil
 from pathlib import Path
 
 from etl.config import DATA_DIR
 from etl.db import copy_csv_streaming, get_conn, table_count
+from etl.utils import normalize_name
 
 # comprasnet.csv.gz no repo (data/static/)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
+
+BNDES_HEADER_ALIASES = {
+    "cliente": ("cliente",),
+    "cnpj": ("cnpj", "cnpj_cpf"),
+    "descricao_projeto": ("descricao_projeto", "descricao_do_projeto"),
+    "uf": ("uf",),
+    "municipio": ("municipio",),
+    "municipio_codigo": ("municipio_codigo", "codigo_do_municipio"),
+    "numero_contrato": ("numero_contrato", "numero_do_contrato"),
+    "dt_contratacao": ("data_da_contratacao", "dt_contratacao"),
+    "valor_contratado": ("valor_contratado_reais", "valor_contratado"),
+    "valor_desembolsado": ("valor_desembolsado_reais", "valor_desembolsado"),
+    "fonte_recurso": ("fonte_de_recurso_desembolsos", "fonte_recurso"),
+    "custo_financeiro": ("custo_financeiro",),
+    "juros": ("juros",),
+    "prazo_carencia_meses": ("prazo_carencia_meses",),
+    "prazo_amortizacao_meses": ("prazo_amortizacao_meses",),
+    "modalidade_apoio": ("modalidade_de_apoio", "modalidade_apoio"),
+    "forma_apoio": ("forma_de_apoio", "forma_apoio"),
+    "produto": ("produto",),
+    "instrumento_financeiro": ("instrumento_financeiro",),
+    "inovacao": ("inovacao",),
+    "area_operacional": ("area_operacional",),
+    "setor_cnae": ("setor_cnae",),
+    "subsetor_cnae": ("subsetor_cnae_agrupado", "subsetor_cnae_nome", "subsetor_cnae"),
+    "subsetor_cnae_codigo": ("subsetor_cnae_codigo",),
+    "setor_bndes": ("setor_bndes",),
+    "subsetor_bndes": ("subsetor_bndes",),
+    "porte_cliente": ("porte_do_cliente", "porte_cliente"),
+    "natureza_cliente": ("natureza_do_cliente", "natureza_cliente"),
+    "instituicao_credenciada": (
+        "instituicao_financeira_credenciada",
+        "instituicao_credenciada",
+    ),
+    "cnpj_instituicao": (
+        "cnpj_da_instituicao_financeira_credenciada",
+        "cnpj_instituicao",
+    ),
+    "tipo_garantia": ("tipo_de_garantia", "tipo_garantia"),
+    "tipo_excepcionalidade": ("tipo_de_excepcionalidade", "tipo_excepcionalidade"),
+    "situacao_contrato": ("situacao_do_contrato", "situacao_contrato"),
+}
+
+
+def _normalize_header(value: str) -> str:
+    normalized = normalize_name(value or "") or ""
+    normalized = normalized.lower().replace("/", "_")
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
+def _read_csv_header(filepath: Path, encoding: str = "latin1", delimiter: str = ";") -> list[str]:
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=delimiter, quotechar='"')
+        return [_normalize_header(col) for col in (next(reader, []) or [])]
+
+
+def _build_bndes_select(header: list[str]) -> tuple[str, str]:
+    header_positions = {name: idx for idx, name in enumerate(header)}
+
+    def _expr(dest: str) -> str:
+        for alias in BNDES_HEADER_ALIASES[dest]:
+            idx = header_positions.get(alias)
+            if idx is None:
+                continue
+            ref = f"TRIM(c{idx})"
+            if dest == "dt_contratacao":
+                return f"safe_to_date({ref}, 'YYYY-MM-DD')"
+            if dest in {"valor_contratado", "valor_desembolsado"}:
+                return f"CASE WHEN {ref} = '' THEN NULL ELSE CAST(REPLACE(REPLACE({ref}, '.', ''), ',', '.') AS NUMERIC) END"
+            if dest in {"prazo_carencia_meses", "prazo_amortizacao_meses"}:
+                return rf"CASE WHEN {ref} ~ '^\d+$' THEN CAST({ref} AS INT) ELSE NULL END"
+            return ref
+        return "NULL"
+
+    dest_cols = ", ".join(BNDES_HEADER_ALIASES.keys())
+    src_exprs = ", ".join(_expr(dest) for dest in BNDES_HEADER_ALIASES)
+    return dest_cols, src_exprs
 
 
 def _copy_escape(val):
@@ -65,22 +144,18 @@ def load_bndes(conn):
         print("    AVISO: BNDES CSVs não encontrados.")
         return
 
-    staging = "_stg_bndes"
-
-    # Detectar número de colunas do primeiro arquivo (formato muda entre anos)
-    first_file = sorted(files)[0]
-    with open(first_file, "r", encoding="latin1") as f:
-        header_line = f.readline()
-    ncols = len(header_line.split(";"))
-    print(f"    BNDES: detectado {ncols} colunas no CSV")
-
-    cols = ", ".join(f"c{i} TEXT" for i in range(ncols))
-    with conn.cursor() as cur:
-        cur.execute(f"DROP TABLE IF EXISTS {staging}")
-        cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
-    conn.commit()
-
     for filepath in sorted(files):
+        staging = "_stg_bndes"
+        header = _read_csv_header(filepath, encoding="latin1", delimiter=";")
+        ncols = len(header)
+        print(f"    BNDES: {filepath.name} com {ncols} colunas")
+
+        cols = ", ".join(f"c{i} TEXT" for i in range(ncols))
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS {staging}")
+            cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
+        conn.commit()
+
         print(f"    Carregando {filepath.name}...")
         copy_csv_streaming(
             conn,
@@ -89,60 +164,18 @@ def load_bndes(conn):
             _iter_csv_as_tsv(filepath, ncols, encoding="latin1", delimiter=";"),
         )
 
-    # Mapeamento coluna CSV → coluna destino + transformação
-    # O CSV do BNDES muda de formato entre anos (30-34 colunas)
-    col_map = [
-        ("cliente", "TRIM(c0)"),
-        ("cnpj", "TRIM(c1)"),
-        ("descricao_projeto", "TRIM(c2)"),
-        ("uf", "TRIM(c3)"),
-        ("municipio", "TRIM(c4)"),
-        ("municipio_codigo", "TRIM(c5)"),
-        ("numero_contrato", "TRIM(c6)"),
-        ("dt_contratacao", "safe_to_date(TRIM(c7), 'YYYY-MM-DD')"),
-        ("valor_contratado", "CASE WHEN TRIM(c8) = '' THEN NULL ELSE CAST(REPLACE(REPLACE(TRIM(c8), '.', ''), ',', '.') AS NUMERIC) END"),
-        ("valor_desembolsado", "CASE WHEN TRIM(c9) = '' THEN NULL ELSE CAST(REPLACE(REPLACE(TRIM(c9), '.', ''), ',', '.') AS NUMERIC) END"),
-        ("fonte_recurso", "TRIM(c10)"),
-        ("custo_financeiro", "TRIM(c11)"),
-        ("juros", "TRIM(c12)"),
-        ("prazo_carencia_meses", r"CASE WHEN TRIM(c13) ~ '^\d+$' THEN CAST(TRIM(c13) AS INT) ELSE NULL END"),
-        ("prazo_amortizacao_meses", r"CASE WHEN TRIM(c14) ~ '^\d+$' THEN CAST(TRIM(c14) AS INT) ELSE NULL END"),
-        ("modalidade_apoio", "TRIM(c15)"),
-        ("forma_apoio", "TRIM(c16)"),
-        ("produto", "TRIM(c17)"),
-        ("instrumento_financeiro", "TRIM(c18)"),
-        ("inovacao", "TRIM(c19)"),
-        ("area_operacional", "TRIM(c20)"),
-        ("setor_cnae", "TRIM(c21)"),
-        ("subsetor_cnae", "TRIM(c22)"),
-        ("subsetor_cnae_codigo", "TRIM(c23)"),
-        ("setor_bndes", "TRIM(c24)"),
-        ("subsetor_bndes", "TRIM(c25)"),
-        ("porte_cliente", "TRIM(c26)"),
-        ("natureza_cliente", "TRIM(c27)"),
-        ("instituicao_credenciada", "TRIM(c28)"),
-        ("cnpj_instituicao", "TRIM(c29)"),
-        ("tipo_garantia", "TRIM(c30)"),
-        ("tipo_excepcionalidade", "TRIM(c31)"),
-        ("situacao_contrato", "TRIM(c32)"),
-    ]
+        dest_cols, src_exprs = _build_bndes_select(header)
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                INSERT INTO bndes_contrato ({dest_cols})
+                SELECT {src_exprs}
+                FROM {staging}
+            """)
+        conn.commit()
 
-    # Usar apenas colunas que existem no staging (c0..c{ncols-1})
-    usable = col_map[:ncols]
-    dest_cols = ", ".join(d for d, _ in usable)
-    src_exprs = ", ".join(e for _, e in usable)
-
-    with conn.cursor() as cur:
-        cur.execute(f"""
-            INSERT INTO bndes_contrato ({dest_cols})
-            SELECT {src_exprs}
-            FROM {staging}
-        """)
-    conn.commit()
-
-    with conn.cursor() as cur:
-        cur.execute(f"DROP TABLE IF EXISTS {staging}")
-    conn.commit()
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS {staging}")
+        conn.commit()
 
     print(f"    bndes_contrato: {table_count(conn, 'bndes_contrato')} registros")
 

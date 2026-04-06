@@ -10,6 +10,8 @@ Uso:
 """
 
 import os
+import csv
+import re
 import shutil
 import sys
 import zipfile
@@ -21,6 +23,7 @@ from urllib.error import URLError, HTTPError
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
+from etl.utils import normalize_name
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
        "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -36,6 +39,45 @@ RFB_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida
 
 CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
+
+EMENDAS_HEADER_SIGNATURES = {
+    "tesouro": {
+        "nome_ente", "uf", "codigo_siafi", "codigo_ibge",
+        "nome_favorecido", "nome_emenda", "categoria_economica", "valor",
+    },
+    "convenios": {
+        "codigo_emenda", "codigo_funcao", "nome_funcao", "codigo_subfuncao",
+        "convenente", "numero_convenio", "valor_convenio",
+    },
+    "favorecidos": {
+        "codigo_emenda", "codigo_autor", "nome_autor", "numero_emenda",
+        "codigo_favorecido", "nome_favorecido", "valor_recebido",
+    },
+}
+
+
+def _normalize_header(value: str) -> str:
+    normalized = normalize_name(value or "") or ""
+    normalized = normalized.lower().replace("/", "_")
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
+def _read_csv_header(filepath: Path, encoding: str = "latin1") -> list[str]:
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        return [_normalize_header(col) for col in (next(reader, []) or [])]
+
+
+def _detect_emendas_role(filepath: Path) -> str | None:
+    try:
+        header = set(_read_csv_header(filepath))
+    except OSError:
+        return None
+
+    for role, signature in EMENDAS_HEADER_SIGNATURES.items():
+        if len(signature & header) >= max(3, len(signature) - 2):
+            return role
+    return None
 
 
 def _check_tor():
@@ -251,17 +293,6 @@ def download_emendas(anos=None):
                 _unzip(zip_path_ano, dest)
                 break  # todas as URLs redirecionam para o mesmo arquivo
 
-    # Renomear: usar CSV extraido como emendas_tesouro.csv
-    tesouro_target = dest / "emendas_tesouro.csv"
-    if not tesouro_target.exists():
-        # Tentar varios padroes (formato muda entre versoes do portal)
-        for pattern in ("*EmendaParlamentar*.csv", "*EmendasParlamentar*.csv", "*emenda*parlamentar*.csv"):
-            candidates = sorted(dest.glob(pattern), reverse=True)
-            if candidates:
-                shutil.copy2(candidates[0], tesouro_target)
-                print(f"    [renomeia] {candidates[0].name} -> emendas_tesouro.csv")
-                break
-
     # TransfereGov (convenios e favorecidos) - mensal
     print("  TransfereGov:")
     today = date.today()
@@ -280,23 +311,18 @@ def download_emendas(anos=None):
             zip_path.unlink(missing_ok=True)
         print(f"    {ym} nao disponivel...")
 
-    # Renomear CSVs de transferencias para nomes esperados pelo ETL
-    conv_target = dest / "transferegov_convenios.csv"
-    fav_target = dest / "transferegov_favorecidos.csv"
-    if not conv_target.exists():
-        for pattern in ("*Convenio*.csv", "*convenio*.csv", "*Transferencia*.csv"):
-            matches = sorted(dest.glob(pattern), reverse=True)
-            if matches:
-                shutil.copy2(matches[0], conv_target)
-                print(f"    [renomeia] {matches[0].name} -> transferegov_convenios.csv")
-                break
-    if not fav_target.exists():
-        for pattern in ("*Favorecido*.csv", "*favorecido*.csv"):
-            matches = sorted(dest.glob(pattern), reverse=True)
-            if matches:
-                shutil.copy2(matches[0], fav_target)
-                print(f"    [renomeia] {matches[0].name} -> transferegov_favorecidos.csv")
-                break
+    role_targets = {
+        "tesouro": dest / "emendas_tesouro.csv",
+        "convenios": dest / "transferegov_convenios.csv",
+        "favorecidos": dest / "transferegov_favorecidos.csv",
+    }
+    for csv_path in sorted(dest.glob("*.csv")):
+        role = _detect_emendas_role(csv_path)
+        target = role_targets.get(role)
+        if not target or csv_path == target:
+            continue
+        shutil.copy2(csv_path, target)
+        print(f"    [renomeia] {csv_path.name} -> {target.name}")
 
 
 def download_pgfn():
