@@ -512,6 +512,7 @@ def download_pncp(anos=None):
     """
     import json
     import time
+    from etl.download_pncp import DEFAULT_WORKERS as PNCP_ITEM_WORKERS, download_itens
 
     if anos is None:
         anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
@@ -672,6 +673,27 @@ def download_pncp(anos=None):
             out_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         return ds, len(records), False
 
+    def _collect_contratacoes_for_itens():
+        contratacoes = {}
+        for filepath in sorted(dest_contratacoes.glob("*.json")):
+            if filepath.name.startswith("_"):
+                continue
+            try:
+                raw = json.loads(filepath.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            items = raw if isinstance(raw, list) else raw.get("data", [])
+            for item in items or []:
+                nc = str(item.get("numeroControlePNCP") or "").strip()
+                orgao = item.get("orgaoEntidade") or {}
+                cnpj = str(orgao.get("cnpj") or "").strip()
+                ano = item.get("anoCompra")
+                seq = item.get("sequencialCompra")
+                if not (nc and cnpj and ano is not None and seq is not None):
+                    continue
+                contratacoes[nc] = (cnpj, int(ano), int(seq), nc)
+        return list(contratacoes.values())
+
     PARALLEL_WEEKS = 3  # semanas processadas em paralelo
 
     # ── Contratacoes (paralelo por semana, 4 threads por semana para modalidades) ──
@@ -781,7 +803,13 @@ def download_pncp(anos=None):
     print(f"    Total contratos baixados: {total_contratos}")
     if failed_contrato_weeks:
         print(f"    ATENCAO: {len(failed_contrato_weeks)} semanas com falha")
-    print("    Itens/resultados: usar 'python -m etl.download_pncp' (API por contratacao)")
+
+    contratacoes_para_itens = _collect_contratacoes_for_itens()
+    if contratacoes_para_itens:
+        print("  PNCP itens:")
+        download_itens(contratacoes_para_itens, workers=PNCP_ITEM_WORKERS)
+    else:
+        print("  PNCP itens: AVISO: nenhuma contratacao elegivel encontrada para download")
 
 
 def download_renuncias(anos=None):
@@ -1045,6 +1073,7 @@ def _validate_downloads_legacy():
     # PNCP
     _check("PNCP contratacoes", "pncp/*.json", min_count=10)
     _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
+    _check("PNCP itens", "pncp_itens/*.json", min_count=1)
 
     # Emendas
     _check("Emendas Tesouro", "emendas/emendas_tesouro.csv")
