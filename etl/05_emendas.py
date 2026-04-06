@@ -16,6 +16,8 @@ from etl.utils import normalize_name
 
 
 EMENDAS_DIR = DATA_DIR / "emendas"
+HEADER_MATCH_MIN_FIELDS = 3
+HEADER_MATCH_MISSING_TOLERANCE = 2
 
 EMENDAS_SIGNATURES = {
     "tesouro": {
@@ -34,7 +36,7 @@ EMENDAS_SIGNATURES = {
 
 
 def _normalize_header(value: str) -> str:
-    normalized = normalize_name(value or "") or ""
+    normalized = normalize_name(value or "")
     normalized = normalized.lower().replace("/", "_")
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
@@ -48,7 +50,10 @@ def _read_header(filepath: Path, encoding: str = "latin1") -> list[str]:
 def _matches_signature(filepath: Path, role: str) -> bool:
     header = set(_read_header(filepath))
     required = EMENDAS_SIGNATURES[role]
-    return len(required & header) >= max(3, len(required) - 2)
+    return len(required & header) >= max(
+        HEADER_MATCH_MIN_FIELDS,
+        len(required) - HEADER_MATCH_MISSING_TOLERANCE,
+    )
 
 
 def _resolve_input(*names: str) -> Path | None:

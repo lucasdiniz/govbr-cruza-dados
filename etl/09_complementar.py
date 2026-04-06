@@ -63,7 +63,7 @@ BNDES_HEADER_ALIASES = {
 
 
 def _normalize_header(value: str) -> str:
-    normalized = normalize_name(value or "") or ""
+    normalized = normalize_name(value or "")
     normalized = normalized.lower().replace("/", "_")
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 

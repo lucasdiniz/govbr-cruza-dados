@@ -39,6 +39,8 @@ RFB_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida
 
 CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
+HEADER_MATCH_MIN_FIELDS = 3
+HEADER_MATCH_MISSING_TOLERANCE = 2
 
 EMENDAS_HEADER_SIGNATURES = {
     "tesouro": {
@@ -57,7 +59,7 @@ EMENDAS_HEADER_SIGNATURES = {
 
 
 def _normalize_header(value: str) -> str:
-    normalized = normalize_name(value or "") or ""
+    normalized = normalize_name(value or "")
     normalized = normalized.lower().replace("/", "_")
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
@@ -75,7 +77,10 @@ def _detect_emendas_role(filepath: Path) -> str | None:
         return None
 
     for role, signature in EMENDAS_HEADER_SIGNATURES.items():
-        if len(signature & header) >= max(3, len(signature) - 2):
+        if len(signature & header) >= max(
+            HEADER_MATCH_MIN_FIELDS,
+            len(signature) - HEADER_MATCH_MISSING_TOLERANCE,
+        ):
             return role
     return None
 
