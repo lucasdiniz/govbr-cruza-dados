@@ -6,13 +6,26 @@ Fontes:
   - transferegov_favorecidos.csv (delimitador ;, com header, quoted)
 """
 
+import csv
 from pathlib import Path
 
-from etl.config import DATA_DIR, RFB_ENCODING
-from etl.db import get_conn, table_count
+from etl.config import DATA_DIR
+from etl.db import copy_csv_streaming, get_conn, table_count
+from etl.utils import EMENDAS_SIGNATURES, header_matches_signature, normalize_header_label
 
 
 EMENDAS_DIR = DATA_DIR / "emendas"
+
+
+def _read_header(filepath: Path, encoding: str = "latin1") -> list[str]:
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        return [normalize_header_label(col) for col in (next(reader, []) or [])]
+
+
+def _matches_signature(filepath: Path, role: str) -> bool:
+    header = set(_read_header(filepath))
+    return header_matches_signature(header, EMENDAS_SIGNATURES[role])
 
 
 def _resolve_input(*names: str) -> Path | None:
@@ -33,22 +46,78 @@ def _resolve_input_glob(*patterns: str) -> Path | None:
     return None
 
 
-def _copy_csv_with_header(conn, filepath, table, encoding="utf-8"):
-    """COPY FROM de CSV com header, delimitador ;, campos quoted."""
-    copy_sql = f"""COPY {table} FROM STDIN
-        WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING '{encoding}')"""
+def _resolve_input_by_role(role: str, *names_or_patterns: str) -> Path | None:
+    seen = set()
+    candidates = []
 
-    with open(filepath, "rb") as f:
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, f)
-    conn.commit()
+    direct_names = [value for value in names_or_patterns if "*" not in value and "?" not in value]
+    glob_patterns = [value for value in names_or_patterns if value not in direct_names]
+
+    for name in direct_names:
+        match = _resolve_input(name)
+        if match and match not in seen:
+            candidates.append(match)
+            seen.add(match)
+
+    for pattern in glob_patterns:
+        match = _resolve_input_glob(pattern)
+        if match and match not in seen:
+            candidates.append(match)
+            seen.add(match)
+
+    for base in (EMENDAS_DIR, DATA_DIR):
+        for candidate in sorted(base.glob("*.csv")):
+            if candidate not in seen:
+                candidates.append(candidate)
+                seen.add(candidate)
+
+    for candidate in candidates:
+        try:
+            if _matches_signature(candidate, role):
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def _copy_escape(val):
+    if val is None:
+        return "\\N"
+    val = str(val).strip()
+    if val == "":
+        return "\\N"
+    return val.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "")
+
+
+def _iter_csv_as_tsv(filepath: Path, expected_cols: int, encoding: str = "latin1"):
+    adjusted = 0
+
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        next(reader, None)  # header
+        for row in reader:
+            if not row or all(not c.strip() for c in row):
+                continue
+            if len(row) < expected_cols:
+                row = row + [""] * (expected_cols - len(row))
+                adjusted += 1
+            elif len(row) > expected_cols:
+                row = row[:expected_cols]
+                adjusted += 1
+            yield "\t".join(_copy_escape(v) for v in row) + "\n"
+
+    if adjusted:
+        print(f"      AVISO: {filepath.name}: {adjusted} linha(s) ajustada(s) para {expected_cols} colunas")
 
 
 def load_emendas_tesouro(conn):
     """Carrega emendas_tesouro.csv → emenda_tesouro."""
-    filepath = _resolve_input("emendas_tesouro.csv")
-    if filepath is None:
-        filepath = _resolve_input_glob("*emendas*tesouro*.csv", "*tesouro*.csv")
+    filepath = _resolve_input_by_role(
+        "tesouro",
+        "emendas_tesouro.csv",
+        "*emendas*tesouro*.csv",
+        "*tesouro*.csv",
+    )
     if filepath is None:
         print("    AVISO: emendas_tesouro.csv não encontrado.")
         return
@@ -63,12 +132,12 @@ def load_emendas_tesouro(conn):
         )""")
     conn.commit()
 
-    copy_sql = f"""COPY {staging} FROM STDIN
-        WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
-    with open(filepath, "rb") as f:
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, f)
-    conn.commit()
+    copy_csv_streaming(
+        conn,
+        staging,
+        [f"c{i}" for i in range(15)],
+        _iter_csv_as_tsv(filepath, 15, encoding="latin1"),
+    )
 
     with conn.cursor() as cur:
         cur.execute(f"""
@@ -102,9 +171,12 @@ def load_emendas_tesouro(conn):
 
 def load_convenios(conn):
     """Carrega transferegov_convenios.csv → emenda_convenio."""
-    filepath = _resolve_input("transferegov_convenios.csv")
-    if filepath is None:
-        filepath = _resolve_input_glob("*transferegov*convenio*.csv", "*convenio*.csv")
+    filepath = _resolve_input_by_role(
+        "convenios",
+        "transferegov_convenios.csv",
+        "*transferegov*convenio*.csv",
+        "*convenio*.csv",
+    )
     if filepath is None:
         print("    AVISO: transferegov_convenios.csv não encontrado.")
         return
@@ -118,12 +190,12 @@ def load_convenios(conn):
         )""")
     conn.commit()
 
-    copy_sql = f"""COPY {staging} FROM STDIN
-        WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
-    with open(filepath, "rb") as f:
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, f)
-    conn.commit()
+    copy_csv_streaming(
+        conn,
+        staging,
+        [f"c{i}" for i in range(12)],
+        _iter_csv_as_tsv(filepath, 12, encoding="latin1"),
+    )
 
     with conn.cursor() as cur:
         cur.execute(f"""
@@ -153,9 +225,12 @@ def load_convenios(conn):
 
 def load_favorecidos(conn):
     """Carrega transferegov_favorecidos.csv → emenda_favorecido."""
-    filepath = _resolve_input("transferegov_favorecidos.csv")
-    if filepath is None:
-        filepath = _resolve_input_glob("*transferegov*favorecid*.csv", "*favorecid*.csv")
+    filepath = _resolve_input_by_role(
+        "favorecidos",
+        "transferegov_favorecidos.csv",
+        "*transferegov*favorecid*.csv",
+        "*favorecid*.csv",
+    )
     if filepath is None:
         print("    AVISO: transferegov_favorecidos.csv não encontrado.")
         return
@@ -169,12 +244,12 @@ def load_favorecidos(conn):
         )""")
     conn.commit()
 
-    copy_sql = f"""COPY {staging} FROM STDIN
-        WITH (FORMAT csv, DELIMITER ';', HEADER true, NULL '', ENCODING 'LATIN1')"""
-    with open(filepath, "rb") as f:
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, f)
-    conn.commit()
+    copy_csv_streaming(
+        conn,
+        staging,
+        [f"c{i}" for i in range(13)],
+        _iter_csv_as_tsv(filepath, 13, encoding="latin1"),
+    )
 
     with conn.cursor() as cur:
         cur.execute(f"""

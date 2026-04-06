@@ -10,6 +10,7 @@ Uso:
 """
 
 import os
+import csv
 import shutil
 import sys
 import zipfile
@@ -21,6 +22,7 @@ from urllib.error import URLError, HTTPError
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
+from etl.utils import EMENDAS_SIGNATURES, header_matches_signature, normalize_header_label
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
        "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -36,6 +38,24 @@ RFB_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida
 
 CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
+
+
+def _read_csv_header(filepath: Path, encoding: str = "latin1") -> list[str]:
+    with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        return [normalize_header_label(col) for col in (next(reader, []) or [])]
+
+
+def _detect_emendas_role(filepath: Path) -> str | None:
+    try:
+        header = set(_read_csv_header(filepath))
+    except OSError:
+        return None
+
+    for role, signature in EMENDAS_SIGNATURES.items():
+        if header_matches_signature(header, signature):
+            return role
+    return None
 
 
 def _check_tor():
@@ -251,17 +271,6 @@ def download_emendas(anos=None):
                 _unzip(zip_path_ano, dest)
                 break  # todas as URLs redirecionam para o mesmo arquivo
 
-    # Renomear: usar CSV extraido como emendas_tesouro.csv
-    tesouro_target = dest / "emendas_tesouro.csv"
-    if not tesouro_target.exists():
-        # Tentar varios padroes (formato muda entre versoes do portal)
-        for pattern in ("*EmendaParlamentar*.csv", "*EmendasParlamentar*.csv", "*emenda*parlamentar*.csv"):
-            candidates = sorted(dest.glob(pattern), reverse=True)
-            if candidates:
-                shutil.copy2(candidates[0], tesouro_target)
-                print(f"    [renomeia] {candidates[0].name} -> emendas_tesouro.csv")
-                break
-
     # TransfereGov (convenios e favorecidos) - mensal
     print("  TransfereGov:")
     today = date.today()
@@ -280,23 +289,18 @@ def download_emendas(anos=None):
             zip_path.unlink(missing_ok=True)
         print(f"    {ym} nao disponivel...")
 
-    # Renomear CSVs de transferencias para nomes esperados pelo ETL
-    conv_target = dest / "transferegov_convenios.csv"
-    fav_target = dest / "transferegov_favorecidos.csv"
-    if not conv_target.exists():
-        for pattern in ("*Convenio*.csv", "*convenio*.csv", "*Transferencia*.csv"):
-            matches = sorted(dest.glob(pattern), reverse=True)
-            if matches:
-                shutil.copy2(matches[0], conv_target)
-                print(f"    [renomeia] {matches[0].name} -> transferegov_convenios.csv")
-                break
-    if not fav_target.exists():
-        for pattern in ("*Favorecido*.csv", "*favorecido*.csv"):
-            matches = sorted(dest.glob(pattern), reverse=True)
-            if matches:
-                shutil.copy2(matches[0], fav_target)
-                print(f"    [renomeia] {matches[0].name} -> transferegov_favorecidos.csv")
-                break
+    role_targets = {
+        "tesouro": dest / "emendas_tesouro.csv",
+        "convenios": dest / "transferegov_convenios.csv",
+        "favorecidos": dest / "transferegov_favorecidos.csv",
+    }
+    for csv_path in sorted(dest.glob("*.csv")):
+        role = _detect_emendas_role(csv_path)
+        target = role_targets.get(role)
+        if not target or csv_path == target or target.exists():
+            continue
+        shutil.copy2(csv_path, target)
+        print(f"    [renomeia] {csv_path.name} -> {target.name}")
 
 
 def download_pgfn():
@@ -508,6 +512,7 @@ def download_pncp(anos=None):
     """
     import json
     import time
+    from etl.download_pncp import DEFAULT_WORKERS as PNCP_ITEM_WORKERS, download_itens
 
     if anos is None:
         anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
@@ -668,6 +673,27 @@ def download_pncp(anos=None):
             out_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         return ds, len(records), False
 
+    def _collect_contratacoes_for_itens():
+        contratacoes = {}
+        for filepath in sorted(dest_contratacoes.glob("*.json")):
+            if filepath.name.startswith("_"):
+                continue
+            try:
+                raw = json.loads(filepath.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            items = raw if isinstance(raw, list) else raw.get("data", [])
+            for item in items or []:
+                nc = str(item.get("numeroControlePNCP") or "").strip()
+                orgao = item.get("orgaoEntidade") or {}
+                cnpj = str(orgao.get("cnpj") or "").strip()
+                ano = item.get("anoCompra")
+                seq = item.get("sequencialCompra")
+                if not (nc and cnpj and ano is not None and seq is not None):
+                    continue
+                contratacoes[nc] = (cnpj, int(ano), int(seq), nc)
+        return list(contratacoes.values())
+
     PARALLEL_WEEKS = 3  # semanas processadas em paralelo
 
     # ── Contratacoes (paralelo por semana, 4 threads por semana para modalidades) ──
@@ -777,7 +803,13 @@ def download_pncp(anos=None):
     print(f"    Total contratos baixados: {total_contratos}")
     if failed_contrato_weeks:
         print(f"    ATENCAO: {len(failed_contrato_weeks)} semanas com falha")
-    print("    Itens/resultados: usar 'python -m etl.download_pncp' (API por contratacao)")
+
+    contratacoes_para_itens = _collect_contratacoes_for_itens()
+    if contratacoes_para_itens:
+        print("  PNCP itens:")
+        download_itens(contratacoes_para_itens, workers=PNCP_ITEM_WORKERS)
+    else:
+        print("  PNCP itens: AVISO: nenhuma contratacao elegivel encontrada para download")
 
 
 def download_renuncias(anos=None):
@@ -1041,6 +1073,7 @@ def _validate_downloads_legacy():
     # PNCP
     _check("PNCP contratacoes", "pncp/*.json", min_count=10)
     _check("PNCP contratos", "pncp_contratos/*.json", min_count=10)
+    _check("PNCP itens", "pncp_itens/*.json", min_count=1)
 
     # Emendas
     _check("Emendas Tesouro", "emendas/emendas_tesouro.csv")

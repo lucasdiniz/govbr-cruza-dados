@@ -7,6 +7,23 @@ import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+HEADER_MATCH_MIN_FIELDS = 3
+HEADER_MATCH_MISSING_TOLERANCE = 2
+EMENDAS_SIGNATURES = {
+    "tesouro": {
+        "nome_ente", "uf", "codigo_siafi", "codigo_ibge",
+        "nome_favorecido", "nome_emenda", "categoria_economica", "valor",
+    },
+    "convenios": {
+        "codigo_emenda", "codigo_funcao", "nome_funcao", "codigo_subfuncao",
+        "convenente", "numero_convenio", "valor_convenio",
+    },
+    "favorecidos": {
+        "codigo_emenda", "codigo_autor", "nome_autor", "numero_emenda",
+        "codigo_favorecido", "nome_favorecido", "valor_recebido",
+    },
+}
+
 
 def normalize_name(name: str | None) -> str | None:
     """Remove acentos, uppercase, colapsa espaços."""
@@ -138,3 +155,16 @@ def parse_csv_line(line: str, delimiter: str = ";") -> list[str]:
     for row in reader:
         return [f.strip() for f in row]
     return []
+
+
+def normalize_header_label(value: str) -> str:
+    normalized = normalize_name(value or "")
+    normalized = normalized.lower().replace("/", "_")
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
+def header_matches_signature(header: set[str], signature: set[str]) -> bool:
+    return len(signature & header) >= max(
+        HEADER_MATCH_MIN_FIELDS,
+        len(signature) - HEADER_MATCH_MISSING_TOLERANCE,
+    )

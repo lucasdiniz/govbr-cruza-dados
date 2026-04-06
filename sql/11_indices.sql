@@ -144,10 +144,3 @@ CREATE INDEX idx_merge_status ON pessoa_merge(status);
 
 -- NOTA: Compostos CPF digitos + nome movidos para fase 17 (15_normalizar.py)
 -- idx_cpgf_portador_cpf_nome, idx_siape_cpf_nome, idx_viagem_cpf_nome
-
--- =============================================
--- Funcional: CNPJ basico do doador TSE (para Q56)
--- =============================================
-CREATE INDEX idx_tse_rec_cnpj_basico_doador
-    ON tse_receita_candidato (LEFT(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g'), 8))
-    WHERE LENGTH(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g')) >= 14;
