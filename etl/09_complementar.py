@@ -8,13 +8,12 @@ Holdings removido: redundante com socio WHERE tipo_socio=1 (PJ socio de PJ)
 
 import csv
 import gzip
-import re
 import shutil
 from pathlib import Path
 
 from etl.config import DATA_DIR
 from etl.db import copy_csv_streaming, get_conn, table_count
-from etl.utils import normalize_name
+from etl.utils import normalize_header_label
 
 # comprasnet.csv.gz no repo (data/static/)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
@@ -60,18 +59,10 @@ BNDES_HEADER_ALIASES = {
     "tipo_excepcionalidade": ("tipo_de_excepcionalidade", "tipo_excepcionalidade"),
     "situacao_contrato": ("situacao_do_contrato", "situacao_contrato"),
 }
-
-
-def _normalize_header(value: str) -> str:
-    normalized = normalize_name(value or "")
-    normalized = normalized.lower().replace("/", "_")
-    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
-
-
 def _read_csv_header(filepath: Path, encoding: str = "latin1", delimiter: str = ";") -> list[str]:
     with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
         reader = csv.reader(f, delimiter=delimiter, quotechar='"')
-        return [_normalize_header(col) for col in (next(reader, []) or [])]
+        return [normalize_header_label(col) for col in (next(reader, []) or [])]
 
 
 def _build_bndes_select(header: list[str]) -> tuple[str, str]:

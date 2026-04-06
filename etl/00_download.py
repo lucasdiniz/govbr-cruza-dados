@@ -11,7 +11,6 @@ Uso:
 
 import os
 import csv
-import re
 import shutil
 import sys
 import zipfile
@@ -23,7 +22,7 @@ from urllib.error import URLError, HTTPError
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
-from etl.utils import normalize_name
+from etl.utils import EMENDAS_SIGNATURES, header_matches_signature, normalize_header_label
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
        "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -39,35 +38,12 @@ RFB_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida
 
 CURRENT_YEAR = date.today().year
 DEFAULT_ANOS = range(2020, CURRENT_YEAR + 1)
-HEADER_MATCH_MIN_FIELDS = 3
-HEADER_MATCH_MISSING_TOLERANCE = 2
-
-EMENDAS_HEADER_SIGNATURES = {
-    "tesouro": {
-        "nome_ente", "uf", "codigo_siafi", "codigo_ibge",
-        "nome_favorecido", "nome_emenda", "categoria_economica", "valor",
-    },
-    "convenios": {
-        "codigo_emenda", "codigo_funcao", "nome_funcao", "codigo_subfuncao",
-        "convenente", "numero_convenio", "valor_convenio",
-    },
-    "favorecidos": {
-        "codigo_emenda", "codigo_autor", "nome_autor", "numero_emenda",
-        "codigo_favorecido", "nome_favorecido", "valor_recebido",
-    },
-}
-
-
-def _normalize_header(value: str) -> str:
-    normalized = normalize_name(value or "")
-    normalized = normalized.lower().replace("/", "_")
-    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
 
 def _read_csv_header(filepath: Path, encoding: str = "latin1") -> list[str]:
     with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
         reader = csv.reader(f, delimiter=";", quotechar='"')
-        return [_normalize_header(col) for col in (next(reader, []) or [])]
+        return [normalize_header_label(col) for col in (next(reader, []) or [])]
 
 
 def _detect_emendas_role(filepath: Path) -> str | None:
@@ -76,11 +52,8 @@ def _detect_emendas_role(filepath: Path) -> str | None:
     except OSError:
         return None
 
-    for role, signature in EMENDAS_HEADER_SIGNATURES.items():
-        if len(signature & header) >= max(
-            HEADER_MATCH_MIN_FIELDS,
-            len(signature) - HEADER_MATCH_MISSING_TOLERANCE,
-        ):
+    for role, signature in EMENDAS_SIGNATURES.items():
+        if header_matches_signature(header, signature):
             return role
     return None
 
