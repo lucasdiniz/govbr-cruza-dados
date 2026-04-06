@@ -190,9 +190,14 @@ def _ensure_itens_downloaded():
                 return
 
     _log("Diretorio pncp_itens/ ausente ou vazio; baixando itens via API...")
-    contratacoes = _get_contratacoes()
+    try:
+        contratacoes = _get_contratacoes()
+    except Exception as e:
+        _log(f"AVISO: nao foi possivel buscar contratacoes para download de itens: {e}")
+        return
     if not contratacoes:
-        raise RuntimeError("pncp_contratacao sem registros para baixar itens do PNCP")
+        _log("AVISO: pncp_contratacao sem registros — pulando download de itens")
+        return
     download_itens(contratacoes, workers=DEFAULT_WORKERS)
 
 
@@ -201,7 +206,8 @@ def load_itens(conn):
     _ensure_itens_downloaded()
 
     if not ITENS_DIR.exists():
-        raise RuntimeError("diretorio pncp_itens/ nao encontrado apos download")
+        print("    AVISO: diretorio pncp_itens/ nao encontrado.")
+        return
 
     # Truncate table for clean start
     _log("TRUNCATE pncp_item para recarga completa...")

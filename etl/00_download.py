@@ -297,7 +297,7 @@ def download_emendas(anos=None):
     for csv_path in sorted(dest.glob("*.csv")):
         role = _detect_emendas_role(csv_path)
         target = role_targets.get(role)
-        if not target or csv_path == target:
+        if not target or csv_path == target or target.exists():
             continue
         shutil.copy2(csv_path, target)
         print(f"    [renomeia] {csv_path.name} -> {target.name}")

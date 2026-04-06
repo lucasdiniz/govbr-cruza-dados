@@ -59,6 +59,8 @@ BNDES_HEADER_ALIASES = {
     "tipo_excepcionalidade": ("tipo_de_excepcionalidade", "tipo_excepcionalidade"),
     "situacao_contrato": ("situacao_do_contrato", "situacao_contrato"),
 }
+
+
 def _read_csv_header(filepath: Path, encoding: str = "latin1", delimiter: str = ";") -> list[str]:
     with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
         reader = csv.reader(f, delimiter=delimiter, quotechar='"')
