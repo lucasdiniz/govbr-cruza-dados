@@ -290,6 +290,11 @@ def run():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_rec_partido ON tse_receita_candidato(sg_partido);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_rec_valor ON tse_receita_candidato(vr_receita);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_rec_doador_nome ON tse_receita_candidato USING gin(nm_doador gin_trgm_ops);")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_tse_rec_cnpj_basico_doador
+                    ON tse_receita_candidato (LEFT(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g'), 8))
+                    WHERE LENGTH(REGEXP_REPLACE(cpf_cnpj_doador, '[^0-9]', '', 'g')) >= 14;
+            """)
             # Despesas
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_desp_sq ON tse_despesa_candidato(sq_prestador_contas);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_desp_valor ON tse_despesa_candidato(vr_pagto_despesa);")

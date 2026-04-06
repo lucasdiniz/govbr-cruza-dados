@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
+from etl.download_pncp import DEFAULT_WORKERS, _get_contratacoes, download_itens
 from etl.utils import safe_strip
 
 
@@ -182,11 +183,25 @@ def _flush_buffer(conn, buffer, batch_num):
         return False, recovered, error_msg
 
 
+def _ensure_itens_downloaded():
+    if ITENS_DIR.exists():
+        for entry in os.scandir(ITENS_DIR):
+            if entry.is_file() and entry.name.endswith(".json"):
+                return
+
+    _log("Diretorio pncp_itens/ ausente ou vazio; baixando itens via API...")
+    contratacoes = _get_contratacoes()
+    if not contratacoes:
+        raise RuntimeError("pncp_contratacao sem registros para baixar itens do PNCP")
+    download_itens(contratacoes, workers=DEFAULT_WORKERS)
+
+
 def load_itens(conn):
     """Carrega pncp_itens/*.json → pncp_item usando COPY + thread pool."""
+    _ensure_itens_downloaded()
+
     if not ITENS_DIR.exists():
-        print("    AVISO: diretorio pncp_itens/ nao encontrado.")
-        return
+        raise RuntimeError("diretorio pncp_itens/ nao encontrado apos download")
 
     # Truncate table for clean start
     _log("TRUNCATE pncp_item para recarga completa...")
