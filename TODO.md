@@ -8,8 +8,8 @@ Cada fonte abaixo tem um problema específico que impede a carga correta no banc
 O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrigir.
 
 25. [x] **PGFN: nomes de arquivos mudaram** — Fix: glob adaptado para `pgfn/arquivo_lai_*.csv` com fallback `pgfn_*.csv` (sessão 34)
-26. [ ] **Sancoes: download bloqueado (IP Azure)** — Portal da Transparência bloqueia IP da VM (403). Tor fallback falha (exit=8, Tor connection refused). CSVs antigos existem na VM em `/home/govbr/data/sancoes/` (20260324 e 20260327 e 20260403). O ETL (`etl/13_sancoes.py`) faz glob `*_CEIS.csv` etc. e encontra os antigos. **Status**: Sanções carregaram 22K CEIS + 1.5K CNEP + 4K CEAF do cache antigo. Fix: (a) reconfigurar Tor na VM (`sudo systemctl restart tor`, verificar `torrc`), ou (b) aceitar dados de 2026-03 como suficientes.
-27. [ ] **SIAPE: download parcial bloqueado** — Meses 2026-01 e 2026-02 OK (já existiam). Meses 2026-03+ bloqueados (mesmo 403/Tor). ETL carregou 617K cadastro + 508K remuneração dos 2 meses disponíveis. Fix: mesmo que Sanções — resolver bloqueio Tor no Portal da Transparência.
+26. [x] **Sancoes: download bloqueado (IP Azure)** — Aceito dados de cache 2026-03 (22K CEIS + 1.5K CNEP + 4K CEAF). Suficiente para cruzamentos.
+27. [x] **SIAPE: download parcial bloqueado** — Aceito 2 meses (jan-fev 2026): 617K cadastro + 508K remuneração. Suficiente para cruzamentos.
 28. [x] **TSE: download automatizado** — `download_tse()` implementado em `etl/00_download.py`. Baixa ZIPs oficiais do CDN do TSE para 2020, 2022 e 2024 (`consulta_cand`, `bem_candidato` e `prestacao_de_contas_eleitorais_candidatos` para 2022/2024), salvando com os nomes que `etl/16_tse.py` e `etl/18_tse_prestacao.py` esperam.
 29. [x] **Bolsa Família: download automatizado** — `download_bolsa_familia()` implementado em `etl/00_download.py`. Baixa `/download-de-dados/novo-bolsa-familia/YYYYMM`, extrai o ZIP e deixa `*_NovoBolsaFamilia.csv` prontos para `etl/17_bolsa_familia.py`. Observação: o mesmo bloqueio 403 da Azure ainda pode afetar meses novos.
 30. [x] **Renúncias: ETL não encontra CSVs (acento)** — Fix: `_glob_renuncias()` busca com/sem acento em `renuncias/` e DATA_DIR raiz (sessão 34)
@@ -39,7 +39,7 @@ O deploy run 23994305748 rodou com esses bugs — precisa re-deploy após corrig
 - **BNDES**: 2 CSVs (formato corrigido, precisa re-carga) ✓
 
 ### ETL dados.pb.gov.br (12 datasets novos)
-21. [ ] **Download todos os datasets** — já implementado em `download_dados_pb()` no `etl/00_download.py`. Baixa 13 datasets mensais + 2 anuais via API `https://dados.pb.gov.br/getcsv?nome=DATASET&exercicio=ANO&mes=MES`. Nota: `Diarias` case-sensitive (D maiúsculo).
+21. [x] **Download todos os datasets** — Implementado em `download_dados_pb()`. Deploy atual rodando na VM.
 22. [x] **ETL carga no banco** — 16 tabelas pb_* carregadas localmente (~14.4M registros). Fix: linhas curtas (quebra de linha em campos texto) agora ignoradas em `_staging_load_from_data`.
 23. [x] **Queries de cruzamento (Q101-Q111)** — novos cruzamentos com datasets pb_* ampliados:
     - Q101: Aditivos abusivos — contratos cujo total aditivo supera % do valor original

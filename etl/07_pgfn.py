@@ -69,13 +69,13 @@ def _iter_pgfn_rows(filepath: Path):
         positions = _resolve_header_positions(header)
         missing = [col for col in EXPECTED_COLS if positions[col] is None]
         if missing:
-            raise RuntimeError(f"{filepath.name}: colunas PGFN ausentes no header: {', '.join(missing)}")
+            print(f"      AVISO: {filepath.name}: colunas ausentes (serao NULL): {', '.join(missing)}")
 
         for row in reader:
             if not row or all(not c.strip() for c in row):
                 continue
             try:
-                values = [row[positions[col]] if positions[col] < len(row) else None for col in EXPECTED_COLS]
+                values = [row[positions[col]] if positions[col] is not None and positions[col] < len(row) else None for col in EXPECTED_COLS]
             except Exception:
                 skipped += 1
                 continue

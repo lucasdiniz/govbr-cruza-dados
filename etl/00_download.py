@@ -235,19 +235,32 @@ def download_emendas(anos=None):
     dest.mkdir(parents=True, exist_ok=True)
 
     print("  Emendas:")
-    for ano in anos:
-        url = f"{TRANSPARENCIA_BASE}/emendas-parlamentares/{ano}"
-        zip_path = dest / f"{ano}_EmendaParlamentar.zip"
-        if _download(url, zip_path):
-            _unzip(zip_path, dest)
+    # Portal mudou: todos os anos redirecionam para o mesmo ZIP consolidado.
+    # Tentar URL direta do CDN CGU primeiro, depois fallback por ano.
+    cgu_url = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida/emendas-parlamentares/EmendasParlamentares.zip"
+    zip_path = dest / "EmendasParlamentares.zip"
+    downloaded = _download(cgu_url, zip_path)
+    if downloaded:
+        _unzip(zip_path, dest)
+    else:
+        # Fallback: tentar via portal (redireciona para o mesmo CDN)
+        for ano in anos:
+            url = f"{TRANSPARENCIA_BASE}/emendas-parlamentares/{ano}"
+            zip_path_ano = dest / f"{ano}_EmendaParlamentar.zip"
+            if _download(url, zip_path_ano):
+                _unzip(zip_path_ano, dest)
+                break  # todas as URLs redirecionam para o mesmo arquivo
 
-    # Renomear: usar CSV mais recente extraido como emendas_tesouro.csv
+    # Renomear: usar CSV extraido como emendas_tesouro.csv
     tesouro_target = dest / "emendas_tesouro.csv"
     if not tesouro_target.exists():
-        candidates = sorted(dest.glob("*EmendaParlamentar*.csv"), reverse=True)
-        if candidates:
-            shutil.copy2(candidates[0], tesouro_target)
-            print(f"    [renomeia] {candidates[0].name} -> emendas_tesouro.csv")
+        # Tentar varios padroes (formato muda entre versoes do portal)
+        for pattern in ("*EmendaParlamentar*.csv", "*EmendasParlamentar*.csv", "*emenda*parlamentar*.csv"):
+            candidates = sorted(dest.glob(pattern), reverse=True)
+            if candidates:
+                shutil.copy2(candidates[0], tesouro_target)
+                print(f"    [renomeia] {candidates[0].name} -> emendas_tesouro.csv")
+                break
 
     # TransfereGov (convenios e favorecidos) - mensal
     print("  TransfereGov:")
