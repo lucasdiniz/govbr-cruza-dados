@@ -147,7 +147,7 @@ A maioria dos dados e baixada automaticamente via `python -m etl.00_download`:
 |-------|-----|----------|
 | Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | Automatico (~30GB) |
 | PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | Automatico (trimestral) |
-| PNCP (licitacoes/contratos/itens) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.download_pncp`) |
+| PNCP (licitacoes/contratos/itens/resultados) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.00_download`; `etl.download_pncp` mantido por compatibilidade) |
 | Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias, Novo Bolsa Familia) |
 | BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | Automatico |
 | TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Automatico (ZIPs por ano para candidatos, bens e prestacao) |

@@ -1,6 +1,6 @@
 """Fase 4b: Carrega itens PNCP (JSON → PostgreSQL).
 
-Le os JSONs baixados por download_pncp.py e insere na tabela pncp_item.
+Le os JSONs baixados por etl.00_download e insere na tabela pncp_item.
 Usa COPY + thread pool para maximizar throughput em HDD.
 
 Uso:
@@ -14,12 +14,12 @@ import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from importlib import import_module
 
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
-from etl.download_pncp import DEFAULT_WORKERS, _get_contratacoes, download_itens
 from etl.utils import safe_strip
 
 
@@ -184,21 +184,7 @@ def _flush_buffer(conn, buffer, batch_num):
 
 
 def _ensure_itens_downloaded():
-    if ITENS_DIR.exists():
-        for entry in os.scandir(ITENS_DIR):
-            if entry.is_file() and entry.name.endswith(".json"):
-                return
-
-    _log("Diretorio pncp_itens/ ausente ou vazio; baixando itens via API...")
-    try:
-        contratacoes = _get_contratacoes()
-    except Exception as e:
-        _log(f"AVISO: nao foi possivel buscar contratacoes para download de itens: {e}")
-        return
-    if not contratacoes:
-        _log("AVISO: pncp_contratacao sem registros — pulando download de itens")
-        return
-    download_itens(contratacoes, workers=DEFAULT_WORKERS)
+    import_module("etl.00_download").ensure_pncp_itens_downloaded(log=_log)
 
 
 def load_itens(conn):
