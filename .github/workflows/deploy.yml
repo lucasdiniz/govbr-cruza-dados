@@ -1,7 +1,7 @@
 name: Deploy to Azure VM
 
 # Runs directly on the VM via self-hosted runner (installed by setup-runner.yml).
-# Full live logs, no time limits.
+# Full live logs with the GitHub self-hosted runner max timeout (5 days / 7200 min).
 #
 # Required secrets:
 #   DB_PASSWORD - PostgreSQL password
@@ -39,7 +39,7 @@ env:
 jobs:
   deploy:
     runs-on: [self-hosted, linux, azure]
-    timeout-minutes: 1440  # 24h safety net
+    timeout-minutes: 7200  # GitHub self-hosted runner hard limit (5 days)
 
     steps:
       - name: Checkout
