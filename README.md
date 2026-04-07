@@ -95,7 +95,7 @@ O jeito mais facil de rodar o projeto e via GitHub Actions em uma VM Ubuntu:
 # Actions > "Deploy to Azure VM" > Run workflow (etl_phase=all)
 ```
 
-O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa ~100GB de dados de 18+ fontes e popula o banco. Live logs disponiveis no GitHub Actions durante toda a execucao. Duracao tipica: 10-20h dependendo da rede.
+O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa ~100GB de dados de 18+ fontes e popula o banco. Live logs disponiveis no GitHub Actions durante toda a execucao. O job de deploy agora usa o limite maximo suportado por runners self-hosted do GitHub (5 dias), o que ajuda quando APIs lentas estendem a janela de download. Duracao tipica: 10-20h dependendo da rede.
 
 Opcoes do deploy:
 - `etl_phase=all` — ETL completo (download + carga + queries)
