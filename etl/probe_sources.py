@@ -320,16 +320,28 @@ def iter_probes() -> Iterable[ProbeResult]:
             f"TCE-PB {category}",
             f"{TCE_BASE}/{category}/{category}-2024.zip",
         )
-    yield _probe_stream(
-        "Dados PB pagamento",
-        DADOS_PB_BASE,
-        params={"nome": "pagamento", "exercicio": "2025", "mes": "01"},
-    )
-    yield _probe_stream(
-        "Dados PB empenho",
-        DADOS_PB_BASE,
-        params={"nome": "empenho_original", "exercicio": "2025", "mes": "01"},
-    )
+    # Monthly datasets (same endpoint, different nome= param)
+    for api_nome, label in (
+        ("pagamento", "pagamento"),
+        ("empenho_original", "empenho"),
+        ("pagamentos_gestao_pactuada_saude", "saude"),
+        ("pagamento_anulacao", "pagamento_anulacao"),
+        ("liquidacaodespesa", "liquidacaodespesa"),
+        ("liquidacaodespesadescontos", "liquidacaodespesadescontos"),
+        ("empenho_anulacao", "empenho_anulacao"),
+        ("empenho_suplementacao", "empenho_suplementacao"),
+        ("dotacao", "dotacao"),
+        ("liquidacao", "liquidacao"),
+        ("aditivos_contrato", "aditivos_contrato"),
+        ("aditivos_convenio", "aditivos_convenio"),
+        ("Diarias", "diarias"),
+    ):
+        yield _probe_stream(
+            f"Dados PB {label}",
+            DADOS_PB_BASE,
+            params={"nome": api_nome, "exercicio": "2024", "mes": "01"},
+        )
+    # Annual datasets (no mes param)
     yield _probe_stream(
         "Dados PB contratos",
         DADOS_PB_BASE,
@@ -341,6 +353,11 @@ def iter_probes() -> Iterable[ProbeResult]:
         params={"nome": "convenios", "exercicio": "2024", "mes_inicio": "1", "mes_fim": "12"},
     )
     yield _probe_stream(
+        "Dados PB unidade_gestora",
+        DADOS_PB_BASE,
+        params={"nome": "unidade_gestora_dadospb", "exercicio": "2024"},
+    )
+    yield _probe_stream(
         "BNDES nao automaticas",
         f"{BNDES_BASE}/6f56b78c-510f-44b6-8274-78a5b7e931f4/download/operacoes-financiamento-operacoes-nao-automaticas.csv",
     )
@@ -348,18 +365,21 @@ def iter_probes() -> Iterable[ProbeResult]:
         "BNDES automaticas",
         f"{BNDES_BASE}/612faa0b-b6be-4b2c-9317-da5dc2c0b901/download/operacoes-financiamento-operacoes-indiretas-automaticas.csv",
     )
-    yield _probe_stream(
-        "TSE candidatos 2024",
-        f"{TSE_BASE}/consulta_cand/consulta_cand_2024.zip",
-    )
-    yield _probe_stream(
-        "TSE bens 2024",
-        f"{TSE_BASE}/bem_candidato/bem_candidato_2024.zip",
-    )
-    yield _probe_stream(
-        "TSE prestacao 2024",
-        f"{TSE_BASE}/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2024.zip",
-    )
+    # TSE: candidatos + bens for all election years; prestacao only for 2022+2024
+    for ano in (2020, 2022, 2024):
+        yield _probe_stream(
+            f"TSE candidatos {ano}",
+            f"{TSE_BASE}/consulta_cand/consulta_cand_{ano}.zip",
+        )
+        yield _probe_stream(
+            f"TSE bens {ano}",
+            f"{TSE_BASE}/bem_candidato/bem_candidato_{ano}.zip",
+        )
+    for ano in (2022, 2024):
+        yield _probe_stream(
+            f"TSE prestacao {ano}",
+            f"{TSE_BASE}/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_{ano}.zip",
+        )
 
 
 
