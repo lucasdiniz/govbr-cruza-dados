@@ -503,6 +503,50 @@ def download_rfb():
                 print(f"    [renomeia] {name} → Simples.csv")
 
 
+def _collect_contratacoes_for_itens():
+    """Coleta contratacoes dos JSONs ja baixados em pncp/ para download de itens."""
+    import json
+    pncp_dir = DATA_DIR / "pncp"
+    if not pncp_dir.exists():
+        return []
+    contratacoes = {}
+    for filepath in sorted(pncp_dir.glob("*.json")):
+        if filepath.name.startswith("_"):
+            continue
+        try:
+            raw = json.loads(filepath.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        items = raw if isinstance(raw, list) else raw.get("data", [])
+        for item in items or []:
+            nc = str(item.get("numeroControlePNCP") or "").strip()
+            orgao = item.get("orgaoEntidade") or {}
+            cnpj = str(orgao.get("cnpj") or "").strip()
+            ano = item.get("anoCompra")
+            seq = item.get("sequencialCompra")
+            if not (nc and cnpj and ano is not None and seq is not None):
+                continue
+            contratacoes[nc] = (cnpj, int(ano), int(seq), nc)
+    return list(contratacoes.values())
+
+
+def resume_pncp_itens():
+    """Retoma download de itens PNCP pendentes.
+
+    Le contratacoes dos JSONs ja baixados e baixa itens faltantes
+    via checkpoint (itens ja baixados sao ignorados automaticamente).
+    Pode ser chamado independentemente via --only pncp_itens.
+    """
+    from etl.download_pncp import DEFAULT_WORKERS as PNCP_ITEM_WORKERS, download_itens
+
+    contratacoes = _collect_contratacoes_for_itens()
+    if contratacoes:
+        print("  PNCP itens:")
+        download_itens(contratacoes, workers=PNCP_ITEM_WORKERS)
+    else:
+        print("  PNCP itens: AVISO: nenhuma contratacao encontrada para download de itens")
+
+
 def download_pncp(anos=None):
     """PNCP - contratacoes e contratos via API Consulta.
 
@@ -512,7 +556,6 @@ def download_pncp(anos=None):
     """
     import json
     import time
-    from etl.download_pncp import DEFAULT_WORKERS as PNCP_ITEM_WORKERS, download_itens
 
     if anos is None:
         anos = range(2021, CURRENT_YEAR + 1)  # PNCP existe desde 2021
@@ -673,27 +716,6 @@ def download_pncp(anos=None):
             out_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         return ds, len(records), False
 
-    def _collect_contratacoes_for_itens():
-        contratacoes = {}
-        for filepath in sorted(dest_contratacoes.glob("*.json")):
-            if filepath.name.startswith("_"):
-                continue
-            try:
-                raw = json.loads(filepath.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            items = raw if isinstance(raw, list) else raw.get("data", [])
-            for item in items or []:
-                nc = str(item.get("numeroControlePNCP") or "").strip()
-                orgao = item.get("orgaoEntidade") or {}
-                cnpj = str(orgao.get("cnpj") or "").strip()
-                ano = item.get("anoCompra")
-                seq = item.get("sequencialCompra")
-                if not (nc and cnpj and ano is not None and seq is not None):
-                    continue
-                contratacoes[nc] = (cnpj, int(ano), int(seq), nc)
-        return list(contratacoes.values())
-
     PARALLEL_WEEKS = 3  # semanas processadas em paralelo
 
     # ── Contratacoes (paralelo por semana, 4 threads por semana para modalidades) ──
@@ -804,12 +826,7 @@ def download_pncp(anos=None):
     if failed_contrato_weeks:
         print(f"    ATENCAO: {len(failed_contrato_weeks)} semanas com falha")
 
-    contratacoes_para_itens = _collect_contratacoes_for_itens()
-    if contratacoes_para_itens:
-        print("  PNCP itens:")
-        download_itens(contratacoes_para_itens, workers=PNCP_ITEM_WORKERS)
-    else:
-        print("  PNCP itens: AVISO: nenhuma contratacao elegivel encontrada para download")
+    resume_pncp_itens()
 
 
 def download_renuncias(anos=None):
@@ -1038,6 +1055,7 @@ DOWNLOADERS = {
     "pgfn": download_pgfn,
     "rfb": download_rfb,
     "pncp": download_pncp,
+    "pncp_itens": resume_pncp_itens,
     "renuncias": download_renuncias,
     "tse": download_tse,
     "bolsa_familia": download_bolsa_familia,

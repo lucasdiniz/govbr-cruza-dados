@@ -184,7 +184,12 @@ def _flush_buffer(conn, buffer, batch_num):
 
 
 def _ensure_itens_downloaded():
-    _log("Verificando itens PNCP pendentes para download via API...")
+    if ITENS_DIR.exists():
+        for entry in os.scandir(ITENS_DIR):
+            if entry.is_file() and entry.name.endswith(".json"):
+                return
+
+    _log("Diretorio pncp_itens/ ausente ou vazio; baixando itens via API...")
     try:
         contratacoes = _get_contratacoes()
     except Exception as e:
