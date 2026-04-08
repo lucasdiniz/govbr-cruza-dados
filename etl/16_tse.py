@@ -195,10 +195,12 @@ def run():
         print(f"    tse_candidato: {table_count(conn, 'tse_candidato')} registros")
         print(f"    tse_bem_candidato: {table_count(conn, 'tse_bem_candidato')} registros")
 
+        print("    Criando indices TSE...")
         with conn.cursor() as cur:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_cand_cpf ON tse_candidato(cpf);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_cand_sq ON tse_candidato(sq_candidato, ano_eleicao);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_cand_partido ON tse_candidato(sg_partido);")
+            print("    Criando indice trigram (gin_trgm_ops) em nm_candidato — pode levar varios minutos...")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_cand_nome ON tse_candidato USING gin(nm_candidato gin_trgm_ops);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_bem_sq ON tse_bem_candidato(sq_candidato, ano_eleicao);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_tse_bem_valor ON tse_bem_candidato(valor_bem);")
