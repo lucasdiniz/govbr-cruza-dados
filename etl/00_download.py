@@ -1064,8 +1064,8 @@ def download_pncp(anos=None):
 
         # Advance checkpoint to end of batch
         last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
-        ckpt["last_contratacao_date"] = max(last_contratacao, last_de)
-        last_contratacao = ckpt["last_contratacao_date"]
+        last_contratacao = max(last_contratacao, last_de)
+        ckpt["last_contratacao_date"] = last_contratacao
         ckpt_file.write_text(json.dumps(ckpt))
 
     ckpt["failed_contratacao_weeks"] = sorted(failed_contratacao_weeks)
@@ -1126,8 +1126,8 @@ def download_pncp(anos=None):
             break
 
         last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
-        ckpt["last_contrato_date"] = max(last_contrato, last_de)
-        last_contrato = ckpt["last_contrato_date"]
+        last_contrato = max(last_contrato, last_de)
+        ckpt["last_contrato_date"] = last_contrato
         ckpt_file.write_text(json.dumps(ckpt))
 
     ckpt["failed_contrato_weeks"] = sorted(failed_contrato_weeks)
