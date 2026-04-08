@@ -842,7 +842,7 @@ def download_pncp(anos=None):
     PAGE_SIZE_CONTRATACOES = 50   # API max for contratacoes
     PAGE_SIZE_CONTRATOS = 500     # API max for contratos
     PNCP_API_TIMEOUT = (10, 60)   # connect, read timeout
-    PNCP_API_MAX_INFLIGHT = 2     # evita sobrecarregar a API do PNCP
+    PNCP_API_MAX_INFLIGHT = 2     # limits pressure on the PNCP API
     PNCP_MODALIDADE_WORKERS = 2
     PARALLEL_WEEKS = 2
     today = date.today()
@@ -923,6 +923,15 @@ def download_pncp(anos=None):
         week_start.strftime("%Y%m%d"): (week_start, week_end)
         for week_start, week_end in _week_ranges(anos)
     }
+
+    def _later_checkpoint_date(current, candidate):
+        if not current:
+            return candidate
+        if not candidate:
+            return current
+        current_date = date(int(current[:4]), int(current[4:6]), int(current[6:8]))
+        candidate_date = date(int(candidate[:4]), int(candidate[4:6]), int(candidate[6:8]))
+        return candidate if candidate_date > current_date else current
 
     def _fetch_all_pages(base_url, page_size, max_pages=2000):
         """Pagina por todos os resultados de uma URL base.
@@ -1064,7 +1073,7 @@ def download_pncp(anos=None):
 
         # Advance checkpoint to end of batch
         last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
-        last_contratacao = max(last_contratacao, last_de)
+        last_contratacao = _later_checkpoint_date(last_contratacao, last_de)
         ckpt["last_contratacao_date"] = last_contratacao
         ckpt_file.write_text(json.dumps(ckpt))
 
@@ -1126,7 +1135,7 @@ def download_pncp(anos=None):
             break
 
         last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
-        last_contrato = max(last_contrato, last_de)
+        last_contrato = _later_checkpoint_date(last_contrato, last_de)
         ckpt["last_contrato_date"] = last_contrato
         ckpt_file.write_text(json.dumps(ckpt))
 
