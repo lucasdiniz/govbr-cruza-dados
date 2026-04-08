@@ -924,13 +924,16 @@ def download_pncp(anos=None):
         for week_start, week_end in _week_ranges(anos)
     }
 
+    def _parse_checkpoint_date(value):
+        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+
     def _later_checkpoint_date(current, candidate):
         if not current:
             return candidate
         if not candidate:
             return current
-        current_date = date(int(current[:4]), int(current[4:6]), int(current[6:8]))
-        candidate_date = date(int(candidate[:4]), int(candidate[4:6]), int(candidate[6:8]))
+        current_date = _parse_checkpoint_date(current)
+        candidate_date = _parse_checkpoint_date(candidate)
         return candidate if candidate_date > current_date else current
 
     def _fetch_all_pages(base_url, page_size, max_pages=2000):
