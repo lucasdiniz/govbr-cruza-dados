@@ -13,7 +13,7 @@ CREATE TABLE bndes_contrato (
     uf                      VARCHAR(20),
     municipio               TEXT,
     municipio_codigo        VARCHAR(20),
-    numero_contrato         VARCHAR(50),
+    numero_contrato         TEXT,
     dt_contratacao          DATE,
     valor_contratado        DECIMAL(20,2),
     valor_desembolsado      DECIMAL(20,2),
