@@ -40,7 +40,7 @@ def _resolve_input_glob(*patterns: str) -> Path | None:
     search_dirs = [EMENDAS_DIR, DATA_DIR]
     for pattern in patterns:
         for base in search_dirs:
-            matches = sorted(base.glob(pattern))
+            matches = sorted(base.rglob(pattern))
             if matches:
                 return matches[0]
     return None
@@ -66,7 +66,7 @@ def _resolve_input_by_role(role: str, *names_or_patterns: str) -> Path | None:
             seen.add(match)
 
     for base in (EMENDAS_DIR, DATA_DIR):
-        for candidate in sorted(base.glob("*.csv")):
+        for candidate in sorted(base.rglob("*.csv")):
             if candidate not in seen:
                 candidates.append(candidate)
                 seen.add(candidate)

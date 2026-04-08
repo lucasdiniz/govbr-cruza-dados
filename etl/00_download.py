@@ -303,7 +303,7 @@ def download_emendas(anos=None):
         "convenios": dest / "transferegov_convenios.csv",
         "favorecidos": dest / "transferegov_favorecidos.csv",
     }
-    for csv_path in sorted(dest.glob("*.csv")):
+    for csv_path in sorted(dest.rglob("*.csv")):
         role = _detect_emendas_role(csv_path)
         target = role_targets.get(role)
         if not target or csv_path == target or target.exists():
