@@ -20,6 +20,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
+from threading import BoundedSemaphore
 from urllib.request import Request, urlopen, urlretrieve
 from urllib.error import URLError, HTTPError
 
@@ -840,6 +841,10 @@ def download_pncp(anos=None):
     MODALIDADES = list(range(1, 14))  # 1-13
     PAGE_SIZE_CONTRATACOES = 50   # API max for contratacoes
     PAGE_SIZE_CONTRATOS = 500     # API max for contratos
+    PNCP_API_TIMEOUT = (10, 60)   # connect, read timeout
+    PNCP_API_MAX_INFLIGHT = 2     # limits pressure on the PNCP API
+    PNCP_MODALIDADE_WORKERS = 2
+    PARALLEL_WEEKS = 2
     today = date.today()
 
     dest_contratacoes = DATA_DIR / "pncp"
@@ -857,6 +862,12 @@ def download_pncp(anos=None):
             pass
     last_contratacao = ckpt.get("last_contratacao_date", "")
     last_contrato = ckpt.get("last_contrato_date", "")
+    failed_contratacao_weeks_ckpt = {
+        str(ds) for ds in ckpt.get("failed_contratacao_weeks", []) if ds
+    }
+    failed_contrato_weeks_ckpt = {
+        str(ds) for ds in ckpt.get("failed_contrato_weeks", []) if ds
+    }
 
     # Session com connection pooling (reutiliza TCP+SSL, ~10x mais rapido)
     import requests as _requests
@@ -870,6 +881,7 @@ def download_pncp(anos=None):
         max_retries=_requests.adapters.Retry(total=0),  # retry manual
     )
     _session.mount("https://", _adapter)
+    _consulta_slots = BoundedSemaphore(PNCP_API_MAX_INFLIGHT)
 
     def _api_get(url, retries=3):
         """GET com requests.Session (connection pooling).
@@ -877,7 +889,8 @@ def download_pncp(anos=None):
         """
         for attempt in range(retries):
             try:
-                resp = _session.get(url, timeout=20)
+                with _consulta_slots:
+                    resp = _session.get(url, timeout=PNCP_API_TIMEOUT)
                 if resp.status_code == 204 or not resp.content:
                     return {"data": [], "totalPaginas": 0, "totalRegistros": 0}
                 resp.raise_for_status()
@@ -906,9 +919,26 @@ def download_pncp(anos=None):
                 yield d, week_end
                 d += timedelta(days=7)
 
+    week_lookup = {
+        week_start.strftime("%Y%m%d"): (week_start, week_end)
+        for week_start, week_end in _week_ranges(anos)
+    }
+
+    def _parse_checkpoint_date(value):
+        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+
+    def _later_checkpoint_date(current, candidate):
+        if not current:
+            return candidate
+        if not candidate:
+            return current
+        current_date = _parse_checkpoint_date(current)
+        candidate_date = _parse_checkpoint_date(candidate)
+        return candidate if candidate_date > current_date else current
+
     def _fetch_all_pages(base_url, page_size, max_pages=2000):
         """Pagina por todos os resultados de uma URL base.
-        Returns None if the first page fails (API error), [] if no results.
+        Returns None if any page fails (API error), [] if no results.
         """
         all_items = []
         page = 1
@@ -916,9 +946,7 @@ def download_pncp(anos=None):
             url = f"{base_url}&pagina={page}&tamanhoPagina={page_size}"
             resp = _api_get(url)
             if not resp:
-                if page == 1:
-                    return None  # API error on first page
-                break
+                return None
             items = resp.get("data", [])
             if not items:
                 break
@@ -944,7 +972,7 @@ def download_pncp(anos=None):
                         f"&codigoModalidadeContratacao={mod}")
             return _fetch_all_pages(base_url, PAGE_SIZE_CONTRATACOES)
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=PNCP_MODALIDADE_WORKERS) as pool:
             futures = {pool.submit(_fetch_mod, m): m for m in MODALIDADES}
             for fut in as_completed(futures):
                 items = fut.result()
@@ -955,14 +983,14 @@ def download_pncp(anos=None):
 
         return records, failed
 
-    def _download_one_week_contratacoes(week_start, week_end):
+    def _download_one_week_contratacoes(week_start, week_end, force=False):
         """Baixa e salva contratacoes de uma semana. Thread-safe.
         Returns (ds, n_records, failed_mods).
         """
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         out_path = dest_contratacoes / f"contratacoes_{ds}_{de}.json"
-        if out_path.exists() and out_path.stat().st_size > 10:
+        if not force and out_path.exists() and out_path.stat().st_size > 10:
             return ds, -1, 0  # -1 = skipped
 
         records, failed = _fetch_week_contratacoes(ds, de)
@@ -972,14 +1000,14 @@ def download_pncp(anos=None):
             out_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         return ds, len(records), 0
 
-    def _download_one_week_contratos(week_start, week_end):
+    def _download_one_week_contratos(week_start, week_end, force=False):
         """Baixa e salva contratos de uma semana. Thread-safe.
         Returns (ds, n_records, failed).
         """
         ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
         out_path = dest_contratos / f"contratos_{ds}_{de}.json"
-        if out_path.exists() and out_path.stat().st_size > 10:
+        if not force and out_path.exists() and out_path.stat().st_size > 10:
             return ds, -1, False
 
         records = _fetch_all_pages(
@@ -992,22 +1020,27 @@ def download_pncp(anos=None):
             out_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         return ds, len(records), False
 
-    PARALLEL_WEEKS = 3  # semanas processadas em paralelo
-
-    # ── Contratacoes (paralelo por semana, 4 threads por semana para modalidades) ──
+    # ── Contratacoes (paralelo controlado por semana/modalidade) ──
     from concurrent.futures import ThreadPoolExecutor, as_completed
     print("  PNCP contratacoes:")
     total_contratacoes = 0
     consecutive_errors = 0
-    failed_contratacao_weeks = []
+    failed_contratacao_weeks = set(failed_contratacao_weeks_ckpt)
     MAX_CONSECUTIVE_ERRORS = 20
 
     weeks_to_process = []
+    for ds in sorted(failed_contratacao_weeks_ckpt):
+        week_range = week_lookup.get(ds)
+        if week_range:
+            weeks_to_process.append((week_range[0], week_range[1], True))
     for week_start, week_end in _week_ranges(anos):
+        ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
+        if ds in failed_contratacao_weeks_ckpt:
+            continue
         if de <= last_contratacao:
             continue
-        weeks_to_process.append((week_start, week_end))
+        weeks_to_process.append((week_start, week_end, False))
 
     # Processar em lotes de PARALLEL_WEEKS
     for batch_start in range(0, len(weeks_to_process), PARALLEL_WEEKS):
@@ -1015,22 +1048,24 @@ def download_pncp(anos=None):
 
         with ThreadPoolExecutor(max_workers=PARALLEL_WEEKS) as pool:
             futures = {
-                pool.submit(_download_one_week_contratacoes, ws, we): (ws, we)
-                for ws, we in batch
+                pool.submit(_download_one_week_contratacoes, ws, we, force): (ws, we)
+                for ws, we, force in batch
             }
             for fut in as_completed(futures):
                 ds, n_records, failed_mods = fut.result()
                 if n_records == -1:
                     consecutive_errors = 0
+                    failed_contratacao_weeks.discard(ds)
                     continue  # skipped
                 if failed_mods > 0:
                     consecutive_errors += 1
-                    failed_contratacao_weeks.append(ds)
+                    failed_contratacao_weeks.add(ds)
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                         break
                     print(f"    {ds}: ERRO em {failed_mods}/{len(MODALIDADES)} modalidades")
                     continue
                 consecutive_errors = 0
+                failed_contratacao_weeks.discard(ds)
                 if n_records > 0:
                     total_contratacoes += n_records
                     print(f"    {ds}: {n_records} contratacoes")
@@ -1040,11 +1075,12 @@ def download_pncp(anos=None):
             break
 
         # Advance checkpoint to end of batch
-        last_de = max(we.strftime("%Y%m%d") for _, we in batch)
-        ckpt["last_contratacao_date"] = last_de
+        last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
+        last_contratacao = _later_checkpoint_date(last_contratacao, last_de)
+        ckpt["last_contratacao_date"] = last_contratacao
         ckpt_file.write_text(json.dumps(ckpt))
 
-    ckpt["failed_contratacao_weeks"] = failed_contratacao_weeks
+    ckpt["failed_contratacao_weeks"] = sorted(failed_contratacao_weeks)
     ckpt_file.write_text(json.dumps(ckpt, indent=2))
     print(f"    Total contratacoes baixadas: {total_contratacoes}")
     if failed_contratacao_weeks:
@@ -1054,36 +1090,45 @@ def download_pncp(anos=None):
     print("  PNCP contratos:")
     total_contratos = 0
     consecutive_errors = 0
-    failed_contrato_weeks = []
+    failed_contrato_weeks = set(failed_contrato_weeks_ckpt)
 
     weeks_to_process = []
+    for ds in sorted(failed_contrato_weeks_ckpt):
+        week_range = week_lookup.get(ds)
+        if week_range:
+            weeks_to_process.append((week_range[0], week_range[1], True))
     for week_start, week_end in _week_ranges(anos):
+        ds = week_start.strftime("%Y%m%d")
         de = week_end.strftime("%Y%m%d")
+        if ds in failed_contrato_weeks_ckpt:
+            continue
         if de <= last_contrato:
             continue
-        weeks_to_process.append((week_start, week_end))
+        weeks_to_process.append((week_start, week_end, False))
 
     for batch_start in range(0, len(weeks_to_process), PARALLEL_WEEKS):
         batch = weeks_to_process[batch_start:batch_start + PARALLEL_WEEKS]
 
         with ThreadPoolExecutor(max_workers=PARALLEL_WEEKS) as pool:
             futures = {
-                pool.submit(_download_one_week_contratos, ws, we): (ws, we)
-                for ws, we in batch
+                pool.submit(_download_one_week_contratos, ws, we, force): (ws, we)
+                for ws, we, force in batch
             }
             for fut in as_completed(futures):
                 ds, n_records, failed = fut.result()
                 if n_records == -1:
                     consecutive_errors = 0
+                    failed_contrato_weeks.discard(ds)
                     continue
                 if failed:
                     consecutive_errors += 1
-                    failed_contrato_weeks.append(ds)
+                    failed_contrato_weeks.add(ds)
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                         break
                     print(f"    {ds}: ERRO, sera retentado")
                     continue
                 consecutive_errors = 0
+                failed_contrato_weeks.discard(ds)
                 if n_records > 0:
                     total_contratos += n_records
                     print(f"    {ds}: {n_records} contratos")
@@ -1092,11 +1137,12 @@ def download_pncp(anos=None):
             print(f"    [abort] {MAX_CONSECUTIVE_ERRORS} semanas consecutivas com erro")
             break
 
-        last_de = max(we.strftime("%Y%m%d") for _, we in batch)
-        ckpt["last_contrato_date"] = last_de
+        last_de = max(we.strftime("%Y%m%d") for _, we, _ in batch)
+        last_contrato = _later_checkpoint_date(last_contrato, last_de)
+        ckpt["last_contrato_date"] = last_contrato
         ckpt_file.write_text(json.dumps(ckpt))
 
-    ckpt["failed_contrato_weeks"] = failed_contrato_weeks
+    ckpt["failed_contrato_weeks"] = sorted(failed_contrato_weeks)
     ckpt_file.write_text(json.dumps(ckpt, indent=2))
     print(f"    Total contratos baixados: {total_contratos}")
     if failed_contrato_weeks:
