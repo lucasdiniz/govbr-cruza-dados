@@ -19,7 +19,10 @@ on:
   workflow_dispatch:
     inputs:
       etl_phase:
-        description: 'ETL phase: "sql" (schema+views only), phase number (e.g. "17"), or "all" (full ETL)'
+        description: >
+          ETL phase to start from. Accepts: "all" (full pipeline), "sql" (schema+views only),
+          or a Fase label like "6", "4.6", "fase6" (see --list).
+          Examples: "6" = Fase 6 (Indices), "4.6" = Fase 4.6 (CPGF), "1" = Fase 1 (Schema).
         required: false
         default: 'all'
       clean:
@@ -195,8 +198,8 @@ jobs:
 
           SKIP_DL="${{ inputs.skip_download }}"
           if [ "$SKIP_DL" = "true" ]; then
-            echo "=== Skipping download, starting from phase 2 ==="
-            python -m etl.run_all 2 2>&1
+            echo "=== Skipping download, starting from Fase 1 (Schema) ==="
+            python -m etl.run_all 1 2>&1
           else
             echo "=== Full ETL ==="
             python -m etl.run_all 2>&1

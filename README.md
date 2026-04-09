@@ -100,9 +100,42 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 Opcoes do deploy:
 - `etl_phase=all` — ETL completo (download + carga + queries)
 - `etl_phase=sql` — apenas schema, indices e views (rapido)
-- `etl_phase=N` — iniciar na fase N (ex: `4` para PNCP)
+- `etl_phase=N` — iniciar na fase N, aceita label da fase (ex: `6`, `4.6`, `fase6`)
 - `skip_download=true` — pular downloads (usar dados ja existentes na VM)
 - `clean=true` — limpar estado anterior (apaga tabelas, permite re-ETL do zero)
+
+#### Mapa de fases
+
+| Step | Fase | Descricao | Modulo |
+|------|------|-----------|--------|
+| 1 | Fase 0 | Download de dados brutos | `etl.00_download` |
+| 2 | Fase 1 | Schema | `etl.01_schema` |
+| 3 | Fase 2 | Dominio | `etl.02_dominio` |
+| 4 | Fase 3 | RFB (Empresas, Estabelecimentos, Socios, Simples) | `etl.03_rfb` |
+| 5 | Fase 4.1-4.2 | PNCP | `etl.04_pncp` |
+| 6 | Fase 4.3-4.5 | Emendas | `etl.05_emendas` |
+| 7 | Fase 4.6 | CPGF | `etl.06_cpgf` |
+| 8 | Fase 4.7-4.8+5.2 | Complementar (BNDES, Holdings, ComprasNet) | `etl.09_complementar` |
+| 9 | Fase 5.1 | PGFN | `etl.07_pgfn` |
+| 10 | Fase 5.3 | Renuncias Fiscais | `etl.08_renuncias` |
+| 11 | Fase 6 | Indices | `etl.10_indices` |
+| 12 | Fase 7 | Entity Resolution (Pessoa) | `etl.11_pessoa` |
+| 13 | Fase 8 | SIAPE (Servidores) | `etl.12_siape` |
+| 14 | Fase 9 | Sancoes (CEIS/CNEP/CEAF/Acordos) | `etl.13_sancoes` |
+| 15 | Fase 10 | Viagens a Servico | `etl.14_viagens` |
+| 16 | Fase 11 | TSE Candidatos e Bens | `etl.16_tse` |
+| 17 | Fase 12 | Bolsa Familia | `etl.17_bolsa_familia` |
+| 18 | Fase 13 | TSE Prestacao de Contas | `etl.18_tse_prestacao` |
+| 19 | Fase 14 | TCE-PB (Despesas, Servidores, Licitacoes, Receitas) | `etl.19_tce_pb` |
+| 20 | Fase 15 | Dados PB (Pagamento, Empenho, Contratos, Saude, Convenios) | `etl.20_dados_pb` |
+| 21 | Fase 16 | PNCP Itens | `etl.04b_pncp_itens` |
+| 22 | Fase 17 | Normalizacao (colunas CPF/CNPJ + indices) | `etl.15_normalizar` |
+| 23 | Fase 18 | Views materializadas | `etl.21_views` |
+
+> **Exemplo:** Para pular downloads e iniciar a partir da Fase 6 (Indices):
+> - Deploy: `etl_phase=6` (usa o label "Fase 6")
+> - Local: `python -m etl.run_all 6` ou `python -m etl.run_all fase6`
+> - Para listar todas as fases: `python -m etl.run_all --list`
 
 ### Uso local
 
@@ -120,8 +153,11 @@ docker compose up -d
 # 4. Rodar ETL completo
 python -m etl.run_all
 
-# 5. Rodar fase especifica (ex: iniciar na fase 4 = PNCP)
-python -m etl.run_all 4
+# 5. Rodar a partir de uma fase especifica
+python -m etl.run_all 6           # A partir da Fase 6 (Indices) — pula downloads e carga
+python -m etl.run_all 4.6         # A partir da Fase 4.6 (CPGF)
+python -m etl.run_all fase6       # Mesmo que "6" (aceita prefixo "fase")
+python -m etl.run_all --list      # Lista todas as fases com step e label
 
 # 6. Exportar resultados das queries de fraude
 python -m etl.run_queries              # todas as 95 queries
