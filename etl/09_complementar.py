@@ -234,6 +234,14 @@ def load_comprasnet(conn):
     staging = "_stg_comprasnet"
     cols = ", ".join(f"c{i} TEXT" for i in range(38))
     with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE comprasnet_contrato
+            ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT,
+            ALTER COLUMN processo TYPE TEXT
+        """)
+    conn.commit()
+
+    with conn.cursor() as cur:
         cur.execute(f"DROP TABLE IF EXISTS {staging}")
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
     conn.commit()
