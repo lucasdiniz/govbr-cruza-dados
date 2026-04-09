@@ -7,7 +7,7 @@ Uso:
   python -m etl.00_download              # Baixa tudo
   python -m etl.00_download --only cpgf   # Baixa so CPGF
   python -m etl.00_download --only viagens --anos 2020,2021
-  python -m etl.00_download --only pncp_resultados
+  python -m etl.00_download --only pncp_resultados   # Opt-in: resultados (desabilitado por padrao)
 """
 
 import os
@@ -1378,13 +1378,18 @@ DOWNLOADERS = {
     "rfb": download_rfb,
     "pncp": download_pncp,
     "pncp_itens": resume_pncp_itens,
-    "pncp_resultados": resume_pncp_resultados,
     "renuncias": download_renuncias,
     "tse": download_tse,
     "bolsa_familia": download_bolsa_familia,
     "tce_pb": download_tce_pb,
     "dados_pb": download_dados_pb,
     "complementar": download_complementar,
+}
+
+# Fontes opcionais: nao executadas no download completo, mas disponiveis via --only.
+# pncp_resultados: dados de resultados de licitacao; nao ha loader/tabela que os consuma ainda.
+OPTIONAL_DOWNLOADERS = {
+    "pncp_resultados": resume_pncp_resultados,
 }
 
 
@@ -1561,13 +1566,15 @@ def run():
 
     sources = only if only else DOWNLOADERS.keys()
 
+    all_downloaders = {**DOWNLOADERS, **OPTIONAL_DOWNLOADERS}
+
     download_errors = []
     for source in sources:
-        if source not in DOWNLOADERS:
+        if source not in all_downloaders:
             print(f"  AVISO: fonte '{source}' desconhecida, pulando.")
             continue
 
-        fn = DOWNLOADERS[source]
+        fn = all_downloaders[source]
         try:
             if anos and source in ("cpgf", "viagens", "tce_pb", "dados_pb", "emendas", "renuncias", "pncp", "tse", "bolsa_familia"):
                 fn(anos=anos)
