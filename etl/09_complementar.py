@@ -236,8 +236,8 @@ def load_comprasnet(conn):
     with conn.cursor() as cur:
         cur.execute("""
             ALTER TABLE IF EXISTS comprasnet_contrato
-            ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT,
-            ALTER COLUMN processo TYPE TEXT
+            ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT USING fornecedor_cnpj_cpf::TEXT,
+            ALTER COLUMN processo TYPE TEXT USING processo::TEXT
         """)
         cur.execute(f"DROP TABLE IF EXISTS {staging}")
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
