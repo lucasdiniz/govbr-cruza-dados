@@ -234,33 +234,6 @@ def _probe_pncp_itens():
 
 
 
-def _probe_pncp_resultados():
-    sample, detail = _fetch_pncp_sample()
-    if not sample:
-        return ProbeResult("PNCP resultados", False, detail)
-
-    cnpj, ano, seq = sample
-    result, payload = _json_get(
-        f"{PNCP_ITEM_BASE}/orgaos/{cnpj}/compras/{ano}/{seq}/itens",
-        ok_status=(200,),
-    )
-    if not result.ok:
-        return ProbeResult("PNCP resultados", False, result.detail)
-
-    itens = payload if isinstance(payload, list) else []
-    for item in itens:
-        num_item = item.get("numeroItem")
-        if not num_item or not item.get("temResultado"):
-            continue
-        return _probe_stream(
-            "PNCP resultados",
-            f"{PNCP_ITEM_BASE}/orgaos/{cnpj}/compras/{ano}/{seq}/itens/{num_item}/resultados",
-            headers={"Accept": "application/json"},
-            ok_status=(200,),
-        )
-
-    return ProbeResult("PNCP resultados", False, "nenhum item recente com resultados disponiveis")
-
 
 
 def iter_probes() -> Iterable[ProbeResult]:
@@ -312,7 +285,6 @@ def iter_probes() -> Iterable[ProbeResult]:
         ok_status=(200, 204),
     )
     yield _probe_pncp_itens()
-    yield _probe_pncp_resultados()
     yield _probe_stream("Portal Renuncias", f"{TRANSPARENCIA_BASE}/renuncias/2024")
     yield _probe_stream("Portal Bolsa Familia", f"{TRANSPARENCIA_BASE}/novo-bolsa-familia/202402")
     for category in ("despesas", "servidores", "licitacoes", "receitas"):

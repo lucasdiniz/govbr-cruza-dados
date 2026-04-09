@@ -7,7 +7,7 @@ Uso:
   python -m etl.00_download              # Baixa tudo
   python -m etl.00_download --only cpgf   # Baixa so CPGF
   python -m etl.00_download --only viagens --anos 2020,2021
-  python -m etl.00_download --only pncp_resultados
+  python -m etl.00_download --only pncp_itens
 """
 
 import os
@@ -47,7 +47,7 @@ PNCP_ITEM_API_BASE = "https://pncp.gov.br/api/pncp/v1"
 DEFAULT_PNCP_ITEM_WORKERS = 10
 PNCP_ITEM_REQUEST_TIMEOUT = 30  # seconds
 ITENS_DIR = DATA_DIR / "pncp_itens"
-RESULTADOS_DIR = DATA_DIR / "pncp_resultados"
+
 
 
 def _read_csv_header(filepath: Path, encoding: str = "latin1") -> list[str]:
@@ -674,93 +674,6 @@ def download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
           f"contratacoes em {elapsed/60:.1f}min ({erros} erros)")
 
 
-def _download_resultados_one(cnpj, ano, seq, numero_controle):
-    """Baixa resultados de todos os itens de uma contratacao."""
-    out_file = RESULTADOS_DIR / f"{cnpj}_{ano}_{seq}.json"
-    if out_file.exists():
-        return (numero_controle, -1)
-
-    itens_file = ITENS_DIR / f"{cnpj}_{ano}_{seq}.json"
-    if itens_file.exists():
-        with open(itens_file, "r", encoding="utf-8") as f:
-            try:
-                itens = json.load(f)
-            except json.JSONDecodeError:
-                return None
-    else:
-        url_itens = f"{PNCP_ITEM_API_BASE}/orgaos/{cnpj}/compras/{ano}/{seq}/itens"
-        itens = _pncp_api_get(url_itens)
-        if not itens or not isinstance(itens, list):
-            return (numero_controle, 0)
-
-    all_resultados = []
-    for item in itens:
-        num_item = item.get("numeroItem")
-        tem_resultado = item.get("temResultado", False)
-        if not num_item or not tem_resultado:
-            continue
-
-        url = f"{PNCP_ITEM_API_BASE}/orgaos/{cnpj}/compras/{ano}/{seq}/itens/{num_item}/resultados"
-        data = _pncp_api_get(url)
-        if data and isinstance(data, list):
-            for resultado in data:
-                resultado["_numero_controle_pncp"] = numero_controle
-                resultado["_cnpj_orgao"] = cnpj
-                resultado["_ano_compra"] = ano
-                resultado["_sequencial_compra"] = seq
-            all_resultados.extend(data)
-
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_file, "w", encoding="utf-8") as f:
-        json.dump(all_resultados, f, ensure_ascii=False)
-
-    return (numero_controle, len(all_resultados))
-
-
-def download_resultados(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
-    """Baixa resultados de todas as contratacoes com paralelismo."""
-    RESULTADOS_DIR.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = RESULTADOS_DIR / "_checkpoint.txt"
-    done = _load_checkpoint(checkpoint_path)
-
-    pending = [(c, a, s, nc) for c, a, s, nc in contratacoes if nc not in done]
-    print(f"  Resultados PNCP: {len(pending)} pendentes ({len(done)} ja baixados)")
-
-    if not pending:
-        return
-
-    total_resultados = 0
-    erros = 0
-    t0 = time.time()
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
-            pool.submit(_download_resultados_one, c, a, s, nc): nc
-            for c, a, s, nc in pending
-        }
-
-        for i, future in enumerate(as_completed(futures), 1):
-            result = future.result()
-            if result is None:
-                erros += 1
-            else:
-                nc, n = result
-                if n >= 0:
-                    total_resultados += max(n, 0)
-                _save_checkpoint(checkpoint_path, nc)
-
-            if i % 1000 == 0:
-                elapsed = time.time() - t0
-                rate = i / elapsed
-                eta = (len(pending) - i) / rate if rate > 0 else 0
-                print(f"    {i}/{len(pending)} ({rate:.0f}/s, "
-                      f"~{eta/60:.0f}min restante, "
-                      f"{total_resultados} resultados, {erros} erros)")
-
-    elapsed = time.time() - t0
-    print(f"  Resultados concluido: {total_resultados} resultados de {len(pending)} "
-          f"contratacoes em {elapsed/60:.1f}min ({erros} erros)")
-
 
 def ensure_pncp_itens_downloaded(log=print):
     """Baixa itens PNCP quando o diretorio local estiver vazio."""
@@ -783,31 +696,19 @@ def resume_pncp_itens():
         download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS)
 
 
-def resume_pncp_resultados():
-    """Retoma download de resultados PNCP pendentes."""
-    contratacoes = _load_pncp_download_targets()
-    if contratacoes:
-        print("  PNCP resultados:")
-        download_resultados(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS)
-
 
 def run_pncp_download():
-    """CLI legada para baixar itens/resultados do PNCP."""
+    """CLI legada para baixar itens do PNCP."""
     print("=" * 60)
-    print("Download PNCP: Itens e Resultados")
+    print("Download PNCP: Itens")
     print(f"Destino itens: {ITENS_DIR}")
-    print(f"Destino resultados: {RESULTADOS_DIR}")
     print("=" * 60)
 
-    only = None
     workers = DEFAULT_PNCP_ITEM_WORKERS
     args = sys.argv[1:]
     i = 0
     while i < len(args):
-        if args[i] == "--only" and i + 1 < len(args):
-            only = args[i + 1]
-            i += 2
-        elif args[i] == "--workers" and i + 1 < len(args):
+        if args[i] == "--workers" and i + 1 < len(args):
             workers = int(args[i + 1])
             i += 2
         else:
@@ -818,11 +719,7 @@ def run_pncp_download():
     contratacoes = _get_contratacoes()
     print(f"Total: {len(contratacoes)} contratacoes")
 
-    if only is None or only == "itens":
-        download_itens(contratacoes, workers=workers)
-
-    if only is None or only == "resultados":
-        download_resultados(contratacoes, workers=workers)
+    download_itens(contratacoes, workers=workers)
 
     print("\nDownload PNCP concluido.")
 
@@ -1378,7 +1275,6 @@ DOWNLOADERS = {
     "rfb": download_rfb,
     "pncp": download_pncp,
     "pncp_itens": resume_pncp_itens,
-    "pncp_resultados": resume_pncp_resultados,
     "renuncias": download_renuncias,
     "tse": download_tse,
     "bolsa_familia": download_bolsa_familia,
