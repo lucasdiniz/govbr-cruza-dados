@@ -81,7 +81,7 @@ def _resolve_phase(arg: str) -> int:
     for i, (name, _) in enumerate(PHASES):
         # Extract the label part, e.g. "6" from "Fase 6: Indices"
         # or "4.1-4.2" from "Fase 4.1-4.2: PNCP"
-        phase_m = re.match(r'^Fase\s+([\d.+\-]+)', name)
+        phase_m = re.match(r'^Fase\s+([\d.\-+]+)', name)
         if phase_m:
             phase_label = phase_m.group(1)
             if label == phase_label:
@@ -90,7 +90,7 @@ def _resolve_phase(arg: str) -> int:
             if '.' not in label and '-' not in label:
                 if phase_label.startswith(label) and (
                     len(phase_label) == len(label)
-                    or phase_label[len(label)] in '.+-'
+                    or phase_label[len(label)] in ('.', '+', '-')
                 ):
                     return i
 
