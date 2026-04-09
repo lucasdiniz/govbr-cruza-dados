@@ -629,8 +629,46 @@ def _download_itens_one(cnpj, ano, seq, numero_controle):
     return (numero_controle, n)
 
 
-def download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
-    """Baixa itens de todas as contratacoes com paralelismo."""
+def _download_itens_batch(batch, workers, checkpoint_path):
+    """Baixa um lote de itens com paralelismo. Retorna (total_itens, falhas)."""
+    total_itens = 0
+    failed = []
+    t0 = time.time()
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_download_itens_one, c, a, s, nc): (c, a, s, nc)
+            for c, a, s, nc in batch
+        }
+
+        for i, future in enumerate(as_completed(futures), 1):
+            key = futures[future]
+            result = future.result()
+            if result is None:
+                failed.append(key)
+            else:
+                nc, n = result
+                if n >= 0:
+                    total_itens += max(n, 0)
+                _save_checkpoint(checkpoint_path, nc)
+
+            if i % 1000 == 0:
+                elapsed = time.time() - t0
+                rate = i / elapsed
+                eta = (len(batch) - i) / rate if rate > 0 else 0
+                print(f"    {i}/{len(batch)} ({rate:.0f}/s, "
+                      f"~{eta/60:.0f}min restante, "
+                      f"{total_itens} itens, {len(failed)} erros)")
+
+    return total_itens, failed
+
+
+def download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS,
+                   max_retries=2):
+    """Baixa itens de todas as contratacoes com paralelismo.
+
+    Falhas transientes sao retentadas ate ``max_retries`` vezes.
+    """
     ITENS_DIR.mkdir(parents=True, exist_ok=True)
     checkpoint_path = ITENS_DIR / "_checkpoint.txt"
     done = _load_checkpoint(checkpoint_path)
@@ -641,37 +679,21 @@ def download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
     if not pending:
         return
 
-    total_itens = 0
-    erros = 0
     t0 = time.time()
+    total_itens, failed = _download_itens_batch(pending, workers, checkpoint_path)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
-            pool.submit(_download_itens_one, c, a, s, nc): nc
-            for c, a, s, nc in pending
-        }
-
-        for i, future in enumerate(as_completed(futures), 1):
-            result = future.result()
-            if result is None:
-                erros += 1
-            else:
-                nc, n = result
-                if n >= 0:
-                    total_itens += max(n, 0)
-                _save_checkpoint(checkpoint_path, nc)
-
-            if i % 1000 == 0:
-                elapsed = time.time() - t0
-                rate = i / elapsed
-                eta = (len(pending) - i) / rate if rate > 0 else 0
-                print(f"    {i}/{len(pending)} ({rate:.0f}/s, "
-                      f"~{eta/60:.0f}min restante, "
-                      f"{total_itens} itens, {erros} erros)")
+    for retry_round in range(1, max_retries + 1):
+        if not failed:
+            break
+        print(f"  Retry {retry_round}/{max_retries}: {len(failed)} itens falharam, "
+              f"aguardando 10s antes de retentar...")
+        time.sleep(10)
+        recovered, failed = _download_itens_batch(failed, workers, checkpoint_path)
+        total_itens += recovered
 
     elapsed = time.time() - t0
     print(f"  Itens concluido: {total_itens} itens de {len(pending)} "
-          f"contratacoes em {elapsed/60:.1f}min ({erros} erros)")
+          f"contratacoes em {elapsed/60:.1f}min ({len(failed)} erros)")
 
 
 def _download_resultados_one(cnpj, ano, seq, numero_controle):
@@ -717,8 +739,46 @@ def _download_resultados_one(cnpj, ano, seq, numero_controle):
     return (numero_controle, len(all_resultados))
 
 
-def download_resultados(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
-    """Baixa resultados de todas as contratacoes com paralelismo."""
+def _download_resultados_batch(batch, workers, checkpoint_path):
+    """Baixa um lote de resultados com paralelismo. Retorna (total, falhas)."""
+    total_resultados = 0
+    failed = []
+    t0 = time.time()
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_download_resultados_one, c, a, s, nc): (c, a, s, nc)
+            for c, a, s, nc in batch
+        }
+
+        for i, future in enumerate(as_completed(futures), 1):
+            key = futures[future]
+            result = future.result()
+            if result is None:
+                failed.append(key)
+            else:
+                nc, n = result
+                if n >= 0:
+                    total_resultados += max(n, 0)
+                _save_checkpoint(checkpoint_path, nc)
+
+            if i % 1000 == 0:
+                elapsed = time.time() - t0
+                rate = i / elapsed
+                eta = (len(batch) - i) / rate if rate > 0 else 0
+                print(f"    {i}/{len(batch)} ({rate:.0f}/s, "
+                      f"~{eta/60:.0f}min restante, "
+                      f"{total_resultados} resultados, {len(failed)} erros)")
+
+    return total_resultados, failed
+
+
+def download_resultados(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS,
+                        max_retries=2):
+    """Baixa resultados de todas as contratacoes com paralelismo.
+
+    Falhas transientes sao retentadas ate ``max_retries`` vezes.
+    """
     RESULTADOS_DIR.mkdir(parents=True, exist_ok=True)
     checkpoint_path = RESULTADOS_DIR / "_checkpoint.txt"
     done = _load_checkpoint(checkpoint_path)
@@ -729,37 +789,21 @@ def download_resultados(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS):
     if not pending:
         return
 
-    total_resultados = 0
-    erros = 0
     t0 = time.time()
+    total_resultados, failed = _download_resultados_batch(pending, workers, checkpoint_path)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
-            pool.submit(_download_resultados_one, c, a, s, nc): nc
-            for c, a, s, nc in pending
-        }
-
-        for i, future in enumerate(as_completed(futures), 1):
-            result = future.result()
-            if result is None:
-                erros += 1
-            else:
-                nc, n = result
-                if n >= 0:
-                    total_resultados += max(n, 0)
-                _save_checkpoint(checkpoint_path, nc)
-
-            if i % 1000 == 0:
-                elapsed = time.time() - t0
-                rate = i / elapsed
-                eta = (len(pending) - i) / rate if rate > 0 else 0
-                print(f"    {i}/{len(pending)} ({rate:.0f}/s, "
-                      f"~{eta/60:.0f}min restante, "
-                      f"{total_resultados} resultados, {erros} erros)")
+    for retry_round in range(1, max_retries + 1):
+        if not failed:
+            break
+        print(f"  Retry {retry_round}/{max_retries}: {len(failed)} resultados falharam, "
+              f"aguardando 10s antes de retentar...")
+        time.sleep(10)
+        recovered, failed = _download_resultados_batch(failed, workers, checkpoint_path)
+        total_resultados += recovered
 
     elapsed = time.time() - t0
     print(f"  Resultados concluido: {total_resultados} resultados de {len(pending)} "
-          f"contratacoes em {elapsed/60:.1f}min ({erros} erros)")
+          f"contratacoes em {elapsed/60:.1f}min ({len(failed)} erros)")
 
 
 def ensure_pncp_itens_downloaded(log=print):
