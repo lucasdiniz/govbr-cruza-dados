@@ -263,7 +263,7 @@ def _probe_pncp_resultados():
 
 
 
-def iter_probes() -> Iterable[ProbeResult]:
+def iter_probes(include_optional: bool = False) -> Iterable[ProbeResult]:
     yield _probe_stream("Portal CPGF", f"{TRANSPARENCIA_BASE}/cpgf/202301")
     yield _probe_stream("Portal Viagens", f"{TRANSPARENCIA_BASE}/viagens/2024")
     yield _probe_recent_path(
@@ -312,7 +312,10 @@ def iter_probes() -> Iterable[ProbeResult]:
         ok_status=(200, 204),
     )
     yield _probe_pncp_itens()
-    yield _probe_pncp_resultados()
+    # pncp_resultados: probe opcional, nao ha loader/tabela que consuma estes dados ainda.
+    # Para habilitar, passe include_optional=True.
+    if include_optional:
+        yield _probe_pncp_resultados()
     yield _probe_stream("Portal Renuncias", f"{TRANSPARENCIA_BASE}/renuncias/2024")
     yield _probe_stream("Portal Bolsa Familia", f"{TRANSPARENCIA_BASE}/novo-bolsa-familia/202402")
     for category in ("despesas", "servidores", "licitacoes", "receitas"):
