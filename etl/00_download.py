@@ -49,7 +49,6 @@ PNCP_ITEM_REQUEST_TIMEOUT = 30  # seconds
 ITENS_DIR = DATA_DIR / "pncp_itens"
 
 
-
 def _read_csv_header(filepath: Path, encoding: str = "latin1") -> list[str]:
     with open(filepath, "r", encoding=encoding, errors="replace", newline="") as f:
         reader = csv.reader(f, delimiter=";", quotechar='"')
@@ -694,7 +693,6 @@ def resume_pncp_itens():
     if contratacoes:
         print("  PNCP itens:")
         download_itens(contratacoes, workers=DEFAULT_PNCP_ITEM_WORKERS)
-
 
 
 def run_pncp_download():
