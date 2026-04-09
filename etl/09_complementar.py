@@ -242,7 +242,10 @@ def load_comprasnet(conn):
               AND column_name IN ('fornecedor_cnpj_cpf', 'processo')
         """)
         column_types = {column_name: data_type for column_name, data_type in cur.fetchall()}
-        if column_types.get("fornecedor_cnpj_cpf") != "text" or column_types.get("processo") != "text":
+        if column_types and (
+            column_types.get("fornecedor_cnpj_cpf") != "text"
+            or column_types.get("processo") != "text"
+        ):
             cur.execute("""
                 ALTER TABLE IF EXISTS comprasnet_contrato
                 ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT USING fornecedor_cnpj_cpf::TEXT,
