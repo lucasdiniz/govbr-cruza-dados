@@ -234,6 +234,24 @@ def load_comprasnet(conn):
     staging = "_stg_comprasnet"
     cols = ", ".join(f"c{i} TEXT" for i in range(38))
     with conn.cursor() as cur:
+        cur.execute("""
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'comprasnet_contrato'
+              AND column_name IN ('fornecedor_cnpj_cpf', 'processo')
+        """)
+        column_types = {column_name: data_type for column_name, data_type in cur.fetchall()}
+        if column_types.get("fornecedor_cnpj_cpf") and column_types["fornecedor_cnpj_cpf"] != "text":
+            cur.execute("""
+                ALTER TABLE comprasnet_contrato
+                ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT USING fornecedor_cnpj_cpf::TEXT
+            """)
+        if column_types.get("processo") and column_types["processo"] != "text":
+            cur.execute("""
+                ALTER TABLE comprasnet_contrato
+                ALTER COLUMN processo TYPE TEXT USING processo::TEXT
+            """)
         cur.execute(f"DROP TABLE IF EXISTS {staging}")
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
     conn.commit()

@@ -1,8 +1,21 @@
 """Orquestrador: executa todas as fases do ETL na ordem correta."""
 
+import os
 import sys
 import time
 import traceback
+
+
+def _emit_notice(message: str):
+    """Destaca marcos importantes no GitHub Actions."""
+    print(message, flush=True)
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        escaped = (
+            message.replace("%", "%25")
+            .replace("\r", "%0D")
+            .replace("\n", "%0A")
+        )
+        print(f"::notice::{escaped}", flush=True)
 
 
 def main():
@@ -42,8 +55,8 @@ def main():
         try:
             start_phase = int(sys.argv[1]) - 1
         except ValueError:
-            print(f"Uso: python -m etl.run_all [fase_inicial]")
-            print(f"  Fases: 1-{len(phases)}")
+            print(f"Uso: python -m etl.run_all [fase_inicial]", flush=True)
+            print(f"  Fases: 1-{len(phases)}", flush=True)
             sys.exit(1)
 
     for i, (name, module_name) in enumerate(phases):
@@ -51,33 +64,33 @@ def main():
             continue
 
         phase_start = time.time()
-        print(f"\n{'='*60}")
-        print(f"[{i+1}/{len(phases)}] {name}")
-        print(f"{'='*60}")
+        print(f"\n{'='*60}", flush=True)
+        _emit_notice(f"[{i+1}/{len(phases)}] {name}")
+        print(f"{'='*60}", flush=True)
 
         try:
             module = __import__(module_name, fromlist=["run"])
             module.run()
         except Exception as e:
-            print(f"\n  ERRO na {name}: {e}")
-            print(f"  Para retomar a partir desta fase: python -m etl.run_all {i+1}")
+            _emit_notice(f"ERRO na {name}: {e}")
+            print(f"  Para retomar a partir desta fase: python -m etl.run_all {i+1}", flush=True)
             traceback.print_exc()
             errors.append((name, str(e)))
 
         elapsed = time.time() - phase_start
-        print(f"  Concluído em {elapsed:.1f}s")
+        _emit_notice(f"Concluído {name} em {elapsed:.1f}s")
 
     total = time.time() - start
-    print(f"\n{'='*60}")
+    print(f"\n{'='*60}", flush=True)
     if errors:
-        print(f"ETL completo com {len(errors)} erro(s) em {total/60:.1f} minutos:")
+        print(f"ETL completo com {len(errors)} erro(s) em {total/60:.1f} minutos:", flush=True)
         for name, err in errors:
-            print(f"  - {name}: {err}")
-        print(f"{'='*60}")
+            print(f"  - {name}: {err}", flush=True)
+        print(f"{'='*60}", flush=True)
         sys.exit(1)
     else:
-        print(f"ETL completo em {total/60:.1f} minutos")
-        print(f"{'='*60}")
+        _emit_notice(f"ETL completo em {total/60:.1f} minutos")
+        print(f"{'='*60}", flush=True)
 
 
 if __name__ == "__main__":

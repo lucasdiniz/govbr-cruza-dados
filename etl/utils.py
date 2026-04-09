@@ -157,8 +157,8 @@ def parse_csv_line(line: str, delimiter: str = ";") -> list[str]:
     return []
 
 
-def normalize_header_label(value: str) -> str:
-    normalized = normalize_name(value or "")
+def normalize_header_label(value: str | None) -> str:
+    normalized = normalize_name(value or "") or ""
     normalized = normalized.lower().replace("/", "_")
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
