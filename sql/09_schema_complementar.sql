@@ -85,10 +85,10 @@ CREATE TABLE comprasnet_contrato (
     dt_publicacao           DATE,
     vigencia_inicio         DATE,
     vigencia_fim            DATE,
-    valor_inicial           DECIMAL(15,2),
-    valor_global            DECIMAL(15,2),
+    valor_inicial           DECIMAL(20,2),
+    valor_global            DECIMAL(20,2),
     num_parcelas            INT,
-    valor_parcela           DECIMAL(15,2),
-    valor_acumulado         DECIMAL(15,2),
+    valor_parcela           DECIMAL(20,2),
+    valor_acumulado         DECIMAL(20,2),
     situacao                VARCHAR(50)
 );
