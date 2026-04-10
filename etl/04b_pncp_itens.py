@@ -19,7 +19,7 @@ from importlib import import_module
 from tqdm import tqdm
 
 from etl.config import DATA_DIR
-from etl.db import get_conn, table_count
+from etl.db import execute_sql_file, get_conn, table_count
 from etl.utils import safe_strip
 
 
@@ -187,6 +187,19 @@ def _ensure_itens_downloaded():
     import_module("etl.00_download").ensure_pncp_itens_downloaded(log=_log)
 
 
+def _ensure_table_exists(conn):
+    """Garante que pncp_item exista sem alterar o fluxo normal de recarga."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.pncp_item')")
+        exists = cur.fetchone()[0] is not None
+    conn.commit()
+    if exists:
+        return
+
+    _log("Tabela pncp_item ausente; criando schema 03b_schema_pncp_itens.sql...")
+    execute_sql_file(conn, "03b_schema_pncp_itens.sql")
+
+
 def load_itens(conn):
     """Carrega pncp_itens/*.json → pncp_item usando COPY + thread pool."""
     _ensure_itens_downloaded()
@@ -194,6 +207,8 @@ def load_itens(conn):
     if not ITENS_DIR.exists():
         print("    AVISO: diretorio pncp_itens/ nao encontrado.")
         return
+
+    _ensure_table_exists(conn)
 
     # Truncate table for clean start
     _log("TRUNCATE pncp_item para recarga completa...")
