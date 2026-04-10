@@ -235,23 +235,35 @@ def load_comprasnet(conn):
     cols = ", ".join(f"c{i} TEXT" for i in range(38))
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT column_name, data_type
+            SELECT column_name, data_type, numeric_precision
             FROM information_schema.columns
             WHERE table_schema = current_schema()
               AND table_name = 'comprasnet_contrato'
-              AND column_name IN ('fornecedor_cnpj_cpf', 'processo')
+              AND column_name IN (
+                  'fornecedor_cnpj_cpf', 'processo',
+                  'valor_inicial', 'valor_global',
+                  'valor_parcela', 'valor_acumulado'
+              )
         """)
-        column_types = {column_name: data_type for column_name, data_type in cur.fetchall()}
-        if column_types.get("fornecedor_cnpj_cpf") and column_types["fornecedor_cnpj_cpf"] != "text":
+        column_info = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+        if column_info.get("fornecedor_cnpj_cpf") and column_info["fornecedor_cnpj_cpf"][0] != "text":
             cur.execute("""
                 ALTER TABLE comprasnet_contrato
                 ALTER COLUMN fornecedor_cnpj_cpf TYPE TEXT USING fornecedor_cnpj_cpf::TEXT
             """)
-        if column_types.get("processo") and column_types["processo"] != "text":
+        if column_info.get("processo") and column_info["processo"][0] != "text":
             cur.execute("""
                 ALTER TABLE comprasnet_contrato
                 ALTER COLUMN processo TYPE TEXT USING processo::TEXT
             """)
+        # Widen numeric columns from old DECIMAL(15,2) to DECIMAL(20,2)
+        for col in ("valor_inicial", "valor_global", "valor_parcela", "valor_acumulado"):
+            info = column_info.get(col)
+            if info and info[1] is not None and info[1] < 20:
+                cur.execute(f"""
+                    ALTER TABLE comprasnet_contrato
+                    ALTER COLUMN {col} TYPE DECIMAL(20,2)
+                """)
         cur.execute(f"DROP TABLE IF EXISTS {staging}")
         cur.execute(f"CREATE UNLOGGED TABLE {staging} ({cols})")
     conn.commit()
