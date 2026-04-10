@@ -7,6 +7,7 @@ SQL_FILES = [
     "01_schema_dominio.sql",
     "02_schema_rfb.sql",
     "03_schema_pncp.sql",
+    "03b_schema_pncp_itens.sql",
     "04_schema_emendas.sql",
     "05_schema_cpgf.sql",
     "07_schema_pgfn.sql",

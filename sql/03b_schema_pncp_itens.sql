@@ -30,4 +30,11 @@ CREATE TABLE pncp_item (
     PRIMARY KEY (numero_controle_pncp, numero_item)
 );
 
--- Indices sao criados apos carga de dados em etl/04b_pncp_itens.py
+-- Indices para queries de superfaturamento
+CREATE INDEX idx_pncp_item_cnpj_orgao ON pncp_item(cnpj_orgao);
+CREATE INDEX idx_pncp_item_controle ON pncp_item(numero_controle_pncp);  -- JOIN com pncp_contratacao (UF, municipio, modalidade)
+CREATE INDEX idx_pncp_item_ncm ON pncp_item(ncm_nbs_codigo) WHERE ncm_nbs_codigo IS NOT NULL;
+CREATE INDEX idx_pncp_item_descricao_trgm ON pncp_item USING gin (descricao gin_trgm_ops);  -- busca por similaridade textual
+CREATE INDEX idx_pncp_item_valor ON pncp_item(valor_unitario_estimado);
+CREATE INDEX idx_pncp_item_material ON pncp_item(material_ou_servico);
+CREATE INDEX idx_pncp_item_situacao ON pncp_item(situacao_item_nome);  -- filtrar por Homologado vs Em andamento

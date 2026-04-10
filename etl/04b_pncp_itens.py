@@ -18,8 +18,8 @@ from importlib import import_module
 
 from tqdm import tqdm
 
-from etl.config import DATA_DIR, SQL_DIR
-from etl.db import get_conn, table_count
+from etl.config import DATA_DIR
+from etl.db import execute_sql_file, get_conn, table_count
 from etl.utils import safe_strip
 
 
@@ -187,6 +187,19 @@ def _ensure_itens_downloaded():
     import_module("etl.00_download").ensure_pncp_itens_downloaded(log=_log)
 
 
+def _ensure_table_exists(conn):
+    """Garante que pncp_item exista sem alterar o fluxo normal de recarga."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.pncp_item')")
+        exists = cur.fetchone()[0] is not None
+    conn.commit()
+    if exists:
+        return
+
+    _log("Tabela pncp_item ausente; criando schema 03b_schema_pncp_itens.sql...")
+    execute_sql_file(conn, "03b_schema_pncp_itens.sql")
+
+
 def load_itens(conn):
     """Carrega pncp_itens/*.json → pncp_item usando COPY + thread pool."""
     _ensure_itens_downloaded()
@@ -195,11 +208,12 @@ def load_itens(conn):
         print("    AVISO: diretorio pncp_itens/ nao encontrado.")
         return
 
-    # Create table (DROP + CREATE) for clean start
-    _log("Criando tabela pncp_item...")
-    sql = (SQL_DIR / "03b_schema_pncp_itens.sql").read_text(encoding="utf-8")
+    _ensure_table_exists(conn)
+
+    # Truncate table for clean start
+    _log("TRUNCATE pncp_item para recarga completa...")
     with conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute("TRUNCATE pncp_item;")
     conn.commit()
 
     # Use os.scandir for speed (no sorting 3M entries)
@@ -258,37 +272,12 @@ def load_itens(conn):
     print(f"    pncp_item: {final_count} registros ({erros_arquivo} arquivos com erro, {erros_batch} batches com erro)")
 
 
-def _create_indexes(conn):
-    """Cria indices para queries de superfaturamento."""
-    # Disable parallel workers to reduce temp disk usage on large tables
-    with conn.cursor() as cur:
-        cur.execute("SET max_parallel_maintenance_workers = 0;")
-    conn.commit()
-
-    indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_cnpj_orgao ON pncp_item(cnpj_orgao);",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_controle ON pncp_item(numero_controle_pncp);",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_ncm ON pncp_item(ncm_nbs_codigo) WHERE ncm_nbs_codigo IS NOT NULL;",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_descricao_trgm ON pncp_item USING gin (descricao gin_trgm_ops);",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_valor ON pncp_item(valor_unitario_estimado);",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_material ON pncp_item(material_ou_servico);",
-        "CREATE INDEX IF NOT EXISTS idx_pncp_item_situacao ON pncp_item(situacao_item_nome);",
-    ]
-    for idx_sql in indexes:
-        with conn.cursor() as cur:
-            cur.execute(idx_sql)
-        conn.commit()
-
-
 def run():
     _log("="*60)
     _log("INICIO etl.04b_pncp_itens")
     conn = get_conn()
     try:
         load_itens(conn)
-        _log("Criando indices...")
-        _create_indexes(conn)
-        _log("Indices criados.")
     except Exception:
         _log(f"ERRO FATAL: {traceback.format_exc()}")
         raise
