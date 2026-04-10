@@ -70,13 +70,23 @@ def run():
         print(f"    bolsa_familia: {count} registros")
 
         print("    Criando indices...")
+        # Disable parallel workers to reduce temp disk usage on large tables
         with conn.cursor() as cur:
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_bf_cpf ON bolsa_familia(cpf_favorecido);")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_bf_nis ON bolsa_familia(nis_favorecido);")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_bf_nome ON bolsa_familia USING gin(nm_favorecido gin_trgm_ops);")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_bf_municipio ON bolsa_familia(cd_municipio_siafi);")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_bf_uf ON bolsa_familia(uf);")
+            cur.execute("SET max_parallel_maintenance_workers = 0;")
         conn.commit()
+
+        # Create indexes one at a time, committing after each to release temp space
+        bf_indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_bf_cpf ON bolsa_familia(cpf_favorecido);",
+            "CREATE INDEX IF NOT EXISTS idx_bf_nis ON bolsa_familia(nis_favorecido);",
+            "CREATE INDEX IF NOT EXISTS idx_bf_nome ON bolsa_familia USING gin(nm_favorecido gin_trgm_ops);",
+            "CREATE INDEX IF NOT EXISTS idx_bf_municipio ON bolsa_familia(cd_municipio_siafi);",
+            "CREATE INDEX IF NOT EXISTS idx_bf_uf ON bolsa_familia(uf);",
+        ]
+        for idx_sql in bf_indexes:
+            with conn.cursor() as cur:
+                cur.execute(idx_sql)
+            conn.commit()
         print("    Indices Bolsa Familia criados.")
     finally:
         conn.close()
