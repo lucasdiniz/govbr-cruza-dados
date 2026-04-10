@@ -260,6 +260,11 @@ def load_itens(conn):
 
 def _create_indexes(conn):
     """Cria indices para queries de superfaturamento."""
+    # Disable parallel workers to reduce temp disk usage on large tables
+    with conn.cursor() as cur:
+        cur.execute("SET max_parallel_maintenance_workers = 0;")
+    conn.commit()
+
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_pncp_item_cnpj_orgao ON pncp_item(cnpj_orgao);",
         "CREATE INDEX IF NOT EXISTS idx_pncp_item_controle ON pncp_item(numero_controle_pncp);",
