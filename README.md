@@ -91,13 +91,6 @@ Relatorios ja produzidos cobrem temas como:
 
 O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de download (~230GB no pico). Para caber no disco, o ETL **limpa automaticamente os CSVs brutos** apos cada fase completar com sucesso (`run_all.py`). Diretorios compartilhados entre fases (ex: `rfb/`, `tse/`) so sao removidos quando todas as fases dependentes completam.
 
-### Acesso a VM
-
-```bash
-# SSH (chave privada em ~/.ssh/azure_vm.txt)
-ssh -i /tmp/azure_vm_key govbr@52.162.207.186
-```
-
 ## Deploy (1 click)
 
 O deploy roda via **GitHub Actions self-hosted runner** instalado na VM.
