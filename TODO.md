@@ -41,6 +41,10 @@
 - `relatorio_convenios_devedores_pgfn_pb.md`
 - `relatorio_suplementacoes_concentradas_pb.md`
 - `relatorio_rede_empresarial_familia_hugo_motta.md`
+- `relatorio_duplo_vinculo_publico_pb.md`
+- `relatorio_porta_giratoria_pb.md`
+- `relatorio_fornecedor_saude_dominante_pb.md`
+- `relatorio_bndes_doador_tse.md`
 
 #### Relatorios invalidos ou nao publicaveis
 - `relatorio_servidor_bolsa_familia_pb.md` - depende de Q74 (CPF parcial + nome), risco alto de falso positivo
@@ -62,10 +66,10 @@
 ## Referencia tecnica
 
 ### Banco de dados
-- **~350M registros** em 16+ fontes, ~210GB
+- **~350M registros** em 18+ fontes, ~210GB
 - PostgreSQL local: `PGPASSWORD=kong1029 "/c/Program Files/PostgreSQL/16/bin/psql.exe" -U postgres -d govbr`
 - Dados brutos locais: G:\govbr-dados-brutos (HDD)
-- 106 queries em queries/*.sql, 22 relatorios validos em relatorios/
+- 115+ queries em queries/*.sql, 26 relatorios validos em relatorios/
 
 ### VM Azure
 - **Standard_B4as_v2** (4 vCPU, 16GB RAM) — North Central US
@@ -87,4 +91,5 @@
 - 7/7 MVs + 2 views criadas. 22 relatorios validos. 14/14 enriquecimentos.
 - Q101-Q111 implementadas e validadas (dados.pb)
 - Q201-Q209 implementadas (rede empresarial família Hugo Motta)
+- Q301-Q310 implementadas (cruzamentos avançados: duplo vínculo, porta giratória, BNDES×TSE, saúde dominante)
 - Auto-limpeza de CSVs após ETL implementada em run_all.py

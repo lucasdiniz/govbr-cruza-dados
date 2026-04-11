@@ -27,8 +27,8 @@ Carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco Post
 O repositorio hoje inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
-- **115+ queries SQL** em 16 arquivos tematicos (`Q01-Q209`)
-- **22 relatorios de investigacao** derivados dos resultados
+- **125+ queries SQL** em 17 arquivos tematicos (`Q01-Q310`)
+- **26 relatorios de investigacao** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
@@ -53,6 +53,7 @@ As queries estao organizadas por dominio de analise:
 | `fraude_dados_pb_novos.sql` | Q101-Q111 | dados PB ampliados: NF duplicada, ciclo anulacao, diarias sobrepostas, suplementacoes |
 | `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
 | `fraude_familia_hugo_motta.sql` | Q201-Q209 | Rede empresarial da familia Hugo Motta na Paraiba |
+| `fraude_cruzamentos_avancados.sql` | Q301-Q310 | Duplo vinculo, porta giratoria, BNDES×TSE, saude dominante |
 
 Relatorios ja produzidos cobrem temas como:
 
@@ -65,6 +66,10 @@ Relatorios ja produzidos cobrem temas como:
 - Suplementacoes orcamentarias concentradas (empenho-semente)
 - Convenios com entidades devedoras da Uniao
 - Rede empresarial familiar (caso Hugo Motta: 23 empresas, R$52.8M em contratos publicos)
+- Duplo vinculo publico: servidores federais e municipais simultaneos (815 casos PB)
+- Porta giratoria: servidores municipais socios de fornecedores (4.616 casos)
+- Fornecedores de saude dominantes: monopolio em dezenas de municipios
+- BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
 
 ## Stack
 
@@ -160,9 +165,9 @@ python -m etl.run_queries --query Q03  # query especifica
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
 etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
-queries/       115+ queries SQL em 16 arquivos tematicos
+queries/       125+ queries SQL em 17 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    22 investigacoes baseadas nos resultados (Markdown)
+relatorios/    26 investigacoes baseadas nos resultados (Markdown)
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
 scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
 ```
