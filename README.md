@@ -6,11 +6,11 @@ Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, vol
 
 ## O que faz
 
-Carrega ~100GB de dados de **18+ fontes publicas** em um banco PostgreSQL local e cruza tudo por CNPJ/CPF para encontrar padroes suspeitos, conflitos de interesse e anomalias de contratacao:
+Carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco PostgreSQL e cruza tudo por CNPJ/CPF para encontrar padroes suspeitos, conflitos de interesse e anomalias de contratacao:
 
 - **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
 - **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
-- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude, convenios e 11 datasets auxiliares estaduais PB
+- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude, convenios e 11 datasets auxiliares estaduais PB (~14.4M registros)
 - **PNCP** - licitacoes, contratos e itens publicos
 - **Emendas Parlamentares** - Tesouro + TransfereGov
 - **CPGF** - cartao corporativo do governo
@@ -27,8 +27,8 @@ Carrega ~100GB de dados de **18+ fontes publicas** em um banco PostgreSQL local 
 O repositorio hoje inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
-- **95 queries SQL** em 14 arquivos tematicos (`Q01-Q100`, com lacunas em `Q52`, `Q69`, `Q73`, `Q75` e `Q76`)
-- **32 relatorios Markdown** derivados dos resultados
+- **115+ queries SQL** em 16 arquivos tematicos (`Q01-Q209`)
+- **22 relatorios de investigacao** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
@@ -50,17 +50,21 @@ As queries estao organizadas por dominio de analise:
 | `fraude_superfaturamento.sql` | Q43-Q58, Q99 | Sobrepreco, aditivos, fracionamento, empresa fenix, ciclo politico-eleitoral |
 | `fraude_tce_pb.sql` | Q59-Q68, Q70-Q72, Q74, Q77 | TCE-PB municipal: despesas, servidores, licitacoes e Bolsa Familia |
 | `fraude_dados_pb.sql` | Q78-Q91 | dados PB estadual: PF/PJ, saude, convenios, dominancia e splitting |
+| `fraude_dados_pb_novos.sql` | Q101-Q111 | dados PB ampliados: NF duplicada, ciclo anulacao, diarias sobrepostas, suplementacoes |
 | `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
+| `fraude_familia_hugo_motta.sql` | Q201-Q209 | Rede empresarial da familia Hugo Motta na Paraiba |
 
 Relatorios ja produzidos cobrem temas como:
 
-- pejotizacao medica e conflito entre servidor e fornecedor
-- empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
-- sobrepreco por item no PNCP
-- fracionamento de despesa municipal e estadual
-- empresas relacionadas competindo entre si ou recebendo juntas, em recorte PB e nacional
-- ciclo politico-financeiro em versao exploratoria, com casos fortes e limites atuais das queries
-- risco municipal e score composto na Paraiba
+- Pejotizacao medica e conflito entre servidor e fornecedor
+- Empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
+- Sobrepreco por item no PNCP
+- Fracionamento de despesa municipal e estadual
+- Empresas relacionadas competindo entre si em licitacoes (PB e nacional)
+- Duplo pagamento de notas fiscais e ciclos de anulacao/re-empenho
+- Suplementacoes orcamentarias concentradas (empenho-semente)
+- Convenios com entidades devedoras da Uniao
+- Rede empresarial familiar (caso Hugo Motta: 23 empresas, R$52.8M em contratos publicos)
 
 ## Stack
 
@@ -69,21 +73,41 @@ Relatorios ja produzidos cobrem temas como:
 - **psycopg2** - `COPY FROM STDIN` para carga rapida
 - **ijson** - parsing incremental de JSONs do PNCP
 
+## Infraestrutura
+
+### VM Azure (producao)
+
+| Componente | Especificacao | Custo |
+|---|---|---|
+| VM | Standard_B4as_v2 (4 vCPU, 16GB RAM) | ~US$110/mes |
+| Disco | 512GB Standard SSD (`/data`) | ~US$38/mes |
+| Regiao | North Central US | |
+| **Total** | | **~US$148/mes** |
+
+O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de download (~230GB no pico). Para caber no disco, o ETL **limpa automaticamente os CSVs brutos** apos cada fase completar com sucesso (`run_all.py`). Diretorios compartilhados entre fases (ex: `rfb/`, `tse/`) so sao removidos quando todas as fases dependentes completam.
+
+### Acesso a VM
+
+```bash
+# SSH (chave privada em ~/.ssh/azure_vm.txt)
+ssh -i /tmp/azure_vm_key govbr@52.162.207.186
+```
+
 ## Deploy (1 click)
 
-O jeito mais facil de rodar o projeto e via GitHub Actions em uma VM Ubuntu:
+O deploy roda via **GitHub Actions self-hosted runner** instalado na VM.
 
 ### Pre-requisitos
 
-1. **VM Ubuntu** com SSH (testado em Azure Standard_D4s_v3, 16GB RAM, disco de dados 400GB+ montado em `/data`)
+1. **VM Ubuntu** com SSH e disco de dados montado em `/data`
 2. **Fork** deste repositorio
-3. **Configurar 4 secrets obrigatorios** no repositorio (Settings > Secrets > Actions):
+3. **Secrets obrigatorios** (Settings > Secrets > Actions):
    - `VM_HOST` — IP ou hostname da VM
-   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr` na VM
+   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr`
    - `DB_PASSWORD` — senha do PostgreSQL
    - `ENV_FILE` — conteudo do `.env` (ver `.env.example`)
-4. **Configurar 1 secret opcional recomendado**:
-   - `RUNNER_ADMIN_TOKEN` — PAT usado pelo workflow `Setup Self-Hosted Runner` para instalar/reparar o self-hosted runner quando o `GITHUB_TOKEN` nao tiver permissao de emitir registration token
+4. **Secret opcional**:
+   - `RUNNER_ADMIN_TOKEN` — PAT para instalar/reparar o self-hosted runner
 
 ### Execucao
 
@@ -95,14 +119,17 @@ O jeito mais facil de rodar o projeto e via GitHub Actions em uma VM Ubuntu:
 # Actions > "Deploy to Azure VM" > Run workflow (etl_phase=all)
 ```
 
-O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa ~100GB de dados de 18+ fontes e popula o banco. Live logs disponiveis no GitHub Actions durante toda a execucao. O job de deploy agora usa o limite maximo suportado por runners self-hosted do GitHub (5 dias), o que ajuda quando APIs lentas estendem a janela de download. Duracao tipica: 10-20h dependendo da rede.
+O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa os dados e popula o banco. Live logs disponiveis durante toda a execucao. Timeout maximo: 5 dias (limite do GitHub self-hosted runner). Duracao tipica: 10-20h dependendo da rede.
 
-Opcoes do deploy:
-- `etl_phase=all` — ETL completo (download + carga + queries)
-- `etl_phase=sql` — apenas schema, indices e views (rapido)
-- `etl_phase=N` — iniciar na fase N (ex: `4` para PNCP)
-- `skip_download=true` — pular downloads (usar dados ja existentes na VM)
-- `clean=true` — limpar estado anterior (apaga tabelas, permite re-ETL do zero)
+### Opcoes do deploy
+
+| Parametro | Descricao |
+|---|---|
+| `etl_phase=all` | ETL completo (download + carga + indices + views) |
+| `etl_phase=sql` | Apenas schema, indices e views (rapido) |
+| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB) |
+| `skip_download=true` | Pular downloads, usar dados ja existentes na VM |
+| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) |
 
 ### Uso local
 
@@ -120,11 +147,11 @@ docker compose up -d
 # 4. Rodar ETL completo
 python -m etl.run_all
 
-# 5. Rodar fase especifica (ex: iniciar na fase 4 = PNCP)
+# 5. Retomar a partir de fase especifica (ex: fase 4 = PNCP)
 python -m etl.run_all 4
 
 # 6. Exportar resultados das queries de fraude
-python -m etl.run_queries              # todas as 95 queries
+python -m etl.run_queries              # todas as queries
 python -m etl.run_queries --query Q03  # query especifica
 ```
 
@@ -133,27 +160,35 @@ python -m etl.run_queries --query Q03  # query especifica
 ```
 sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
 etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
-queries/       95 queries SQL em 14 arquivos tematicos
+queries/       115+ queries SQL em 16 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    32 investigacoes baseadas nos resultados (Markdown)
+relatorios/    22 investigacoes baseadas nos resultados (Markdown)
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
+scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
 ```
 
 ## Fontes de dados
 
-A maioria dos dados e baixada automaticamente via `python -m etl.00_download`:
+Todas baixadas automaticamente via `python -m etl.00_download`:
 
-| Fonte | URL | Download |
-|-------|-----|----------|
-| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | Automatico (~30GB) |
-| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | Automatico (trimestral) |
-| PNCP (licitacoes/contratos/itens/resultados) | [pncp.gov.br](https://pncp.gov.br/) | Via API (`etl.00_download`; `etl.download_pncp` mantido por compatibilidade) |
-| Portal da Transparencia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (CPGF, viagens, siape, sancoes, emendas, renuncias, Novo Bolsa Familia) |
-| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | Automatico |
-| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | Automatico (ZIPs por ano para candidatos, bens e prestacao) |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | Automatico (mensal, com extracao do ZIP) |
-| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | Automatico |
-| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | Automatico |
+| Fonte | URL | Tamanho aprox. |
+|-------|-----|----------------|
+| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | ~58GB |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~85GB |
+| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | ~20GB |
+| PNCP (itens) | [pncp.gov.br](https://pncp.gov.br/) | ~19GB |
+| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | ~12GB |
+| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | ~11GB |
+| PNCP (contratos) | [pncp.gov.br](https://pncp.gov.br/) | ~6GB |
+| Viagens a Servico | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~6GB |
+| PNCP (contratacoes) | [pncp.gov.br](https://pncp.gov.br/) | ~5GB |
+| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | ~4GB |
+| Emendas Parlamentares | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1GB |
+| SIAPE | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1.3GB |
+| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | ~1.1GB |
+| CPGF | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~210MB |
+| Renuncias Fiscais | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~510MB |
+| Sancoes | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~240MB |
 | ComprasNet | Incluido no repo (`data/static/`) | N/A |
 
 ## Entity Resolution
