@@ -16,8 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from importlib import import_module
 
-from tqdm import tqdm
-
 from etl.config import DATA_DIR
 from etl.db import execute_sql_file, get_conn, table_count
 from etl.utils import safe_strip
@@ -233,29 +231,41 @@ def load_itens(conn):
     buffer_count = 0
     batch_num = 0
     flush_every = 50000  # flush to DB every 50k files
+    chunk_size = 100000  # submit files in chunks to limit memory
+    processed = 0
+    t0 = datetime.now()
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = {executor.submit(_read_file, fp): fp for fp in filepaths}
+    for chunk_start in range(0, len(filepaths), chunk_size):
+        chunk = filepaths[chunk_start : chunk_start + chunk_size]
 
-        for future in tqdm(as_completed(futures), total=len(futures), desc="    PNCP itens"):
-            result = future.result()
-            if result is None:
-                erros_arquivo += 1
-                continue
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(_read_file, fp): fp for fp in chunk}
 
-            for line in result:
-                buffer.write(line)
+            for future in as_completed(futures):
+                result = future.result()
+                processed += 1
+                if result is None:
+                    erros_arquivo += 1
+                    continue
 
-            buffer_count += 1
+                for line in result:
+                    buffer.write(line)
 
-            if buffer_count >= flush_every:
-                batch_num += 1
-                success, rows, _ = _flush_buffer(conn, buffer, batch_num)
-                total += rows
-                if not success:
-                    erros_batch += 1
-                buffer = io.StringIO()
-                buffer_count = 0
+                buffer_count += 1
+
+                if buffer_count >= flush_every:
+                    batch_num += 1
+                    success, rows, _ = _flush_buffer(conn, buffer, batch_num)
+                    total += rows
+                    if not success:
+                        erros_batch += 1
+                    buffer = io.StringIO()
+                    buffer_count = 0
+
+        # Log progress once per chunk (every 100k files)
+        elapsed = datetime.now() - t0
+        rate = processed / max(elapsed.total_seconds(), 1)
+        _log(f"PNCP itens: {processed}/{len(filepaths)} arquivos ({processed*100//len(filepaths)}%), {total} registros, {rate:.0f} arq/s")
 
     # Flush remaining
     if buffer.tell() > 0:
