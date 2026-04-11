@@ -12,10 +12,16 @@ def _table_exists(conn, table_name: str) -> bool:
         return cur.fetchone()[0] is not None
 
 
+def _has_executable_sql(statement: str) -> bool:
+    without_block_comments = re.sub(r"/\*.*?\*/", "", statement, flags=re.DOTALL)
+    without_line_comments = re.sub(r"^\s*--.*$", "", without_block_comments, flags=re.MULTILINE)
+    return bool(without_line_comments.strip())
+
+
 def _execute_indices_sql(conn, filename: str):
     sql_path = Path(__file__).resolve().parents[1] / "sql" / filename
     content = sql_path.read_text(encoding="utf-8")
-    statements = [s.strip() for s in content.split(";") if s.strip()]
+    statements = [s.strip() for s in content.split(";") if _has_executable_sql(s)]
     skipped = 0
 
     for stmt in statements:
