@@ -157,7 +157,7 @@ Observacoes:
 - **CEIS/CNEP `cpf_cnpj_norm`** é CNPJ completo 14 dígitos. Match via `LEFT(cpf_cnpj_norm, 8)`. `tipo_pessoa='J'` para filtrar PJ.
 
 ### Próximos passos (ordem sugerida)
-1. **Produzir relatórios dos novos datasets PB** — Q101/Q102/Q103/Q104/Q105/Q108/Q109/Q110/Q111 já estão operacionais
+1. ~~**Produzir relatórios dos novos datasets PB**~~ — FEITO (sessão 37): Q101 `relatorio_aditivos_abusivos_estado_pb.md`, Q102/Q103/Q111 `relatorio_fornecedores_irregulares_estado_pb.md`, Q104 `relatorio_duplo_pagamento_nf_pb.md`, Q105 `relatorio_ciclo_anulacao_reempenho_pb.md`, Q106 `relatorio_diarias_sobrepostas_pb.md`, Q108 `relatorio_convenios_devedores_pgfn_pb.md`, Q110 `relatorio_suplementacoes_concentradas_pb.md`. Q107 tem apenas 1 resultado (fraco)
 2. **Formalizar a exportação/runner** para `queries/fraude_dados_pb_novos.sql` no fluxo padrão de `etl.run_queries`
 3. **Re-deploy VM com `main` atual** — validar se os fixes `b81bf92` e `ced083b` eliminam os erros de Emendas/PNCP/BNDES/PGFN/Índices
 4. Bugs infra pendentes: Sanções/SIAPE bloqueio Tor (#26, #27)
