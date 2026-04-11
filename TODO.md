@@ -2,6 +2,9 @@
 
 ## Pendente
 
+### Infra / DX
+- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose só sobe o Postgres.
+
 ### Deploy Azure
 - [ ] **Deploy em andamento** — retomado a partir da fase 19 (run 24286000479). CSVs de rfb (58GB) e bolsa_familia (85GB) removidos manualmente para liberar disco. 143GB livres.
 - [ ] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos após cada fase ETL bem-sucedida. Diretórios compartilhados (rfb, tse) só são removidos quando todas as fases dependentes completam.
