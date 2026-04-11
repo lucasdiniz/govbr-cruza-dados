@@ -1,9 +1,12 @@
 """Orquestrador: executa todas as fases do ETL na ordem correta."""
 
 import os
+import shutil
 import sys
 import time
 import traceback
+
+from etl.config import DATA_DIR
 
 
 def _emit_notice(message: str):
@@ -16,6 +19,55 @@ def _emit_notice(message: str):
             .replace("\n", "%0A")
         )
         print(f"::notice::{escaped}", flush=True)
+
+
+# Mapeamento: módulo ETL → subdiretórios de CSVs que podem ser removidos após
+# a fase completar com sucesso.  A fase de download (00_download) nunca é
+# listada aqui — ela cria os diretórios; a limpeza acontece *depois* da carga.
+_CSV_DIRS: dict[str, list[str]] = {
+    "etl.02_dominio":       ["rfb"],          # usa Cnaes/Motivos/etc de rfb/
+    "etl.03_rfb":           ["rfb"],
+    "etl.04_pncp":          ["pncp", "pncp_contratos"],
+    "etl.04b_pncp_itens":   ["pncp_itens", "pncp_resultados"],
+    "etl.05_emendas":       ["emendas"],
+    "etl.06_cpgf":          ["cpgf"],
+    "etl.07_pgfn":          ["pgfn"],
+    "etl.08_renuncias":     ["renuncias"],
+    "etl.09_complementar":  ["bndes"],
+    "etl.12_siape":         ["siape"],
+    "etl.13_sancoes":       ["sancoes"],
+    "etl.14_viagens":       ["viagens"],
+    "etl.16_tse":           ["tse"],
+    "etl.17_bolsa_familia": ["bolsa_familia"],
+    "etl.18_tse_prestacao": ["tse"],          # mesma pasta que 16_tse
+    "etl.19_tce_pb":        ["tce_pb"],
+    "etl.20_dados_pb":      ["dados_pb"],
+}
+
+# Diretórios que são compartilhados entre fases — só limpamos depois que
+# *todas* as fases que os usam tenham concluído com sucesso.
+_SHARED_DIRS: dict[str, list[str]] = {
+    "rfb": ["etl.02_dominio", "etl.03_rfb"],
+    "tse": ["etl.16_tse", "etl.18_tse_prestacao"],
+}
+
+
+def _cleanup_csvs(module_name: str, succeeded_modules: set[str]):
+    """Remove CSVs brutos após carga bem-sucedida para liberar disco."""
+    dirs = _CSV_DIRS.get(module_name, [])
+    for dirname in dirs:
+        # Se o diretório é compartilhado, espera todas as fases dependentes
+        required = _SHARED_DIRS.get(dirname, [module_name])
+        if not all(m in succeeded_modules for m in required):
+            continue
+
+        target = DATA_DIR / dirname
+        if target.is_dir():
+            size_mb = sum(
+                f.stat().st_size for f in target.rglob("*") if f.is_file()
+            ) / (1024 * 1024)
+            shutil.rmtree(target)
+            print(f"    Limpeza: {target} removido ({size_mb:,.0f} MB liberados)", flush=True)
 
 
 def main():
@@ -48,6 +100,7 @@ def main():
     ]
 
     errors = []
+    succeeded: set[str] = set()
 
     # Permite rodar fase específica: python -m etl.run_all 3
     start_phase = 0
@@ -59,6 +112,10 @@ def main():
             print(f"  Fases: 1-{len(phases)}", flush=True)
             sys.exit(1)
 
+    # Fases puladas por --start são consideradas bem-sucedidas (já rodaram antes)
+    for j in range(start_phase):
+        succeeded.add(phases[j][1])
+
     for i, (name, module_name) in enumerate(phases):
         if i < start_phase:
             continue
@@ -68,9 +125,11 @@ def main():
         _emit_notice(f"[{i+1}/{len(phases)}] {name}")
         print(f"{'='*60}", flush=True)
 
+        ok = False
         try:
             module = __import__(module_name, fromlist=["run"])
             module.run()
+            ok = True
         except Exception as e:
             _emit_notice(f"ERRO na {name}: {e}")
             print(f"  Para retomar a partir desta fase: python -m etl.run_all {i+1}", flush=True)
@@ -79,6 +138,10 @@ def main():
 
         elapsed = time.time() - phase_start
         _emit_notice(f"Concluído {name} em {elapsed:.1f}s")
+
+        if ok:
+            succeeded.add(module_name)
+            _cleanup_csvs(module_name, succeeded)
 
     total = time.time() - start
     print(f"\n{'='*60}", flush=True)
