@@ -13,9 +13,11 @@ def _table_exists(conn, table_name: str) -> bool:
 
 
 def _has_executable_sql(statement: str) -> bool:
-    without_block_comments = re.sub(r"/\*.*?\*/", "", statement, flags=re.DOTALL)
-    without_line_comments = re.sub(r"^\s*--.*$", "", without_block_comments, flags=re.MULTILINE)
-    return bool(without_line_comments.strip())
+    for line in statement.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("--"):
+            return True
+    return False
 
 
 def _execute_indices_sql(conn, filename: str):
