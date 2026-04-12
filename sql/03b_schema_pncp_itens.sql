@@ -18,7 +18,7 @@ CREATE TABLE pncp_item (
     situacao_item_nome       VARCHAR(100),        -- Homologado, Em andamento, etc
     tem_resultado            BOOLEAN,
     ncm_nbs_codigo           VARCHAR(20),         -- NCM/NBS quando disponivel
-    ncm_nbs_descricao        VARCHAR(500),
+    ncm_nbs_descricao        TEXT,
     catalogo                 VARCHAR(100),
     catalogo_codigo_item     VARCHAR(100),
     dt_inclusao              TIMESTAMP,
