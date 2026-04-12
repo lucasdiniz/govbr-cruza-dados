@@ -168,7 +168,8 @@ def warm_cycle(municipios: list[str], verbose: bool = True):
 def main():
     parser = argparse.ArgumentParser(description="Pre-processa queries para cache do frontend")
     parser.add_argument("--mun", type=str, default=None, help="Processar apenas um municipio")
-    parser.add_argument("--daemon", action="store_true", help="Loop infinito: recomeça ao terminar a lista")
+    parser.add_argument("--daemon", action="store_true", help="Processa todos os municipios (use com --loop para repetir)")
+    parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista")
     args = parser.parse_args()
 
     conn = psycopg2.connect(DSN)
@@ -190,6 +191,9 @@ def main():
             ok, fail = warm_cycle(municipios)
             elapsed = time.time() - t0
             print(f"=== Ciclo {cycle} completo: {ok} ok, {fail} fail ({elapsed/60:.1f}min) ===")
+            if not args.loop:
+                print("Ciclo unico finalizado (use --loop para repetir).")
+                break
             print(f"Proximo ciclo em {PAUSE_BETWEEN_CYCLES}s...")
             time.sleep(PAUSE_BETWEEN_CYCLES)
     else:

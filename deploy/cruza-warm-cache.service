@@ -1,0 +1,16 @@
+[Unit]
+Description=Cruza Dados - Cache Warmer
+After=postgresql.service network.target
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=govbr
+WorkingDirectory=/home/govbr/govbr-cruza-dados
+EnvironmentFile=/home/govbr/govbr-cruza-dados/.env
+ExecStart=/home/govbr/govbr-cruza-dados/.venv/bin/python -m web.warm_cache --daemon --loop
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

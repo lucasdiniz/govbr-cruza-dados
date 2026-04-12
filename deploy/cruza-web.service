@@ -1,0 +1,16 @@
+[Unit]
+Description=Cruza Dados - Web Frontend
+After=postgresql.service network.target
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=govbr
+WorkingDirectory=/home/govbr/govbr-cruza-dados
+EnvironmentFile=/home/govbr/govbr-cruza-dados/.env
+ExecStart=/home/govbr/govbr-cruza-dados/.venv/bin/python -m uvicorn web.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
