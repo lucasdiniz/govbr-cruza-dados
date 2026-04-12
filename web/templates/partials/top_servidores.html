@@ -1,0 +1,67 @@
+{% if servidores %}
+<section class="result-block">
+    <div class="result-toolbar">
+        <div>
+            <h3 class="card-title">Servidores com sinais de atencao</h3>
+            <p class="text-muted text-sm">
+                A Constituicao (art. 37, XVI) admite acumulacao de cargos para profissionais de saude.
+                Cargos medicos ficam ocultos por padrao.
+            </p>
+        </div>
+        <label class="toggle-row">
+            <input type="checkbox" data-hide-medicos checked>
+            <span>Ocultar medicos</span>
+        </label>
+    </div>
+
+    <div class="table-shell js-data-table" data-page-size="12">
+        <div class="table-actions">
+            <input
+                type="search"
+                class="table-filter"
+                placeholder="Filtrar nesta tabela"
+                aria-label="Filtrar servidores"
+            >
+            <p class="table-meta text-sm text-muted" data-table-meta></p>
+        </div>
+        <div class="tbl-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Servidor</th>
+                        <th>Cargo</th>
+                        <th class="text-right">Maior Salario</th>
+                        <th>Sinais de Atencao</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in servidores %}
+                    {% set cargo = (s.cargo or "-")|clean_text %}
+                    <tr data-cargo="{{ cargo|lower }}">
+                        <td>{{ s.nome_servidor|clean_text }}</td>
+                        <td>{{ cargo }}</td>
+                        <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>
+                        <td>
+                            {% if s.flag_conflito_interesses %}<span class="badge badge-red">Ligacao com empresa fornecedora</span>{% endif %}
+                            {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red">Tambem recebe do estado</span>{% endif %}
+                            {% if s.flag_multi_empresa %}<span class="badge badge-yellow">Multiplas empresas</span>{% endif %}
+                            {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Beneficio social</span>{% endif %}
+                            {% if not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado %}
+                                <span class="text-sm text-muted">Score de risco elevado</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="table-pagination">
+            <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+            <p class="text-sm text-muted" data-page-label></p>
+            <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+        </div>
+    </div>
+</section>
+{% else %}
+<p class="text-muted text-sm">Nenhum servidor foi carregado nesta etapa.</p>
+{% endif %}

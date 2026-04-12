@@ -11,8 +11,15 @@ dependencies = [
     "requests>=2.31",
 ]
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "jinja2>=3.1",
+    "uvicorn[standard]>=0.29",
+]
+
 [project.scripts]
 govbr-etl = "etl.run_all:main"
 
 [tool.setuptools.packages.find]
-include = ["etl*"]
+include = ["etl*", "web*"]

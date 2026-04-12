@@ -1,0 +1,58 @@
+{% if fornecedores %}
+<section class="result-block">
+    <div class="result-toolbar">
+        <div>
+            <h3 class="card-title">Maiores fornecedores do municipio</h3>
+            <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor.</p>
+        </div>
+    </div>
+
+    <div class="table-shell js-data-table" data-page-size="12">
+        <div class="table-actions">
+            <input
+                type="search"
+                class="table-filter"
+                placeholder="Filtrar nesta tabela"
+                aria-label="Filtrar fornecedores"
+            >
+            <p class="table-meta text-sm text-muted" data-table-meta></p>
+        </div>
+        <div class="tbl-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fornecedor</th>
+                        <th class="text-right">Total Pago</th>
+                        <th class="text-right">Empenhos</th>
+                        <th>Sinais de Atencao</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in fornecedores %}
+                    <tr>
+                        <td>{{ f.nome_credor|clean_text }}</td>
+                        <td class="text-right">{{ f.total_pago|default(0)|short_brl }}</td>
+                        <td class="text-right">{{ f.qtd_empenhos|default(0)|short_number }}</td>
+                        <td>
+                            {% if f.flag_ceis %}<span class="badge badge-red">Sancao ativa</span>{% endif %}
+                            {% if f.flag_pgfn %}<span class="badge badge-yellow">Divida ativa</span>{% endif %}
+                            {% if f.flag_inativa %}<span class="badge badge-gray">Cadastro inativo</span>{% endif %}
+                            {% if not f.flag_ceis and not f.flag_pgfn and not f.flag_inativa %}
+                                <span class="text-sm text-muted">Sem sinal automatico</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="table-pagination">
+            <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+            <p class="text-sm text-muted" data-page-label></p>
+            <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+        </div>
+    </div>
+</section>
+{% else %}
+<p class="text-muted text-sm">Nenhum fornecedor foi carregado nesta etapa.</p>
+{% endif %}

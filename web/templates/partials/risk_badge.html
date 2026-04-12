@@ -1,0 +1,5 @@
+{# risk_badge.html — badge colorido por nivel de risco
+   Uso: {% include "partials/risk_badge.html" with context %}
+   Requer: badge_text, badge_level ("red"|"yellow"|"green"|"gray")
+#}
+<span class="badge badge-{{ badge_level }}">{{ badge_text }}</span>

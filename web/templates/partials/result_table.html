@@ -1,0 +1,73 @@
+<section class="result-block">
+    <div class="result-toolbar">
+        <div>
+            <h3 class="card-title">{{ title }}</h3>
+            <p class="text-muted text-sm">Use o filtro para localizar nomes, empresas, documentos ou termos relevantes nesta tabela.</p>
+        </div>
+        <a
+            class="btn btn-outline btn-sm"
+            href="#"
+            data-export-link
+        >
+            Exportar CSV
+        </a>
+    </div>
+
+    {% if rows %}
+    <div class="table-shell js-data-table" data-page-size="12">
+        <div class="table-actions">
+            <input
+                type="search"
+                class="table-filter"
+                placeholder="Filtrar nesta tabela"
+                aria-label="Filtrar resultados"
+            >
+            <p class="table-meta text-sm text-muted" data-table-meta></p>
+        </div>
+        <div class="tbl-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        {% for col in columns %}
+                    <th>{{ col|replace("_", " ")|title|clean_text }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        {% for col in columns %}
+                        {% set value = row[col] %}
+                        <td>
+                            {% if value is sameas true %}
+                                <span class="badge badge-red">Sim</span>
+                            {% elif value is sameas false %}
+                                <span class="badge badge-gray">Nao</span>
+                            {% elif value is number and (col.startswith("valor") or col.startswith("total")) %}
+                                R$ {{ "{:,.2f}".format(value) }}
+                            {% elif value is number and col.startswith("pct") %}
+                                <span class="{% if value >= 70 %}color-red{% elif value >= 30 %}color-yellow{% else %}color-green{% endif %}">
+                                    {{ "{:,.1f}".format(value) }}%
+                                </span>
+                            {% elif value is iterable and value is not string %}
+                                {{ value|join(", ")|clean_text }}
+                            {% else %}
+                                {{ (value if value is not none else "-")|clean_text }}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="table-pagination">
+            <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+            <p class="text-sm text-muted" data-page-label></p>
+            <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted text-sm">Nenhum resultado foi encontrado para este bloco.</p>
+    {% endif %}
+</section>

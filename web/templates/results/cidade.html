@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}{{ municipio }}{% endblock %}
+{% block content %}
+
+{% if not perfil %}
+<div class="card">
+    <p>Municipio <strong>{{ municipio }}</strong> nao encontrado na base de dados.</p>
+    <a href="/">&larr; Voltar</a>
+</div>
+{% else %}
+
+{% set total_empenhado = perfil.total_empenhado|default(0)|float %}
+{% set total_pago = perfil.total_pago|default(0)|float %}
+{% set pct_pago = (total_pago / total_empenhado * 100) if total_empenhado else 0 %}
+{% set gap_financeiro = total_empenhado - total_pago %}
+
+<section class="city-hero card">
+    <div class="city-hero-copy">
+        <p class="eyebrow">Panorama do municipio</p>
+        <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
+        <p class="city-subtitle">
+            Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio
+            e organiza os achados por tema para facilitar a investigacao.
+        </p>
+    </div>
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ perfil.qtd_empenhos|default(0)|short_number }}</span>
+            <span class="hero-stat-label">despesas analisadas</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ total_pago|short_brl }}</span>
+            <span class="hero-stat-label">pagos ao todo</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ perfil.qtd_fornecedores|default(0)|short_number }}</span>
+            <span class="hero-stat-label">fornecedores distintos</span>
+        </div>
+    </div>
+</section>
+
+<section class="insight-grid">
+    <article class="insight-card">
+        <h2 class="card-title">Quanto do valor empenhado virou pagamento</h2>
+        <p class="text-muted">
+            O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.
+        </p>
+        <div class="chart-progress">
+            <div class="chart-progress-fill" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
+        </div>
+        <p class="insight-value">{{ "%.1f"|format(pct_pago) }}% do valor empenhado foi pago</p>
+        <p class="text-sm text-muted">Diferenca entre empenhado e pago: {{ gap_financeiro|short_brl }}</p>
+    </article>
+
+    <article class="insight-card">
+        <h2 class="card-title">Compras sem licitacao</h2>
+        <p class="text-muted">
+            Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.
+        </p>
+        <p class="insight-value">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
+        <p class="text-sm text-muted">Quanto maior esse numero, maior a importancia de revisar justificativas e documentos.</p>
+    </article>
+
+    <article class="insight-card">
+        <h2 class="card-title">Licitacoes com apenas um participante</h2>
+        <p class="text-muted">
+            Esse indicador mostra casos em que so uma empresa apareceu na disputa.
+        </p>
+        <p class="insight-value">{{ "%.1f"|format(perfil.pct_proponente_unico|default(0)|float) }}%</p>
+        <p class="text-sm text-muted">Participacao unica nao prova irregularidade, mas merece contexto e comparacao com outras compras.</p>
+    </article>
+
+    <article class="insight-card">
+        <h2 class="card-title">Concentracao de gastos no fim do ano</h2>
+        <p class="text-muted">
+            Mede quanto do valor empenhado se concentrou em dezembro.
+        </p>
+        <p class="insight-value">{{ "%.1f"|format(perfil.pct_dezembro|default(0)|float) }}%</p>
+        <p class="text-sm text-muted">Concentracoes fortes no fim do ano podem indicar pressa para executar o orcamento.</p>
+    </article>
+</section>
+
+<section class="card chart-card">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Leitura rapida</p>
+            <h2 class="card-title">Visao geral dos valores do municipio</h2>
+        </div>
+    </div>
+    <div class="chart-bars">
+        <div class="chart-bar-row">
+            <div>
+                <strong>Empenhado</strong>
+                <p class="text-sm text-muted">Valor reservado no orcamento para despesas.</p>
+            </div>
+            <div class="chart-bar-track wide">
+                <div class="chart-bar-fill fill-blue" style="width: 100%"></div>
+            </div>
+            <strong>{{ total_empenhado|short_brl }}</strong>
+        </div>
+        <div class="chart-bar-row">
+            <div>
+                <strong>Pago</strong>
+                <p class="text-sm text-muted">Valor que efetivamente foi pago.</p>
+            </div>
+            <div class="chart-bar-track wide">
+                <div class="chart-bar-fill fill-green" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
+            </div>
+            <strong>{{ total_pago|short_brl }}</strong>
+        </div>
+    </div>
+</section>
+
+<div class="two-col">
+    <section class="card">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Quem mais recebeu</p>
+                <h2 class="card-title">Fornecedores que mais aparecem no municipio</h2>
+            </div>
+        </div>
+        <p class="text-muted mb-1">
+            Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
+        </p>
+        <div class="async-card" data-async-panel="fornecedores">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Pessoas para revisar</p>
+                <h2 class="card-title">Servidores que merecem verificacao adicional</h2>
+            </div>
+        </div>
+        <p class="text-muted mb-1">
+            Em vez de um numero abstrato, mostramos abaixo por que cada nome entrou nesta lista.
+        </p>
+        <div class="async-card" data-async-panel="servidores">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+    </section>
+</div>
+
+<section class="report-sections">
+    {% for section in report_sections %}
+    <article
+        class="card report-section"
+        data-section-slug="{{ section.slug }}"
+        data-section-title="{{ section.title }}"
+    >
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Tema de investigacao</p>
+                <h2 class="card-title">{{ section.title }}</h2>
+                <p class="text-muted">{{ section.description }}</p>
+            </div>
+            <div class="section-summary">
+                <strong data-section-total>Carregando...</strong>
+                <span class="text-sm text-muted">achados nesta area</span>
+            </div>
+        </div>
+        <div class="finding-list">
+            {% for query in section.queries %}
+            <section class="finding-card loading" data-query="{{ query.id }}">
+                <div class="finding-head">
+                    <div>
+                        <h3 class="finding-title">{{ query.title }}</h3>
+                        <p class="text-sm text-muted">{{ query.description }}</p>
+                    </div>
+                    <div class="finding-summary">
+                        <strong data-count>...</strong>
+                        <span class="text-sm text-muted">registros</span>
+                    </div>
+                </div>
+                <div class="finding-body">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line short"></div>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+    </article>
+    {% endfor %}
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    bootstrapCityReport({{ perfil.municipio|tojson }});
+});
+</script>
+
+{% endif %}
+{% endblock %}

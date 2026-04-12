@@ -85,6 +85,12 @@
 - **CEIS/CNEP cpf_cnpj_norm** é CNPJ completo 14 dígitos — match via `LEFT(cpf_cnpj_norm, 8)`
 - CNPJ matching entre tabelas sempre via `cnpj_basico` (primeiros 8 dígitos)
 
+### Frontend web
+- [ ] **Melhorar gráficos/visualizações** na página de detalhes do municipio
+- [ ] **Acentuação quebrada** em algumas tabelas (dados vindos do banco)
+- [ ] **Abreviações numéricas** — valores grandes devem usar `bi`, `mi`, `mil` (implementado via filtro Jinja2, revisar cobertura)
+- [ ] **Adicionar mais gráficos** — gráficos de barras/pizza nos blocos de investigação
+
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas (código, não executadas no banco)
 - ETL completo local: 16+ fontes, normalizacao, indices
@@ -93,3 +99,7 @@
 - Q201-Q209 implementadas (rede empresarial família Hugo Motta)
 - Q301-Q310 implementadas (cruzamentos avançados: duplo vínculo, porta giratória, BNDES×TSE, saúde dominante)
 - Auto-limpeza de CSVs após ETL implementada em run_all.py
+- Frontend web: landing page escura com animação de partículas, página de detalhes com tabelas padronizadas
+- Cache pré-processado: `web_cache` table + `warm_cache.py --daemon` para manter dados prontos
+- Performance: queries de 45s→1-4s removendo UPPER(unaccent()) e usando indexes existentes
+- Deploy: `python -m web.warm_cache --daemon` para manter cache atualizado em loop

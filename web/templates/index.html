@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Busca{% endblock %}
+{% block body_class %}dark-page{% endblock %}
+{% block content %}
+<section class="search-hero">
+    <canvas id="graph-canvas" class="hero-backdrop"></canvas>
+    <div class="hero-content">
+    <p class="eyebrow">Plataforma de investigacao</p>
+    <h1>Cruzamento inteligente de dados publicos</h1>
+    <p class="hero-copy">
+        Conectamos bases oficiais do governo para revelar padroes que passam despercebidos
+        quando cada fonte e analisada isoladamente.
+    </p>
+
+    <div class="search-tabs" role="tablist">
+        <button class="tab active" data-tab="cidade" role="tab" aria-selected="true">Municipio</button>
+        <button class="tab" data-tab="pessoa" role="tab" disabled title="Em breve">Pessoa</button>
+        <button class="tab" data-tab="empresa" role="tab" disabled title="Em breve">Empresa</button>
+        <button class="tab" data-tab="licitacao" role="tab" disabled title="Em breve">Licitacao</button>
+        <button class="tab" data-tab="parlamentar" role="tab" disabled title="Em breve">Parlamentar</button>
+    </div>
+
+    <div class="tab-panels">
+        <div class="tab-panel active" id="panel-cidade">
+            <section class="search-card">
+                <label class="search-label" for="ac-cidade">Busque por municipio</label>
+                <div class="autocomplete-wrap">
+                    <input
+                        type="text"
+                        id="ac-cidade"
+                        placeholder="Digite o nome do municipio..."
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <ul class="ac-list" id="aclist-cidade"></ul>
+                </div>
+                <p class="search-status" id="cidade-status" aria-live="polite"></p>
+            </section>
+        </div>
+
+        <div class="tab-panel" id="panel-pessoa">
+            <p class="coming-soon">Modo pessoa em breve</p>
+        </div>
+        <div class="tab-panel" id="panel-empresa">
+            <p class="coming-soon">Modo empresa em breve</p>
+        </div>
+        <div class="tab-panel" id="panel-licitacao">
+            <p class="coming-soon">Modo licitacao em breve</p>
+        </div>
+        <div class="tab-panel" id="panel-parlamentar">
+            <p class="coming-soon">Modo parlamentar em breve</p>
+        </div>
+    </div>
+    </div>
+</section>
+
+<section class="features-strip">
+    <div class="feature-item">
+        <div class="feature-icon">&#128269;</div>
+        <h3>Cruzamentos automaticos</h3>
+        <p>18 verificacoes cruzando despesas, servidores, licitacoes e fornecedores em segundos.</p>
+    </div>
+    <div class="feature-item">
+        <div class="feature-icon">&#9888;&#65039;</div>
+        <h3>Sinais de risco</h3>
+        <p>Identifica conflitos de interesse, empresas sancionadas e concentracao atipica de contratos.</p>
+    </div>
+    <div class="feature-item">
+        <div class="feature-icon">&#128202;</div>
+        <h3>Panorama completo</h3>
+        <p>Visao consolidada de cada municipio com indicadores, tabelas e exportacao de dados.</p>
+    </div>
+</section>
+
+<script src="/static/graph-animation.js"></script>
+{% endblock %}
