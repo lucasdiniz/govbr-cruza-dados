@@ -31,8 +31,8 @@
 - [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose so sobe o Postgres.
 
 ### Deploy Azure
-- [ ] **Deploy em andamento** — retomado a partir da fase 19 (run 24286000479). CSVs de rfb (58GB) e bolsa_familia (85GB) removidos manualmente para liberar disco. 143GB livres.
-- [ ] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
+- [ ] **Deploy travado 48h+** — run 24294818214, commit `4556f15`. Travou na fase 17 (normalizacao), especificamente no ALTER TABLE bolsa_familia ADD COLUMN cpf_digitos + UPDATE 14.7M rows. Provavelmente lock ou OOM. VM preservada com dados ja carregados (fases 0-16 completas). Precisamos: (1) cancelar o job, (2) SSH na VM, (3) rodar manualmente as operacoes faltantes (fase 17+, views, indices, web) sem reprocessar dados ja carregados.
+- [x] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
 - [x] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
 - [x] **Services systemd corrigidos** — paths atualizados para `/home/govbr/govbr-project` e `venv/` (matching deploy.yml)
 - [ ] **Issues #1-#4**: Pendentes execucao no banco local
