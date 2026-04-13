@@ -144,7 +144,7 @@ jobs:
           fi
           source venv/bin/activate
           pip install --upgrade pip -q
-          pip install -e . -q
+          pip install -e ".[web]" -q
 
           echo "=== Code deployed. Data dir: $DATA ==="
 
@@ -244,6 +244,26 @@ jobs:
           source venv/bin/activate
           echo "=== Running all queries ==="
           python -m etl.run_queries 2>&1 | tail -100
+
+      # ── Deploy web services ──
+      - name: Deploy web frontend and cache warmer
+        run: |
+          set -e
+          cd ${{ env.PROJECT_DIR }}
+
+          # Install systemd services
+          sudo cp deploy/cruza-web.service /etc/systemd/system/
+          sudo cp deploy/cruza-warm-cache.service /etc/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable cruza-web cruza-warm-cache
+
+          # Restart services to pick up new code
+          sudo systemctl restart cruza-web
+          sudo systemctl restart cruza-warm-cache
+
+          echo "=== Web services deployed ==="
+          systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
+          systemctl is-active cruza-warm-cache && echo "cruza-warm-cache: RUNNING" || echo "cruza-warm-cache: FAILED"
 
       # ── Verify ──
       - name: Verify database

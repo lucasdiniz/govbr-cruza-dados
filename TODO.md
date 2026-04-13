@@ -2,13 +2,34 @@
 
 ## Pendente
 
+### Frontend web — Bugs criticos
+- [ ] **Fornecedores nunca carrega** — painel "Fornecedores que mais aparecem" nunca mostra dados nos testes. Investigar se e problema de query, cache, ou rendering do partial
+- [ ] **Servidores limitado a 10** — sempre mostra exatamente 10 registros, deveria paginar/mostrar mais
+- [ ] **Botao ocultar medicos quebrado** — toggle `data-hide-medicos` nao filtra as linhas. Verificar se `initInteractiveToggles` esta sendo chamado e se `data-cargo` esta populado corretamente
+- [ ] **Q59 e Q63 timeout constante** — "Possiveis conflitos de interesse" quase nunca carrega. Queries mais importantes do sistema. Otimizar SQL ou pre-computar em materialized view
+- [ ] **Alertas sem contexto** — badge "Ligacao com empresa fornecedora" nao diz QUAL empresa. Incluir nome/CNPJ da empresa vinculada nos resultados
+
+### Frontend web — UX e performance
+- [ ] **Carregamento sequencial** — queries disparam 2 por vez sequencialmente (runLimited com limit=2). Se uma query pesada trava, tudo atrasa. Considerar: endpoint unico `/api/batch` que serve tudo do cache de uma vez, com fallback individual para cache miss
+- [ ] **Ordenacao de colunas** — tabelas nao permitem ordenar por coluna. Implementar sort client-side no `initDataTables`
+- [ ] **Ordenacao default errada** — "Fornecedor vencedor em muitos municipios" deveria vir ordenado desc por qtd de municipios. Revisar TODAS as queries e garantir ORDER BY semantico correto
+- [ ] **Descricoes vagas nas secoes** — textos como "Situacoes em que servidores podem estar relacionados de forma inadequada" nao explicam nada. Reescrever com: o que estamos mostrando, por que e relevante, qual lei/norma se aplica. Menos tecnico, mais explicativo
+- [ ] **Melhorar graficos/visualizacoes** na pagina de detalhes
+- [ ] **Acentuacao quebrada** em algumas tabelas (dados vindos do banco com encoding errado)
+- [ ] **Adicionar mais graficos** — graficos de barras/pizza nos blocos de investigacao
+
+### Frontend web — Arquitetura
+- [ ] **Endpoint batch para cache** — em vez de N requests individuais, criar `POST /api/batch/{municipio}` que retorna todos os resultados disponíveis no `web_cache` de uma vez (JSON com query_id -> {cols, rows}). Frontend renderiza tudo instantaneamente do cache. Endpoints individuais viram fallback
+- [ ] **Landing page escura precisa ajuste** — features strip nao esta 100% integrada visualmente com o backdrop
+
 ### Infra / DX
-- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose só sobe o Postgres.
+- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose so sobe o Postgres.
 
 ### Deploy Azure
 - [ ] **Deploy em andamento** — retomado a partir da fase 19 (run 24286000479). CSVs de rfb (58GB) e bolsa_familia (85GB) removidos manualmente para liberar disco. 143GB livres.
-- [ ] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos após cada fase ETL bem-sucedida. Diretórios compartilhados (rfb, tse) só são removidos quando todas as fases dependentes completam.
-- [ ] **Issues #1-#4**: Pendentes execução no banco local
+- [ ] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
+- [ ] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
+- [ ] **Issues #1-#4**: Pendentes execucao no banco local
 - [ ] **Formalizar Q58 por UF**
 - [ ] **Corrigir agregacao monetaria da Q17**
 - [ ] **Endurecer relatorio do ciclo politico-financeiro**
@@ -73,33 +94,36 @@
 
 ### VM Azure
 - **Standard_B4as_v2** (4 vCPU, 16GB RAM) — North Central US
-- Disco: 512GB Standard SSD em /data (PostgreSQL 248GB + dados brutos ~105GB após limpeza)
-- Budget: ~US$150/mês
+- Disco: 512GB Standard SSD em /data (PostgreSQL 248GB + dados brutos ~105GB apos limpeza)
+- Budget: ~US$150/mes
 - SSH: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186`
-- Workflows: `deploy.yml` (ETL), `setup-runner.yml` (runner 1x)
+- Workflows: `deploy.yml` (ETL + web services), `setup-runner.yml` (runner 1x)
 - Secrets: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`, `RUNNER_ADMIN_TOKEN`
+
+### Frontend web
+- **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
+- **Iniciar local**: `python -m uvicorn web.main:app --port 8000`
+- **Cache warmer**: `python -m web.warm_cache --daemon` (1 ciclo) ou `--daemon --loop` (continuo)
+- **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
+- **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
+- **18 queries** em 6 categorias, 224 municipios PB
 
 ### Notas tecnicas importantes
 - **pb_pagamento** tem quase 100% PF (1 CNPJ PJ). Usar **pb_empenho** para cruzamentos PJ (18K CNPJs distintos)
-- **PGFN cpf_cnpj** é formatado com pontos/traço — usar `REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g')` para extrair dígitos
-- **CEIS/CNEP cpf_cnpj_norm** é CNPJ completo 14 dígitos — match via `LEFT(cpf_cnpj_norm, 8)`
-- CNPJ matching entre tabelas sempre via `cnpj_basico` (primeiros 8 dígitos)
-
-### Frontend web
-- [ ] **Melhorar gráficos/visualizações** na página de detalhes do municipio
-- [ ] **Acentuação quebrada** em algumas tabelas (dados vindos do banco)
-- [ ] **Abreviações numéricas** — valores grandes devem usar `bi`, `mi`, `mil` (implementado via filtro Jinja2, revisar cobertura)
-- [ ] **Adicionar mais gráficos** — gráficos de barras/pizza nos blocos de investigação
+- **PGFN cpf_cnpj** e formatado com pontos/traco — usar `REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g')` para extrair digitos
+- **CEIS/CNEP cpf_cnpj_norm** e CNPJ completo 14 digitos — match via `LEFT(cpf_cnpj_norm, 8)`
+- CNPJ matching entre tabelas sempre via `cnpj_basico` (primeiros 8 digitos)
+- **Performance queries**: usar match direto `d.municipio = %(municipio)s` em vez de `UPPER(unaccent())` — diferenca de 45s vs 1-4s
 
 ## Concluido (resumo)
-- Issues #1-#5 resolvidas (código, não executadas no banco)
+- Issues #1-#5 resolvidas (codigo, nao executadas no banco)
 - ETL completo local: 16+ fontes, normalizacao, indices
 - 7/7 MVs + 2 views criadas. 22 relatorios validos. 14/14 enriquecimentos.
 - Q101-Q111 implementadas e validadas (dados.pb)
-- Q201-Q209 implementadas (rede empresarial família Hugo Motta)
-- Q301-Q310 implementadas (cruzamentos avançados: duplo vínculo, porta giratória, BNDES×TSE, saúde dominante)
-- Auto-limpeza de CSVs após ETL implementada em run_all.py
-- Frontend web: landing page escura com animação de partículas, página de detalhes com tabelas padronizadas
-- Cache pré-processado: `web_cache` table + `warm_cache.py --daemon` para manter dados prontos
-- Performance: queries de 45s→1-4s removendo UPPER(unaccent()) e usando indexes existentes
-- Deploy: `python -m web.warm_cache --daemon` para manter cache atualizado em loop
+- Q201-Q209 implementadas (rede empresarial familia Hugo Motta)
+- Q301-Q310 implementadas (cruzamentos avancados: duplo vinculo, porta giratoria, BNDES x TSE, saude dominante)
+- Auto-limpeza de CSVs apos ETL implementada em run_all.py
+- Frontend web: landing page escura com animacao de particulas, pagina de detalhes com tabelas padronizadas
+- Cache pre-processado: tabela `web_cache` + `warm_cache.py --daemon` para manter dados prontos
+- Performance: queries de 45s para 1-4s removendo UPPER(unaccent()) e usando indexes existentes
+- deploy.yml atualizado com install `.[web]` e deploy de systemd services
