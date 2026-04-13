@@ -587,7 +587,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
 
                 # Situacao cadastral (inatividade)
                 cur.execute("""
-                    SELECT situacao_cadastral, dt_situacao, motivo_situacao_cadastral,
+                    SELECT situacao_cadastral, dt_situacao,
                            cnpj_completo, cnae_principal, uf,
                            COALESCE(dm.descricao, est.municipio) AS municipio
                     FROM estabelecimento est

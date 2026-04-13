@@ -47,10 +47,10 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
-       CASE est.situacao_cadastral
+       CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
        END AS desc_situacao
 FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
@@ -90,10 +90,10 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
-       CASE est.situacao_cadastral
+       CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
        END AS desc_situacao
 FROM top_forn tf
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
@@ -111,10 +111,10 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        FALSE AS flag_ceis,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
-       CASE est.situacao_cadastral
+       CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
        END AS desc_situacao
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
@@ -146,10 +146,10 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
-       CASE est.situacao_cadastral
+       CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
        END AS desc_situacao
 FROM pncp_contrato pc
 LEFT JOIN empresa e ON e.cnpj_basico = pc.cnpj_basico_fornecedor
