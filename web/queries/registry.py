@@ -304,22 +304,33 @@ _reg("Q67", "Fornecedor com divida PGFN recebendo",
      "Empresa com divida ativa na Uniao recebendo do municipio",
      "Fornecedores Irregulares",
      """
-SELECT d.cpf_cnpj, d.nome_credor, d.municipio,
+WITH desp AS (
+    SELECT cnpj_basico, MAX(cpf_cnpj) AS cpf_cnpj, MAX(nome_credor) AS nome_credor,
+           SUM(valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+    FROM tce_pb_despesa
+    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0 AND ano >= 2022
+      AND municipio = %(municipio)s
+    GROUP BY cnpj_basico
+    HAVING SUM(valor_pago) > 50000
+),
+pgfn_agg AS (
+    SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
+           MAX(situacao_inscricao) AS situacao_inscricao,
+           SUM(valor_consolidado) AS divida_pgfn
+    FROM pgfn_divida
+    WHERE LENGTH(cpf_cnpj_norm) = 14
+      AND LEFT(cpf_cnpj_norm, 8) IN (SELECT cnpj_basico FROM desp)
+    GROUP BY LEFT(cpf_cnpj_norm, 8)
+)
+SELECT d.cpf_cnpj, d.nome_credor, %(municipio)s AS municipio,
        pg.situacao_inscricao,
-       pg.valor_consolidado AS divida_pgfn,
-       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-FROM tce_pb_despesa d
-JOIN pgfn_divida pg ON d.cnpj_basico = LEFT(pg.cpf_cnpj_norm, 8)
-WHERE d.cnpj_basico IS NOT NULL
-  AND LENGTH(pg.cpf_cnpj_norm) = 14
-  AND d.valor_pago > 0 AND d.ano >= 2022
-  AND d.municipio = %(municipio)s
-GROUP BY d.cpf_cnpj, d.nome_credor, d.municipio,
-         pg.situacao_inscricao, pg.valor_consolidado
-HAVING SUM(d.valor_pago) > 50000
-ORDER BY pg.valor_consolidado DESC
+       pg.divida_pgfn,
+       d.total_pago, d.qtd_empenhos
+FROM desp d
+JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico
+ORDER BY pg.divida_pgfn DESC
 LIMIT 500
-""", timeout=45)
+""", timeout=90)
 
 
 _reg("Q70", "Empresa inativa recebendo pagamento",
@@ -515,6 +526,7 @@ JOIN LATERAL (
       AND d.valor_empenhado > 0
 ) tce_agg ON tce_agg.total_empenhado_periodo > cv.valor_concedente * 0.5
 WHERE cv.valor_concedente > 100000
+  AND UPPER(unaccent(cv.nome_municipio)) = UPPER(unaccent(%(municipio)s))
 ORDER BY tce_agg.total_empenhado_periodo DESC
 LIMIT 500
 """, timeout=90)

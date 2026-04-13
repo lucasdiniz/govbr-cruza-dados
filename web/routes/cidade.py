@@ -20,6 +20,7 @@ from web.config import (
 from web.db import cached_query, execute_query, read_web_cache
 from web.queries.cidade import (
     AUTOCOMPLETE_MUNICIPIO,
+    AUTOCOMPLETE_MUNICIPIO_FALLBACK,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
@@ -279,13 +280,26 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
 
 @router.get("/api/autocomplete/municipio")
 async def autocomplete_municipio(q: str = Query(..., min_length=2)):
-    _, rows = cached_query(
-        f"ac:mun:{q.casefold()[:20]}",
-        AUTOCOMPLETE_MUNICIPIO,
-        {"q": _normalize_municipio(q), "limit": LIMIT_AUTOCOMPLETE},
-        timeout_sec=TIMEOUT_AUTOCOMPLETE,
-        ttl=3600,
-    )
+    try:
+        _, rows = cached_query(
+            f"ac:mun:{q.casefold()[:20]}",
+            AUTOCOMPLETE_MUNICIPIO,
+            {"q": _normalize_municipio(q), "limit": LIMIT_AUTOCOMPLETE},
+            timeout_sec=TIMEOUT_AUTOCOMPLETE,
+            ttl=3600,
+        )
+    except (UndefinedTable, Exception):
+        # Fallback: PNCP-only autocomplete when MV is unavailable
+        try:
+            _, rows = cached_query(
+                f"ac:mun:fb:{q.casefold()[:20]}",
+                AUTOCOMPLETE_MUNICIPIO_FALLBACK,
+                {"q": _normalize_municipio(q), "limit": LIMIT_AUTOCOMPLETE},
+                timeout_sec=TIMEOUT_AUTOCOMPLETE,
+                ttl=300,
+            )
+        except Exception:
+            return JSONResponse([])
     # rows are (nome, uf, rank_val)
     results = []
     for r in rows:

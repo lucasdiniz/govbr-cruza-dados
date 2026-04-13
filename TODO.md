@@ -6,9 +6,10 @@
 - [x] **Fornecedores nunca carrega** — era problema de performance pre-otimizacao. Funciona com cache e sem cache apos otimizacao de queries
 - [x] **Servidores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
 - [x] **Fornecedores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
-- [x] **Botao ocultar medicos quebrado** — `initInteractiveToggles` procurava `.disclaimer-box` mas checkbox esta em `.result-block`. Corrigido
+- [x] **Botao ocultar medicos quebrado** — toggle conflitava com paginacao (setava display em rows escondidos pela paginacao). Reescrito para integrar com sistema de paginacao via _refilter
 - [x] **Compras sem licitacao sempre 0%** — MV `mv_municipio_pb_risco` nao detectava `numero_licitacao = '000000000'` nem `modalidade_licitacao ILIKE '%sem licit%'`. Corrigido no SQL e MV recriada
 - [x] **Badges sem contexto** — badges de servidores agora mostram detalhes: "Socio de X empresas que fornece ao municipio", "Recebe Bolsa Familia", "Salario alto + vinculo societario", etc.
+- [x] **Q67 e Q89 timeout** — Q67 reescrita com CTE pre-agrupado + pgfn_agg (120s→56s). Q89 adicionado filtro por nome_municipio no pb_convenio (3742→~10 iteracoes LATERAL)
 - [ ] **Q59 e Q63 timeout constante** — warm_cache agora usa timeout de 60s+. Ainda pode falhar em municipios grandes. Considerar materialized view para o join servidor-socio
 - [ ] **Alertas sem contexto nos fornecedores** — badge "Sancao ativa" poderia incluir detalhes da sancao
 
@@ -107,7 +108,7 @@
 ### Frontend web
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Iniciar local**: `python -m uvicorn web.main:app --port 8000`
-- **Cache warmer**: `python -m web.warm_cache --daemon` (1 ciclo) ou `--daemon --loop` (continuo)
+- **Cache warmer**: `python -m web.warm_cache --daemon` (PB), `--pncp` (outros estados), `--all` (PB + PNCP), `--daemon --loop` (continuo)
 - **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
 - **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
 - **18 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
@@ -138,3 +139,8 @@
 - Badges de servidores com contexto detalhado
 - Paginacao 10/pagina em fornecedores e servidores
 - Sort click-to-sort em todas as tabelas
+- Tabela pncp_municipio para autocomplete rapido (4497 rows, indice trigram)
+- Cache warmer suporta PB + PNCP (--all) com 2 queries por municipio nao-PB
+- Servidores com row expandivel mostrando CNPJs das empresas associadas
+- Toggle ocultar medicos integrado com paginacao (nao quebra mais contagem)
+- Q67 e Q89 otimizadas (pre-agrupamento CTE, filtro municipio no LATERAL)

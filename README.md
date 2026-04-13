@@ -85,11 +85,14 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 # Iniciar local
 python -m uvicorn web.main:app --port 8000
 
-# Cache warmer (1 ciclo)
+# Cache warmer — PB (1 ciclo)
 python -m web.warm_cache --daemon
 
-# Cache warmer (continuo)
-python -m web.warm_cache --daemon --loop
+# Cache warmer — todos os estados (PB + PNCP)
+python -m web.warm_cache --all --daemon
+
+# Cache warmer — continuo
+python -m web.warm_cache --all --daemon --loop
 ```
 
 Municipios PB recebem perfil completo com insight cards, servidores de risco, e secoes de investigacao. Municipios de outros estados recebem perfil baseado em contratos PNCP com cruzamento de fornecedores contra CEIS, PGFN e RFB.

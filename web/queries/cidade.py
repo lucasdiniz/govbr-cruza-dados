@@ -140,6 +140,14 @@ ORDER BY risco_score DESC
 LIMIT 200
 """
 
+AUTOCOMPLETE_MUNICIPIO_FALLBACK = """
+SELECT municipio_nome AS nome, uf, 0 AS rank_val
+FROM pncp_municipio
+WHERE unaccent(municipio_nome) ILIKE unaccent(%(q)s) || '%%'
+ORDER BY nome
+LIMIT %(limit)s
+"""
+
 AUTOCOMPLETE_MUNICIPIO = """
 (
     SELECT municipio AS nome, 'PB' AS uf, risco_score AS rank_val
@@ -148,13 +156,12 @@ AUTOCOMPLETE_MUNICIPIO = """
 )
 UNION
 (
-    SELECT DISTINCT municipio_nome AS nome, uf, 0 AS rank_val
-    FROM pncp_contrato
+    SELECT municipio_nome AS nome, uf, 0 AS rank_val
+    FROM pncp_municipio
     WHERE unaccent(municipio_nome) ILIKE unaccent(%(q)s) || '%%'
-      AND uf IS NOT NULL
       AND NOT EXISTS (
           SELECT 1 FROM mv_municipio_pb_risco m
-          WHERE m.municipio = pncp_contrato.municipio_nome AND pncp_contrato.uf = 'PB'
+          WHERE m.municipio = pncp_municipio.municipio_nome AND pncp_municipio.uf = 'PB'
       )
     LIMIT 50
 )

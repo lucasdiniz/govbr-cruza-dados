@@ -586,3 +586,21 @@ tr:hover { background: #fbfdff; }
     .section-summary,
     .finding-summary { text-align: left; min-width: unset; }
 }
+
+/* Expandable detail rows */
+.clickable-row:hover { background: var(--surface-alt, #f8f9fa); }
+.clickable-row.expanded { background: var(--surface-alt, #f0f1f3); }
+.detail-row td { padding: 0 !important; }
+.detail-content {
+    padding: .6rem 1rem;
+    background: var(--surface-alt, #f8f9fa);
+    border-top: 1px solid var(--border, #dee2e6);
+    font-size: .85rem;
+    line-height: 1.6;
+}
+.detail-content code {
+    background: var(--surface, #e9ecef);
+    padding: .1rem .35rem;
+    border-radius: 3px;
+    font-size: .8rem;
+}

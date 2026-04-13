@@ -146,6 +146,7 @@ async function bootstrapCityReport(municipio, uf) {
             servPanel.innerHTML = buildServidoresPanel(batchData.TOP_SERVIDORES);
             initDataTables(servPanel);
             initInteractiveToggles(servPanel);
+            initExpandableRows(servPanel);
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
         }
@@ -343,6 +344,7 @@ function buildServidoresPanel(data) {
         const cargo = _esc(_val(r, cols, 'cargo') || '-');
         const salario = _shortBrl(_val(r, cols, 'maior_salario'));
         const qtdEmpresas = _val(r, cols, 'qtd_empresas_socio') || 0;
+        const cnpjs = _val(r, cols, 'cnpjs_socio') || [];
         let badges = '';
         if (_val(r, cols, 'flag_conflito_interesses')) {
             badges += qtdEmpresas > 0
@@ -354,7 +356,15 @@ function buildServidoresPanel(data) {
         if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Recebe Bolsa Familia</span>';
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
-        return `<tr data-cargo="${cargo.toLowerCase()}"><td>${nome}</td><td>${cargo}</td><td class="text-right">${salario}</td><td>${badges}</td></tr>`;
+
+        const hasDetail = cnpjs.length > 0;
+        const mainRow = `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? 'class="clickable-row" style="cursor:pointer"' : ''}><td>${nome} ${hasDetail ? '<span class="text-muted text-sm">&#9654;</span>' : ''}</td><td>${cargo}</td><td class="text-right">${salario}</td><td>${badges}</td></tr>`;
+        let detailRow = '';
+        if (hasDetail) {
+            const cnpjList = cnpjs.map(c => `<code>${c}</code>`).join(', ');
+            detailRow = `<tr class="detail-row" style="display:none"><td colspan="4"><div class="detail-content"><strong>CNPJs das empresas:</strong> ${cnpjList}</div></td></tr>`;
+        }
+        return mainRow + detailRow;
     }).join('');
 
     return `<section class="result-block">
@@ -399,6 +409,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.innerHTML = await response.text();
         initDataTables(panel);
         initInteractiveToggles(panel);
+        initExpandableRows(panel);
     } catch {
         panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
     }
@@ -453,10 +464,20 @@ function initDataTables(root = document) {
         const pageLabel = tableShell.querySelector('[data-page-label]');
         const prevBtn = tableShell.querySelector('[data-page-prev]');
         const nextBtn = tableShell.querySelector('[data-page-next]');
-        const rows = Array.from(tableShell.querySelectorAll('tbody tr'));
+        const rows = Array.from(tableShell.querySelectorAll('tbody tr:not(.detail-row)'));
         const pageSize = Number(tableShell.dataset.pageSize || 12);
         let filteredRows = rows;
         let page = 1;
+        let externalFilter = null; // set by toggles (e.g. ocultar medicos)
+
+        const applyFilters = () => {
+            const term = filterInput ? filterInput.value.trim().toLowerCase() : '';
+            filteredRows = rows.filter((row) => {
+                if (term && !row.textContent.toLowerCase().includes(term)) return false;
+                if (externalFilter && !externalFilter(row)) return false;
+                return true;
+            });
+        };
 
         const renderPage = () => {
             const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
@@ -465,13 +486,27 @@ function initDataTables(root = document) {
             const pageRows = filteredRows.slice(start, start + pageSize);
 
             rows.forEach((row) => {
-                row.style.display = pageRows.includes(row) ? '' : 'none';
+                const visible = pageRows.includes(row);
+                row.style.display = visible ? '' : 'none';
+                // Also hide/show associated detail row
+                const detailRow = row.nextElementSibling;
+                if (detailRow && detailRow.classList.contains('detail-row')) {
+                    detailRow.style.display = (visible && row.classList.contains('expanded')) ? '' : 'none';
+                }
             });
 
             if (meta) meta.textContent = `${filteredRows.length} registro(s) encontrados`;
             if (pageLabel) pageLabel.textContent = `Pagina ${page} de ${totalPages}`;
             if (prevBtn) prevBtn.disabled = page === 1;
             if (nextBtn) nextBtn.disabled = page === totalPages;
+        };
+
+        // Expose refilter for external toggles
+        tableShell._refilter = (filterFn) => {
+            externalFilter = filterFn;
+            applyFilters();
+            page = 1;
+            renderPage();
         };
 
         // Column sorting
@@ -508,8 +543,7 @@ function initDataTables(root = document) {
         });
 
         filterInput?.addEventListener('input', () => {
-            const term = filterInput.value.trim().toLowerCase();
-            filteredRows = rows.filter((row) => row.textContent.toLowerCase().includes(term));
+            applyFilters();
             page = 1;
             renderPage();
         });
@@ -529,9 +563,25 @@ function initDataTables(root = document) {
     });
 }
 
+function initExpandableRows(root = document) {
+    root.querySelectorAll('.clickable-row').forEach((row) => {
+        if (row.dataset.expandable === 'true') return;
+        row.dataset.expandable = 'true';
+        row.addEventListener('click', () => {
+            const detailRow = row.nextElementSibling;
+            if (!detailRow || !detailRow.classList.contains('detail-row')) return;
+            const isExpanded = row.classList.toggle('expanded');
+            detailRow.style.display = isExpanded ? '' : 'none';
+            const arrow = row.querySelector('.text-muted.text-sm');
+            if (arrow) arrow.innerHTML = isExpanded ? '&#9660;' : '&#9654;';
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initInteractiveToggles(document);
+    initExpandableRows(document);
 });
 
 function initInteractiveToggles(root = document) {
@@ -540,15 +590,16 @@ function initInteractiveToggles(root = document) {
         checkbox.dataset.enhanced = 'true';
 
         const container = checkbox.closest('.result-block') || checkbox.closest('.table-shell')?.parentElement;
-        const rows = container ? Array.from(container.querySelectorAll('tbody tr[data-cargo]')) : [];
+        const tableShell = container ? container.querySelector('.js-data-table') : null;
 
         const apply = () => {
             const hide = checkbox.checked;
-            rows.forEach((row) => {
-                const cargo = row.dataset.cargo || '';
-                const isMedico = cargo.includes('medico');
-                row.style.display = hide && isMedico ? 'none' : '';
-            });
+            if (tableShell && tableShell._refilter) {
+                tableShell._refilter(hide ? (row) => {
+                    const cargo = (row.dataset.cargo || '').toLowerCase();
+                    return !cargo.includes('medico');
+                } : null);
+            }
         };
 
         checkbox.addEventListener('change', apply);

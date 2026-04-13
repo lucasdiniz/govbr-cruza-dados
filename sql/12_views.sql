@@ -977,6 +977,21 @@ WHERE ppb.flag_auto_contratacao_potencial OR ppb.flag_duplo_vinculo_mun_est
 
 
 -- =============================================================================
+-- TABELA AUXILIAR: pncp_municipio (lista distinta de municípios PNCP)
+-- Usada pelo autocomplete do frontend — evita full scan em pncp_contrato
+-- =============================================================================
+DROP TABLE IF EXISTS pncp_municipio;
+CREATE TABLE pncp_municipio AS
+SELECT DISTINCT municipio_nome, uf
+FROM pncp_contrato
+WHERE municipio_nome IS NOT NULL AND uf IS NOT NULL;
+
+CREATE INDEX idx_pncp_mun_trgm ON pncp_municipio USING gin (municipio_nome gin_trgm_ops);
+
+GRANT SELECT ON pncp_municipio TO govbr;
+
+
+-- =============================================================================
 -- Notas de refresh
 -- =============================================================================
 -- Layer 1 (paralelo ou sequencial, ~45min total):
