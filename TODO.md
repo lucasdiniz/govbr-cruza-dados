@@ -12,7 +12,7 @@
 - [x] **Q67 e Q89 timeout** — Q67 reescrita com CTE pre-agrupado + pgfn_agg (120s→56s). Q89 adicionado filtro por nome_municipio no pb_convenio (3742→~10 iteracoes LATERAL)
 - [x] **Q59 e Q63 removidas** — redundantes com tabela TOP_SERVIDORES + dialog de detalhes por servidor
 - [x] **Q74 removida** — redundante com dialog (Bolsa Família aparece no detalhe do servidor)
-- [ ] **Alertas sem contexto nos fornecedores** — badge "Sancao ativa" poderia incluir detalhes da sancao
+- [x] **Alertas sem contexto nos fornecedores** — dialog mostra sancoes CEIS com datas, divida PGFN, situacao cadastral e empenhos recentes
 
 ### Frontend web — UX e performance
 - [x] **Carregamento sequencial** — implementado `POST /api/batch/{municipio}` que serve todos os dados do cache em uma unica requisicao. Frontend renderiza cards do cache instantaneamente, fallback individual para cache miss com concorrencia 4
@@ -152,3 +152,7 @@
 - Bolsa Familia atualizado: download busca snapshot mais recente (de tras pra frente), nao todos os meses
 - Toggle ocultar medicos integrado com paginacao (nao quebra mais contagem)
 - Q67 e Q89 otimizadas (pre-agrupamento CTE, filtro municipio no LATERAL)
+- Dialog de fornecedor: dados cadastrais, sancoes CEIS (datas inicio/fim, vigencia), divida PGFN, empenhos recentes com modalidade de licitacao
+- Tabela de fornecedores full-width com colunas: Fornecedor, CNPJ, Total Pago, Empenhos, Situacao, Sinais de Atencao
+- pct_sem_licitacao na MV corrigido para filtrar entidades publicas (natureza_juridica NOT LIKE '1%')
+- Lazy fetch on click para fornecedores (mesmo padrao de servidores)

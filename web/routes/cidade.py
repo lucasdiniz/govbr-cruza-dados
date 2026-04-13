@@ -120,7 +120,7 @@ def _load_top_fornecedores(municipio: str, uf: str = ""):
                     timeout_sec=TIMEOUT_PROFILE + 2,
                 )
             except QueryCanceled:
-                return ["cnpj_basico", "nome_credor", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa"], []
+                return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
 
 
 def _load_top_fornecedores_pncp(municipio: str, uf: str):
@@ -132,7 +132,7 @@ def _load_top_fornecedores_pncp(municipio: str, uf: str):
             timeout_sec=TIMEOUT_QUERY_LIGHT,
         )
     except QueryCanceled:
-        return ["cnpj_basico", "nome_credor", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa"], []
+        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
 
 
 def _load_top_servidores(municipio: str):
@@ -525,6 +525,108 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:
         import logging; logging.exception("servidor detalhes failed")
+        return JSONResponse({})
+
+
+@router.post("/api/fornecedor/detalhes")
+async def get_fornecedor_detalhes(payload: dict = Body(...)):
+    """Retorna detalhes de um fornecedor: empenhos recentes, sancoes, situacao cadastral."""
+    cnpj_basico = payload.get("cnpj_basico", "")
+    municipio = payload.get("municipio", "")
+    if not cnpj_basico:
+        return JSONResponse({})
+    try:
+        from web.db import get_conn
+        result = {}
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                # Empenhos recentes no municipio
+                cur.execute("""
+                    SELECT numero_empenho, data_empenho, elemento_despesa,
+                           valor_empenhado, valor_pago,
+                           modalidade_licitacao, numero_licitacao
+                    FROM tce_pb_despesa
+                    WHERE cnpj_basico = %s AND municipio = %s
+                      AND valor_pago > 0
+                    ORDER BY data_empenho DESC
+                    LIMIT 50
+                """, (cnpj_basico, municipio))
+                emp_cols = [d[0] for d in cur.description]
+                emp_rows = cur.fetchall()
+                empenhos = []
+                for row in emp_rows:
+                    r = _row_to_dict(emp_cols, row)
+                    for k, v in r.items():
+                        if hasattr(v, 'as_tuple'):
+                            r[k] = float(v)
+                        elif hasattr(v, 'isoformat'):
+                            r[k] = v.isoformat()
+                    empenhos.append(r)
+                result["empenhos"] = empenhos
+
+                # Sancoes CEIS
+                cur.execute("""
+                    SELECT categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+                           orgao_sancionador, fundamentacao_legal
+                    FROM ceis_sancao
+                    WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
+                    ORDER BY dt_inicio_sancao DESC
+                """, (cnpj_basico,))
+                san_cols = [d[0] for d in cur.description]
+                san_rows = cur.fetchall()
+                if san_rows:
+                    sancoes = []
+                    for row in san_rows:
+                        r = _row_to_dict(san_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        sancoes.append(r)
+                    result["sancoes"] = sancoes
+
+                # Situacao cadastral (inatividade)
+                cur.execute("""
+                    SELECT situacao_cadastral, dt_situacao, motivo_situacao_cadastral,
+                           cnpj_completo, cnae_principal, uf,
+                           COALESCE(dm.descricao, est.municipio) AS municipio
+                    FROM estabelecimento est
+                    LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
+                    WHERE est.cnpj_basico = %s AND est.cnpj_ordem = '0001'
+                """, (cnpj_basico,))
+                sit_cols = [d[0] for d in cur.description]
+                sit_rows = cur.fetchall()
+                if sit_rows:
+                    sit = _row_to_dict(sit_cols, sit_rows[0])
+                    for k, v in sit.items():
+                        if hasattr(v, 'isoformat'):
+                            sit[k] = v.isoformat()
+                    result["estabelecimento"] = sit
+
+                # Divida PGFN
+                cur.execute("""
+                    SELECT situacao_inscricao, SUM(valor_consolidado) AS divida_total,
+                           COUNT(*) AS qtd_inscricoes
+                    FROM pgfn_divida
+                    WHERE LEFT(cpf_cnpj_norm, 8) = %s AND LENGTH(cpf_cnpj_norm) = 14
+                    GROUP BY situacao_inscricao
+                    ORDER BY SUM(valor_consolidado) DESC
+                """, (cnpj_basico,))
+                pgfn_cols = [d[0] for d in cur.description]
+                pgfn_rows = cur.fetchall()
+                if pgfn_rows:
+                    dividas = []
+                    for row in pgfn_rows:
+                        r = _row_to_dict(pgfn_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                        dividas.append(r)
+                    result["pgfn"] = dividas
+
+        return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception:
+        import logging; logging.exception("fornecedor detalhes failed")
         return JSONResponse({})
 
 

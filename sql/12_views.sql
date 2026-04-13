@@ -355,16 +355,18 @@ CREATE INDEX idx_mv_ppb_bf ON mv_pessoa_pb(cpf) WHERE flag_bf_com_renda_estado;
 CREATE MATERIALIZED VIEW mv_municipio_pb_risco AS
 WITH
 desp AS (
-    SELECT municipio,
+    SELECT d.municipio,
            COUNT(*) AS qtd_empenhos,
-           SUM(valor_empenhado) AS total_empenhado,
-           SUM(valor_pago) AS total_pago,
-           COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
-           COUNT(*) FILTER (WHERE mes LIKE '12%') AS qtd_dezembro,
-           COUNT(DISTINCT cnpj_basico) AS qtd_fornecedores
-    FROM tce_pb_despesa
-    WHERE cnpj_basico IS NOT NULL AND ano >= 2022
-    GROUP BY municipio
+           SUM(d.valor_empenhado) AS total_empenhado,
+           SUM(d.valor_pago) AS total_pago,
+           COUNT(*) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
+           COUNT(*) FILTER (WHERE d.mes LIKE '12%') AS qtd_dezembro,
+           COUNT(DISTINCT d.cnpj_basico) AS qtd_fornecedores
+    FROM tce_pb_despesa d
+    JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+        AND e.natureza_juridica NOT LIKE '1%'
+    WHERE d.cnpj_basico IS NOT NULL AND d.ano >= 2022
+    GROUP BY d.municipio
 ),
 lic_proponente AS (
     SELECT municipio, numero_licitacao,

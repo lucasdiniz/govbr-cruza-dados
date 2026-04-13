@@ -41,12 +41,21 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, tf.total_pago, tf.qtd_empenhos,
+SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+       est.cnpj_completo,
+       tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
-       COALESCE(meg.flag_inativa, FALSE) AS flag_inativa
+       COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
+       CASE est.situacao_cadastral
+           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
+           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
+           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+       END AS desc_situacao
 FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
+LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
+LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
 ORDER BY tf.total_pago DESC
 """
 
@@ -56,8 +65,8 @@ WITH top_forn AS (
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
-    JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
-        AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN empresa e2 ON e2.cnpj_basico = d.cnpj_basico
+        AND e2.natureza_juridica NOT LIKE '1%%'
     WHERE d.municipio = %(municipio)s
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
@@ -65,7 +74,9 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, tf.total_pago, tf.qtd_empenhos,
+SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+       est.cnpj_completo,
+       tf.total_pago, tf.qtd_empenhos,
        EXISTS(
            SELECT 1
            FROM ceis_sancao cs
@@ -78,8 +89,14 @@ SELECT tf.cnpj_basico, tf.nome_credor, tf.total_pago, tf.qtd_empenhos,
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = tf.cnpj_basico
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
-       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa
+       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       CASE est.situacao_cadastral
+           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
+           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
+           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+       END AS desc_situacao
 FROM top_forn tf
+LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
@@ -87,19 +104,26 @@ ORDER BY tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
-SELECT d.cnpj_basico, d.nome_credor,
+SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
+       est.cnpj_completo,
        SUM(d.valor_pago) AS total_pago,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
        FALSE AS flag_pgfn,
-       FALSE AS flag_inativa
+       FALSE AS flag_inativa,
+       CASE est.situacao_cadastral
+           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
+           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
+           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+       END AS desc_situacao
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
     AND e.natureza_juridica NOT LIKE '1%%'
+LEFT JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico AND est.cnpj_ordem = '0001'
 WHERE d.municipio = %(municipio)s
   AND d.valor_pago > 0
   AND d.cnpj_basico IS NOT NULL
-GROUP BY d.cnpj_basico, d.nome_credor
+GROUP BY d.cnpj_basico, d.nome_credor, e.razao_social, est.cnpj_completo, est.situacao_cadastral
 ORDER BY SUM(d.valor_pago) DESC
 LIMIT 200
 """
@@ -107,6 +131,8 @@ LIMIT 200
 TOP_FORNECEDORES_PNCP = """
 SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
        pc.nome_fornecedor AS nome_credor,
+       e.razao_social,
+       est.cnpj_completo,
        SUM(pc.valor_global) AS total_contratado,
        COUNT(*) AS qtd_contratos,
        EXISTS(
@@ -119,15 +145,21 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = pc.cnpj_basico_fornecedor
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
-       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa
+       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       CASE est.situacao_cadastral
+           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
+           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
+           ELSE 'Sit. ' || COALESCE(est.situacao_cadastral, '?')
+       END AS desc_situacao
 FROM pncp_contrato pc
+LEFT JOIN empresa e ON e.cnpj_basico = pc.cnpj_basico_fornecedor
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = pc.cnpj_basico_fornecedor
    AND est.cnpj_ordem = '0001'
 WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
   AND pc.cnpj_basico_fornecedor IS NOT NULL
 GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
-         est.situacao_cadastral
+         e.razao_social, est.cnpj_completo, est.situacao_cadastral
 ORDER BY total_contratado DESC
 LIMIT 200
 """

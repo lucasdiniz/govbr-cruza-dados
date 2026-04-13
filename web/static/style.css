@@ -671,3 +671,7 @@ tr:hover { background: #fbfdff; }
     padding-bottom: .3rem;
     border-bottom: 1px solid var(--line, #dee2e6);
 }
+
+.dialog-table { font-size: .82rem; }
+.dialog-table th { font-size: .72rem; padding: .45rem .5rem; }
+.dialog-table td { padding: .45rem .5rem; }
