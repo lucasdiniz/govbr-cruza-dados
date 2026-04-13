@@ -10,7 +10,8 @@
 - [x] **Compras sem licitacao sempre 0%** — MV `mv_municipio_pb_risco` nao detectava `numero_licitacao = '000000000'` nem `modalidade_licitacao ILIKE '%sem licit%'`. Corrigido no SQL e MV recriada
 - [x] **Badges sem contexto** — badges de servidores agora mostram detalhes: "Socio de X empresas que fornece ao municipio", "Recebe Bolsa Familia", "Salario alto + vinculo societario", etc.
 - [x] **Q67 e Q89 timeout** — Q67 reescrita com CTE pre-agrupado + pgfn_agg (120s→56s). Q89 adicionado filtro por nome_municipio no pb_convenio (3742→~10 iteracoes LATERAL)
-- [ ] **Q59 e Q63 timeout constante** — warm_cache agora usa timeout de 60s+. Ainda pode falhar em municipios grandes. Considerar materialized view para o join servidor-socio
+- [x] **Q59 e Q63 removidas** — redundantes com tabela TOP_SERVIDORES + dialog de detalhes por servidor
+- [x] **Q74 removida** — redundante com dialog (Bolsa Família aparece no detalhe do servidor)
 - [ ] **Alertas sem contexto nos fornecedores** — badge "Sancao ativa" poderia incluir detalhes da sancao
 
 ### Frontend web — UX e performance
@@ -111,7 +112,7 @@
 - **Cache warmer**: `python -m web.warm_cache --daemon` (PB), `--pncp` (outros estados), `--all` (PB + PNCP), `--daemon --loop` (continuo)
 - **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
 - **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
-- **18 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
+- **15 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
 - **Autocomplete**: busca PB (MV risco_score DESC) + outros estados (PNCP, formato "Nome - UF")
 
 ### Notas tecnicas importantes
@@ -142,5 +143,12 @@
 - Tabela pncp_municipio para autocomplete rapido (4497 rows, indice trigram)
 - Cache warmer suporta PB + PNCP (--all) com 2 queries por municipio nao-PB
 - Servidores com row expandivel mostrando CNPJs das empresas associadas
+- Dialog de servidor com 3 secoes: Vinculos (admissao, ultimo registro, salario), Bolsa Familia (ultimo recebimento, valor), Empresas vinculadas (razao social, CNPJ, situacao, CNAE)
+- Lazy fetch on click (1 request por servidor ao clicar, sem prefetch em massa)
+- Tabela de servidores full-width com colunas: Servidor, Cargo, Municipio(s), Maior Salario, Empresas, Sinais de Atencao
+- Q59, Q63, Q74 removidas (redundantes com tabela + dialog)
+- Q60 filtrada por natureza_juridica (exclui entidades publicas)
+- Datas formatadas em formato brasileiro (DD/MM/YYYY, MM/YYYY)
+- Bolsa Familia atualizado: download busca snapshot mais recente (de tras pra frente), nao todos os meses
 - Toggle ocultar medicos integrado com paginacao (nao quebra mais contagem)
 - Q67 e Q89 otimizadas (pre-agrupamento CTE, filtro municipio no LATERAL)

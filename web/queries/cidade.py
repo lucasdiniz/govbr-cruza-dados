@@ -32,6 +32,8 @@ WITH top_forn AS (
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
+    JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+        AND e.natureza_juridica NOT LIKE '1%%'
     WHERE d.municipio = %(municipio)s
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
@@ -54,6 +56,8 @@ WITH top_forn AS (
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
+    JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+        AND e.natureza_juridica NOT LIKE '1%%'
     WHERE d.municipio = %(municipio)s
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
@@ -90,6 +94,8 @@ SELECT d.cnpj_basico, d.nome_credor,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa
 FROM tce_pb_despesa d
+JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%%'
 WHERE d.municipio = %(municipio)s
   AND d.valor_pago > 0
   AND d.cnpj_basico IS NOT NULL

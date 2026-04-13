@@ -77,7 +77,8 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
-- **18 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
+- **15 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
+- **Dialog de servidor**: ao clicar um servidor, mostra vinculos (admissao, salario), Bolsa Familia e empresas vinculadas
 - **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` para manter dados prontos
 - **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
 
@@ -201,7 +202,7 @@ Todas baixadas automaticamente via `python -m etl.00_download`:
 | Fonte | URL | Tamanho aprox. |
 |-------|-----|----------------|
 | Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | ~58GB |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~85GB |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~2GB (snapshot mais recente) |
 | TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | ~20GB |
 | PNCP (itens) | [pncp.gov.br](https://pncp.gov.br/) | ~19GB |
 | TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | ~12GB |

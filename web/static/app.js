@@ -143,10 +143,11 @@ async function bootstrapCityReport(municipio, uf) {
 
     if (servPanel) {
         if (batchData.TOP_SERVIDORES && batchData.TOP_SERVIDORES.row_count > 0) {
-            servPanel.innerHTML = buildServidoresPanel(batchData.TOP_SERVIDORES);
+            const servData = batchData.TOP_SERVIDORES;
+            servPanel.innerHTML = buildServidoresPanel(servData);
             initDataTables(servPanel);
             initInteractiveToggles(servPanel);
-            initExpandableRows(servPanel);
+            initClickableRows(servPanel);
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
         }
@@ -300,6 +301,17 @@ function _esc(v) {
     return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function _fmtDate(v) {
+    if (!v || v === '-') return '-';
+    const s = String(v);
+    // YYYYMM -> MM/YYYY
+    if (/^\d{6}$/.test(s)) return `${s.slice(4,6)}/${s.slice(0,4)}`;
+    // YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS -> DD/MM/YYYY
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    return s;
+}
+
 function buildFornecedoresPanel(data) {
     const cols = data.columns;
     const bodyRows = data.rows.map(r => {
@@ -337,6 +349,132 @@ function buildFornecedoresPanel(data) {
     </section>`;
 }
 
+function _formatCnpj(cnpjBasico, cnpjCompleto) {
+    if (cnpjCompleto && cnpjCompleto.length >= 14) {
+        const d = cnpjCompleto.replace(/\D/g, '');
+        return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12,14)}`;
+    }
+    // Mask with asterisks for missing digits
+    const d = (cnpjBasico || '').replace(/\D/g, '');
+    return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/****-**`;
+}
+
+function _situacaoLabel(sit) {
+    const map = {'1': 'Nula', '2': 'Ativa', '3': 'Suspensa', '4': 'Inapta', '8': 'Baixada'};
+    return map[String(sit)] || (sit ? `Sit. ${sit}` : '-');
+}
+
+// Pre-fetched servidor detail cache: "cpf6:nome" -> detail object or Promise
+let _servidorCache = {};
+
+function _fetchServidorDetails(cpf6, nome, cnpjs) {
+    const key = `${cpf6}:${nome}`;
+    if (_servidorCache[key]) return _servidorCache[key];
+    const promise = fetch('/api/servidor/detalhes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf6, nome, cnpjs }),
+    }).then(r => r.json()).catch(() => ({}));
+    _servidorCache[key] = promise;
+    return promise;
+}
+
+function _renderEmpresaCard(e, cnpjBasico) {
+    if (!e) {
+        return `<div class="empresa-card empresa-missing">
+            <div class="empresa-header">
+                <strong class="text-muted">Empresa nao encontrada na base RFB</strong>
+                <code>${_formatCnpj(cnpjBasico, null)}</code>
+            </div>
+        </div>`;
+    }
+    const cnpjFmt = _formatCnpj(e.cnpj_basico, e.cnpj_completo);
+    const sit = _situacaoLabel(e.situacao_cadastral);
+    const sitClass = String(e.situacao_cadastral) === '2' ? '' : 'badge badge-red';
+    const capital = e.capital_social ? _shortBrl(e.capital_social) : '-';
+    const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
+    return `<div class="empresa-card">
+        <div class="empresa-header">
+            <strong>${_esc(e.razao_social || 'Razao social nao disponivel')}</strong>
+            <code>${cnpjFmt}</code>
+        </div>
+        <div class="empresa-details">
+            <span>Situacao: <span class="${sitClass}">${sit}</span></span>
+            <span>Capital: ${capital}</span>
+            <span>Sede: ${_esc(local)}</span>
+            ${e.cnae_principal ? `<span>CNAE: ${_esc(e.cnae_principal)}</span>` : ''}
+        </div>
+    </div>`;
+}
+
+async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog) return;
+    const title = dialog.querySelector('.dialog-title');
+    const body = dialog.querySelector('.dialog-body');
+    title.textContent = servidorNome;
+    body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
+    dialog.showModal();
+
+    const data = await _fetchServidorDetails(cpf6, nome, cnpjs);
+    let html = '';
+
+    // Vínculos como servidor
+    if (data.vinculos && data.vinculos.length) {
+        html += '<div class="dialog-section"><h4>Vinculos como servidor</h4>';
+        html += data.vinculos.map(v => {
+            const admissao = _fmtDate(v.data_admissao);
+            const ultimo = _fmtDate(v.ultimo_registro);
+            const salario = v.maior_salario ? _shortBrl(v.maior_salario) : '-';
+            return `<div class="empresa-card">
+                <div class="empresa-header">
+                    <strong>${_esc(v.municipio)}</strong>
+                    <span class="text-sm text-muted">${_esc(v.descricao_cargo || '-')}</span>
+                </div>
+                <div class="empresa-details">
+                    <span>Admissao: ${admissao}</span>
+                    <span>Ultimo registro: ${ultimo}</span>
+                    <span>Maior salario: ${salario}</span>
+                </div>
+            </div>`;
+        }).join('');
+        html += '</div>';
+    }
+
+    // Bolsa Família
+    if (data.bolsa_familia && data.bolsa_familia.length) {
+        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
+        const bf = data.bolsa_familia;
+        const ultimo = bf[0];
+        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
+        html += `<div class="empresa-card">
+            <div class="empresa-header">
+                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
+                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
+            </div>
+            <div class="empresa-details">
+                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
+                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
+            </div>
+        </div>`;
+        html += '</div>';
+    }
+
+    // Empresas vinculadas
+    if (cnpjs.length) {
+        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
+        const empresas = data.empresas || [];
+        const empresaMap = {};
+        for (const e of empresas) empresaMap[e.cnpj_basico] = e;
+        html += cnpjs.map(c => _renderEmpresaCard(empresaMap[c], c)).join('');
+        html += '</div>';
+    }
+
+    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
+    body.innerHTML = html;
+    dialog.showModal();
+}
+
 function buildServidoresPanel(data) {
     const cols = data.columns;
     const bodyRows = data.rows.map(r => {
@@ -345,6 +483,8 @@ function buildServidoresPanel(data) {
         const salario = _shortBrl(_val(r, cols, 'maior_salario'));
         const qtdEmpresas = _val(r, cols, 'qtd_empresas_socio') || 0;
         const cnpjs = _val(r, cols, 'cnpjs_socio') || [];
+        const municipios = _val(r, cols, 'municipios') || [];
+        const municipiosStr = municipios.map(m => _esc(m)).join(', ') || '-';
         let badges = '';
         if (_val(r, cols, 'flag_conflito_interesses')) {
             badges += qtdEmpresas > 0
@@ -357,14 +497,11 @@ function buildServidoresPanel(data) {
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
 
-        const hasDetail = cnpjs.length > 0;
-        const mainRow = `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? 'class="clickable-row" style="cursor:pointer"' : ''}><td>${nome} ${hasDetail ? '<span class="text-muted text-sm">&#9654;</span>' : ''}</td><td>${cargo}</td><td class="text-right">${salario}</td><td>${badges}</td></tr>`;
-        let detailRow = '';
-        if (hasDetail) {
-            const cnpjList = cnpjs.map(c => `<code>${c}</code>`).join(', ');
-            detailRow = `<tr class="detail-row" style="display:none"><td colspan="4"><div class="detail-content"><strong>CNPJs das empresas:</strong> ${cnpjList}</div></td></tr>`;
-        }
-        return mainRow + detailRow;
+        const cpf6 = _esc(_val(r, cols, 'cpf_digitos_6') || '');
+        const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
+        const hasDetail = cpf6 && nomeUpper;
+        const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
+        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? 'class="clickable-row"' : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
     return `<section class="result-block">
@@ -382,7 +519,7 @@ function buildServidoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table>
-                <thead><tr><th>Servidor</th><th>Cargo</th><th class="text-right">Maior Salario</th><th>Sinais de Atencao</th></tr></thead>
+                <thead><tr><th>Servidor</th><th>Cargo</th><th>Municipio(s)</th><th class="text-right">Maior Salario</th><th class="text-right">Empresas</th><th>Sinais de Atencao</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
@@ -409,7 +546,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.innerHTML = await response.text();
         initDataTables(panel);
         initInteractiveToggles(panel);
-        initExpandableRows(panel);
+        initClickableRows(panel);
     } catch {
         panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
     }
@@ -464,7 +601,7 @@ function initDataTables(root = document) {
         const pageLabel = tableShell.querySelector('[data-page-label]');
         const prevBtn = tableShell.querySelector('[data-page-prev]');
         const nextBtn = tableShell.querySelector('[data-page-next]');
-        const rows = Array.from(tableShell.querySelectorAll('tbody tr:not(.detail-row)'));
+        const rows = Array.from(tableShell.querySelectorAll('tbody tr'));
         const pageSize = Number(tableShell.dataset.pageSize || 12);
         let filteredRows = rows;
         let page = 1;
@@ -486,13 +623,7 @@ function initDataTables(root = document) {
             const pageRows = filteredRows.slice(start, start + pageSize);
 
             rows.forEach((row) => {
-                const visible = pageRows.includes(row);
-                row.style.display = visible ? '' : 'none';
-                // Also hide/show associated detail row
-                const detailRow = row.nextElementSibling;
-                if (detailRow && detailRow.classList.contains('detail-row')) {
-                    detailRow.style.display = (visible && row.classList.contains('expanded')) ? '' : 'none';
-                }
+                row.style.display = pageRows.includes(row) ? '' : 'none';
             });
 
             if (meta) meta.textContent = `${filteredRows.length} registro(s) encontrados`;
@@ -563,17 +694,18 @@ function initDataTables(root = document) {
     });
 }
 
-function initExpandableRows(root = document) {
+function initClickableRows(root = document) {
     root.querySelectorAll('.clickable-row').forEach((row) => {
-        if (row.dataset.expandable === 'true') return;
-        row.dataset.expandable = 'true';
+        if (row.dataset.clickInit === 'true') return;
+        row.dataset.clickInit = 'true';
         row.addEventListener('click', () => {
-            const detailRow = row.nextElementSibling;
-            if (!detailRow || !detailRow.classList.contains('detail-row')) return;
-            const isExpanded = row.classList.toggle('expanded');
-            detailRow.style.display = isExpanded ? '' : 'none';
-            const arrow = row.querySelector('.text-muted.text-sm');
-            if (arrow) arrow.innerHTML = isExpanded ? '&#9660;' : '&#9654;';
+            const cpf6 = row.dataset.cpf6 || '';
+            const nomeUpper = row.dataset.nomeUpper || '';
+            const cnpjs = JSON.parse(row.dataset.cnpjs || '[]');
+            const servidorNome = row.dataset.nome || '';
+            if (cpf6 && nomeUpper) {
+                openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome);
+            }
         });
     });
 }
@@ -581,7 +713,7 @@ function initExpandableRows(root = document) {
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initInteractiveToggles(document);
-    initExpandableRows(document);
+    initClickableRows(document);
 });
 
 function initInteractiveToggles(root = document) {

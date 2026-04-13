@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 from psycopg2.errors import QueryCanceled, UndefinedTable
@@ -435,6 +435,97 @@ async def batch_cache(municipio_path: str):
     except Exception:
         pass
     return JSONResponse(result)
+
+
+@router.post("/api/servidor/detalhes")
+async def get_servidor_detalhes(payload: dict = Body(...)):
+    """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo."""
+    cpf6 = payload.get("cpf6", "")
+    nome = payload.get("nome", "")
+    cnpjs = payload.get("cnpjs", [])[:100]
+    if not cpf6 or not nome:
+        return JSONResponse({})
+    try:
+        from web.db import get_conn
+        result = {}
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                # Empresas vinculadas
+                if cnpjs:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        SELECT e.cnpj_basico, e.razao_social, e.capital_social,
+                               est.cnpj_completo, est.situacao_cadastral,
+                               est.cnae_principal, est.uf,
+                               COALESCE(dm.descricao, est.municipio) AS municipio
+                        FROM empresa e
+                        LEFT JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
+                            AND est.cnpj_ordem = '0001'
+                        LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
+                        WHERE e.cnpj_basico IN ({ph})
+                    """, cnpjs)
+                    cols = [d[0] for d in cur.description]
+                    rows = cur.fetchall()
+                    empresas = []
+                    for row in rows:
+                        r = _row_to_dict(cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                        empresas.append(r)
+                    result["empresas"] = empresas
+
+                # Bolsa Família
+                cur.execute("""
+                    SELECT mes_competencia, valor_parcela, nm_municipio
+                    FROM bolsa_familia
+                    WHERE cpf_digitos = %s
+                      AND UPPER(TRIM(nm_favorecido)) = %s
+                    ORDER BY mes_competencia DESC
+                    LIMIT 5
+                """, (cpf6, nome))
+                bf_cols = [d[0] for d in cur.description]
+                bf_rows = cur.fetchall()
+                if bf_rows:
+                    bf_list = []
+                    for row in bf_rows:
+                        r = _row_to_dict(bf_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                        bf_list.append(r)
+                    result["bolsa_familia"] = bf_list
+
+                # Vínculo como servidor
+                cur.execute("""
+                    SELECT municipio, descricao_cargo, data_admissao,
+                           MIN(ano_mes) AS primeiro_registro,
+                           MAX(ano_mes) AS ultimo_registro,
+                           MAX(valor_vantagem) AS maior_salario
+                    FROM tce_pb_servidor
+                    WHERE cpf_digitos_6 = %s AND nome_upper = %s
+                    GROUP BY municipio, descricao_cargo, data_admissao
+                    ORDER BY MAX(ano_mes) DESC
+                """, (cpf6, nome))
+                srv_cols = [d[0] for d in cur.description]
+                srv_rows = cur.fetchall()
+                if srv_rows:
+                    vinculos = []
+                    for row in srv_rows:
+                        r = _row_to_dict(srv_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        vinculos.append(r)
+                    result["vinculos"] = vinculos
+
+        return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception:
+        import logging; logging.exception("servidor detalhes failed")
+        return JSONResponse({})
 
 
 @router.get("/api/export/{query_id}")

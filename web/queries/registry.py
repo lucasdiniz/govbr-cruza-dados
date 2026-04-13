@@ -30,88 +30,6 @@ def _reg(qid, title, desc, cat, sql_full, timeout=30):
 
 # ── Conflito de Interesses ───────────────────────────────────────
 
-_reg("Q59", "Servidor socio de fornecedora do municipio",
-     "Servidor municipal com participacao societaria em empresa que recebe do mesmo municipio",
-     "Conflito de Interesses",
-     """
-WITH servidores AS (
-    SELECT DISTINCT
-           sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
-           sv.descricao_cargo, sv.tipo_cargo,
-           sv.cpf_digitos_6, sv.nome_upper,
-           MAX(sv.valor_vantagem) AS valor_vantagem
-    FROM tce_pb_servidor sv
-    WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
-      AND sv.ano_mes >= '2022-01'
-      AND sv.municipio = %(municipio)s
-    GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
-             sv.descricao_cargo, sv.tipo_cargo,
-             sv.cpf_digitos_6, sv.nome_upper
-),
-despesas_agg AS (
-    SELECT d.cnpj_basico, d.municipio,
-           SUM(d.valor_pago) AS total_pago,
-           COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
-    FROM tce_pb_despesa d
-    WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
-      AND d.municipio = %(municipio)s
-    GROUP BY d.cnpj_basico, d.municipio
-)
-SELECT sv.municipio,
-       sv.nome_servidor, sv.cpf_cnpj AS cpf_servidor,
-       sv.descricao_cargo, sv.valor_vantagem,
-       e.razao_social, est.cnpj_completo,
-       s.qualificacao AS qualificacao_socio,
-       da.total_pago AS total_recebido_municipio,
-       da.qtd_empenhos
-FROM servidores sv
-JOIN socio s ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
-    AND s.tipo_socio = 2
-    AND sv.nome_upper = UPPER(TRIM(s.nome))
-JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
-    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
-JOIN despesas_agg da ON da.cnpj_basico = e.cnpj_basico
-ORDER BY total_recebido_municipio DESC
-LIMIT 500
-""", timeout=45)
-
-
-_reg("Q63", "Servidor alto salario que e socio de empresa",
-     "Servidor com remuneracao > R$10k e participacao societaria em empresa ativa",
-     "Conflito de Interesses",
-     """
-WITH servidores AS (
-    SELECT DISTINCT municipio, nome_servidor, cpf_cnpj,
-           descricao_cargo, tipo_cargo,
-           cpf_digitos_6, nome_upper,
-           MAX(valor_vantagem) AS valor_vantagem
-    FROM tce_pb_servidor
-    WHERE valor_vantagem > 10000
-      AND cpf_digitos_6 IS NOT NULL AND cpf_digitos_6 != ''
-      AND ano_mes >= '2022-01'
-      AND municipio = %(municipio)s
-    GROUP BY municipio, nome_servidor, cpf_cnpj,
-             descricao_cargo, tipo_cargo,
-             cpf_digitos_6, nome_upper
-)
-SELECT sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
-       sv.descricao_cargo, sv.valor_vantagem,
-       e.razao_social, est.cnpj_completo, e.capital_social,
-       s.qualificacao,
-       est.uf AS uf_empresa, est.municipio AS municipio_empresa
-FROM servidores sv
-JOIN socio s ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
-    AND s.tipo_socio = 2
-    AND sv.nome_upper = UPPER(TRIM(s.nome))
-JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
-JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
-    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
-ORDER BY sv.valor_vantagem DESC
-LIMIT 500
-""", timeout=60)
-
-
 _reg("Q87", "Socio de contratada estadual e servidor municipal",
      "Servidor municipal que e socio de empresa com contrato estadual",
      "Conflito de Interesses",
@@ -174,6 +92,7 @@ SELECT d.cpf_cnpj, d.nome_credor, e.razao_social,
        SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%%'
 WHERE d.cnpj_basico IS NOT NULL
   AND d.modalidade_licitacao ILIKE '%%sem licit%%'
   AND d.valor_pago > 0
@@ -455,27 +374,6 @@ GROUP BY tc.nm_candidato, d.municipio, tr.nm_doador, tr.cpf_cnpj_doador, tr.vr_r
 ORDER BY total_recebido DESC
 LIMIT 500
 """, timeout=45)
-
-
-_reg("Q74", "Servidor municipal recebendo Bolsa Familia",
-     "Servidor publico com renda recebendo beneficio social",
-     "Politico-Eleitoral",
-     """
-SELECT DISTINCT
-       sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
-       sv.descricao_cargo, sv.valor_vantagem,
-       bf.nm_favorecido, bf.nm_municipio AS municipio_bf,
-       bf.valor_parcela
-FROM tce_pb_servidor sv
-JOIN bolsa_familia bf ON sv.cpf_digitos_6 = bf.cpf_digitos
-    AND sv.nome_upper = UPPER(TRIM(bf.nm_favorecido))
-WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
-  AND sv.valor_vantagem > 1500
-  AND sv.ano_mes >= '2024-01'
-  AND sv.municipio = %(municipio)s
-ORDER BY sv.valor_vantagem DESC
-LIMIT 500
-""", timeout=30)
 
 
 # ── Cruzamento Estado x Municipio ────────────────────────────────

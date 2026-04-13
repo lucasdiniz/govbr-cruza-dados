@@ -180,7 +180,7 @@
         </div>
     </section>
 
-    <section class="card">
+    <section class="card" style="grid-column: 1 / -1">
         <div class="section-head">
             <div>
                 <p class="eyebrow">Pessoas para revisar</p>
@@ -190,6 +190,7 @@
         <p class="text-muted mb-1">
             Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
             pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
+            Clique em um servidor para ver detalhes.
         </p>
         <div class="async-card" data-async-panel="servidores">
             <div class="skeleton-line"></div>
@@ -241,9 +242,21 @@
 </section>
 {% endif %}
 
+<dialog id="empresa-dialog" class="empresa-dialog">
+    <div class="dialog-header">
+        <h3 class="dialog-title">Empresas vinculadas</h3>
+        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">&times;</button>
+    </div>
+    <div class="dialog-body"></div>
+</dialog>
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
     bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+});
+// Close dialog on backdrop click
+document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
+    if (e.target === this) this.close();
 });
 </script>
 

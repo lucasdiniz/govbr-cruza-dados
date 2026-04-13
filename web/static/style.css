@@ -587,20 +587,87 @@ tr:hover { background: #fbfdff; }
     .finding-summary { text-align: left; min-width: unset; }
 }
 
-/* Expandable detail rows */
+/* Clickable rows */
+.clickable-row { cursor: pointer; }
 .clickable-row:hover { background: var(--surface-alt, #f8f9fa); }
-.clickable-row.expanded { background: var(--surface-alt, #f0f1f3); }
-.detail-row td { padding: 0 !important; }
-.detail-content {
-    padding: .6rem 1rem;
-    background: var(--surface-alt, #f8f9fa);
-    border-top: 1px solid var(--border, #dee2e6);
-    font-size: .85rem;
-    line-height: 1.6;
+
+/* Empresa dialog */
+.empresa-dialog {
+    border: none;
+    border-radius: 12px;
+    padding: 0;
+    max-width: 560px;
+    width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    margin: auto;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
-.detail-content code {
-    background: var(--surface, #e9ecef);
-    padding: .1rem .35rem;
-    border-radius: 3px;
+.empresa-dialog::backdrop { background: rgba(0,0,0,.4); }
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .8rem 1.2rem;
+    border-bottom: 1px solid var(--border, #dee2e6);
+}
+.dialog-title { font-size: 1rem; margin: 0; }
+.dialog-close {
+    background: none; border: none;
+    font-size: 1.4rem; cursor: pointer;
+    color: var(--text-muted, #6c757d);
+    padding: 0 .3rem;
+    line-height: 1;
+}
+.dialog-close:hover { color: var(--text, #212529); }
+.dialog-body {
+    padding: 1rem 1.2rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+.empresa-card {
+    padding: .7rem .8rem;
+    border: 1px solid var(--border, #dee2e6);
+    border-radius: 8px;
+    margin-bottom: .6rem;
+}
+.empresa-card:last-child { margin-bottom: 0; }
+.empresa-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin-bottom: .35rem;
+}
+.empresa-header strong { font-size: .9rem; }
+.empresa-header code {
     font-size: .8rem;
+    background: var(--surface, #e9ecef);
+    padding: .1rem .4rem;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.empresa-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem .8rem;
+    font-size: .82rem;
+    color: var(--text-muted, #6c757d);
+}
+.empresa-missing { opacity: .6; border-style: dashed; }
+
+.dialog-section { margin-bottom: 1rem; }
+.dialog-section:last-child { margin-bottom: 0; }
+.dialog-section h4 {
+    font-size: .88rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #475569;
+    margin-bottom: .5rem;
+    padding-bottom: .3rem;
+    border-bottom: 1px solid var(--line, #dee2e6);
 }

@@ -1243,27 +1243,41 @@ def download_tse(anos=None):
 
 
 def download_bolsa_familia(anos=None):
-    """Novo Bolsa Familia (mensal) - Portal da Transparencia."""
-    if anos is None:
-        anos = range(2023, CURRENT_YEAR + 1)
+    """Novo Bolsa Familia (mensal) - Portal da Transparencia.
+
+    Baixa apenas o snapshot mais recente disponivel, tentando do mes atual
+    para tras ate encontrar um que esteja publicado.
+    """
     dest = DATA_DIR / "bolsa_familia"
     dest.mkdir(parents=True, exist_ok=True)
 
-    current_ym = int(f"{date.today().year}{date.today().month:02d}")
-    start_ym = 202303
-
-    print("  Novo Bolsa Familia:")
-    for ano in anos:
-        for mes in range(1, 13):
-            ym = int(f"{ano}{mes:02d}")
-            if ym < start_ym:
-                continue
-            if ym > current_ym:
-                break
-            url = f"{TRANSPARENCIA_BASE}/novo-bolsa-familia/{ym}"
-            zip_path = dest / f"novo_bf_{ym}.zip"
-            if _download(url, zip_path):
-                _unzip(zip_path, dest)
+    today = date.today()
+    # Try from current month backwards (up to 12 months back)
+    print("  Novo Bolsa Familia (snapshot mais recente):")
+    for months_back in range(0, 13):
+        y = today.year
+        m = today.month - months_back
+        while m <= 0:
+            m += 12
+            y -= 1
+        ym = int(f"{y}{m:02d}")
+        url = f"{TRANSPARENCIA_BASE}/novo-bolsa-familia/{ym}"
+        zip_path = dest / f"novo_bf_{ym}.zip"
+        if zip_path.exists() and zip_path.stat().st_size > 1000:
+            print(f"    [pula] {zip_path.name} (ja existe)")
+            return
+        if _download(url, zip_path):
+            _unzip(zip_path, dest)
+            # Remove old zips/csvs to keep only the latest
+            for old in dest.iterdir():
+                if old == zip_path:
+                    continue
+                if old.name.endswith(".zip") or old.name.endswith(".csv"):
+                    if str(ym) not in old.name:
+                        old.unlink()
+                        print(f"    [limpou] {old.name}")
+            return
+    print("    [falhou] nenhum snapshot encontrado nos ultimos 12 meses")
 
 
 def download_tce_pb(anos=None):
