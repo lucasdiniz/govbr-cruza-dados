@@ -109,7 +109,7 @@ JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
     AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
 ORDER BY sv.valor_vantagem DESC
 LIMIT 500
-""", timeout=30)
+""", timeout=60)
 
 
 _reg("Q87", "Socio de contratada estadual e servidor municipal",
@@ -319,7 +319,7 @@ GROUP BY d.cpf_cnpj, d.nome_credor, d.municipio,
 HAVING SUM(d.valor_pago) > 50000
 ORDER BY pg.valor_consolidado DESC
 LIMIT 500
-""", timeout=15)
+""", timeout=45)
 
 
 _reg("Q70", "Empresa inativa recebendo pagamento",
@@ -509,16 +509,15 @@ JOIN LATERAL (
     SELECT SUM(d.valor_empenhado) AS total_empenhado_periodo,
            COUNT(*) AS qtd_empenhos
     FROM tce_pb_despesa d
-    WHERE UPPER(TRIM(unaccent(d.municipio))) = UPPER(TRIM(unaccent(cv.nome_municipio)))
+    WHERE d.municipio = %(municipio)s
       AND d.data_empenho BETWEEN cv.data_celebracao_convenio
           AND COALESCE(cv.data_termino_vigencia, cv.data_celebracao_convenio + INTERVAL '1 year')
       AND d.valor_empenhado > 0
-      AND d.municipio = %(municipio)s
 ) tce_agg ON tce_agg.total_empenhado_periodo > cv.valor_concedente * 0.5
 WHERE cv.valor_concedente > 100000
 ORDER BY tce_agg.total_empenhado_periodo DESC
 LIMIT 500
-""", timeout=45)
+""", timeout=90)
 
 
 def get_categories() -> list[tuple[str, list[QueryDef]]]:

@@ -359,7 +359,7 @@ desp AS (
            COUNT(*) AS qtd_empenhos,
            SUM(valor_empenhado) AS total_empenhado,
            SUM(valor_pago) AS total_pago,
-           COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0') AS qtd_sem_licitacao,
+           COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
            COUNT(*) FILTER (WHERE mes LIKE '12%') AS qtd_dezembro,
            COUNT(DISTINCT cnpj_basico) AS qtd_fornecedores
     FROM tce_pb_despesa
@@ -612,7 +612,7 @@ tce_agg AS (
            COUNT(*) AS qtd_empenhos,
            COUNT(DISTINCT municipio) AS qtd_municipios,
            ARRAY_AGG(DISTINCT municipio ORDER BY municipio) AS municipios,
-           COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0') AS qtd_sem_licitacao
+           COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao
     FROM tce_pb_despesa
     WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
     GROUP BY cnpj_basico

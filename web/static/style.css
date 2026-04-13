@@ -402,7 +402,10 @@ th {
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    user-select: none;
 }
+th.sort-asc::after { content: ' \25B2'; font-size: 0.6rem; }
+th.sort-desc::after { content: ' \25BC'; font-size: 0.6rem; }
 td {
     padding: 0.7rem 0.65rem;
     border-top: 1px solid #edf2f7;

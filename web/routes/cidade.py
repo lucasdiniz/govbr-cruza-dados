@@ -21,9 +21,11 @@ from web.db import cached_query, execute_query, read_web_cache
 from web.queries.cidade import (
     AUTOCOMPLETE_MUNICIPIO,
     PERFIL_MUNICIPIO,
+    PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
     TOP_FORNECEDORES_BASIC,
     TOP_FORNECEDORES_FALLBACK,
+    TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
 )
 from web.queries.registry import CIDADE_QUERIES, get_categories
@@ -66,6 +68,7 @@ SECTION_META = {
 
 class MunicipioPayload(BaseModel):
     municipio: str
+    uf: str = ""
 
 
 def _row_to_dict(cols, row):
@@ -76,7 +79,22 @@ def _normalize_municipio(value: str) -> str:
     return " ".join(value.strip().split())
 
 
-def _load_top_fornecedores(municipio: str):
+def _parse_municipio_uf(raw: str) -> tuple[str, str]:
+    """Parse 'Municipio - UF' format. Returns (municipio, uf)."""
+    raw = _normalize_municipio(raw)
+    if " - " in raw and len(raw.split(" - ")[-1]) == 2:
+        parts = raw.rsplit(" - ", 1)
+        return parts[0].strip(), parts[1].strip().upper()
+    return raw, ""
+
+
+def _is_pb(uf: str) -> bool:
+    return uf == "" or uf == "PB"
+
+
+def _load_top_fornecedores(municipio: str, uf: str = ""):
+    if not _is_pb(uf):
+        return _load_top_fornecedores_pncp(municipio, uf)
     try:
         return cached_query(
             f"forn:{municipio}",
@@ -104,6 +122,18 @@ def _load_top_fornecedores(municipio: str):
                 return ["cnpj_basico", "nome_credor", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa"], []
 
 
+def _load_top_fornecedores_pncp(municipio: str, uf: str):
+    try:
+        return cached_query(
+            f"fornpncp:{uf}:{municipio}",
+            TOP_FORNECEDORES_PNCP,
+            {"municipio": municipio, "uf": uf},
+            timeout_sec=TIMEOUT_QUERY_LIGHT,
+        )
+    except QueryCanceled:
+        return ["cnpj_basico", "nome_credor", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa"], []
+
+
 def _load_top_servidores(municipio: str):
     try:
         return cached_query(
@@ -114,20 +144,12 @@ def _load_top_servidores(municipio: str):
         )
     except QueryCanceled:
         return [
-            "cpf_digitos_6",
-            "nome_upper",
-            "nome_servidor",
-            "municipios",
-            "maior_salario",
-            "cargo",
-            "qtd_empresas_socio",
-            "cnpjs_socio",
-            "flag_conflito_interesses",
-            "flag_multi_empresa",
-            "flag_bolsa_familia",
-            "flag_duplo_vinculo_estado",
-            "flag_alto_salario_socio",
-            "risco_score",
+            "cpf_digitos_6", "nome_upper", "nome_servidor",
+            "municipios", "maior_salario", "cargo",
+            "qtd_empresas_socio", "cnpjs_socio",
+            "flag_conflito_interesses", "flag_multi_empresa",
+            "flag_bolsa_familia", "flag_duplo_vinculo_estado",
+            "flag_alto_salario_socio", "risco_score",
         ], []
 
 
@@ -138,7 +160,7 @@ def _get_query_def(query_id: str):
     return query_def
 
 
-def _build_report_sections():
+def _build_report_sections(pb_only: bool = True):
     sections = []
     for category, queries in get_categories():
         meta = SECTION_META[category]
@@ -191,22 +213,41 @@ def _render_partial(request: Request, template_name: str, context: dict):
 async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     from web.main import templates
 
-    municipio = _normalize_municipio(q)
+    municipio, uf = _parse_municipio_uf(q)
+    is_pb = _is_pb(uf)
 
-    try:
-        cached = read_web_cache("PERFIL", municipio)
-        if cached:
-            cols, rows = cached
-        else:
+    perfil = None
+    if is_pb:
+        try:
+            cached = read_web_cache("PERFIL", municipio)
+            if cached:
+                cols, rows = cached
+            else:
+                cols, rows = cached_query(
+                    f"perfil:{municipio.casefold()}",
+                    PERFIL_MUNICIPIO,
+                    {"municipio": municipio},
+                    timeout_sec=TIMEOUT_PROFILE,
+                )
+            perfil = _row_to_dict(cols, rows[0]) if rows else None
+        except (QueryCanceled, Exception):
+            perfil = None
+    else:
+        # Non-PB: build profile from PNCP data
+        try:
             cols, rows = cached_query(
-                f"perfil:{municipio.casefold()}",
-                PERFIL_MUNICIPIO,
-                {"municipio": municipio},
+                f"perfil_pncp:{uf}:{municipio.casefold()}",
+                PERFIL_MUNICIPIO_PNCP,
+                {"municipio": municipio, "uf": uf},
                 timeout_sec=TIMEOUT_PROFILE,
             )
-        perfil = _row_to_dict(cols, rows[0]) if rows else None
-    except (QueryCanceled, Exception):
-        perfil = None
+            if rows and rows[0][1]:  # qtd_contratos > 0
+                perfil = _row_to_dict(cols, rows[0])
+                # Add uf to perfil for template
+                perfil["uf"] = uf
+                perfil["is_pncp"] = True
+        except (QueryCanceled, Exception):
+            perfil = None
 
     if not perfil:
         return templates.TemplateResponse(
@@ -214,6 +255,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "results/cidade.html",
             {
                 "municipio": municipio,
+                "uf": uf,
                 "perfil": None,
                 "fornecedores": [],
                 "servidores": [],
@@ -226,10 +268,11 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
         "results/cidade.html",
         {
             "municipio": municipio,
+            "uf": uf,
             "perfil": perfil,
             "fornecedores": [],
             "servidores": [],
-            "report_sections": _build_report_sections(),
+            "report_sections": _build_report_sections() if is_pb else [],
         },
     )
 
@@ -243,7 +286,15 @@ async def autocomplete_municipio(q: str = Query(..., min_length=2)):
         timeout_sec=TIMEOUT_AUTOCOMPLETE,
         ttl=3600,
     )
-    return JSONResponse([r[0] for r in rows])
+    # rows are (nome, uf, rank_val)
+    results = []
+    for r in rows:
+        nome, uf = r[0], r[1]
+        if uf == "PB":
+            results.append(nome)
+        else:
+            results.append(f"{nome} - {uf}")
+    return JSONResponse(results)
 
 
 @router.post("/api/count/{query_id}")
@@ -302,11 +353,12 @@ async def run_query(request: Request, query_id: str, payload: MunicipioPayload):
 @router.post("/api/top/fornecedores", response_class=HTMLResponse)
 async def top_fornecedores(request: Request, payload: MunicipioPayload):
     municipio = _normalize_municipio(payload.municipio)
+    uf = payload.uf.strip().upper() if payload.uf else ""
     cached = read_web_cache("TOP_FORNECEDORES", municipio)
-    if cached:
+    if cached and _is_pb(uf):
         cols, rows = cached
     else:
-        cols, rows = _load_top_fornecedores(municipio)
+        cols, rows = _load_top_fornecedores(municipio, uf)
     fornecedores = [_row_to_dict(cols, row) for row in rows]
     response = _render_partial(
         request,
@@ -320,6 +372,16 @@ async def top_fornecedores(request: Request, payload: MunicipioPayload):
 @router.post("/api/top/servidores", response_class=HTMLResponse)
 async def top_servidores(request: Request, payload: MunicipioPayload):
     municipio = _normalize_municipio(payload.municipio)
+    uf = payload.uf.strip().upper() if payload.uf else ""
+    if not _is_pb(uf):
+        # No servidor data for non-PB municipalities
+        response = _render_partial(
+            request,
+            "partials/top_servidores.html",
+            {"servidores": []},
+        )
+        response.headers["X-Row-Count"] = "0"
+        return response
     cached = read_web_cache("TOP_SERVIDORES", municipio)
     if cached:
         cols, rows = cached
@@ -333,6 +395,32 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
     )
     response.headers["X-Row-Count"] = str(len(servidores))
     return response
+
+
+@router.post("/api/batch/{municipio_path}")
+async def batch_cache(municipio_path: str):
+    """Retorna todos os dados do cache de uma vez para o municipio."""
+    municipio = _normalize_municipio(municipio_path)
+    result = {}
+    try:
+        from web.db import get_conn
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT query_id, columns, rows, row_count FROM web_cache WHERE municipio = %s",
+                    (municipio,),
+                )
+                for row in cur.fetchall():
+                    qid, cols, rows_data, count = row
+                    result[qid] = {
+                        "columns": cols if isinstance(cols, list) else [],
+                        "rows": rows_data if isinstance(rows_data, list) else [],
+                        "row_count": count or 0,
+                    }
+    except Exception:
+        pass
+    return JSONResponse(result)
 
 
 @router.get("/api/export/{query_id}")

@@ -4,11 +4,63 @@
 
 {% if not perfil %}
 <div class="card">
-    <p>Municipio <strong>{{ municipio }}</strong> nao encontrado na base de dados.</p>
+    <p>Municipio <strong>{{ municipio }}{% if uf %} - {{ uf }}{% endif %}</strong> nao encontrado na base de dados.</p>
     <a href="/">&larr; Voltar</a>
 </div>
 {% else %}
 
+{% set is_pncp = perfil.get('is_pncp', False) %}
+{% set display_uf = perfil.get('uf', uf or 'PB') %}
+
+{% if is_pncp %}
+{# ── PNCP profile (non-PB municipalities) ── #}
+{% set total_contratado = perfil.total_contratado|default(0)|float %}
+
+<section class="city-hero card">
+    <div class="city-hero-copy">
+        <p class="eyebrow">Panorama do municipio</p>
+        <h1 class="city-title">{{ perfil.municipio }} - {{ display_uf }}</h1>
+        <p class="city-subtitle">
+            Dados baseados nos contratos publicados no Portal Nacional de Contratacoes Publicas (PNCP).
+            Cruzamos os fornecedores com bases federais (CEIS, PGFN, Receita Federal) para identificar sinais de atencao.
+        </p>
+    </div>
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ perfil.qtd_contratos|default(0)|short_number }}</span>
+            <span class="hero-stat-label">contratos PNCP</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ total_contratado|short_brl }}</span>
+            <span class="hero-stat-label">total contratado</span>
+        </div>
+        <div class="hero-stat">
+            <span class="hero-stat-value">{{ perfil.qtd_fornecedores|default(0)|short_number }}</span>
+            <span class="hero-stat-label">fornecedores distintos</span>
+        </div>
+    </div>
+</section>
+
+<div class="two-col">
+    <section class="card" style="grid-column: 1 / -1">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Quem mais recebeu</p>
+                <h2 class="card-title">Maiores fornecedores do municipio (PNCP)</h2>
+            </div>
+        </div>
+        <p class="text-muted mb-1">
+            Empresas com maiores valores contratados via PNCP, cruzadas com bases de sancoes (CEIS), dividas (PGFN) e situacao cadastral (RFB).
+        </p>
+        <div class="async-card" data-async-panel="fornecedores" data-uf="{{ display_uf }}">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+    </section>
+</div>
+
+{% else %}
+{# ── PB full profile ── #}
 {% set total_empenhado = perfil.total_empenhado|default(0)|float %}
 {% set total_pago = perfil.total_pago|default(0)|float %}
 {% set pct_pago = (total_pago / total_empenhado * 100) if total_empenhado else 0 %}
@@ -136,7 +188,8 @@
             </div>
         </div>
         <p class="text-muted mb-1">
-            Em vez de um numero abstrato, mostramos abaixo por que cada nome entrou nesta lista.
+            Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
+            pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
         </p>
         <div class="async-card" data-async-panel="servidores">
             <div class="skeleton-line"></div>
@@ -186,10 +239,11 @@
     </article>
     {% endfor %}
 </section>
+{% endif %}
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    bootstrapCityReport({{ perfil.municipio|tojson }});
+    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
 });
 </script>
 

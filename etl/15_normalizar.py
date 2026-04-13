@@ -140,6 +140,8 @@ def run():
         _exec(conn, "idx cpgf fav LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cpgf_favorecido_left8 ON cpgf_transacao (LEFT(cnpj_cpf_favorecido, 8))", autocommit=True)
         _exec(conn, "idx bndes LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bndes_cnpj_left8 ON bndes_contrato (LEFT(cnpj, 8))", autocommit=True)
         _exec(conn, "idx pgfn LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_cpf_cnpj_left8 ON pgfn_divida (LEFT(cpf_cnpj, 8))", autocommit=True)
+        _exec(conn, "idx pgfn norm LEFT8", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_norm_left8 ON pgfn_divida (LEFT(cpf_cnpj_norm, 8)) WHERE LENGTH(cpf_cnpj_norm) = 14", autocommit=True)
+        _exec(conn, "idx pncp municipio_uf", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_municipio_uf ON pncp_contrato(municipio_nome, uf)", autocommit=True)
 
         _exec(conn, "idx bf UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bf_nome_upper ON bolsa_familia (UPPER(TRIM(nm_favorecido)))", autocommit=True)
         _exec(conn, "idx socio UPPER nome", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_socio_nome_upper ON socio (UPPER(TRIM(nome)))", autocommit=True)

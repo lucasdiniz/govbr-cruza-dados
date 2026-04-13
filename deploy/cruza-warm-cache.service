@@ -6,9 +6,9 @@ Wants=postgresql.service
 [Service]
 Type=simple
 User=govbr
-WorkingDirectory=/home/govbr/govbr-cruza-dados
-EnvironmentFile=/home/govbr/govbr-cruza-dados/.env
-ExecStart=/home/govbr/govbr-cruza-dados/.venv/bin/python -m web.warm_cache --daemon --loop
+WorkingDirectory=/home/govbr/govbr-project
+EnvironmentFile=/home/govbr/govbr-project/.env
+ExecStart=/home/govbr/govbr-project/venv/bin/python -m web.warm_cache --daemon --loop
 Restart=always
 RestartSec=30
 

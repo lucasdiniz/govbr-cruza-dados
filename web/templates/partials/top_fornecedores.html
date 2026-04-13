@@ -7,7 +7,7 @@
         </div>
     </div>
 
-    <div class="table-shell js-data-table" data-page-size="12">
+    <div class="table-shell js-data-table" data-page-size="10">
         <div class="table-actions">
             <input
                 type="search"
@@ -31,8 +31,8 @@
                     {% for f in fornecedores %}
                     <tr>
                         <td>{{ f.nome_credor|clean_text }}</td>
-                        <td class="text-right">{{ f.total_pago|default(0)|short_brl }}</td>
-                        <td class="text-right">{{ f.qtd_empenhos|default(0)|short_number }}</td>
+                        <td class="text-right">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
+                        <td class="text-right">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
                         <td>
                             {% if f.flag_ceis %}<span class="badge badge-red">Sancao ativa</span>{% endif %}
                             {% if f.flag_pgfn %}<span class="badge badge-yellow">Divida ativa</span>{% endif %}

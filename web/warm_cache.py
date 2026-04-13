@@ -143,14 +143,15 @@ def warm_cycle(municipios: list[str], verbose: bool = True):
         fail += 0 if forn_ok else 1
 
         # Top servidores
-        if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, 15, verbose):
+        if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, 30, verbose):
             ok += 1
         else:
             fail += 1
 
-        # Registry queries
+        # Registry queries (use higher timeout for cache warming)
         for qdef in all_queries:
-            if _run_and_cache(conn, qdef.id, qdef.sql_full, mun, qdef.timeout_sec, verbose):
+            cache_timeout = max(qdef.timeout_sec, 60)
+            if _run_and_cache(conn, qdef.id, qdef.sql_full, mun, cache_timeout, verbose):
                 ok += 1
             else:
                 fail += 1

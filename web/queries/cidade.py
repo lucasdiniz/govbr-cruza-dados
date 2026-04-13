@@ -14,6 +14,18 @@ WHERE UPPER(unaccent(TRIM(municipio))) = UPPER(unaccent(TRIM(%(municipio)s)))
 LIMIT 1
 """
 
+PERFIL_MUNICIPIO_PNCP = """
+SELECT
+    %(municipio)s AS municipio,
+    COUNT(*) AS qtd_contratos,
+    SUM(valor_global) AS total_contratado,
+    COUNT(DISTINCT cnpj_basico_fornecedor) AS qtd_fornecedores,
+    MIN(dt_assinatura) AS contrato_mais_antigo,
+    MAX(dt_assinatura) AS contrato_mais_recente
+FROM pncp_contrato
+WHERE municipio_nome = %(municipio)s AND uf = %(uf)s
+"""
+
 TOP_FORNECEDORES = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
@@ -25,7 +37,7 @@ WITH top_forn AS (
       AND d.cnpj_basico IS NOT NULL
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 10
+    LIMIT 200
 )
 SELECT tf.cnpj_basico, tf.nome_credor, tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
@@ -47,7 +59,7 @@ WITH top_forn AS (
       AND d.cnpj_basico IS NOT NULL
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 10
+    LIMIT 200
 )
 SELECT tf.cnpj_basico, tf.nome_credor, tf.total_pago, tf.qtd_empenhos,
        EXISTS(
@@ -83,7 +95,35 @@ WHERE d.municipio = %(municipio)s
   AND d.cnpj_basico IS NOT NULL
 GROUP BY d.cnpj_basico, d.nome_credor
 ORDER BY SUM(d.valor_pago) DESC
-LIMIT 10
+LIMIT 200
+"""
+
+TOP_FORNECEDORES_PNCP = """
+SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
+       pc.nome_fornecedor AS nome_credor,
+       SUM(pc.valor_global) AS total_contratado,
+       COUNT(*) AS qtd_contratos,
+       EXISTS(
+           SELECT 1 FROM ceis_sancao cs
+           WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
+       ) AS flag_ceis,
+       EXISTS(
+           SELECT 1 FROM pgfn_divida pg
+           WHERE LEFT(pg.cpf_cnpj_norm, 8) = pc.cnpj_basico_fornecedor
+             AND LENGTH(pg.cpf_cnpj_norm) = 14
+       ) AS flag_pgfn,
+       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa
+FROM pncp_contrato pc
+LEFT JOIN estabelecimento est
+    ON est.cnpj_basico = pc.cnpj_basico_fornecedor
+   AND est.cnpj_ordem = '0001'
+WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
+  AND pc.cnpj_basico_fornecedor IS NOT NULL
+GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
+         est.situacao_cadastral
+ORDER BY total_contratado DESC
+LIMIT 200
 """
 
 TOP_SERVIDORES_RISCO = """
@@ -97,13 +137,27 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
 ORDER BY risco_score DESC
-LIMIT 10
+LIMIT 200
 """
 
 AUTOCOMPLETE_MUNICIPIO = """
-SELECT municipio
-FROM mv_municipio_pb_risco
-WHERE unaccent(municipio) ILIKE unaccent(%(q)s) || '%%'
-ORDER BY risco_score DESC
+(
+    SELECT municipio AS nome, 'PB' AS uf, risco_score AS rank_val
+    FROM mv_municipio_pb_risco
+    WHERE unaccent(municipio) ILIKE unaccent(%(q)s) || '%%'
+)
+UNION
+(
+    SELECT DISTINCT municipio_nome AS nome, uf, 0 AS rank_val
+    FROM pncp_contrato
+    WHERE unaccent(municipio_nome) ILIKE unaccent(%(q)s) || '%%'
+      AND uf IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM mv_municipio_pb_risco m
+          WHERE m.municipio = pncp_contrato.municipio_nome AND pncp_contrato.uf = 'PB'
+      )
+    LIMIT 50
+)
+ORDER BY rank_val DESC, nome
 LIMIT %(limit)s
 """

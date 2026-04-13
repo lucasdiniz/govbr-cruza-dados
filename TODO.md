@@ -3,23 +3,26 @@
 ## Pendente
 
 ### Frontend web — Bugs criticos
-- [ ] **Fornecedores nunca carrega** — painel "Fornecedores que mais aparecem" nunca mostra dados nos testes. Investigar se e problema de query, cache, ou rendering do partial
-- [ ] **Servidores limitado a 10** — sempre mostra exatamente 10 registros, deveria paginar/mostrar mais
-- [ ] **Botao ocultar medicos quebrado** — toggle `data-hide-medicos` nao filtra as linhas. Verificar se `initInteractiveToggles` esta sendo chamado e se `data-cargo` esta populado corretamente
-- [ ] **Q59 e Q63 timeout constante** — "Possiveis conflitos de interesse" quase nunca carrega. Queries mais importantes do sistema. Otimizar SQL ou pre-computar em materialized view
-- [ ] **Alertas sem contexto** — badge "Ligacao com empresa fornecedora" nao diz QUAL empresa. Incluir nome/CNPJ da empresa vinculada nos resultados
+- [x] **Fornecedores nunca carrega** — era problema de performance pre-otimizacao. Funciona com cache e sem cache apos otimizacao de queries
+- [x] **Servidores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
+- [x] **Fornecedores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
+- [x] **Botao ocultar medicos quebrado** — `initInteractiveToggles` procurava `.disclaimer-box` mas checkbox esta em `.result-block`. Corrigido
+- [x] **Compras sem licitacao sempre 0%** — MV `mv_municipio_pb_risco` nao detectava `numero_licitacao = '000000000'` nem `modalidade_licitacao ILIKE '%sem licit%'`. Corrigido no SQL e MV recriada
+- [x] **Badges sem contexto** — badges de servidores agora mostram detalhes: "Socio de X empresas que fornece ao municipio", "Recebe Bolsa Familia", "Salario alto + vinculo societario", etc.
+- [ ] **Q59 e Q63 timeout constante** — warm_cache agora usa timeout de 60s+. Ainda pode falhar em municipios grandes. Considerar materialized view para o join servidor-socio
+- [ ] **Alertas sem contexto nos fornecedores** — badge "Sancao ativa" poderia incluir detalhes da sancao
 
 ### Frontend web — UX e performance
-- [ ] **Carregamento sequencial** — queries disparam 2 por vez sequencialmente (runLimited com limit=2). Se uma query pesada trava, tudo atrasa. Considerar: endpoint unico `/api/batch` que serve tudo do cache de uma vez, com fallback individual para cache miss
-- [ ] **Ordenacao de colunas** — tabelas nao permitem ordenar por coluna. Implementar sort client-side no `initDataTables`
-- [ ] **Ordenacao default errada** — "Fornecedor vencedor em muitos municipios" deveria vir ordenado desc por qtd de municipios. Revisar TODAS as queries e garantir ORDER BY semantico correto
+- [x] **Carregamento sequencial** — implementado `POST /api/batch/{municipio}` que serve todos os dados do cache em uma unica requisicao. Frontend renderiza cards do cache instantaneamente, fallback individual para cache miss com concorrencia 4
+- [x] **Ordenacao de colunas** — click-to-sort implementado em todas as tabelas (numerico e alfabetico, ASC/DESC com indicador visual)
+- [x] **Suporte a municipios de qualquer estado** — autocomplete busca em PB (MV) + todos os estados (PNCP). Municipios fora da PB mostram perfil e fornecedores baseados em dados PNCP, cruzados com CEIS/PGFN/RFB
 - [ ] **Descricoes vagas nas secoes** — textos como "Situacoes em que servidores podem estar relacionados de forma inadequada" nao explicam nada. Reescrever com: o que estamos mostrando, por que e relevante, qual lei/norma se aplica. Menos tecnico, mais explicativo
 - [ ] **Melhorar graficos/visualizacoes** na pagina de detalhes
 - [ ] **Acentuacao quebrada** em algumas tabelas (dados vindos do banco com encoding errado)
 - [ ] **Adicionar mais graficos** — graficos de barras/pizza nos blocos de investigacao
 
 ### Frontend web — Arquitetura
-- [ ] **Endpoint batch para cache** — em vez de N requests individuais, criar `POST /api/batch/{municipio}` que retorna todos os resultados disponíveis no `web_cache` de uma vez (JSON com query_id -> {cols, rows}). Frontend renderiza tudo instantaneamente do cache. Endpoints individuais viram fallback
+- [x] **Endpoint batch para cache** — `POST /api/batch/{municipio}` retorna todos os resultados do `web_cache` de uma vez (JSON com query_id -> {columns, rows, row_count}). Frontend renderiza instantaneamente do cache, endpoints individuais viram fallback
 - [ ] **Landing page escura precisa ajuste** — features strip nao esta 100% integrada visualmente com o backdrop
 
 ### Infra / DX
@@ -28,7 +31,8 @@
 ### Deploy Azure
 - [ ] **Deploy em andamento** — retomado a partir da fase 19 (run 24286000479). CSVs de rfb (58GB) e bolsa_familia (85GB) removidos manualmente para liberar disco. 143GB livres.
 - [ ] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
-- [ ] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
+- [x] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
+- [x] **Services systemd corrigidos** — paths atualizados para `/home/govbr/govbr-project` e `venv/` (matching deploy.yml)
 - [ ] **Issues #1-#4**: Pendentes execucao no banco local
 - [ ] **Formalizar Q58 por UF**
 - [ ] **Corrigir agregacao monetaria da Q17**
@@ -70,7 +74,7 @@
 #### Relatorios invalidos ou nao publicaveis
 - `relatorio_servidor_bolsa_familia_pb.md` - depende de Q74 (CPF parcial + nome), risco alto de falso positivo
 - `relatorio_laranjas_bolsa_familia_pb.md` - mesma fragilidade de Q39/Q74, CNPJs nao encontrados
-- `relatorio_risco_municipal_pb.md` - score usa indicador quebrado (sem licitacao zerado)
+- `relatorio_risco_municipal_pb.md` - score usa indicador quebrado (sem licitacao zerado) — CORRIGIDO, re-avaliar
 - `relatorio_servidor_risco_pb.md` - herda ruido de Q74 e score composto
 - `relatorio_risk_score_pb.md` - herda problemas de score
 - `relatorio_servidor_socio_fornecedor_pb.md` - superado pela versao corrigida de Q59
@@ -106,7 +110,8 @@
 - **Cache warmer**: `python -m web.warm_cache --daemon` (1 ciclo) ou `--daemon --loop` (continuo)
 - **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
 - **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
-- **18 queries** em 6 categorias, 224 municipios PB
+- **18 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
+- **Autocomplete**: busca PB (MV risco_score DESC) + outros estados (PNCP, formato "Nome - UF")
 
 ### Notas tecnicas importantes
 - **pb_pagamento** tem quase 100% PF (1 CNPJ PJ). Usar **pb_empenho** para cruzamentos PJ (18K CNPJs distintos)
@@ -114,6 +119,7 @@
 - **CEIS/CNEP cpf_cnpj_norm** e CNPJ completo 14 digitos — match via `LEFT(cpf_cnpj_norm, 8)`
 - CNPJ matching entre tabelas sempre via `cnpj_basico` (primeiros 8 digitos)
 - **Performance queries**: usar match direto `d.municipio = %(municipio)s` em vez de `UPPER(unaccent())` — diferenca de 45s vs 1-4s
+- **sem licitacao**: TCE PB usa `numero_licitacao = '000000000'` e `modalidade_licitacao = 'Sem Licitação'`, nao NULL/vazio
 
 ## Concluido (resumo)
 - Issues #1-#5 resolvidas (codigo, nao executadas no banco)
@@ -127,3 +133,8 @@
 - Cache pre-processado: tabela `web_cache` + `warm_cache.py --daemon` para manter dados prontos
 - Performance: queries de 45s para 1-4s removendo UPPER(unaccent()) e usando indexes existentes
 - deploy.yml atualizado com install `.[web]` e deploy de systemd services
+- Suporte a municipios de qualquer estado via PNCP (autocomplete + perfil + fornecedores)
+- Corrigido pct_sem_licitacao (era sempre 0%, agora detecta corretamente)
+- Badges de servidores com contexto detalhado
+- Paginacao 10/pagina em fornecedores e servidores
+- Sort click-to-sort em todas as tabelas

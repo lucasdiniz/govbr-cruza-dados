@@ -71,12 +71,36 @@ Relatorios ja produzidos cobrem temas como:
 - Fornecedores de saude dominantes: monopolio em dezenas de municipios
 - BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
 
+## Frontend web
+
+Painel interativo para consulta por municipio com cruzamentos automaticos.
+
+- **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
+- **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
+- **18 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
+- **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` para manter dados prontos
+- **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
+
+```bash
+# Iniciar local
+python -m uvicorn web.main:app --port 8000
+
+# Cache warmer (1 ciclo)
+python -m web.warm_cache --daemon
+
+# Cache warmer (continuo)
+python -m web.warm_cache --daemon --loop
+```
+
+Municipios PB recebem perfil completo com insight cards, servidores de risco, e secoes de investigacao. Municipios de outros estados recebem perfil baseado em contratos PNCP com cruzamento de fornecedores contra CEIS, PGFN e RFB.
+
 ## Stack
 
 - **Python 3.10+** - ETL com streaming (sem pandas, cabe em 16GB RAM)
 - **PostgreSQL 16** - com `pg_trgm` para fuzzy match de nomes
 - **psycopg2** - `COPY FROM STDIN` para carga rapida
 - **ijson** - parsing incremental de JSONs do PNCP
+- **FastAPI + Jinja2** - frontend web com cache pre-processado
 
 ## Infraestrutura
 
@@ -161,6 +185,8 @@ etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
 queries/       125+ queries SQL em 17 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
 relatorios/    26 investigacoes baseadas nos resultados (Markdown)
+web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
+deploy/        Systemd services e configuracao de deploy
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
 scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
 ```

@@ -4,8 +4,10 @@
         <div>
             <h3 class="card-title">Servidores com sinais de atencao</h3>
             <p class="text-muted text-sm">
-                A Constituicao (art. 37, XVI) admite acumulacao de cargos para profissionais de saude.
-                Cargos medicos ficam ocultos por padrao.
+                Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos:
+                vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social
+                ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude
+                — por padrao esses cargos ficam ocultos.
             </p>
         </div>
         <label class="toggle-row">
@@ -14,7 +16,7 @@
         </label>
     </div>
 
-    <div class="table-shell js-data-table" data-page-size="12">
+    <div class="table-shell js-data-table" data-page-size="10">
         <div class="table-actions">
             <input
                 type="search"
@@ -42,12 +44,21 @@
                         <td>{{ cargo }}</td>
                         <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>
                         <td>
-                            {% if s.flag_conflito_interesses %}<span class="badge badge-red">Ligacao com empresa fornecedora</span>{% endif %}
-                            {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red">Tambem recebe do estado</span>{% endif %}
-                            {% if s.flag_multi_empresa %}<span class="badge badge-yellow">Multiplas empresas</span>{% endif %}
-                            {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Beneficio social</span>{% endif %}
-                            {% if not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado %}
-                                <span class="text-sm text-muted">Score de risco elevado</span>
+                            {% if s.flag_conflito_interesses %}
+                                {% if s.qtd_empresas_socio and s.qtd_empresas_socio > 0 %}
+                                    <span class="badge badge-red">Socio de {{ s.qtd_empresas_socio }} empresa{{ 's' if s.qtd_empresas_socio > 1 else '' }} que fornece ao municipio</span>
+                                {% else %}
+                                    <span class="badge badge-red">Socio de empresa que fornece ao municipio</span>
+                                {% endif %}
+                            {% endif %}
+                            {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>{% endif %}
+                            {% if s.flag_multi_empresa %}
+                                <span class="badge badge-yellow">Socio de {{ s.qtd_empresas_socio|default('varias') }} empresas</span>
+                            {% endif %}
+                            {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Recebe Bolsa Familia</span>{% endif %}
+                            {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow">Salario alto + vinculo societario</span>{% endif %}
+                            {% if not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio %}
+                                <span class="text-sm text-muted">Combinacao de indicadores elevada</span>
                             {% endif %}
                         </td>
                     </tr>

@@ -118,64 +118,283 @@ setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (
     window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
 });
 
-async function bootstrapCityReport(municipio) {
-    await Promise.all([
-        loadAsyncPanel('fornecedores', municipio),
-        loadAsyncPanel('servidores', municipio),
-    ]);
+async function bootstrapCityReport(municipio, uf) {
+    uf = uf || 'PB';
+    // Single batch request for everything
+    let batchData = {};
+    try {
+        const res = await fetch(`/api/batch/${encodeURIComponent(municipio)}`, { method: 'POST' });
+        if (res.ok) batchData = await res.json();
+    } catch {}
+
+    // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
+    const fornPanel = document.querySelector('[data-async-panel="fornecedores"]');
+    const servPanel = document.querySelector('[data-async-panel="servidores"]');
+    const panelPromises = [];
+
+    if (batchData.TOP_FORNECEDORES && batchData.TOP_FORNECEDORES.row_count > 0) {
+        if (fornPanel) {
+            fornPanel.innerHTML = buildFornecedoresPanel(batchData.TOP_FORNECEDORES);
+            initDataTables(fornPanel);
+        }
+    } else {
+        panelPromises.push(loadAsyncPanel('fornecedores', municipio, uf));
+    }
+
+    if (servPanel) {
+        if (batchData.TOP_SERVIDORES && batchData.TOP_SERVIDORES.row_count > 0) {
+            servPanel.innerHTML = buildServidoresPanel(batchData.TOP_SERVIDORES);
+            initDataTables(servPanel);
+            initInteractiveToggles(servPanel);
+        } else {
+            panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
+        }
+    }
+
+    if (panelPromises.length) await Promise.all(panelPromises);
 
     const cards = Array.from(document.querySelectorAll('.finding-card[data-query]'));
     if (!cards.length) return;
 
-    await runLimited(cards, 2, async (card) => {
+    // Cards with cache: render instantly. Cards without: fetch individually.
+    const uncachedCards = [];
+    for (const card of cards) {
         const queryId = card.dataset.query;
-        const countEl = card.querySelector('[data-count]');
-        const body = card.querySelector('.finding-body');
-        try {
-            const response = await fetch(`/api/run/${queryId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ municipio }),
-            });
+        const cached = batchData[queryId];
+        if (cached && cached.columns && cached.rows) {
+            renderFindingCard(card, queryId, cached, municipio);
+        } else {
+            uncachedCards.push(card);
+        }
+    }
+    updateSectionSummaries();
 
-            if (!response.ok) {
-                countEl.textContent = 'Tempo excedido';
-                body.innerHTML = '<p class="text-sm text-muted">Esse bloco nao terminou a tempo nesta tentativa.</p>';
+    // Fetch uncached cards individually (fallback)
+    if (uncachedCards.length) {
+        await runLimited(uncachedCards, 4, async (card) => {
+            const queryId = card.dataset.query;
+            const countEl = card.querySelector('[data-count]');
+            const body = card.querySelector('.finding-body');
+            try {
+                const response = await fetch(`/api/run/${queryId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ municipio }),
+                });
+
+                if (!response.ok) {
+                    countEl.textContent = 'Tempo excedido';
+                    body.innerHTML = '<p class="text-sm text-muted">Esse bloco nao terminou a tempo nesta tentativa.</p>';
+                    card.classList.remove('loading');
+                    card.classList.add('is-timeout');
+                    updateSectionSummaries();
+                    return;
+                }
+
+                const html = await response.text();
+                const rowCount = Number(response.headers.get('X-Row-Count') || 0);
+                countEl.textContent = rowCount;
+                card.dataset.count = String(rowCount);
+                body.innerHTML = html;
+                const exportLink = body.querySelector('[data-export-link]');
+                if (exportLink) exportLink.href = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
+                if (rowCount === 0) card.classList.add('is-empty');
+                card.classList.remove('loading');
+                initDataTables(body);
+            } catch {
+                countEl.textContent = 'Erro';
+                body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
                 card.classList.remove('loading');
                 card.classList.add('is-timeout');
-                updateSectionSummaries();
-                return;
             }
-
-            const html = await response.text();
-            const rowCount = Number(response.headers.get('X-Row-Count') || 0);
-            countEl.textContent = rowCount;
-            card.dataset.count = String(rowCount);
-            body.innerHTML = html;
-            const exportLink = body.querySelector('[data-export-link]');
-            if (exportLink) exportLink.href = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
-            if (rowCount === 0) card.classList.add('is-empty');
-            card.classList.remove('loading');
-            initDataTables(body);
-        } catch {
-            countEl.textContent = 'Erro';
-            body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
-            card.classList.remove('loading');
-            card.classList.add('is-timeout');
-        }
-        updateSectionSummaries();
-    });
+            updateSectionSummaries();
+        });
+    }
 }
 
-async function loadAsyncPanel(panelName, municipio) {
+function renderFindingCard(card, queryId, data, municipio) {
+    const countEl = card.querySelector('[data-count]');
+    const body = card.querySelector('.finding-body');
+    const rowCount = data.row_count || data.rows.length;
+
+    countEl.textContent = rowCount;
+    card.dataset.count = String(rowCount);
+    if (rowCount === 0) {
+        card.classList.add('is-empty');
+        body.innerHTML = '<p class="text-sm text-muted">Nenhum registro encontrado.</p>';
+    } else {
+        body.innerHTML = buildResultTable(queryId, data.columns, data.rows, municipio);
+        initDataTables(body);
+    }
+    card.classList.remove('loading');
+}
+
+function buildResultTable(queryId, columns, rows, municipio) {
+    const headerCells = columns.map(c =>
+        `<th>${c.replace(/_/g, ' ')}</th>`
+    ).join('');
+    const bodyRows = rows.map(row => {
+        const cells = row.map(val => {
+            if (val === null || val === undefined) return '<td>-</td>';
+            if (typeof val === 'boolean') return `<td>${val ? 'Sim' : 'Nao'}</td>`;
+            if (Array.isArray(val)) return `<td>${val.join(', ')}</td>`;
+            return `<td>${val}</td>`;
+        }).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+
+    return `<div class="result-block">
+        <div class="result-toolbar">
+            <div></div>
+            <a href="/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}" data-export-link class="btn btn-outline btn-sm">Exportar CSV</a>
+        </div>
+        <div class="table-shell js-data-table" data-page-size="10">
+            <div class="table-actions">
+                <input type="search" class="table-filter" placeholder="Filtrar nesta tabela">
+                <p class="table-meta text-sm text-muted" data-table-meta></p>
+            </div>
+            <div class="tbl-wrap">
+                <table>
+                    <thead><tr>${headerCells}</tr></thead>
+                    <tbody>${bodyRows}</tbody>
+                </table>
+            </div>
+            <div class="table-pagination">
+                <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+                <p class="text-sm text-muted" data-page-label></p>
+                <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function _colIndex(cols, name) {
+    return cols.indexOf(name);
+}
+
+function _val(row, cols, name) {
+    const i = _colIndex(cols, name);
+    return i >= 0 ? row[i] : null;
+}
+
+function _shortBrl(v) {
+    const n = parseFloat(v) || 0;
+    const a = Math.abs(n);
+    if (a >= 1e9) return `R$ ${(n/1e9).toFixed(1)} bi`;
+    if (a >= 1e6) return `R$ ${(n/1e6).toFixed(1)} mi`;
+    if (a >= 1e3) return `R$ ${(n/1e3).toFixed(1)} mil`;
+    return `R$ ${n.toFixed(0)}`;
+}
+
+function _shortNum(v) {
+    const n = parseFloat(v) || 0;
+    const a = Math.abs(n);
+    if (a >= 1e6) return `${(n/1e6).toFixed(1)} mi`;
+    if (a >= 1e3) return `${(n/1e3).toFixed(1)} mil`;
+    return `${n.toFixed(0)}`;
+}
+
+function _esc(v) {
+    if (v === null || v === undefined) return '-';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function buildFornecedoresPanel(data) {
+    const cols = data.columns;
+    const bodyRows = data.rows.map(r => {
+        const nome = _esc(_val(r, cols, 'nome_credor'));
+        const total = _shortBrl(_val(r, cols, 'total_pago'));
+        const qtd = _shortNum(_val(r, cols, 'qtd_empenhos'));
+        let badges = '';
+        if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-red">Sancao ativa</span>';
+        if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
+        if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
+        if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
+        return `<tr><td>${nome}</td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${badges}</td></tr>`;
+    }).join('');
+
+    return `<section class="result-block">
+        <div class="result-toolbar"><div>
+            <h3 class="card-title">Maiores fornecedores do municipio</h3>
+            <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor.</p>
+        </div></div>
+        <div class="table-shell js-data-table" data-page-size="10">
+            <div class="table-actions">
+                <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar fornecedores">
+                <p class="table-meta text-sm text-muted" data-table-meta></p>
+            </div>
+            <div class="tbl-wrap"><table>
+                <thead><tr><th>Fornecedor</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Sinais de Atencao</th></tr></thead>
+                <tbody>${bodyRows}</tbody>
+            </table></div>
+            <div class="table-pagination">
+                <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+                <p class="text-sm text-muted" data-page-label></p>
+                <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+            </div>
+        </div>
+    </section>`;
+}
+
+function buildServidoresPanel(data) {
+    const cols = data.columns;
+    const bodyRows = data.rows.map(r => {
+        const nome = _esc(_val(r, cols, 'nome_servidor'));
+        const cargo = _esc(_val(r, cols, 'cargo') || '-');
+        const salario = _shortBrl(_val(r, cols, 'maior_salario'));
+        const qtdEmpresas = _val(r, cols, 'qtd_empresas_socio') || 0;
+        let badges = '';
+        if (_val(r, cols, 'flag_conflito_interesses')) {
+            badges += qtdEmpresas > 0
+                ? `<span class="badge badge-red">Socio de ${qtdEmpresas} empresa${qtdEmpresas > 1 ? 's' : ''} que fornece ao municipio</span>`
+                : '<span class="badge badge-red">Socio de empresa que fornece ao municipio</span>';
+        }
+        if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += '<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>';
+        if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;
+        if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Recebe Bolsa Familia</span>';
+        if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
+        if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
+        return `<tr data-cargo="${cargo.toLowerCase()}"><td>${nome}</td><td>${cargo}</td><td class="text-right">${salario}</td><td>${badges}</td></tr>`;
+    }).join('');
+
+    return `<section class="result-block">
+        <div class="result-toolbar"><div>
+            <h3 class="card-title">Servidores com sinais de atencao</h3>
+            <p class="text-muted text-sm">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude — por padrao esses cargos ficam ocultos.</p>
+        </div>
+        <label class="toggle-row">
+            <input type="checkbox" data-hide-medicos checked>
+            <span>Ocultar medicos</span>
+        </label></div>
+        <div class="table-shell js-data-table" data-page-size="10">
+            <div class="table-actions">
+                <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">
+                <p class="table-meta text-sm text-muted" data-table-meta></p>
+            </div>
+            <div class="tbl-wrap"><table>
+                <thead><tr><th>Servidor</th><th>Cargo</th><th class="text-right">Maior Salario</th><th>Sinais de Atencao</th></tr></thead>
+                <tbody>${bodyRows}</tbody>
+            </table></div>
+            <div class="table-pagination">
+                <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+                <p class="text-sm text-muted" data-page-label></p>
+                <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+            </div>
+        </div>
+    </section>`;
+}
+
+async function loadAsyncPanel(panelName, municipio, uf) {
     const panel = document.querySelector(`[data-async-panel="${panelName}"]`);
     if (!panel) return;
 
+    // Get UF from data attribute if available
+    const panelUf = uf || panel.dataset.uf || '';
     try {
         const response = await fetch(`/api/top/${panelName}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ municipio }),
+            body: JSON.stringify({ municipio, uf: panelUf }),
         });
         panel.innerHTML = await response.text();
         initDataTables(panel);
@@ -255,6 +474,39 @@ function initDataTables(root = document) {
             if (nextBtn) nextBtn.disabled = page === totalPages;
         };
 
+        // Column sorting
+        const headers = Array.from(tableShell.querySelectorAll('thead th'));
+        let sortCol = -1;
+        let sortAsc = true;
+
+        headers.forEach((th, colIndex) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                if (sortCol === colIndex) {
+                    sortAsc = !sortAsc;
+                } else {
+                    sortCol = colIndex;
+                    sortAsc = true;
+                }
+                headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+
+                filteredRows.sort((a, b) => {
+                    const cellA = a.children[colIndex]?.textContent.trim() || '';
+                    const cellB = b.children[colIndex]?.textContent.trim() || '';
+                    // Try numeric comparison (handle R$, %, commas)
+                    const numA = parseFloat(cellA.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    const numB = parseFloat(cellB.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        return sortAsc ? numA - numB : numB - numA;
+                    }
+                    return sortAsc ? cellA.localeCompare(cellB, 'pt-BR') : cellB.localeCompare(cellA, 'pt-BR');
+                });
+                page = 1;
+                renderPage();
+            });
+        });
+
         filterInput?.addEventListener('input', () => {
             const term = filterInput.value.trim().toLowerCase();
             filteredRows = rows.filter((row) => row.textContent.toLowerCase().includes(term));
@@ -287,7 +539,7 @@ function initInteractiveToggles(root = document) {
         if (checkbox.dataset.enhanced === 'true') return;
         checkbox.dataset.enhanced = 'true';
 
-        const container = checkbox.closest('.disclaimer-box')?.parentElement;
+        const container = checkbox.closest('.result-block') || checkbox.closest('.table-shell')?.parentElement;
         const rows = container ? Array.from(container.querySelectorAll('tbody tr[data-cargo]')) : [];
 
         const apply = () => {
