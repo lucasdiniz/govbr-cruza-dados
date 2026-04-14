@@ -766,6 +766,12 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio);
     let html = '';
 
+    // Pre-compute sanction date ranges (used by charts and empenho table)
+    const sancaoRanges = (data.sancoes || []).map(s => ({
+        inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
+        fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null
+    })).filter(r => r.inicio);
+
     // Situacao cadastral
     if (data.estabelecimento) {
         const est = data.estabelecimento;
@@ -818,37 +824,55 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         </div>`;
         html += `<p class="text-sm text-muted" style="margin-top:.4rem">Periodo: ${periodo}</p>`;
 
+        const hasCharts = (data.monthly && data.monthly.length > 1) || (data.top_elementos && data.top_elementos.length);
+        if (hasCharts) html += '<div class="charts-grid">';
+
         // Mini bar chart - monthly payments
         if (data.monthly && data.monthly.length > 1) {
             const maxVal = Math.max(...data.monthly.map(m => m.total_mes));
-            html += '<p class="text-sm text-muted" style="margin-top:.8rem;margin-bottom:.2rem">Pagamentos mensais</p>';
+            html += '<div>';
+            html += '<p class="text-sm text-muted" style="margin-bottom:.2rem">Pagamentos mensais</p>';
             html += '<div class="mini-chart">';
             html += data.monthly.map(m => {
                 const pct = maxVal > 0 ? (m.total_mes / maxVal * 100) : 0;
-                const label = m.mes.slice(5);
-                return `<div class="mini-bar-col" title="${m.mes}: ${_shortBrl(m.total_mes)}">
-                    <div class="mini-bar" style="height:${Math.max(pct, 4)}%"></div>
+                const [yy, mm] = m.mes.split('-');
+                const label = `${mm}/${yy.slice(2)}`;
+                // Check if month overlaps with any sanction period
+                const monthStart = new Date(m.mes + '-01');
+                const monthEnd = new Date(monthStart); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
+                const inSancao = sancaoRanges.some(r =>
+                    r.inicio <= monthEnd && (!r.fim || r.fim >= monthStart)
+                );
+                const barClass = inSancao ? 'mini-bar bar-sancao' : 'mini-bar';
+                return `<div class="mini-bar-col">
+                    <span class="mini-bar-tip">${_shortBrl(m.total_mes)}</span>
+                    <div class="${barClass}" style="height:${Math.max(pct, 3)}%"></div>
                     <span class="mini-bar-label">${label}</span>
                 </div>`;
             }).join('');
-            html += '</div>';
+            html += '</div></div>';
         }
 
         // Top elementos de despesa
         if (data.top_elementos && data.top_elementos.length) {
             const topMax = data.top_elementos[0].total_elemento;
-            html += '<p class="text-sm text-muted" style="margin-top:.8rem;margin-bottom:.2rem">Principais elementos de despesa</p>';
+            const totalGeral = data.top_elementos.reduce((s, el) => s + el.total_elemento, 0);
+            html += '<div>';
+            html += '<p class="text-sm text-muted" style="margin-bottom:.2rem">Principais elementos de despesa</p>';
             html += '<div class="top-elementos">';
             html += data.top_elementos.map(el => {
                 const pct = topMax > 0 ? (el.total_elemento / topMax * 100) : 0;
+                const pctTotal = totalGeral > 0 ? ((el.total_elemento / totalGeral) * 100).toFixed(0) : 0;
                 return `<div class="top-el-row">
                     <span class="top-el-name">${_esc(el.elemento_despesa || '-')}</span>
-                    <div class="top-el-track"><div class="top-el-fill" style="width:${pct}%"></div></div>
+                    <div class="top-el-track"><div class="top-el-fill" style="width:${pct}%"></div><span class="top-el-pct">${pctTotal}%</span></div>
                     <span class="top-el-value">${_shortBrl(el.total_elemento)}</span>
                 </div>`;
             }).join('');
-            html += '</div>';
+            html += '</div></div>';
         }
+
+        if (hasCharts) html += '</div>';
 
         html += '</div>';
     }
@@ -914,12 +938,6 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
 
     // Empenhos recentes
     if (data.empenhos && data.empenhos.length) {
-        // Build sanction date ranges for highlighting
-        const sancaoRanges = (data.sancoes || []).map(s => ({
-            inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
-            fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null
-        })).filter(r => r.inicio);
-
         // Municipality selector
         const munOptions = (data.municipios_ativos || []);
         let munSelect = '';
