@@ -257,6 +257,19 @@ jobs:
           set -e
           cd ${{ env.PROJECT_DIR }}
 
+          # Install nginx if missing
+          if ! dpkg -s nginx >/dev/null 2>&1; then
+            sudo apt update
+            sudo apt install -y nginx
+          fi
+
+          # Configure nginx reverse proxy
+          sudo cp deploy/nginx-cruza.conf /etc/nginx/sites-available/cruza
+          sudo ln -sf /etc/nginx/sites-available/cruza /etc/nginx/sites-enabled/cruza
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo nginx -t && sudo systemctl reload nginx
+          sudo systemctl enable nginx
+
           # Install systemd services
           sudo cp deploy/cruza-web.service /etc/systemd/system/
           sudo cp deploy/cruza-warm-cache.service /etc/systemd/system/
@@ -268,6 +281,7 @@ jobs:
           sudo systemctl restart cruza-warm-cache
 
           echo "=== Web services deployed ==="
+          systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
           systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
           systemctl is-active cruza-warm-cache && echo "cruza-warm-cache: RUNNING" || echo "cruza-warm-cache: FAILED"
 
