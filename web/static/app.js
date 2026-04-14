@@ -802,7 +802,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     html += '<div class="stats-grid">';
     if (maiorSalario > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(maiorSalario)}</span><span class="stat-label">Maior salario</span></div>`;
     html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">Empresas vinculadas</span></div>`;
-    if (totalPago > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (${_esc(_currentMunicipio)})</span></div>`;
+    if (totalPago > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (${_esc(_currentMunicipio)})</span></div>`;
     if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">Empresas sancionadas</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">Empresas c/ divida PGFN</span></div>`;
     if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
@@ -915,6 +915,62 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
                 </div>
             </div>`;
         }).join('');
+        html += '</div>';
+    }
+
+    // Empenhos das empresas vinculadas durante o vinculo do servidor
+    if (data.empenhos_durante_vinculo && data.empenhos_durante_vinculo.length) {
+        const empVinc = data.empenhos_durante_vinculo;
+        const totalVinc = empVinc.reduce((s, e) => s + (e.valor_pago || 0), 0);
+        const empresasMap = {};
+        for (const e of empVinc) {
+            empresasMap[e.cnpj_basico] = (empresasMap[e.cnpj_basico] || 0) + (e.valor_pago || 0);
+        }
+        const empresasSorted = Object.entries(empresasMap).sort((a, b) => b[1] - a[1]);
+        const empresaNames = {};
+        for (const emp of (data.empresas || [])) {
+            empresaNames[emp.cnpj_basico] = emp.razao_social || emp.cnpj_basico;
+        }
+
+        html += `<div class="dialog-section"><h4>Empenhos recebidos pelas empresas durante vinculo</h4>`;
+        html += `<p class="text-sm text-muted" style="margin-bottom:.5rem">Pagamentos realizados pelo municipio as empresas das quais o servidor e socio, durante o periodo em que manteve vinculo ativo.</p>`;
+
+        // Summary by empresa
+        html += '<div style="margin-bottom:.8rem">';
+        html += empresasSorted.map(([cnpj, val]) => {
+            const name = empresaNames[cnpj] || cnpj;
+            return `<div class="empresa-card" style="border-left: 3px solid var(--red)">
+                <div class="empresa-header">
+                    <strong>${_esc(name)}</strong>
+                    <span class="badge badge-red">${_shortBrl(val)}</span>
+                </div>
+                <div class="empresa-details">
+                    <span>CNPJ: ${cnpj.slice(0,2)}.${cnpj.slice(2,5)}.${cnpj.slice(5,8)}/****-**</span>
+                    <span>${empVinc.filter(e => e.cnpj_basico === cnpj).length} empenhos durante vinculo</span>
+                </div>
+            </div>`;
+        }).join('');
+        html += '</div>';
+
+        // Empenho table
+        const empRows = empVinc.slice(0, 50).map(e => {
+            const mod = e.modalidade_licitacao || '-';
+            const numLic = e.numero_licitacao || '';
+            const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
+            const modCell = semLic ? '<span class="badge badge-yellow">Sem licitacao</span>' : _esc(`${mod} (${numLic})`);
+            return `<tr class="clickable-row" data-empenho-id="${e.id}">
+                <td>${_fmtDate(e.data_empenho)}</td>
+                <td>${_esc(e.elemento_despesa || '-')}</td>
+                <td class="text-right">${_shortBrl(e.valor_pago)}</td>
+                <td>${modCell}</td>
+            </tr>`;
+        }).join('');
+        html += `<div class="tbl-wrap"><table class="dialog-table">
+            <thead><tr><th>Data</th><th>Elemento</th><th class="text-right">Pago</th><th>Modalidade</th></tr></thead>
+            <tbody>${empRows}</tbody>
+        </table></div>`;
+        if (empVinc.length >= 100) html += '<p class="text-sm text-muted">Mostrando os 100 empenhos mais recentes.</p>';
+        html += `<p class="text-sm text-muted" style="margin-top:.5rem">Total durante vinculo: <strong>${_shortBrl(totalVinc)}</strong></p>`;
         html += '</div>';
     }
 
@@ -1419,9 +1475,12 @@ function buildServidoresPanel(data) {
         const ceafExpulso = _val(r, cols, 'flag_ceaf_expulso');
         if (ceafExpulso) badges += '<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>';
         if (_val(r, cols, 'flag_conflito_interesses')) {
-            badges += qtdEmpresas > 0
-                ? `<span class="badge badge-red">Socio de ${qtdEmpresas} empresa${qtdEmpresas > 1 ? 's' : ''} que fornece ao municipio</span>`
-                : '<span class="badge badge-red">Socio de empresa que fornece ao municipio</span>';
+            const totalPagoEmpresas = _val(r, cols, 'total_pago_empresas');
+            if (totalPagoEmpresas > 0) {
+                badges += `<span class="badge badge-red">Empresa recebeu ${_shortBrl(totalPagoEmpresas)} no municipio</span>`;
+            } else {
+                badges += '<span class="badge badge-red">Socio de empresa que fornece ao municipio</span>';
+            }
         }
         if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += '<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>';
         if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;

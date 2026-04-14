@@ -816,6 +816,43 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                             acordos_map.setdefault(cb, []).append(r)
                         result["empresa_acordos"] = acordos_map
 
+                # Empenhos das empresas vinculadas durante o vinculo do servidor
+                if cnpjs and municipio:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        WITH vinculo AS (
+                            SELECT MIN(data_admissao) AS dt_admissao,
+                                   TO_DATE(MIN(ano_mes), 'YYYYMM') AS primeiro_dt,
+                                   TO_DATE(MAX(ano_mes), 'YYYYMM') + INTERVAL '1 month' - INTERVAL '1 day' AS ultimo_dt
+                            FROM tce_pb_servidor
+                            WHERE cpf_digitos_6 = %s AND nome_upper = %s AND municipio = %s
+                        )
+                        SELECT d.cnpj_basico, d.data_empenho, d.elemento_despesa,
+                               d.valor_empenhado, d.valor_pago,
+                               d.modalidade_licitacao, d.numero_licitacao, d.id
+                        FROM tce_pb_despesa d, vinculo v
+                        WHERE d.cnpj_basico IN ({ph})
+                          AND d.municipio = %s
+                          AND d.valor_pago > 0
+                          AND d.data_empenho >= COALESCE(v.dt_admissao, v.primeiro_dt)
+                          AND d.data_empenho <= v.ultimo_dt
+                        ORDER BY d.data_empenho DESC
+                        LIMIT 100
+                    """, [cpf6, nome, municipio] + cnpjs + [municipio])
+                    ev_cols = [d[0] for d in cur.description]
+                    ev_rows = cur.fetchall()
+                    if ev_rows:
+                        emp_vinc = []
+                        for row in ev_rows:
+                            r = _row_to_dict(ev_cols, row)
+                            for k, v in r.items():
+                                if hasattr(v, 'as_tuple'):
+                                    r[k] = float(v)
+                                elif hasattr(v, 'isoformat'):
+                                    r[k] = v.isoformat()
+                            emp_vinc.append(r)
+                        result["empenhos_durante_vinculo"] = emp_vinc
+
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:
         import logging; logging.exception("servidor detalhes failed")

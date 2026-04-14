@@ -28,7 +28,7 @@ O repositorio hoje inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
 - **125+ queries SQL** em 17 arquivos tematicos (`Q01-Q310`)
-- **37 relatorios de investigacao** derivados dos resultados
+- **40 relatorios de investigacao** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
@@ -79,9 +79,9 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
 - **15 queries de investigacao** em 6 categorias priorizadas por potencial investigativo: Fornecedores Irregulares, Conflito de Interesses, Politico-Eleitoral, Licitacao e Concorrencia, Cruzamento Estado x Municipio, Orcamento e Financeiro
-- **Dialog de servidor**: ao clicar um servidor, mostra stats grid (salario, empresas, pagamentos, sancoes), vinculos (admissao, salario), empresas vinculadas com badges (CEIS/CNEP, PGFN, Acordo de Leniencia, empenhos recebidos), Bolsa Familia e expulsoes CEAF
+- **Dialog de servidor**: ao clicar um servidor, mostra stats grid (salario, empresas, pagamentos, sancoes), vinculos (admissao, salario), empresas vinculadas com badges (CEIS/CNEP, PGFN, Acordo de Leniencia, empenhos recebidos), Bolsa Familia, expulsoes CEAF e empenhos recebidos pelas empresas durante o vinculo funcional (conflito de interesses temporal)
 - **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem e vigencia), divida PGFN, acordos de leniencia (com efeitos e status), empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas de empenho feitas durante periodo de sancao sao destacadas em vermelho.
-- **Destaque de risco**: fornecedores que receberam pagamentos durante sancao, servidores socios de empresas sancionadas (CEIS/CNEP) e servidores expulsos da administracao federal (CEAF) sao destacados em vermelho com legendas explicativas
+- **Destaque de risco**: fornecedores que receberam pagamentos durante sancao, servidores socios de empresas sancionadas (CEIS/CNEP), servidores expulsos da administracao federal (CEAF) e servidores cujas empresas receberam empenhos do municipio (badge com valor total) sao destacados em vermelho com legendas explicativas
 - **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
 - **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
 - **Cache duplo (all + ano)**: `warm_cache` pre-computa variantes all-time e ano-atual por query. Filtro temporal no frontend usa cache para 01/01-31/12 do ano, queries live para ranges custom
@@ -199,7 +199,7 @@ sql/           Schema do banco (extensoes, tabelas, indices, views materializada
 etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
 queries/       125+ queries SQL em 17 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    37 investigacoes baseadas nos resultados (Markdown)
+relatorios/    40 investigacoes baseadas nos resultados (Markdown)
 web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
 deploy/        Systemd services e configuracao de deploy
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)

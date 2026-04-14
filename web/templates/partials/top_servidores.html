@@ -56,8 +56,8 @@
                         <td>
                             {% if s.flag_ceaf_expulso %}<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>{% endif %}
                             {% if s.flag_conflito_interesses %}
-                                {% if s.qtd_empresas_socio and s.qtd_empresas_socio > 0 %}
-                                    <span class="badge badge-red">Socio de {{ s.qtd_empresas_socio }} empresa{{ 's' if s.qtd_empresas_socio > 1 else '' }} que fornece ao municipio</span>
+                                {% if s.total_pago_empresas and s.total_pago_empresas > 0 %}
+                                    <span class="badge badge-red">Empresa recebeu {{ s.total_pago_empresas|short_brl }} no municipio</span>
                                 {% else %}
                                     <span class="badge badge-red">Socio de empresa que fornece ao municipio</span>
                                 {% endif %}

@@ -461,6 +461,12 @@ cnpjs_inidoneidade AS (
 ceaf_expulsos AS (
     SELECT DISTINCT cpf_cnpj_norm AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome
     FROM ceaf_expulsao
+),
+empresa_pagamentos AS (
+    SELECT d.cnpj_basico, SUM(d.valor_pago) AS total_pago
+    FROM tce_pb_despesa d
+    WHERE d.municipio = %(municipio)s AND d.valor_pago > 0
+    GROUP BY d.cnpj_basico
 )
 SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
@@ -481,7 +487,12 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
            SELECT 1 FROM ceaf_expulsos ce
            WHERE ce.cpf6 = mv_servidor_pb_risco.cpf_digitos_6
              AND ce.nome = mv_servidor_pb_risco.nome_upper
-       ) AS flag_ceaf_expulso
+       ) AS flag_ceaf_expulso,
+       COALESCE((
+           SELECT SUM(ep.total_pago)
+           FROM unnest(cnpjs_socio) AS cs(cnpj)
+           JOIN empresa_pagamentos ep ON ep.cnpj_basico = TRIM(cs.cnpj)
+       ), 0) AS total_pago_empresas
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
 ORDER BY flag_ceaf_expulso DESC, flag_socio_sancionado DESC, risco_score DESC
