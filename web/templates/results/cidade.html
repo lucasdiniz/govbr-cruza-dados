@@ -162,9 +162,9 @@
                 <p class="text-sm text-muted">Valor reservado no orcamento para despesas.</p>
             </div>
             <div class="chart-bar-track wide">
-                <div class="chart-bar-fill fill-blue" style="width: 100%"></div>
+                <div class="chart-bar-fill fill-blue" id="barFillEmpenhado" style="width: 100%"></div>
             </div>
-            <strong>{{ total_empenhado|short_brl }}</strong>
+            <strong id="barEmpenhado">{{ total_empenhado|short_brl }}</strong>
         </div>
         <div class="chart-bar-row">
             <div>
@@ -172,9 +172,9 @@
                 <p class="text-sm text-muted">Valor que efetivamente foi pago.</p>
             </div>
             <div class="chart-bar-track wide">
-                <div class="chart-bar-fill fill-green" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
+                <div class="chart-bar-fill fill-green" id="barFillPago" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
             </div>
-            <strong>{{ total_pago|short_brl }}</strong>
+            <strong id="barPago">{{ total_pago|short_brl }}</strong>
         </div>
     </div>
 </section>
@@ -270,7 +270,7 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }}, {{ default_data_inicio|default('')|tojson }}, {{ default_data_fim|default('')|tojson }});
 });
 // Close dialog on backdrop click
 document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {

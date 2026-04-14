@@ -127,6 +127,14 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
     const periodo = _getPeriodo();
 
+    // Update filter bar UI to reflect current state
+    if (_isDateFiltered()) {
+        const btnLimpar = document.getElementById('btnLimparData');
+        if (btnLimpar) btnLimpar.style.display = '';
+        const status = document.getElementById('dateFilterStatus');
+        if (status) status.textContent = `Periodo: ${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`;
+    }
+
     // Single batch request for everything (skip for CUSTOM — no cache)
     let batchData = {};
     if (periodo !== 'CUSTOM') {
@@ -139,6 +147,20 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
     // Update hero/insight when date-filtered
     if (_isDateFiltered()) {
+        // Show loading placeholders to avoid flash of all-time data
+        const el = id => document.getElementById(id);
+        ['heroQtdEmpenhos', 'heroTotalPago', 'heroQtdFornecedores'].forEach(id => {
+            if (el(id)) el(id).textContent = '...';
+        });
+        ['insightPctPago', 'insightPctSemLicit', 'insightPctProponente', 'insightPctDezembro'].forEach(id => {
+            if (el(id)) el(id).textContent = '...';
+        });
+        if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = '';
+        if (el('progressPctPago')) el('progressPctPago').style.width = '0%';
+        if (el('barEmpenhado')) el('barEmpenhado').textContent = '...';
+        if (el('barPago')) el('barPago').textContent = '...';
+        if (el('barFillPago')) el('barFillPago').style.width = '0%';
+
         // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
         await _refreshPerfilLive(municipio, uf);
     }
@@ -164,16 +186,18 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             servPanel.innerHTML = buildServidoresPanel(servData);
             initDataTables(servPanel);
             initClickableRows(servPanel);
-            if (_isDateFiltered()) {
-                servPanel.insertAdjacentHTML('afterbegin',
-                    '<p class="period-badge">Servidores: dados de todos os periodos (esta consulta nao suporta filtro temporal)</p>');
-            }
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
         }
     }
 
     if (panelPromises.length) await Promise.all(panelPromises);
+
+    // Add period badge for servidores (after panels loaded — works for batch and async)
+    if (servPanel && _isDateFiltered() && !servPanel.querySelector('.period-badge')) {
+        servPanel.insertAdjacentHTML('afterbegin',
+            '<p class="period-badge">Servidores: dados de todos os periodos (esta consulta nao suporta filtro temporal)</p>');
+    }
 
     const cards = Array.from(document.querySelectorAll('.finding-card[data-query]'));
     if (!cards.length) return;
@@ -521,6 +545,11 @@ function _updateInsightCards(perfil) {
 
     const pctDez = perfil.pct_dezembro;
     if (el('insightPctDezembro')) el('insightPctDezembro').textContent = pctDez != null ? `${parseFloat(pctDez).toFixed(1)}%` : 'N/D';
+
+    // Update bar chart
+    if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
+    if (el('barPago')) el('barPago').textContent = _shortBrl(totalPago);
+    if (el('barFillPago')) el('barFillPago').style.width = `${pctPago.toFixed(1)}%`;
 }
 
 async function _refreshPerfilLive(municipio, uf) {
@@ -1594,11 +1623,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {
-        const yr = new Date().getFullYear();
         const diEl = document.getElementById('dateInicio');
         const dfEl = document.getElementById('dateFim');
-        if (diEl) diEl.value = `${yr}-01-01`;
-        if (dfEl) dfEl.value = new Date().toISOString().slice(0, 10);
+        if (diEl) diEl.value = '';
+        if (dfEl) dfEl.value = '';
         const btnLimpar = document.getElementById('btnLimparData');
         if (btnLimpar) btnLimpar.style.display = 'none';
         const status = document.getElementById('dateFilterStatus');
@@ -1619,6 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line short"></div>';
         });
 
+        // Clear filter — show all-time data
         bootstrapCityReport(_currentMunicipio, _currentUf);
     });
 });
