@@ -442,7 +442,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo."""
     cpf6 = payload.get("cpf6", "")
     nome = payload.get("nome", "")
-    cnpjs = payload.get("cnpjs", [])[:100]
+    cnpjs = (payload.get("cnpjs") or [])[:100]
     if not cpf6 or not nome:
         return JSONResponse({})
     try:
@@ -543,7 +543,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
             with conn.cursor() as cur:
                 # Empenhos recentes no municipio
                 cur.execute("""
-                    SELECT numero_empenho, data_empenho, elemento_despesa,
+                    SELECT id, numero_empenho, data_empenho, elemento_despesa,
                            valor_empenhado, valor_pago,
                            modalidade_licitacao, numero_licitacao
                     FROM tce_pb_despesa
@@ -565,9 +565,81 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     empenhos.append(r)
                 result["empenhos"] = empenhos
 
+                # Aggregate stats (all empenhos, no LIMIT)
+                cur.execute("""
+                    SELECT COUNT(*) AS qtd_empenhos,
+                           COALESCE(SUM(valor_empenhado), 0) AS total_empenhado,
+                           COALESCE(SUM(valor_pago), 0) AS total_pago,
+                           MIN(data_empenho) AS primeiro_empenho,
+                           MAX(data_empenho) AS ultimo_empenho,
+                           COUNT(*) FILTER (
+                               WHERE numero_licitacao IS NULL
+                                  OR numero_licitacao = '000000000'
+                                  OR modalidade_licitacao ILIKE '%%sem licit%%'
+                           ) AS qtd_sem_licitacao
+                    FROM tce_pb_despesa
+                    WHERE cnpj_basico = %s AND municipio = %s
+                      AND valor_pago > 0
+                """, (cnpj_basico, municipio))
+                agg_cols = [d[0] for d in cur.description]
+                agg_row = cur.fetchone()
+                if agg_row:
+                    stats = _row_to_dict(agg_cols, agg_row)
+                    for k, v in stats.items():
+                        if hasattr(v, 'as_tuple'):
+                            stats[k] = float(v)
+                        elif hasattr(v, 'isoformat'):
+                            stats[k] = v.isoformat()
+                    result["stats"] = stats
+
+                # Monthly payments (last 12 months)
+                cur.execute("""
+                    SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
+                           SUM(valor_pago) AS total_mes
+                    FROM tce_pb_despesa
+                    WHERE cnpj_basico = %s AND municipio = %s
+                      AND valor_pago > 0
+                      AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
+                    GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
+                    ORDER BY mes
+                """, (cnpj_basico, municipio))
+                m_cols = [d[0] for d in cur.description]
+                m_rows = cur.fetchall()
+                monthly = []
+                for row in m_rows:
+                    r = _row_to_dict(m_cols, row)
+                    for k, v in r.items():
+                        if hasattr(v, 'as_tuple'):
+                            r[k] = float(v)
+                    monthly.append(r)
+                result["monthly"] = monthly
+
+                # Top 3 elementos de despesa
+                cur.execute("""
+                    SELECT elemento_despesa,
+                           SUM(valor_pago) AS total_elemento,
+                           COUNT(*) AS qtd
+                    FROM tce_pb_despesa
+                    WHERE cnpj_basico = %s AND municipio = %s
+                      AND valor_pago > 0
+                    GROUP BY elemento_despesa
+                    ORDER BY SUM(valor_pago) DESC
+                    LIMIT 3
+                """, (cnpj_basico, municipio))
+                el_cols = [d[0] for d in cur.description]
+                el_rows = cur.fetchall()
+                top_elementos = []
+                for row in el_rows:
+                    r = _row_to_dict(el_cols, row)
+                    for k, v in r.items():
+                        if hasattr(v, 'as_tuple'):
+                            r[k] = float(v)
+                    top_elementos.append(r)
+                result["top_elementos"] = top_elementos
+
                 # Sancoes CEIS
                 cur.execute("""
-                    SELECT categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+                    SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
                            orgao_sancionador, fundamentacao_legal
                     FROM ceis_sancao
                     WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
@@ -605,12 +677,12 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
 
                 # Divida PGFN
                 cur.execute("""
-                    SELECT situacao_inscricao, SUM(valor_consolidado) AS divida_total,
-                           COUNT(*) AS qtd_inscricoes
+                    SELECT numero_inscricao, situacao_inscricao,
+                           receita_principal, valor_consolidado,
+                           dt_inscricao, indicador_ajuizado
                     FROM pgfn_divida
                     WHERE LEFT(cpf_cnpj_norm, 8) = %s AND LENGTH(cpf_cnpj_norm) = 14
-                    GROUP BY situacao_inscricao
-                    ORDER BY SUM(valor_consolidado) DESC
+                    ORDER BY valor_consolidado DESC
                 """, (cnpj_basico,))
                 pgfn_cols = [d[0] for d in cur.description]
                 pgfn_rows = cur.fetchall()
@@ -621,12 +693,135 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                         for k, v in r.items():
                             if hasattr(v, 'as_tuple'):
                                 r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
                         dividas.append(r)
                     result["pgfn"] = dividas
 
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:
         import logging; logging.exception("fornecedor detalhes failed")
+        return JSONResponse({})
+
+
+@router.post("/api/empenho/detalhes")
+async def get_empenho_detalhes(payload: dict = Body(...)):
+    """Retorna detalhes completos de um empenho pelo ID."""
+    empenho_id = payload.get("id")
+    if not empenho_id:
+        return JSONResponse({})
+    try:
+        from web.db import get_conn
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT numero_empenho, data_empenho, nome_credor, cpf_cnpj,
+                           valor_empenhado, valor_liquidado, valor_pago,
+                           elemento_despesa, modalidade_licitacao, numero_licitacao,
+                           historico, funcao, subfuncao, programa, acao,
+                           descricao_ug, descricao_unidade_orcamentaria,
+                           descricao_fonte_recurso, categoria_economica,
+                           grupo_natureza_despesa, modalidade_aplicacao,
+                           municipio
+                    FROM tce_pb_despesa
+                    WHERE id = %s
+                """, (empenho_id,))
+                cols = [d[0] for d in cur.description]
+                row = cur.fetchone()
+                if not row:
+                    return JSONResponse({})
+                r = _row_to_dict(cols, row)
+                for k, v in r.items():
+                    if hasattr(v, 'as_tuple'):
+                        r[k] = float(v)
+                    elif hasattr(v, 'isoformat'):
+                        r[k] = v.isoformat()
+                return JSONResponse(r, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception:
+        import logging; logging.exception("empenho detalhes failed")
+        return JSONResponse({})
+
+
+@router.post("/api/licitacao/detalhes")
+async def get_licitacao_detalhes(payload: dict = Body(...)):
+    """Retorna detalhes de uma licitacao: metadata, proponentes e despesas vinculadas."""
+    numero = payload.get("numero_licitacao", "")
+    ano = payload.get("ano_licitacao", 0)
+    municipio = payload.get("municipio", "")
+    if not numero or not municipio:
+        return JSONResponse({})
+
+    # Despesa stores as '000282025' (9 digits), licitacao as '00028/2025'
+    numero_despesa = numero  # keep original for tce_pb_despesa
+    if len(numero) == 9 and numero.isdigit() and '/' not in numero:
+        year_part = numero[5:]
+        num_part = numero[:5]
+        if 2000 <= int(year_part) <= 2099:
+            numero = f"{num_part}/{year_part}"
+            if not ano:
+                ano = int(year_part)
+    try:
+        from web.db import get_conn
+
+        def _convert(row_dict):
+            for k, v in row_dict.items():
+                if hasattr(v, 'as_tuple'):
+                    row_dict[k] = float(v)
+                elif hasattr(v, 'isoformat'):
+                    row_dict[k] = v.isoformat()
+            return row_dict
+
+        result = {}
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                # Metadata da licitacao
+                cur.execute("""
+                    SELECT DISTINCT objeto_licitacao, modalidade,
+                           data_homologacao, descricao_ug
+                    FROM tce_pb_licitacao
+                    WHERE numero_licitacao = %s AND municipio = %s
+                      AND (%s = 0 OR ano_licitacao = %s)
+                    LIMIT 1
+                """, (numero, municipio, ano, ano))
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+                if rows:
+                    result["licitacao"] = _convert(_row_to_dict(cols, rows[0]))
+
+                # Proponentes
+                cur.execute("""
+                    SELECT nome_proponente, cpf_cnpj_proponente,
+                           valor_ofertado, situacao_proposta,
+                           e.razao_social
+                    FROM tce_pb_licitacao l
+                    LEFT JOIN empresa e ON e.cnpj_basico = l.cnpj_basico_proponente
+                    WHERE l.numero_licitacao = %s AND l.municipio = %s
+                      AND (%s = 0 OR l.ano_licitacao = %s)
+                    ORDER BY l.valor_ofertado DESC
+                """, (numero, municipio, ano, ano))
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+                result["proponentes"] = [_convert(_row_to_dict(cols, r)) for r in rows]
+
+                # Despesas vinculadas
+                cur.execute("""
+                    SELECT id, nome_credor, cpf_cnpj, data_empenho,
+                           elemento_despesa, valor_empenhado, valor_pago
+                    FROM tce_pb_despesa
+                    WHERE numero_licitacao = %s AND municipio = %s
+                      AND valor_pago > 0
+                    ORDER BY data_empenho DESC
+                    LIMIT 50
+                """, (numero_despesa, municipio))
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+                result["despesas"] = [_convert(_row_to_dict(cols, r)) for r in rows]
+
+        return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
+    except Exception:
+        import logging; logging.exception("licitacao detalhes failed")
         return JSONResponse({})
 
 

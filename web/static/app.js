@@ -205,6 +205,7 @@ async function bootstrapCityReport(municipio, uf) {
                 if (rowCount === 0) card.classList.add('is-empty');
                 card.classList.remove('loading');
                 initDataTables(body);
+                initClickableRows(body);
             } catch {
                 countEl.textContent = 'Erro';
                 body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
@@ -229,6 +230,7 @@ function renderFindingCard(card, queryId, data, municipio) {
     } else {
         body.innerHTML = buildResultTable(queryId, data.columns, data.rows, municipio);
         initDataTables(body);
+        initClickableRows(body);
     }
     card.classList.remove('loading');
 }
@@ -237,6 +239,20 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const headerCells = columns.map(c =>
         `<th>${c.replace(/_/g, ' ')}</th>`
     ).join('');
+
+    // Auto-detect clickable columns for dialog reuse
+    const iCnpjBasico = columns.indexOf('cnpj_basico');
+    const iCpfCnpj = columns.findIndex(c => c === 'cpf_cnpj' || c === 'cpf_cnpj_sancionado' || c === 'cpfcnpj_contratado' || c === 'cpf_cnpj_proponente');
+    const iNomeCredor = columns.findIndex(c => c === 'nome_credor' || c === 'razao_social' || c === 'nome_sancionado' || c === 'nome_contratado' || c === 'nome_proponente');
+    const iCpf6 = columns.indexOf('cpf_digitos_6');
+    const iNomeUpper = columns.indexOf('nome_upper');
+    const iNomeServidor = columns.indexOf('nome_servidor');
+    const iLicNum = columns.indexOf('numero_licitacao');
+    const iLicAno = columns.indexOf('ano_licitacao');
+    const hasFornecedor = iCnpjBasico >= 0 || iCpfCnpj >= 0;
+    const hasServidor = iCpf6 >= 0 && (iNomeUpper >= 0 || iNomeServidor >= 0);
+    const hasLicitacao = iLicNum >= 0;
+
     const bodyRows = rows.map(row => {
         const cells = row.map(val => {
             if (val === null || val === undefined) return '<td>-</td>';
@@ -244,6 +260,35 @@ function buildResultTable(queryId, columns, rows, municipio) {
             if (Array.isArray(val)) return `<td>${val.join(', ')}</td>`;
             return `<td>${val}</td>`;
         }).join('');
+
+        // Servidor row detection (highest priority)
+        if (hasServidor) {
+            const cpf6 = _esc(row[iCpf6] || '');
+            const nomeUp = _esc(row[iNomeUpper] || row[iNomeServidor] || '');
+            const displayNome = _esc(row[iNomeServidor >= 0 ? iNomeServidor : iNomeUpper] || '');
+            return `<tr class="clickable-row" data-cpf6="${cpf6}" data-nome-upper="${nomeUp}" data-nome="${displayNome}" data-cnpjs="[]">${cells}</tr>`;
+        }
+        // Licitacao row detection (prioritize over fornecedor when both exist)
+        if (hasLicitacao) {
+            const licNum = String(row[iLicNum] || '');
+            const licAno = iLicAno >= 0 ? String(row[iLicAno] || '0') : '0';
+            if (licNum && licNum !== '000000000') {
+                return `<tr class="clickable-row" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}">${cells}</tr>`;
+            }
+        }
+        // Fornecedor row detection
+        if (hasFornecedor) {
+            let cnpjB = '';
+            if (iCnpjBasico >= 0) {
+                cnpjB = String(row[iCnpjBasico] || '').replace(/\D/g, '').slice(0, 8);
+            } else if (iCpfCnpj >= 0) {
+                cnpjB = String(row[iCpfCnpj] || '').replace(/\D/g, '').slice(0, 8);
+            }
+            const nome = _esc(row[iNomeCredor >= 0 ? iNomeCredor : (iCpfCnpj >= 0 ? iCpfCnpj : 0)] || '');
+            if (cnpjB.length === 8) {
+                return `<tr class="clickable-row" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}">${cells}</tr>`;
+            }
+        }
         return `<tr>${cells}</tr>`;
     }).join('');
 
@@ -372,34 +417,109 @@ function _situacaoLabel(sit) {
     return map[String(sit)] || (sit ? `Sit. ${sit}` : '-');
 }
 
-// Pre-fetched servidor detail cache: "cpf6:nome" -> detail object or Promise
-let _servidorCache = {};
+// ── Dialog navigation stack ─────────────────────────────────────
+const _dialogStack = []; // [{title, html}]
 
-function _fetchServidorDetails(cpf6, nome, cnpjs) {
-    const key = `${cpf6}:${nome}`;
-    if (_servidorCache[key]) return _servidorCache[key];
-    const promise = fetch('/api/servidor/detalhes', {
+function _dialogPush() {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog) return;
+    const title = dialog.querySelector('.dialog-title').textContent;
+    const html = dialog.querySelector('.dialog-body').innerHTML;
+    _dialogStack.push({ title, html });
+    dialog.querySelector('.dialog-back').style.display = '';
+}
+
+function _dialogPop() {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog || !_dialogStack.length) return;
+    const prev = _dialogStack.pop();
+    dialog.querySelector('.dialog-title').textContent = prev.title;
+    const body = dialog.querySelector('.dialog-body');
+    body.innerHTML = prev.html;
+    _reattachDialogLinks(body);
+    if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.display = 'none';
+}
+
+function _dialogReset() {
+    _dialogStack.length = 0;
+    const dialog = document.getElementById('empresa-dialog');
+    if (dialog) dialog.querySelector('.dialog-back').style.display = 'none';
+}
+
+function _reattachDialogLinks(body) {
+    body.querySelectorAll('.dialog-link[data-lic-num]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            openLicitacaoDialog(link.dataset.licNum, link.dataset.licAno || '0', _currentMunicipio, link.textContent);
+        });
+    });
+    body.querySelectorAll('.dialog-link[data-forn-cnpj]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            openFornecedorDialog(link.dataset.fornCnpj, link.dataset.fornNome || 'Fornecedor');
+        });
+    });
+    body.querySelectorAll('tr.clickable-row[data-empenho-id]').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('a')) return;
+            openEmpenhoDialog(row.dataset.empenhoId);
+        });
+    });
+    _initDialogTableSort(body);
+}
+
+function _initDialogTableSort(root) {
+    root.querySelectorAll('.dialog-table').forEach(table => {
+        const headers = Array.from(table.querySelectorAll('thead th'));
+        let sortCol = -1, sortAsc = true;
+        headers.forEach((th, colIndex) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                if (sortCol === colIndex) { sortAsc = !sortAsc; } else { sortCol = colIndex; sortAsc = true; }
+                headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    const cellA = a.children[colIndex]?.textContent.trim() || '';
+                    const cellB = b.children[colIndex]?.textContent.trim() || '';
+                    const numA = parseFloat(cellA.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    const numB = parseFloat(cellB.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    if (!isNaN(numA) && !isNaN(numB)) return sortAsc ? numA - numB : numB - numA;
+                    return sortAsc ? cellA.localeCompare(cellB, 'pt-BR') : cellB.localeCompare(cellA, 'pt-BR');
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    });
+}
+
+// Unified detail cache — evicts on fetch error
+const _detailCache = {};
+
+function _cachedPost(url, key, payload) {
+    if (_detailCache[key]) return _detailCache[key];
+    const promise = fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cpf6, nome, cnpjs }),
-    }).then(r => r.json()).catch(() => ({}));
-    _servidorCache[key] = promise;
+        body: JSON.stringify(payload),
+    }).then(r => {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+    }).catch(() => {
+        delete _detailCache[key];
+        return {};
+    });
+    _detailCache[key] = promise;
     return promise;
 }
 
-// Pre-fetched fornecedor detail cache
-let _fornecedorCache = {};
+function _fetchServidorDetails(cpf6, nome, cnpjs) {
+    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}`, { cpf6, nome, cnpjs });
+}
 
 function _fetchFornecedorDetails(cnpjBasico, municipio) {
-    const key = `${cnpjBasico}:${municipio}`;
-    if (_fornecedorCache[key]) return _fornecedorCache[key];
-    const promise = fetch('/api/fornecedor/detalhes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cnpj_basico: cnpjBasico, municipio }),
-    }).then(r => r.json()).catch(() => ({}));
-    _fornecedorCache[key] = promise;
-    return promise;
+    return _cachedPost('/api/fornecedor/detalhes', `forn:${cnpjBasico}:${municipio}`, { cnpj_basico: cnpjBasico, municipio });
 }
 
 function _renderEmpresaCard(e, cnpjBasico) {
@@ -416,9 +536,11 @@ function _renderEmpresaCard(e, cnpjBasico) {
     const sitClass = String(e.situacao_cadastral) === '2' ? '' : 'badge badge-red';
     const capital = e.capital_social ? _shortBrl(e.capital_social) : '-';
     const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
+    const nome = _esc(e.razao_social || 'Razao social nao disponivel');
+    const nomeLink = `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-nome="${nome}">${nome}</a>`;
     return `<div class="empresa-card">
         <div class="empresa-header">
-            <strong>${_esc(e.razao_social || 'Razao social nao disponivel')}</strong>
+            <strong>${nomeLink}</strong>
             <code>${cnpjFmt}</code>
         </div>
         <div class="empresa-details">
@@ -433,16 +555,46 @@ function _renderEmpresaCard(e, cnpjBasico) {
 async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs);
     let html = '';
 
-    // Vínculos como servidor
+    // Bolsa Família
+    if (data.bolsa_familia && data.bolsa_familia.length) {
+        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
+        const bf = data.bolsa_familia;
+        const ultimo = bf[0];
+        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
+        html += `<div class="empresa-card">
+            <div class="empresa-header">
+                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
+                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
+            </div>
+            <div class="empresa-details">
+                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
+                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
+            </div>
+        </div>`;
+        html += '</div>';
+    }
+
+    // Empresas vinculadas (clickable)
+    if (cnpjs && cnpjs.length) {
+        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
+        const empresas = data.empresas || [];
+        const empresaMap = {};
+        for (const e of empresas) empresaMap[e.cnpj_basico] = e;
+        html += cnpjs.map(c => _renderEmpresaCard(empresaMap[c], c)).join('');
+        html += '</div>';
+    }
+
+    // Vínculos como servidor (last)
     if (data.vinculos && data.vinculos.length) {
         html += '<div class="dialog-section"><h4>Vinculos como servidor</h4>';
         html += data.vinculos.map(v => {
@@ -464,38 +616,9 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
         html += '</div>';
     }
 
-    // Bolsa Família
-    if (data.bolsa_familia && data.bolsa_familia.length) {
-        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
-        const bf = data.bolsa_familia;
-        const ultimo = bf[0];
-        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
-        html += `<div class="empresa-card">
-            <div class="empresa-header">
-                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
-                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
-            </div>
-            <div class="empresa-details">
-                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
-                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
-            </div>
-        </div>`;
-        html += '</div>';
-    }
-
-    // Empresas vinculadas
-    if (cnpjs.length) {
-        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
-        const empresas = data.empresas || [];
-        const empresaMap = {};
-        for (const e of empresas) empresaMap[e.cnpj_basico] = e;
-        html += cnpjs.map(c => _renderEmpresaCard(empresaMap[c], c)).join('');
-        html += '</div>';
-    }
-
     if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
     body.innerHTML = html;
-    dialog.showModal();
+    _reattachDialogLinks(body);
 }
 
 // Store current municipio for fornecedor dialog
@@ -504,11 +627,12 @@ let _currentMunicipio = '';
 async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = fornecedorNome || 'Fornecedor';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
 
     const data = await _fetchFornecedorDetails(cnpjBasico, _currentMunicipio);
     let html = '';
@@ -536,9 +660,73 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
         html += '</div>';
     }
 
+    // Summary stats
+    if (data.stats && data.stats.qtd_empenhos > 0) {
+        const st = data.stats;
+        const pctSemLic = st.qtd_empenhos > 0
+            ? ((st.qtd_sem_licitacao / st.qtd_empenhos) * 100).toFixed(1)
+            : '0.0';
+        const periodo = `${_fmtDate(st.primeiro_empenho)} a ${_fmtDate(st.ultimo_empenho)}`;
+
+        html += '<div class="dialog-section"><h4>Resumo de pagamentos neste municipio</h4>';
+        html += `<div class="stats-grid">
+            <div class="stat-cell">
+                <span class="stat-value">${_shortBrl(st.total_pago)}</span>
+                <span class="stat-label">Total pago</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value">${_shortBrl(st.total_empenhado)}</span>
+                <span class="stat-label">Total empenhado</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value">${st.qtd_empenhos}</span>
+                <span class="stat-label">Empenhos</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value ${parseFloat(pctSemLic) >= 50 ? 'color-red' : ''}">${pctSemLic}%</span>
+                <span class="stat-label">Sem licitacao</span>
+            </div>
+        </div>`;
+        html += `<p class="text-sm text-muted" style="margin-top:.4rem">Periodo: ${periodo}</p>`;
+
+        // Mini bar chart - monthly payments
+        if (data.monthly && data.monthly.length > 1) {
+            const maxVal = Math.max(...data.monthly.map(m => m.total_mes));
+            html += '<div class="mini-chart">';
+            html += data.monthly.map(m => {
+                const pct = maxVal > 0 ? (m.total_mes / maxVal * 100) : 0;
+                const label = m.mes.slice(5);
+                return `<div class="mini-bar-col" title="${m.mes}: ${_shortBrl(m.total_mes)}">
+                    <div class="mini-bar" style="height:${Math.max(pct, 2)}%"></div>
+                    <span class="mini-bar-label">${label}</span>
+                </div>`;
+            }).join('');
+            html += '</div>';
+        }
+
+        // Top elementos de despesa
+        if (data.top_elementos && data.top_elementos.length) {
+            const topMax = data.top_elementos[0].total_elemento;
+            html += '<div class="top-elementos">';
+            html += data.top_elementos.map(el => {
+                const pct = topMax > 0 ? (el.total_elemento / topMax * 100) : 0;
+                return `<div class="top-el-row">
+                    <span class="top-el-name text-sm">${_esc(el.elemento_despesa || '-')}</span>
+                    <div class="top-el-track"><div class="top-el-fill" style="width:${pct}%"></div></div>
+                    <span class="top-el-value text-sm">${_shortBrl(el.total_elemento)}</span>
+                </div>`;
+            }).join('');
+            html += '</div>';
+        }
+
+        html += '</div>';
+    }
+
     // Sancoes CEIS
     if (data.sancoes && data.sancoes.length) {
-        html += '<div class="dialog-section"><h4>Sancoes (CEIS)</h4>';
+        const ceisCnpj = (data.sancoes[0].cpf_cnpj_sancionado || '').replace(/\D/g, '');
+        const ceisUrl = `https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=&offset=&direcaoOrdenacao=asc&cpfCnpj=${ceisCnpj}&colunasSelecionadas=linkDetalhamento%2Ccadastro%2CcpfCnpj%2CnomeSancionado%2CufSancionado%2Corgao%2CcategoriaSancao%2CdataPublicacao%2CvalorMulta%2Cquantidade`;
+        html += `<div class="dialog-section"><h4>Sancoes (CEIS) ${ceisCnpj ? `<a href="${ceisUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>` : ''}</h4>`;
         html += data.sancoes.map(s => {
             const inicio = _fmtDate(s.dt_inicio_sancao);
             const fim = s.dt_final_sancao ? _fmtDate(s.dt_final_sancao) : 'Sem prazo definido';
@@ -552,6 +740,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
                     <span>Inicio: ${inicio}</span>
                     <span>Fim: ${fim}</span>
                     ${s.orgao_sancionador ? `<span>Orgao: ${_esc(s.orgao_sancionador)}</span>` : ''}
+                    ${s.fundamentacao_legal ? `<span>Base legal: ${_esc(s.fundamentacao_legal)}</span>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -560,18 +749,23 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
 
     // Divida PGFN
     if (data.pgfn && data.pgfn.length) {
-        html += '<div class="dialog-section"><h4>Divida ativa (PGFN)</h4>';
+        html += '<div class="dialog-section"><h4>Divida ativa (PGFN) <a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener" class="ext-link-inline" title="Consultar na Lista de Devedores">&#8599;</a></h4>';
         html += data.pgfn.map(d => {
+            const ajuizado = d.indicador_ajuizado === 'S' || d.indicador_ajuizado === 'Sim';
             return `<div class="empresa-card">
                 <div class="empresa-header">
-                    <strong>${_esc(d.situacao_inscricao || 'Inscricao')}</strong>
-                    <span class="badge badge-yellow">${_shortBrl(d.divida_total)}</span>
+                    <strong>${_esc(d.receita_principal || d.situacao_inscricao || 'Inscricao')}</strong>
+                    <span class="badge badge-yellow">${_shortBrl(d.valor_consolidado)}</span>
                 </div>
                 <div class="empresa-details">
-                    <span>${d.qtd_inscricoes} inscricao(oes)</span>
+                    <span>Situacao: ${_esc(d.situacao_inscricao || '-')}</span>
+                    ${d.numero_inscricao ? `<span>Inscricao: ${_esc(d.numero_inscricao)}</span>` : ''}
+                    ${d.dt_inscricao ? `<span>Data: ${_fmtDate(d.dt_inscricao)}</span>` : ''}
+                    ${ajuizado ? '<span class="badge badge-gray">Ajuizado</span>' : ''}
                 </div>
             </div>`;
         }).join('');
+        html += `<a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener" class="ext-link text-sm">Consultar na Lista de Devedores &#8599;</a>`;
         html += '</div>';
     }
 
@@ -581,13 +775,21 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
         const empenhoRows = data.empenhos.map(e => {
             const dt = _fmtDate(e.data_empenho);
             const mod = e.modalidade_licitacao || '-';
-            const semLic = !e.numero_licitacao || e.numero_licitacao === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
-            return `<tr>
+            const numLic = e.numero_licitacao || '';
+            const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
+            let modCell;
+            if (semLic) {
+                modCell = '<span class="badge badge-yellow">Sem licitacao</span>';
+            } else {
+                const licLabel = `${mod} (${numLic})`;
+                modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
+            }
+            return `<tr class="clickable-row" data-empenho-id="${e.id}">
                 <td>${dt}</td>
                 <td>${_esc(e.elemento_despesa || '-')}</td>
                 <td class="text-right">${_shortBrl(e.valor_empenhado)}</td>
                 <td class="text-right">${_shortBrl(e.valor_pago)}</td>
-                <td>${semLic ? '<span class="badge badge-yellow">Sem licitacao</span>' : _esc(mod)}</td>
+                <td>${modCell}</td>
             </tr>`;
         }).join('');
         html += `<div class="tbl-wrap"><table class="dialog-table">
@@ -602,7 +804,211 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
 
     if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
     body.innerHTML = html;
-    dialog.showModal();
+    _reattachDialogLinks(body);
+}
+
+async function openEmpenhoDialog(empenhoId) {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog) return;
+    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    const title = dialog.querySelector('.dialog-title');
+    const body = dialog.querySelector('.dialog-body');
+    title.textContent = 'Detalhes do empenho';
+    body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
+    if (!dialog.open) dialog.showModal();
+
+    const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });
+    if (!data || !data.numero_empenho) {
+        body.innerHTML = '<p class="text-sm text-muted">Empenho nao encontrado.</p>';
+        return;
+    }
+
+    title.textContent = `Empenho ${data.numero_empenho}`;
+    let html = '';
+
+    // Historico (descricao detalhada)
+    if (data.historico) {
+        html += '<div class="dialog-section"><h4>Descricao</h4>';
+        html += `<p class="text-sm" style="line-height:1.6">${_esc(data.historico)}</p>`;
+        html += '</div>';
+    }
+
+    // Valores
+    html += '<div class="dialog-section"><h4>Valores</h4>';
+    html += `<div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_empenhado)}</span>
+            <span class="stat-label">Empenhado</span>
+        </div>
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_liquidado)}</span>
+            <span class="stat-label">Liquidado</span>
+        </div>
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_pago)}</span>
+            <span class="stat-label">Pago</span>
+        </div>
+    </div>`;
+    html += '</div>';
+
+    // Credor
+    html += '<div class="dialog-section"><h4>Credor</h4>';
+    const cnpjRaw = String(data.cpf_cnpj || '').replace(/\D/g, '');
+    const cnpjB = cnpjRaw.slice(0, 8);
+    const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
+    const credorNome = _esc(data.nome_credor || '-');
+    const credorLink = isClickable
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${credorNome}">${credorNome}</a>`
+        : credorNome;
+    html += `<div class="empresa-card"><div class="empresa-header">
+        <strong>${credorLink}</strong>
+        <code>${_esc(data.cpf_cnpj || '-')}</code>
+    </div></div>`;
+    html += '</div>';
+
+    // Classificacao orcamentaria
+    html += '<div class="dialog-section"><h4>Classificacao orcamentaria</h4>';
+    html += '<div class="empresa-card"><div class="empresa-details">';
+    if (data.funcao) html += `<span><strong>Funcao:</strong> ${_esc(data.funcao)}</span>`;
+    if (data.subfuncao) html += `<span><strong>Subfuncao:</strong> ${_esc(data.subfuncao)}</span>`;
+    if (data.programa) html += `<span><strong>Programa:</strong> ${_esc(data.programa)}</span>`;
+    if (data.acao) html += `<span><strong>Acao:</strong> ${_esc(data.acao)}</span>`;
+    if (data.elemento_despesa) html += `<span><strong>Elemento:</strong> ${_esc(data.elemento_despesa)}</span>`;
+    if (data.categoria_economica) html += `<span><strong>Categoria:</strong> ${_esc(data.categoria_economica)}</span>`;
+    if (data.grupo_natureza_despesa) html += `<span><strong>Natureza:</strong> ${_esc(data.grupo_natureza_despesa)}</span>`;
+    if (data.modalidade_aplicacao) html += `<span><strong>Aplicacao:</strong> ${_esc(data.modalidade_aplicacao)}</span>`;
+    html += '</div></div>';
+    html += '</div>';
+
+    // Origem / UG / fonte
+    html += '<div class="dialog-section"><h4>Origem</h4>';
+    html += '<div class="empresa-card"><div class="empresa-details">';
+    html += `<span><strong>Data:</strong> ${_fmtDate(data.data_empenho)}</span>`;
+    if (data.descricao_ug) html += `<span><strong>UG:</strong> ${_esc(data.descricao_ug)}</span>`;
+    if (data.descricao_unidade_orcamentaria) html += `<span><strong>Unidade:</strong> ${_esc(data.descricao_unidade_orcamentaria)}</span>`;
+    if (data.descricao_fonte_recurso) html += `<span><strong>Fonte:</strong> ${_esc(data.descricao_fonte_recurso)}</span>`;
+    if (data.municipio) html += `<span><strong>Municipio:</strong> ${_esc(data.municipio)}</span>`;
+    html += '</div></div>';
+
+    // Licitacao vinculada
+    const mod = data.modalidade_licitacao || '';
+    const numLic = data.numero_licitacao || '';
+    const semLic = !numLic || numLic === '000000000' || mod.toLowerCase().includes('sem licit');
+    if (!semLic) {
+        html += `<p class="text-sm mt-2"><strong>Licitacao:</strong> <a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(mod)} (${_esc(numLic)})</a></p>`;
+    } else {
+        html += '<p class="text-sm mt-2"><strong>Licitacao:</strong> <span class="badge badge-yellow">Sem licitacao</span></p>';
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
+    _reattachDialogLinks(body);
+}
+
+function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio) {
+    return _cachedPost('/api/licitacao/detalhes', `lic:${numeroLicitacao}:${anoLicitacao}:${municipio}`,
+        { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0, municipio });
+}
+
+async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label) {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog) return;
+    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    const title = dialog.querySelector('.dialog-title');
+    const body = dialog.querySelector('.dialog-body');
+    title.textContent = label || `Licitacao ${numeroLicitacao}`;
+    body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
+    if (!dialog.open) dialog.showModal();
+
+    const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio);
+    let html = '';
+
+    // Metadata — always render header
+    const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;
+    html += '<div class="dialog-section"><h4>Dados da licitacao</h4>';
+    if (data.licitacao) {
+        const lic = data.licitacao;
+        html += `<div class="empresa-card">
+            <div class="empresa-header">
+                <strong>${_esc(lic.modalidade || 'Licitacao')}</strong>
+                <span class="text-sm text-muted">${_licNumLabel}</span>
+            </div>
+            <div class="empresa-details">
+                ${lic.objeto_licitacao ? `<span>Objeto: ${_esc(lic.objeto_licitacao)}</span>` : ''}
+                ${lic.descricao_ug ? `<span>UG: ${_esc(lic.descricao_ug)}</span>` : ''}
+                ${lic.data_homologacao ? `<span>Homologacao: ${_fmtDate(lic.data_homologacao)}</span>` : ''}
+            </div>
+        </div>`;
+    } else {
+        html += `<div class="empresa-card empresa-missing">
+            <div class="empresa-header">
+                <strong>Licitacao</strong>
+                <span class="text-sm text-muted">${_licNumLabel}</span>
+            </div>
+            <div class="empresa-details">
+                <span>Dados cadastrais indisponiveis no TCE-PB para esta licitacao.</span>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // Proponentes
+    if (data.proponentes && data.proponentes.length) {
+        html += '<div class="dialog-section"><h4>Proponentes</h4>';
+        const propRows = data.proponentes.map(p => {
+            const cnpjRaw = String(p.cpf_cnpj_proponente || '').replace(/\D/g, '');
+            const cnpjB = cnpjRaw.slice(0, 8);
+            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
+            const nome = _esc(p.razao_social || p.nome_proponente || '-');
+            const nomeLink = isClickable
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${nome}">${nome}</a>`
+                : nome;
+            return `<tr>
+                <td>${nomeLink}</td>
+                <td><code class="text-sm">${_esc(p.cpf_cnpj_proponente || '-')}</code></td>
+                <td class="text-right">${_shortBrl(p.valor_ofertado)}</td>
+                <td>${_esc(p.situacao_proposta || '-')}</td>
+            </tr>`;
+        }).join('');
+        html += `<div class="tbl-wrap"><table class="dialog-table">
+            <thead><tr><th>Proponente</th><th>CNPJ/CPF</th><th class="text-right">Valor ofertado</th><th>Situacao</th></tr></thead>
+            <tbody>${propRows}</tbody>
+        </table></div>`;
+        html += '</div>';
+    }
+
+    // Despesas vinculadas
+    if (data.despesas && data.despesas.length) {
+        html += '<div class="dialog-section"><h4>Despesas vinculadas</h4>';
+        const despRows = data.despesas.map(d => {
+            const cnpjRaw = String(d.cpf_cnpj || '').replace(/\D/g, '');
+            const cnpjB = cnpjRaw.slice(0, 8);
+            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
+            const nome = _esc(d.nome_credor || '-');
+            const nomeCell = isClickable
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${nome}">${nome}</a>`
+                : nome;
+            return `<tr class="clickable-row" data-empenho-id="${d.id}">
+                <td>${nomeCell}</td>
+                <td>${_fmtDate(d.data_empenho)}</td>
+                <td>${_esc(d.elemento_despesa || '-')}</td>
+                <td class="text-right">${_shortBrl(d.valor_empenhado)}</td>
+                <td class="text-right">${_shortBrl(d.valor_pago)}</td>
+            </tr>`;
+        }).join('');
+        html += `<div class="tbl-wrap"><table class="dialog-table">
+            <thead><tr><th>Credor</th><th>Data</th><th>Elemento</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th></tr></thead>
+            <tbody>${despRows}</tbody>
+        </table></div>`;
+        if (data.despesas.length >= 50) {
+            html += '<p class="text-sm text-muted">Mostrando as 50 despesas mais recentes.</p>';
+        }
+        html += '</div>';
+    }
+
+    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao.</p>';
+    body.innerHTML = html;
+    _reattachDialogLinks(body);
 }
 
 function buildServidoresPanel(data) {
@@ -833,7 +1239,7 @@ function initClickableRows(root = document) {
             const cpf6 = row.dataset.cpf6 || '';
             const nomeUpper = row.dataset.nomeUpper || '';
             if (cpf6 && nomeUpper) {
-                const cnpjs = JSON.parse(row.dataset.cnpjs || '[]');
+                const cnpjs = JSON.parse(row.dataset.cnpjs || '[]') || [];
                 const servidorNome = row.dataset.nome || '';
                 openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome);
                 return;
@@ -843,6 +1249,13 @@ function initClickableRows(root = document) {
             if (fornCnpj) {
                 const fornNome = row.dataset.fornecedorNome || '';
                 openFornecedorDialog(fornCnpj, fornNome);
+                return;
+            }
+            // Licitacao row
+            const licNum = row.dataset.licitacaoNum || '';
+            if (licNum) {
+                const licAno = row.dataset.licitacaoAno || '0';
+                openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`);
             }
         });
     });
@@ -852,6 +1265,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initInteractiveToggles(document);
     initClickableRows(document);
+
+    const dialog = document.getElementById('empresa-dialog');
+    if (dialog) {
+        dialog.addEventListener('close', () => { _dialogReset(); });
+        const backBtn = dialog.querySelector('.dialog-back');
+        if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
+    }
 });
 
 function initInteractiveToggles(root = document) {

@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       etl_phase:
-        description: 'ETL phase: "sql" (schema+views only), phase number (e.g. "17"), or "all" (full ETL)'
+        description: 'ETL phase: "web" (code sync + web deploy only), "sql" (schema+views), phase number (e.g. "18"), or "all" (full ETL)'
         required: false
         default: 'all'
       clean:
@@ -180,6 +180,11 @@ jobs:
           source venv/bin/activate
           python -m etl.probe_sources
 
+      # ── Code sync only (web) — skip all ETL ──
+      - name: "Code sync only"
+        if: inputs.etl_phase == 'web'
+        run: echo "=== Code sync only — skipping ETL ==="
+
       # ── Full ETL (first run or etl_phase=all) ──
       - name: "ETL: Full pipeline"
         if: inputs.etl_phase == 'all'
@@ -227,7 +232,7 @@ jobs:
 
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
-        if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all'
+        if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all' && inputs.etl_phase != 'web'
         run: |
           set -e
           sudo systemctl restart tor 2>/dev/null || true
@@ -238,6 +243,7 @@ jobs:
 
       # ── Run fraud queries ──
       - name: Run queries
+        if: inputs.etl_phase != 'web'
         run: |
           set -e
           cd ${{ env.PROJECT_DIR }}

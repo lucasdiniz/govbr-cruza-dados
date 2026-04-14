@@ -35,7 +35,22 @@
                 </thead>
                 <tbody>
                     {% for row in rows %}
+                    {% set cnpj_val = row.get('cnpj_basico', '') or row.get('cpf_cnpj', '') or row.get('cpf_cnpj_sancionado', '') or row.get('cpfcnpj_contratado', '') or row.get('cpf_cnpj_proponente', '') %}
+                    {% set cnpj_basico_val = (cnpj_val|string|replace('.', '')|replace('/', '')|replace('-', ''))[:8] if cnpj_val else '' %}
+                    {% set nome_val = row.get('nome_credor', '') or row.get('razao_social', '') or row.get('nome_sancionado', '') or row.get('nome_contratado', '') or row.get('nome_proponente', '') or '' %}
+                    {% set cpf6_val = row.get('cpf_digitos_6', '') or '' %}
+                    {% set nome_upper_val = row.get('nome_upper', '') or row.get('nome_servidor', '') or '' %}
+                    {% set lic_num_val = row.get('numero_licitacao', '') or '' %}
+                    {% set lic_ano_val = row.get('ano_licitacao', '0') or '0' %}
+                    {% if cpf6_val and nome_upper_val %}
+                    <tr class="clickable-row" data-cpf6="{{ cpf6_val }}" data-nome-upper="{{ nome_upper_val }}" data-nome="{{ nome_upper_val }}" data-cnpjs="[]">
+                    {% elif lic_num_val and lic_num_val != '000000000' %}
+                    <tr class="clickable-row" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}">
+                    {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
+                    <tr class="clickable-row" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-nome="{{ nome_val|clean_text }}">
+                    {% else %}
                     <tr>
+                    {% endif %}
                         {% for col in columns %}
                         {% set value = row[col] %}
                         <td>

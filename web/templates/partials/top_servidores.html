@@ -39,7 +39,14 @@
                 <tbody>
                     {% for s in servidores %}
                     {% set cargo = (s.cargo or "-")|clean_text %}
+                    {% set cpf6 = s.cpf_digitos_6|default('')|string %}
+                    {% set nome_up = s.nome_upper|default('')|string %}
+                    {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
+                    {% if cpf6 and nome_up %}
+                    <tr class="clickable-row" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
+                    {% endif %}
                         <td>{{ s.nome_servidor|clean_text }}</td>
                         <td>{{ cargo }}</td>
                         <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>

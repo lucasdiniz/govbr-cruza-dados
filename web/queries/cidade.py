@@ -56,7 +56,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY tf.total_pago DESC
+ORDER BY (COALESCE(meg.flag_ceis_vigente, FALSE)::int + COALESCE(meg.flag_divida_pgfn, FALSE)::int + COALESCE(meg.flag_inativa, FALSE)::int) DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK = """
@@ -100,7 +100,7 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY tf.total_pago DESC
+ORDER BY (flag_ceis::int + flag_pgfn::int + flag_inativa::int) DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
@@ -124,7 +124,7 @@ WHERE d.municipio = %(municipio)s
   AND d.valor_pago > 0
   AND d.cnpj_basico IS NOT NULL
 GROUP BY d.cnpj_basico, d.nome_credor, e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY SUM(d.valor_pago) DESC
+ORDER BY (COALESCE(est.situacao_cadastral::text != '2', FALSE))::int DESC, SUM(d.valor_pago) DESC
 LIMIT 200
 """
 
@@ -160,7 +160,7 @@ WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
   AND pc.cnpj_basico_fornecedor IS NOT NULL
 GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
          e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY total_contratado DESC
+ORDER BY (flag_ceis::int + flag_pgfn::int + flag_inativa::int) DESC, total_contratado DESC
 LIMIT 200
 """
 

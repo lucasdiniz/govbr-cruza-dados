@@ -183,6 +183,8 @@ SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
        SUM(d.valor_empenhado) AS total_empenhado,
        MAX(d.valor_empenhado) AS maior_empenho
 FROM tce_pb_despesa d
+JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%%'
 WHERE d.ano >= 2022 AND d.valor_empenhado > 0
   AND d.valor_empenhado < 50000
   AND d.cnpj_basico IS NOT NULL
@@ -409,7 +411,7 @@ _reg("Q89", "Convenio estado com despesas suspeitas",
      "Municipio recebeu convenio estadual e teve despesas atipicas no periodo",
      "Cruzamento Estado x Municipio",
      """
-SELECT cv.nome_convenente, cv.objetivo_convenio,
+SELECT cv.cnpj_basico, cv.nome_convenente, cv.objetivo_convenio,
        cv.valor_concedente, cv.valor_contrapartida,
        cv.data_celebracao_convenio, cv.data_termino_vigencia,
        tce_agg.total_empenhado_periodo, tce_agg.qtd_empenhos
