@@ -34,7 +34,7 @@
 - [ ] **Landing page escura precisa ajuste** — features strip nao esta 100% integrada visualmente com o backdrop
 
 ### Infra / DX
-- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose so sobe o Postgres.
+- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando.
 
 ### Deploy Azure
 - [x] **Deploy workflow corrigido** — `etl.01_schema` removido da fase `sql` (causava DROP+CREATE e perda de dados). Adicionada opcao `etl_phase=web` para sync de codigo sem reprocessar ETL
@@ -174,3 +174,13 @@
 - Tabela de fornecedores full-width com colunas: Fornecedor, CNPJ, Total Pago, Empenhos, Situacao, Sinais de Atencao
 - pct_sem_licitacao na MV corrigido para filtrar entidades publicas (natureza_juridica NOT LIKE '1%')
 - Lazy fetch on click para fornecedores (mesmo padrao de servidores)
+- Integracao CNEP: sancoes CNEP unificadas com CEIS em badges, dialog, Q65 e row highlighting
+- Badges de sancao: "Impedimento de contratar - CEIS/CNEP" com cores distintas (CEIS vermelho, CNEP laranja)
+- Destaque vermelho (row-sancao): fornecedores que receberam durante sancao e servidores socios de empresa sancionada
+- Ordenacao por risco: top fornecedores e servidores ordenados com rows vermelhos primeiro
+- Legendas condicionais no topo das tabelas explicando o destaque vermelho
+- Disclaimer no dialog de fornecedor explicando CEIS/CNEP para leigos
+- Empenhos durante sancao em outros municipios: secao no dialog mostrando pagamentos cross-municipio
+- Seletor de municipio no dialog: dropdown para alternar entre municipios onde o fornecedor recebeu
+- flag_socio_sancionado: EXISTS otimizado com CTE (7.6s → 487ms) cruzando cnpjs_socio com sancoes vigentes
+- docker-compose.yml removido (nao utilizado, PostgreSQL roda local)

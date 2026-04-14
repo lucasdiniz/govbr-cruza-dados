@@ -4,6 +4,9 @@
         <div>
             <h3 class="card-title">Maiores fornecedores do municipio</h3>
             <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</p>
+            {% if fornecedores|selectattr('flag_recebeu_durante_sancao')|list %}
+            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: fornecedor recebeu pagamentos durante periodo de sancao ativa (CEIS/CNEP).</p>
+            {% endif %}
         </div>
     </div>
 
@@ -31,7 +34,7 @@
                 </thead>
                 <tbody>
                     {% for f in fornecedores %}
-                    <tr class="clickable-row"
+                    <tr class="clickable-row{% if f.flag_recebeu_durante_sancao %} row-sancao{% endif %}"
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}">
                         <td>{{ f.nome_credor|clean_text }}</td>
@@ -40,10 +43,11 @@
                         <td class="text-right">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
                         <td>{{ f.desc_situacao|default('-') }}</td>
                         <td>
-                            {% if f.flag_ceis %}<span class="badge badge-red">Sancao ativa</span>{% endif %}
+                            {% if f.flag_ceis %}<span class="badge badge-red">Impedimento de contratar - CEIS</span>{% endif %}
+                            {% if f.flag_cnep %}<span class="badge badge-red">Impedimento de contratar - CNEP</span>{% endif %}
                             {% if f.flag_pgfn %}<span class="badge badge-yellow">Divida ativa</span>{% endif %}
                             {% if f.flag_inativa %}<span class="badge badge-gray">Cadastro inativo</span>{% endif %}
-                            {% if not f.flag_ceis and not f.flag_pgfn and not f.flag_inativa %}
+                            {% if not f.flag_ceis and not f.flag_cnep and not f.flag_pgfn and not f.flag_inativa %}
                                 <span class="text-sm text-muted">Sem sinal automatico</span>
                             {% endif %}
                         </td>

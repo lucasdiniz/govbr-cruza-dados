@@ -79,7 +79,8 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 - **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
 - **15 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
 - **Dialog de servidor**: ao clicar um servidor, mostra vinculos (admissao, salario), Bolsa Familia, empresas vinculadas com qualificacao societaria e data de entrada
-- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS (com datas), divida PGFN, empenhos recentes, graficos de pagamentos mensais e elementos de despesa
+- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem e vigencia), divida PGFN, empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas de empenho feitas durante periodo de sancao sao destacadas em vermelho.
+- **Destaque de risco**: fornecedores que receberam pagamentos durante sancao e servidores socios de empresas sancionadas (CEIS/CNEP) sao destacados em vermelho com legendas explicativas
 - **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
 - **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
 - **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)

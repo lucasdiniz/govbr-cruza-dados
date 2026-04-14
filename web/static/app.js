@@ -387,17 +387,26 @@ function buildFornecedoresPanel(data) {
         const situacao = _esc(_val(r, cols, 'desc_situacao') || '-');
         const sitClass = situacao === 'Ativa' ? '' : (situacao === '-' ? '' : 'badge badge-gray');
         let badges = '';
-        if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-red">Sancao ativa</span>';
+        if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-red">Impedimento de contratar - CEIS</span>';
+        if (_val(r, cols, 'flag_cnep')) badges += '<span class="badge badge-red">Impedimento de contratar - CNEP</span>';
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
-        return `<tr class="clickable-row" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
+        const duranteSancao = _val(r, cols, 'flag_recebeu_durante_sancao');
+        const rowClass = duranteSancao ? 'clickable-row row-sancao' : 'clickable-row';
+        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
     }).join('');
+
+    const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
+    const fornLegend = hasSancaoRows
+        ? '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: fornecedor recebeu pagamentos durante periodo de sancao ativa (CEIS/CNEP).</p>'
+        : '';
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title">Maiores fornecedores do municipio</h3>
             <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</p>
+            ${fornLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
@@ -481,6 +490,26 @@ function _reattachDialogLinks(body) {
             openEmpenhoDialog(row.dataset.empenhoId);
         });
     });
+    // Municipality selector in fornecedor dialog
+    body.querySelectorAll('.mun-selector').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const cnpj = sel.dataset.fornCnpj;
+            const nome = sel.dataset.fornNome;
+            const mun = sel.value;
+            _dialogReset();
+            openFornecedorDialog(cnpj, nome, mun);
+        });
+    });
+    // Cross-municipality sanction rows
+    body.querySelectorAll('tr[data-switch-mun]').forEach(row => {
+        row.addEventListener('click', () => {
+            const cnpj = row.dataset.fornCnpj;
+            const nome = row.dataset.fornNome;
+            const mun = row.dataset.switchMun;
+            _dialogReset();
+            openFornecedorDialog(cnpj, nome, mun);
+        });
+    });
     _initDialogTableSort(body);
 }
 
@@ -536,6 +565,39 @@ function _fetchServidorDetails(cpf6, nome, cnpjs) {
 
 function _fetchFornecedorDetails(cnpjBasico, municipio) {
     return _cachedPost('/api/fornecedor/detalhes', `forn:${cnpjBasico}:${municipio}`, { cnpj_basico: cnpjBasico, municipio });
+}
+
+function _buildEmpenhoTable(empenhos, sancaoRanges) {
+    const rows = empenhos.map(e => {
+        const dt = _fmtDate(e.data_empenho);
+        const mod = e.modalidade_licitacao || '-';
+        const numLic = e.numero_licitacao || '';
+        const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
+        let modCell;
+        if (semLic) {
+            modCell = '<span class="badge badge-yellow">Sem licitacao</span>';
+        } else {
+            const licLabel = `${mod} (${numLic})`;
+            modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
+        }
+        const empDate = e.data_empenho ? new Date(e.data_empenho) : null;
+        const duranteSancao = empDate && sancaoRanges.some(r =>
+            empDate >= r.inicio && (!r.fim || empDate <= r.fim)
+        );
+        const rowClass = duranteSancao ? 'clickable-row row-sancao' : 'clickable-row';
+        const sancaoTag = duranteSancao ? ' <span class="badge badge-red" style="font-size:.6rem">durante sancao</span>' : '';
+        return `<tr class="${rowClass}" data-empenho-id="${e.id}">
+            <td>${dt}${sancaoTag}</td>
+            <td>${_esc(e.elemento_despesa || '-')}</td>
+            <td class="text-right">${_shortBrl(e.valor_empenhado)}</td>
+            <td class="text-right">${_shortBrl(e.valor_pago)}</td>
+            <td>${modCell}</td>
+        </tr>`;
+    }).join('');
+    return `<div class="tbl-wrap"><table class="dialog-table">
+        <thead><tr><th>Data</th><th>Elemento</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th><th>Modalidade</th></tr></thead>
+        <tbody>${rows}</tbody>
+    </table></div>`;
 }
 
 function _renderEmpresaCard(e, cnpjBasico) {
@@ -644,7 +706,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 // Store current municipio for fornecedor dialog
 let _currentMunicipio = '';
 
-async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
+async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
@@ -655,7 +717,8 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
     if (!dialog.open) dialog.showModal();
     document.body.classList.add('dialog-open');
 
-    const data = await _fetchFornecedorDetails(cnpjBasico, _currentMunicipio);
+    const viewMunicipio = municipioOverride || _currentMunicipio;
+    const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio);
     let html = '';
 
     // Situacao cadastral
@@ -745,28 +808,40 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
         html += '</div>';
     }
 
-    // Sancoes CEIS
+    // Sancoes (CEIS + CNEP)
     if (data.sancoes && data.sancoes.length) {
-        const ceisCnpj = (data.sancoes[0].cpf_cnpj_sancionado || '').replace(/\D/g, '');
-        const ceisUrl = `https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=&offset=&direcaoOrdenacao=asc&cpfCnpj=${ceisCnpj}&colunasSelecionadas=linkDetalhamento%2Ccadastro%2CcpfCnpj%2CnomeSancionado%2CufSancionado%2Corgao%2CcategoriaSancao%2CdataPublicacao%2CvalorMulta%2Cquantidade`;
-        html += `<div class="dialog-section"><h4>Sancoes (CEIS) ${ceisCnpj ? `<a href="${ceisUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>` : ''}</h4>`;
+        const sanCnpj = (data.sancoes[0].cpf_cnpj_sancionado || '').replace(/\D/g, '');
+        const sanUrl = `https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=&offset=&direcaoOrdenacao=asc&cpfCnpj=${sanCnpj}&colunasSelecionadas=linkDetalhamento%2Ccadastro%2CcpfCnpj%2CnomeSancionado%2CufSancionado%2Corgao%2CcategoriaSancao%2CdataPublicacao%2CvalorMulta%2Cquantidade`;
+        html += `<div class="dialog-section"><h4>Sancoes ${sanCnpj ? `<a href="${sanUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>` : ''}</h4>`;
         html += data.sancoes.map(s => {
             const inicio = _fmtDate(s.dt_inicio_sancao);
             const fim = s.dt_final_sancao ? _fmtDate(s.dt_final_sancao) : 'Sem prazo definido';
             const vigente = !s.dt_final_sancao || new Date(s.dt_final_sancao) >= new Date();
+            const origem = s.origem || 'CEIS';
+            const multa = s.valor_multa ? `<span>Multa: ${_shortBrl(s.valor_multa)}</span>` : '';
             return `<div class="empresa-card">
                 <div class="empresa-header">
                     <strong>${_esc(s.categoria_sancao || 'Sancao')}</strong>
-                    <span class="badge ${vigente ? 'badge-red' : 'badge-gray'}">${vigente ? 'Vigente' : 'Expirada'}</span>
+                    <span>
+                        <span class="badge ${origem === 'CNEP' ? 'badge-orange' : 'badge-red'}">${origem}</span>
+                        <span class="badge ${vigente ? 'badge-red' : 'badge-gray'}">${vigente ? 'Vigente' : 'Expirada'}</span>
+                    </span>
                 </div>
                 <div class="empresa-details">
                     <span>Inicio: ${inicio}</span>
                     <span>Fim: ${fim}</span>
                     ${s.orgao_sancionador ? `<span>Orgao: ${_esc(s.orgao_sancionador)}</span>` : ''}
                     ${s.fundamentacao_legal ? `<span>Base legal: ${_esc(s.fundamentacao_legal)}</span>` : ''}
+                    ${multa}
                 </div>
             </div>`;
         }).join('');
+        html += `<div class="disclaimer-box" style="margin-top:.8rem">
+            <p class="text-sm"><strong>O que sao essas sancoes?</strong></p>
+            <p class="text-sm" style="margin-top:.3rem"><strong>CEIS</strong> (Cadastro de Empresas Inidoneas e Suspensas): lista mantida pelo governo federal com empresas impedidas de firmar contratos com a administracao publica por praticas como fraude em licitacao ou descumprimento contratual.</p>
+            <p class="text-sm" style="margin-top:.3rem"><strong>CNEP</strong> (Cadastro Nacional de Empresas Punidas): registra empresas punidas com base na Lei Anticorrupcao (Lei 12.846/2013) por atos lesivos contra a administracao publica, como oferecer vantagem indevida a agentes publicos.</p>
+            <p class="text-sm" style="margin-top:.3rem">Empenhos realizados durante o periodo de vigencia de uma sancao sao destacados em <span class="badge badge-red" style="font-size:.65rem">vermelho</span>.</p>
+        </div>`;
         html += '</div>';
     }
 
@@ -794,34 +869,47 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
 
     // Empenhos recentes
     if (data.empenhos && data.empenhos.length) {
-        html += '<div class="dialog-section"><h4>Empenhos recentes neste municipio</h4>';
-        const empenhoRows = data.empenhos.map(e => {
-            const dt = _fmtDate(e.data_empenho);
-            const mod = e.modalidade_licitacao || '-';
-            const numLic = e.numero_licitacao || '';
-            const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
-            let modCell;
-            if (semLic) {
-                modCell = '<span class="badge badge-yellow">Sem licitacao</span>';
-            } else {
-                const licLabel = `${mod} (${numLic})`;
-                modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
-            }
-            return `<tr class="clickable-row" data-empenho-id="${e.id}">
-                <td>${dt}</td>
-                <td>${_esc(e.elemento_despesa || '-')}</td>
-                <td class="text-right">${_shortBrl(e.valor_empenhado)}</td>
-                <td class="text-right">${_shortBrl(e.valor_pago)}</td>
-                <td>${modCell}</td>
-            </tr>`;
-        }).join('');
-        html += `<div class="tbl-wrap"><table class="dialog-table">
-            <thead><tr><th>Data</th><th>Elemento</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th><th>Modalidade</th></tr></thead>
-            <tbody>${empenhoRows}</tbody>
-        </table></div>`;
+        // Build sanction date ranges for highlighting
+        const sancaoRanges = (data.sancoes || []).map(s => ({
+            inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
+            fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null
+        })).filter(r => r.inicio);
+
+        // Municipality selector
+        const munOptions = (data.municipios_ativos || []);
+        let munSelect = '';
+        if (munOptions.length > 1) {
+            const opts = munOptions.map(m => {
+                const sel = m.municipio === _currentMunicipio ? ' selected' : '';
+                return `<option value="${_esc(m.municipio)}"${sel}>${_esc(m.municipio)} (${_shortBrl(m.total_pago)})</option>`;
+            }).join('');
+            munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}">${opts}</select>`;
+        }
+
+        html += `<div class="dialog-section"><h4>Empenhos recentes ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
+        html += _buildEmpenhoTable(data.empenhos, sancaoRanges);
         if (data.empenhos.length >= 50) {
             html += '<p class="text-sm text-muted">Mostrando os 50 empenhos mais recentes.</p>';
         }
+        html += '</div>';
+    }
+
+    // Empenhos durante sancao em outros municipios
+    if (data.empenhos_sancao_outros && data.empenhos_sancao_outros.length) {
+        const totalOutros = data.empenhos_sancao_outros.reduce((s, m) => s + m.total_pago, 0);
+        html += '<div class="dialog-section"><h4>Pagamentos durante sancao em outros municipios</h4>';
+        html += `<p class="text-sm text-muted" style="margin-bottom:.5rem">Total: ${_shortBrl(totalOutros)} em ${data.empenhos_sancao_outros.length} municipio(s)</p>`;
+        const outrosRows = data.empenhos_sancao_outros.map(m =>
+            `<tr class="row-sancao clickable-row" data-switch-mun="${_esc(m.municipio)}" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}">
+                <td>${_esc(m.municipio)}</td>
+                <td class="text-right">${m.qtd_empenhos}</td>
+                <td class="text-right">${_shortBrl(m.total_pago)}</td>
+            </tr>`
+        ).join('');
+        html += `<div class="tbl-wrap"><table class="dialog-table">
+            <thead><tr><th>Municipio</th><th class="text-right">Empenhos</th><th class="text-right">Total pago</th></tr></thead>
+            <tbody>${outrosRows}</tbody>
+        </table></div>`;
         html += '</div>';
     }
 
@@ -1056,19 +1144,28 @@ function buildServidoresPanel(data) {
         if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;
         if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Recebe Bolsa Familia</span>';
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
+        const socioSancionado = _val(r, cols, 'flag_socio_sancionado');
+        if (socioSancionado) badges += '<span class="badge badge-red">Socio de empresa sancionada (CEIS/CNEP)</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
 
         const cpf6 = _esc(_val(r, cols, 'cpf_digitos_6') || '');
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
-        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? 'class="clickable-row"' : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
+        const rowClass = socioSancionado ? 'clickable-row row-sancao' : 'clickable-row';
+        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
+
+    const hasSancaoServRows = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado'));
+    const servLegend = hasSancaoServRows
+        ? '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: servidor eh socio de empresa com sancao vigente no CEIS ou CNEP.</p>'
+        : '';
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title">Servidores com sinais de atencao</h3>
             <p class="text-muted text-sm">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude — por padrao esses cargos ficam ocultos.</p>
+            ${servLegend}
         </div>
         <label class="toggle-row">
             <input type="checkbox" data-hide-medicos checked>

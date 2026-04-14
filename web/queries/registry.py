@@ -203,27 +203,37 @@ LIMIT 500
 
 # ── Fornecedores Irregulares ─────────────────────────────────────
 
-_reg("Q65", "Fornecedor sancionado (CEIS) recebendo",
-     "Empresa com sancao ativa no CEIS recebendo pagamento do municipio",
+_reg("Q65", "Fornecedor sancionado (CEIS/CNEP) recebendo",
+     "Empresas que receberam pagamentos durante periodo de sancao vigente. Unifica os cadastros CEIS (empresas inidoneas/suspensas) e CNEP (punidas pela Lei Anticorrupcao).",
      "Fornecedores Irregulares",
      """
-SELECT cs.nome_sancionado, cs.cpf_cnpj_sancionado,
-       cs.categoria_sancao, cs.dt_inicio_sancao, cs.dt_final_sancao,
+SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
+       san.categoria_sancao, san.origem,
+       san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
        SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-FROM ceis_sancao cs
-JOIN tce_pb_despesa d ON LEFT(cs.cpf_cnpj_sancionado, 8) = d.cnpj_basico
+FROM (
+    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
+           dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem
+    FROM ceis_sancao
+    UNION ALL
+    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
+           dt_inicio_sancao, dt_final_sancao, 'CNEP' AS origem
+    FROM cnep_sancao
+) san
+JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL
-  AND d.data_empenho >= cs.dt_inicio_sancao
-  AND (cs.dt_final_sancao IS NULL OR d.data_empenho <= cs.dt_final_sancao)
+  AND d.data_empenho >= san.dt_inicio_sancao
+  AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
   AND d.valor_pago > 0
   AND d.municipio = %(municipio)s
-GROUP BY cs.nome_sancionado, cs.cpf_cnpj_sancionado,
-         cs.categoria_sancao, cs.dt_inicio_sancao, cs.dt_final_sancao,
+GROUP BY san.nome_sancionado, san.cpf_cnpj_sancionado,
+         san.categoria_sancao, san.origem,
+         san.dt_inicio_sancao, san.dt_final_sancao,
          d.municipio, d.nome_credor
 ORDER BY total_pago DESC
 LIMIT 500
-""", timeout=15)
+""", timeout=30)
 
 
 _reg("Q67", "Fornecedor com divida PGFN recebendo",

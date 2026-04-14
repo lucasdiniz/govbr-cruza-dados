@@ -45,8 +45,22 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        est.cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
+       COALESCE(meg.flag_cnep_vigente, FALSE) AS flag_cnep,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
+       EXISTS(
+           SELECT 1 FROM tce_pb_despesa d2
+           JOIN (
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               UNION ALL
+               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+           ) san ON san.cb = d2.cnpj_basico
+           WHERE d2.cnpj_basico = tf.cnpj_basico
+             AND d2.municipio = %(municipio)s
+             AND d2.valor_pago > 0
+             AND d2.data_empenho >= san.dt_inicio_sancao
+             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+       ) AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -56,7 +70,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY (COALESCE(meg.flag_ceis_vigente, FALSE)::int + COALESCE(meg.flag_divida_pgfn, FALSE)::int + COALESCE(meg.flag_inativa, FALSE)::int) DESC, tf.total_pago DESC
+ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK = """
@@ -85,11 +99,30 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        ) AS flag_ceis,
        EXISTS(
            SELECT 1
+           FROM cnep_sancao cn
+           WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
+       ) AS flag_cnep,
+       EXISTS(
+           SELECT 1
            FROM pgfn_divida pg
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = tf.cnpj_basico
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       EXISTS(
+           SELECT 1 FROM tce_pb_despesa d2
+           JOIN (
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               UNION ALL
+               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+           ) san ON san.cb = d2.cnpj_basico
+           WHERE d2.cnpj_basico = tf.cnpj_basico
+             AND d2.municipio = %(municipio)s
+             AND d2.valor_pago > 0
+             AND d2.data_empenho >= san.dt_inicio_sancao
+             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+       ) AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -100,7 +133,7 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY (flag_ceis::int + flag_pgfn::int + flag_inativa::int) DESC, tf.total_pago DESC
+ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
@@ -109,8 +142,10 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        SUM(d.valor_pago) AS total_pago,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
+       FALSE AS flag_cnep,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
+       FALSE AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -141,11 +176,28 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_ceis,
        EXISTS(
+           SELECT 1 FROM cnep_sancao cn
+           WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
+       ) AS flag_cnep,
+       EXISTS(
            SELECT 1 FROM pgfn_divida pg
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = pc.cnpj_basico_fornecedor
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       EXISTS(
+           SELECT 1 FROM pncp_contrato pc2
+           JOIN (
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               UNION ALL
+               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+           ) san ON san.cb = pc2.cnpj_basico_fornecedor
+           WHERE pc2.cnpj_basico_fornecedor = pc.cnpj_basico_fornecedor
+             AND pc2.municipio_nome = %(municipio)s AND pc2.uf = %(uf)s
+             AND pc2.data_assinatura >= san.dt_inicio_sancao
+             AND (san.dt_final_sancao IS NULL OR pc2.data_assinatura <= san.dt_final_sancao)
+       ) AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -160,21 +212,32 @@ WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
   AND pc.cnpj_basico_fornecedor IS NOT NULL
 GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
          e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY (flag_ceis::int + flag_pgfn::int + flag_inativa::int) DESC, total_contratado DESC
+ORDER BY flag_recebeu_durante_sancao DESC, total_contratado DESC
 LIMIT 200
 """
 
 TOP_SERVIDORES_RISCO = """
+WITH cnpjs_sancionados AS (
+    SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) AS cb FROM ceis_sancao
+    WHERE dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE
+    UNION
+    SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) FROM cnep_sancao
+    WHERE dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE
+)
 SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
        qtd_empresas_socio, cnpjs_socio,
        flag_conflito_interesses, flag_multi_empresa,
        flag_bolsa_familia, flag_duplo_vinculo_estado,
        flag_alto_salario_socio,
-       risco_score
+       risco_score,
+       EXISTS(
+           SELECT 1 FROM unnest(cnpjs_socio) AS cs(cnpj)
+           JOIN cnpjs_sancionados san ON san.cb = TRIM(cs.cnpj)
+       ) AS flag_socio_sancionado
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
-ORDER BY risco_score DESC
+ORDER BY flag_socio_sancionado DESC, risco_score DESC
 LIMIT 200
 """
 

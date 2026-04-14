@@ -674,15 +674,91 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 """, (cnpj_basico,))
                 san_cols = [d[0] for d in cur.description]
                 san_rows = cur.fetchall()
-                if san_rows:
-                    sancoes = []
-                    for row in san_rows:
-                        r = _row_to_dict(san_cols, row)
-                        for k, v in r.items():
-                            if hasattr(v, 'isoformat'):
-                                r[k] = v.isoformat()
-                        sancoes.append(r)
+                sancoes = []
+                for row in san_rows:
+                    r = _row_to_dict(san_cols, row)
+                    r["origem"] = "CEIS"
+                    for k, v in r.items():
+                        if hasattr(v, 'isoformat'):
+                            r[k] = v.isoformat()
+                    sancoes.append(r)
+
+                # Sancoes CNEP
+                cur.execute("""
+                    SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+                           orgao_sancionador, fundamentacao_legal, valor_multa
+                    FROM cnep_sancao
+                    WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
+                    ORDER BY dt_inicio_sancao DESC
+                """, (cnpj_basico,))
+                cnep_cols = [d[0] for d in cur.description]
+                cnep_rows = cur.fetchall()
+                for row in cnep_rows:
+                    r = _row_to_dict(cnep_cols, row)
+                    r["origem"] = "CNEP"
+                    for k, v in r.items():
+                        if hasattr(v, 'as_tuple'):
+                            r[k] = float(v)
+                        elif hasattr(v, 'isoformat'):
+                            r[k] = v.isoformat()
+                    sancoes.append(r)
+
+                if sancoes:
                     result["sancoes"] = sancoes
+
+                    # Empenhos durante sancao em OUTROS municipios
+                    cur.execute("""
+                        SELECT d.municipio, COUNT(*) AS qtd_empenhos,
+                               SUM(d.valor_pago) AS total_pago
+                        FROM tce_pb_despesa d
+                        JOIN (
+                            SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                                   dt_inicio_sancao, dt_final_sancao
+                            FROM ceis_sancao
+                            UNION ALL
+                            SELECT LEFT(cpf_cnpj_sancionado, 8),
+                                   dt_inicio_sancao, dt_final_sancao
+                            FROM cnep_sancao
+                        ) san ON san.cb = d.cnpj_basico
+                        WHERE d.cnpj_basico = %s
+                          AND d.municipio != %s
+                          AND d.valor_pago > 0
+                          AND d.data_empenho >= san.dt_inicio_sancao
+                          AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+                        GROUP BY d.municipio
+                        ORDER BY total_pago DESC
+                    """, (cnpj_basico, municipio))
+                    es_cols = [d2[0] for d2 in cur.description]
+                    es_rows = cur.fetchall()
+                    if es_rows:
+                        outros = []
+                        for row in es_rows:
+                            r = _row_to_dict(es_cols, row)
+                            for k, v in r.items():
+                                if hasattr(v, 'as_tuple'):
+                                    r[k] = float(v)
+                            outros.append(r)
+                        result["empenhos_sancao_outros"] = outros
+
+                # Municipios onde o fornecedor recebeu pagamentos
+                cur.execute("""
+                    SELECT municipio, SUM(valor_pago) AS total_pago
+                    FROM tce_pb_despesa
+                    WHERE cnpj_basico = %s AND valor_pago > 0
+                    GROUP BY municipio
+                    ORDER BY total_pago DESC
+                """, (cnpj_basico,))
+                mun_cols = [d2[0] for d2 in cur.description]
+                mun_rows = cur.fetchall()
+                if mun_rows and len(mun_rows) > 1:
+                    mun_list = []
+                    for row in mun_rows:
+                        r = _row_to_dict(mun_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                        mun_list.append(r)
+                    result["municipios_ativos"] = mun_list
 
                 # Situacao cadastral (inatividade)
                 cur.execute("""

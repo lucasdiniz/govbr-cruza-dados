@@ -426,6 +426,7 @@ tr:hover { background: #fbfdff; }
     margin-bottom: 0.22rem;
 }
 .badge-red { background: #fef2f2; color: var(--red); border: 1px solid #fecaca; }
+.badge-orange { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
 .badge-yellow { background: #fff7ed; color: var(--yellow); border: 1px solid #fed7aa; }
 .badge-green { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
 .badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
@@ -591,6 +592,9 @@ tr:hover { background: #fbfdff; }
 /* Clickable rows */
 .clickable-row { cursor: pointer; }
 .clickable-row:hover { background: var(--surface-alt, #f8f9fa); }
+.row-sancao { background: #fef2f2; }
+.row-sancao:hover { background: #fee2e2; }
+.mun-selector { font-size: .85rem; padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); vertical-align: middle; max-width: 260px; }
 
 /* Empresa dialog */
 .empresa-dialog {
