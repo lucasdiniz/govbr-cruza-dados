@@ -533,8 +533,8 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                         # Prefixed but not matching: skip
                         pass
                     else:
-                        # Fallback: unprefixed when requesting periodo
-                        if qid not in result:
+                        # Fallback: only for queries without dated variants (TOP_SERVIDORES)
+                        if periodo and qid == "TOP_SERVIDORES" and qid not in result:
                             result[qid] = entry
     except Exception:
         pass

@@ -139,16 +139,8 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
     // Update hero/insight when date-filtered
     if (_isDateFiltered()) {
-        if (batchData.PERFIL && batchData.PERFIL.rows && batchData.PERFIL.rows.length) {
-            const cols = batchData.PERFIL.columns;
-            const row = batchData.PERFIL.rows[0];
-            const perfil = {};
-            cols.forEach((c, i) => perfil[c] = row[i]);
-            _updateHeroStats(perfil);
-            _updateInsightCards(perfil);
-        } else {
-            await _refreshPerfilLive(municipio, uf);
-        }
+        // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
+        await _refreshPerfilLive(municipio, uf);
     }
 
     // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
