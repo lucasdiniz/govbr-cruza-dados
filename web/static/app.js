@@ -1492,7 +1492,7 @@ function buildServidoresPanel(data) {
         }
         if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += '<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>';
         if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;
-        if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Recebe Bolsa Familia</span>';
+        if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Bolsa Familia durante vinculo</span>';
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
         const socioSancionado = _val(r, cols, 'flag_socio_sancionado');
         const socioInidoneidade = _val(r, cols, 'flag_socio_inidoneidade');

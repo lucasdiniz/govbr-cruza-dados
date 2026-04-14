@@ -509,15 +509,27 @@ JOIN mv_servidor_pb_base srv ON srv.cpf_digitos_6 = se.cpf_digitos_6
     AND d.municipio = ANY(srv.municipios)
 GROUP BY se.cpf_digitos_6, se.nome_upper;
 
--- Step 4: Bolsa Família match (usa idx_bf_cpf_nome composto)
+-- Step 4: Bolsa Família match (apenas durante vínculo ativo)
 DROP TABLE IF EXISTS _tmp_bf;
 CREATE TABLE _tmp_bf AS
+WITH vinculo AS (
+    SELECT cpf_digitos_6, nome_upper,
+           COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
+           MAX(ano_mes) AS fim
+    FROM tce_pb_servidor
+    WHERE cpf_digitos_6 IS NOT NULL AND nome_upper IS NOT NULL
+      AND ano_mes >= '2022-01'
+    GROUP BY cpf_digitos_6, nome_upper
+)
 SELECT srv.cpf_digitos_6,
        srv.nome_upper,
        SUM(bf.valor_parcela) AS total_bf
 FROM mv_servidor_pb_base srv
+JOIN vinculo v ON v.cpf_digitos_6 = srv.cpf_digitos_6 AND v.nome_upper = srv.nome_upper
 JOIN bolsa_familia bf ON bf.cpf_digitos = srv.cpf_digitos_6
     AND UPPER(TRIM(bf.nm_favorecido)) = srv.nome_upper
+    AND bf.mes_competencia >= v.inicio
+    AND bf.mes_competencia <= v.fim
 GROUP BY srv.cpf_digitos_6, srv.nome_upper;
 
 -- Step 5: Duplo vínculo estado (servidor municipal + credor estadual PF)

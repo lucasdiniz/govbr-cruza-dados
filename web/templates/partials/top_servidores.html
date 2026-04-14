@@ -66,7 +66,7 @@
                             {% if s.flag_multi_empresa %}
                                 <span class="badge badge-yellow">Socio de {{ s.qtd_empresas_socio|default('varias') }} empresas</span>
                             {% endif %}
-                            {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Recebe Bolsa Familia</span>{% endif %}
+                            {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Bolsa Familia durante vinculo</span>{% endif %}
                             {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow">Salario alto + vinculo societario</span>{% endif %}
                             {% if s.flag_socio_inidoneidade %}<span class="badge badge-red">Socio de empresa com Inidoneidade (CEIS)</span>
                             {% elif s.flag_socio_sancionado %}<span class="badge badge-orange">Socio de empresa sancionada (CEIS/CNEP)</span>{% endif %}
