@@ -9,7 +9,12 @@
                 ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.
             </p>
             {% if servidores|selectattr('flag_socio_sancionado')|list %}
-            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: servidor eh socio de empresa com sancao vigente no CEIS ou CNEP.</p>
+            {% set has_inid_serv = servidores|selectattr('flag_socio_inidoneidade')|list %}
+            {% if has_inid_serv %}
+            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: socio de empresa com Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: socio de empresa com Impedimento ou sancao CNEP.</p>
+            {% else %}
+            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: servidor eh socio de empresa com sancao vigente (Impedimento ou CNEP).</p>
+            {% endif %}
             {% endif %}
         </div>
     </div>
@@ -41,7 +46,7 @@
                     {% set nome_up = s.nome_upper|default('')|string %}
                     {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
                     {% if cpf6 and nome_up %}
-                    <tr class="clickable-row{% if s.flag_socio_sancionado %} row-sancao{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    <tr class="clickable-row{% if s.flag_socio_sancionado %}{% if s.flag_socio_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
                     {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
@@ -62,7 +67,8 @@
                             {% endif %}
                             {% if s.flag_bolsa_familia %}<span class="badge badge-yellow">Recebe Bolsa Familia</span>{% endif %}
                             {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow">Salario alto + vinculo societario</span>{% endif %}
-                            {% if s.flag_socio_sancionado %}<span class="badge badge-red">Socio de empresa sancionada (CEIS/CNEP)</span>{% endif %}
+                            {% if s.flag_socio_inidoneidade %}<span class="badge badge-red">Socio de empresa com Inidoneidade (CEIS)</span>
+                            {% elif s.flag_socio_sancionado %}<span class="badge badge-orange">Socio de empresa sancionada (CEIS/CNEP)</span>{% endif %}
                             {% if not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio and not s.flag_socio_sancionado %}
                                 <span class="text-sm text-muted">Combinacao de indicadores elevada</span>
                             {% endif %}

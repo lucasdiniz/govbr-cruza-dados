@@ -438,20 +438,26 @@ function buildFornecedoresPanel(data) {
         const situacao = _esc(_val(r, cols, 'desc_situacao') || '-');
         const sitClass = situacao === 'Ativa' ? '' : (situacao === '-' ? '' : 'badge badge-gray');
         let badges = '';
-        if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-red">Impedimento de contratar - CEIS</span>';
-        if (_val(r, cols, 'flag_cnep')) badges += '<span class="badge badge-red">Impedimento de contratar - CNEP</span>';
+        const isInidoneidade = _val(r, cols, 'flag_inidoneidade');
+        if (isInidoneidade) badges += '<span class="badge badge-red">Inidoneidade - CEIS</span>';
+        else if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-orange">Impedimento - CEIS</span>';
+        if (_val(r, cols, 'flag_cnep')) badges += '<span class="badge badge-orange">Sancao anticorrupcao - CNEP</span>';
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
         const duranteSancao = _val(r, cols, 'flag_recebeu_durante_sancao');
-        const rowClass = duranteSancao ? 'clickable-row row-sancao' : 'clickable-row';
+        const rowClass = duranteSancao ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
         return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
-    const fornLegend = hasSancaoRows
-        ? '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: fornecedor recebeu pagamentos durante periodo de sancao ativa (CEIS/CNEP).</p>'
-        : '';
+    const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
+    let fornLegend = '';
+    if (hasSancaoRows && hasInidoneidade) {
+        fornLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: recebeu durante Declaracao de Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: recebeu durante Impedimento ou sancao CNEP (restrita ao ente sancionador).</p>';
+    } else if (hasSancaoRows) {
+        fornLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: fornecedor recebeu pagamentos durante periodo de Impedimento ou sancao CNEP (restrita ao ente sancionador).</p>';
+    }
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
@@ -833,11 +839,15 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             const sanList = sancoes[c] || [];
             const vigentes = sanList.filter(s => !s.dt_final_sancao || s.dt_final_sancao >= new Date().toISOString().slice(0, 10));
             if (vigentes.length) {
-                const tipos = [...new Set(vigentes.map(s => s.fonte))];
-                tipos.forEach(t => {
-                    const cls = t === 'CEIS' ? 'badge-red' : 'badge-orange';
-                    badges += `<span class="badge ${cls}">Sancionada - ${t}</span>`;
-                });
+                const hasInid = vigentes.some(s => /inidone/i.test(s.categoria_sancao || ''));
+                if (hasInid) {
+                    badges += '<span class="badge badge-red">Inidoneidade (bloqueio nacional)</span>';
+                } else {
+                    const tipos = [...new Set(vigentes.map(s => s.fonte))];
+                    tipos.forEach(t => {
+                        badges += `<span class="badge badge-orange">Sancionada - ${t}</span>`;
+                    });
+                }
             }
             // PGFN badge
             const pgfnList = pgfn[c] || [];
@@ -1019,12 +1029,21 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             const vigente = !s.dt_final_sancao || new Date(s.dt_final_sancao) >= new Date();
             const origem = s.origem || 'CEIS';
             const multa = s.valor_multa ? `<span>Multa: ${_shortBrl(s.valor_multa)}</span>` : '';
+            const categoria = s.categoria_sancao || 'Sancao';
+            const isInid = /inidone/i.test(categoria);
+            const esfera = s.esfera_orgao_sancionador || '';
+            const abrangencia = isInid
+                ? '<span class="badge badge-red">Bloqueio nacional</span>'
+                : esfera
+                    ? `<span class="badge badge-orange">Restrito: ${_esc(esfera)}</span>`
+                    : '<span class="badge badge-orange">Restrito ao ente sancionador</span>';
             return `<div class="empresa-card">
                 <div class="empresa-header">
-                    <strong>${_esc(s.categoria_sancao || 'Sancao')}</strong>
+                    <strong>${_esc(categoria)}</strong>
                     <span>
-                        <span class="badge ${origem === 'CNEP' ? 'badge-orange' : 'badge-red'}">${origem}</span>
+                        <span class="badge ${origem === 'CNEP' ? 'badge-orange' : (isInid ? 'badge-red' : 'badge-orange')}">${origem}</span>
                         <span class="badge ${vigente ? 'badge-red' : 'badge-gray'}">${vigente ? 'Vigente' : 'Expirada'}</span>
+                        ${abrangencia}
                     </span>
                 </div>
                 <div class="empresa-details">
@@ -1038,9 +1057,10 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         }).join('');
         html += `<div class="disclaimer-box" style="margin-top:.8rem">
             <p class="text-sm"><strong>O que sao essas sancoes?</strong></p>
-            <p class="text-sm" style="margin-top:.3rem"><strong>CEIS</strong> (Cadastro de Empresas Inidoneas e Suspensas): lista mantida pelo governo federal com empresas impedidas de firmar contratos com a administracao publica por praticas como fraude em licitacao ou descumprimento contratual.</p>
-            <p class="text-sm" style="margin-top:.3rem"><strong>CNEP</strong> (Cadastro Nacional de Empresas Punidas): registra empresas punidas com base na Lei Anticorrupcao (Lei 12.846/2013) por atos lesivos contra a administracao publica, como oferecer vantagem indevida a agentes publicos.</p>
-            <p class="text-sm" style="margin-top:.3rem">Empenhos realizados durante o periodo de vigencia de uma sancao sao destacados em <span class="badge badge-red" style="font-size:.65rem">vermelho</span>.</p>
+            <p class="text-sm" style="margin-top:.3rem"><strong>CEIS</strong> (Cadastro de Empresas Inidoneas e Suspensas): lista mantida pelo governo federal com empresas impedidas ou inidoneas.</p>
+            <p class="text-sm" style="margin-top:.3rem">&#8226; <strong>Declaracao de Inidoneidade</strong> (Art. 156, IV — Lei 14.133): bloqueio <strong>nacional</strong> — proibe contratacao com qualquer orgao em qualquer esfera.</p>
+            <p class="text-sm" style="margin-top:.3rem">&#8226; <strong>Impedimento de Licitar</strong> (Art. 156, III — Lei 14.133): bloqueio <strong>restrito ao ente federativo</strong> que aplicou a sancao. Outros entes podem contratar legalmente.</p>
+            <p class="text-sm" style="margin-top:.3rem"><strong>CNEP</strong> (Cadastro Nacional de Empresas Punidas): registra empresas punidas com base na Lei Anticorrupcao (Lei 12.846/2013). Sancoes incluem multa, publicacao extraordinaria e proibicao de incentivos publicos.</p>
         </div>`;
         html += '</div>';
     }
@@ -1343,21 +1363,27 @@ function buildServidoresPanel(data) {
         if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Recebe Bolsa Familia</span>';
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
         const socioSancionado = _val(r, cols, 'flag_socio_sancionado');
-        if (socioSancionado) badges += '<span class="badge badge-red">Socio de empresa sancionada (CEIS/CNEP)</span>';
+        const socioInidoneidade = _val(r, cols, 'flag_socio_inidoneidade');
+        if (socioInidoneidade) badges += '<span class="badge badge-red">Socio de empresa com Inidoneidade (CEIS)</span>';
+        else if (socioSancionado) badges += '<span class="badge badge-orange">Socio de empresa sancionada (CEIS/CNEP)</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
 
         const cpf6 = _esc(_val(r, cols, 'cpf_digitos_6') || '');
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
-        const rowClass = socioSancionado ? 'clickable-row row-sancao' : 'clickable-row';
+        const rowClass = socioSancionado ? (socioInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const hasSancaoServRows = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado'));
-    const servLegend = hasSancaoServRows
-        ? '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: servidor eh socio de empresa com sancao vigente no CEIS ou CNEP.</p>'
-        : '';
+    const hasInidServRows = data.rows.some(r => _val(r, data.columns, 'flag_socio_inidoneidade'));
+    let servLegend = '';
+    if (hasSancaoServRows && hasInidServRows) {
+        servLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: socio de empresa com Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: socio de empresa com Impedimento ou sancao CNEP.</p>';
+    } else if (hasSancaoServRows) {
+        servLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: servidor eh socio de empresa com sancao vigente (Impedimento ou CNEP).</p>';
+    }
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>

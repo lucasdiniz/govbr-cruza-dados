@@ -594,6 +594,8 @@ tr:hover { background: #fbfdff; }
 .clickable-row:hover { background: var(--surface-alt, #f8f9fa); }
 .row-sancao { background: #fef2f2; }
 .row-sancao:hover { background: #fee2e2; }
+.row-sancao-leve { background: #fffbeb; }
+.row-sancao-leve:hover { background: #fef3c7; }
 .mun-selector { font-size: .85rem; padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); vertical-align: middle; max-width: 260px; }
 
 /* Empresa dialog */

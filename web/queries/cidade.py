@@ -75,6 +75,12 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_cnep_vigente, FALSE) AS flag_cnep,
+       EXISTS(
+           SELECT 1 FROM ceis_sancao cs
+           WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
+             AND cs.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_inidoneidade,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
        EXISTS(
@@ -133,6 +139,12 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
        EXISTS(
+           SELECT 1 FROM ceis_sancao cs2
+           WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
+             AND cs2.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_inidoneidade,
+       EXISTS(
            SELECT 1
            FROM pgfn_divida pg
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = tf.cnpj_basico
@@ -172,6 +184,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
        FALSE AS flag_cnep,
+       FALSE AS flag_inidoneidade,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
        FALSE AS flag_recebeu_durante_sancao,
@@ -215,6 +228,12 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_cnep_vigente, FALSE) AS flag_cnep,
+       EXISTS(
+           SELECT 1 FROM ceis_sancao cs
+           WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
+             AND cs.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_inidoneidade,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
        EXISTS(
@@ -273,6 +292,12 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
        EXISTS(
+           SELECT 1 FROM ceis_sancao cs2
+           WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
+             AND cs2.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_inidoneidade,
+       EXISTS(
            SELECT 1 FROM pgfn_divida pg
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = tf.cnpj_basico
              AND LENGTH(pg.cpf_cnpj_norm) = 14
@@ -312,6 +337,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
        FALSE AS flag_cnep,
+       FALSE AS flag_inidoneidade,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
        FALSE AS flag_recebeu_durante_sancao,
@@ -350,6 +376,12 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
            WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
+       EXISTS(
+           SELECT 1 FROM ceis_sancao cs2
+           WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
+             AND cs2.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_inidoneidade,
        EXISTS(
            SELECT 1 FROM pgfn_divida pg
            WHERE LEFT(pg.cpf_cnpj_norm, 8) = pc.cnpj_basico_fornecedor
@@ -393,6 +425,11 @@ WITH cnpjs_sancionados AS (
     UNION
     SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) FROM cnep_sancao
     WHERE dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE
+),
+cnpjs_inidoneidade AS (
+    SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) AS cb FROM ceis_sancao
+    WHERE (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE)
+      AND categoria_sancao ILIKE '%%inidone%%'
 )
 SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
@@ -404,7 +441,11 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
        EXISTS(
            SELECT 1 FROM unnest(cnpjs_socio) AS cs(cnpj)
            JOIN cnpjs_sancionados san ON san.cb = TRIM(cs.cnpj)
-       ) AS flag_socio_sancionado
+       ) AS flag_socio_sancionado,
+       EXISTS(
+           SELECT 1 FROM unnest(cnpjs_socio) AS cs(cnpj)
+           JOIN cnpjs_inidoneidade ini ON ini.cb = TRIM(cs.cnpj)
+       ) AS flag_socio_inidoneidade
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
 ORDER BY flag_socio_sancionado DESC, risco_score DESC
