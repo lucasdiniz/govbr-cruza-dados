@@ -217,15 +217,15 @@ jobs:
             exit 1
           fi
 
-      # ── SQL only (schema + indices + views) ──
+      # ── SQL only (indices + normalization + views — NO schema drop/create) ──
       - name: "ETL: SQL only"
         if: inputs.etl_phase == 'sql'
         run: |
           set -e
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
-          echo "=== Applying SQL changes ==="
-          python -m etl.01_schema 2>&1 || true
+          echo "=== Applying SQL changes (indices, normalization, views) ==="
+          echo "NOTA: etl.01_schema NÃO é executado aqui — ele faz DROP+CREATE e apagaria dados existentes"
           python -m etl.10_indices 2>&1 || true
           python -m etl.15_normalizar 2>&1 || true
           python -m etl.21_views 2>&1 || true
