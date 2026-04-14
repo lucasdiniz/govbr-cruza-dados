@@ -160,6 +160,10 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_cnpj_basico_digits_j
     WHERE tipo_pessoa LIKE '%jur%'
       AND cpf_cnpj IS NOT NULL;
 
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pgfn_cnpj_basico_norm
+    ON pgfn_divida (LEFT(cpf_cnpj_norm, 8))
+    WHERE LENGTH(cpf_cnpj_norm) = 14;
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tse_receita_uf_doador_left8
     ON tse_receita_candidato (sg_uf, LEFT(cpf_cnpj_doador, 8))
     WHERE cpf_cnpj_doador IS NOT NULL

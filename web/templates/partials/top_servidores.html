@@ -6,17 +6,12 @@
             <p class="text-muted text-sm">
                 Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos:
                 vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social
-                ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude
-                — por padrao esses cargos ficam ocultos.
+                ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.
             </p>
             {% if servidores|selectattr('flag_socio_sancionado')|list %}
             <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque vermelho: servidor eh socio de empresa com sancao vigente no CEIS ou CNEP.</p>
             {% endif %}
         </div>
-        <label class="toggle-row">
-            <input type="checkbox" data-hide-medicos checked>
-            <span>Ocultar medicos</span>
-        </label>
     </div>
 
     <div class="table-shell js-data-table" data-page-size="10">

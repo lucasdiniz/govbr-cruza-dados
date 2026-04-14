@@ -148,7 +148,6 @@ async function bootstrapCityReport(municipio, uf) {
             const servData = batchData.TOP_SERVIDORES;
             servPanel.innerHTML = buildServidoresPanel(servData);
             initDataTables(servPanel);
-            initInteractiveToggles(servPanel);
             initClickableRows(servPanel);
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
@@ -442,6 +441,7 @@ function _situacaoLabel(sit) {
 }
 
 // ── Dialog navigation stack ─────────────────────────────────────
+let _currentMunicipio = '';
 const _dialogStack = []; // [{title, html}]
 
 function _dialogPush() {
@@ -557,8 +557,8 @@ function _cachedPost(url, key, payload) {
     return promise;
 }
 
-function _fetchServidorDetails(cpf6, nome, cnpjs) {
-    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}`, { cpf6, nome, cnpjs });
+function _fetchServidorDetails(cpf6, nome, cnpjs, municipio) {
+    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}`, { cpf6, nome, cnpjs, municipio });
 }
 
 function _fetchFornecedorDetails(cnpjBasico, municipio) {
@@ -598,13 +598,14 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
     </table></div>`;
 }
 
-function _renderEmpresaCard(e, cnpjBasico) {
+function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     if (!e) {
         return `<div class="empresa-card empresa-missing">
             <div class="empresa-header">
                 <strong class="text-muted">Empresa nao encontrada na base RFB</strong>
                 <code>${_formatCnpj(cnpjBasico, null)}</code>
             </div>
+            ${extraBadges ? `<div class="empresa-details" style="margin-top:.3rem">${extraBadges}</div>` : ''}
         </div>`;
     }
     const cnpjFmt = _formatCnpj(e.cnpj_basico, e.cnpj_completo);
@@ -628,6 +629,7 @@ function _renderEmpresaCard(e, cnpjBasico) {
             <span>Sede: ${_esc(local)}</span>
             ${e.cnae_principal ? `<span>CNAE: ${_esc(e.cnae_principal)}</span>` : ''}
         </div>
+        ${extraBadges ? `<div style="margin-top:.35rem">${extraBadges}</div>` : ''}
     </div>`;
 }
 
@@ -642,42 +644,35 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     if (!dialog.open) dialog.showModal();
     document.body.classList.add('dialog-open');
 
-    const data = await _fetchServidorDetails(cpf6, nome, cnpjs);
+    const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
+    const sancoes = data.empresa_sancoes || {};
+    const pgfn = data.empresa_pgfn || {};
+    const empMap = data.empresa_empenhos || {};
     let html = '';
 
-    // Bolsa Família
-    if (data.bolsa_familia && data.bolsa_familia.length) {
-        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
-        const bf = data.bolsa_familia;
-        const ultimo = bf[0];
-        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
-        html += `<div class="empresa-card">
-            <div class="empresa-header">
-                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
-                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
-            </div>
-            <div class="empresa-details">
-                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
-                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
-            </div>
-        </div>`;
-        html += '</div>';
-    }
+    // Stats grid
+    const vinculos = data.vinculos || [];
+    const empresas = data.empresas || [];
+    const bf = data.bolsa_familia || [];
+    const qtdEmpresas = cnpjs ? cnpjs.length : 0;
+    const qtdSancionadas = Object.keys(sancoes).length;
+    const qtdPgfn = Object.keys(pgfn).length;
+    const totalPago = Object.values(empMap).reduce((s, e) => s + (e.total_pago || 0), 0);
+    const maiorSalario = vinculos.reduce((m, v) => Math.max(m, v.maior_salario || 0), 0);
 
-    // Empresas vinculadas (clickable)
-    if (cnpjs && cnpjs.length) {
-        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
-        const empresas = data.empresas || [];
-        const empresaMap = {};
-        for (const e of empresas) empresaMap[e.cnpj_basico] = e;
-        html += cnpjs.map(c => _renderEmpresaCard(empresaMap[c], c)).join('');
-        html += '</div>';
-    }
+    html += '<div class="stats-grid">';
+    if (maiorSalario > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(maiorSalario)}</span><span class="stat-label">Maior salario</span></div>`;
+    html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">Empresas vinculadas</span></div>`;
+    if (totalPago > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (${_esc(_currentMunicipio)})</span></div>`;
+    if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">Empresas sancionadas</span></div>`;
+    if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">Empresas c/ divida PGFN</span></div>`;
+    if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
+    html += '</div>';
 
-    // Vínculos como servidor (last)
-    if (data.vinculos && data.vinculos.length) {
+    // Vinculos como servidor (first)
+    if (vinculos.length) {
         html += '<div class="dialog-section"><h4>Vinculos como servidor</h4>';
-        html += data.vinculos.map(v => {
+        html += vinculos.map(v => {
             const admissao = _fmtDate(v.data_admissao);
             const ultimo = _fmtDate(v.ultimo_registro);
             const salario = v.maior_salario ? _shortBrl(v.maior_salario) : '-';
@@ -696,13 +691,61 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
         html += '</div>';
     }
 
-    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
+    // Empresas vinculadas (with badges)
+    if (cnpjs && cnpjs.length) {
+        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
+        const empresaMap = {};
+        for (const e of empresas) empresaMap[e.cnpj_basico] = e;
+        html += cnpjs.map(c => {
+            let badges = '';
+            // Sancao badges
+            const sanList = sancoes[c] || [];
+            const vigentes = sanList.filter(s => !s.dt_final_sancao || s.dt_final_sancao >= new Date().toISOString().slice(0, 10));
+            if (vigentes.length) {
+                const tipos = [...new Set(vigentes.map(s => s.fonte))];
+                tipos.forEach(t => {
+                    const cls = t === 'CEIS' ? 'badge-red' : 'badge-orange';
+                    badges += `<span class="badge ${cls}">Sancionada - ${t}</span>`;
+                });
+            }
+            // PGFN badge
+            const pgfnList = pgfn[c] || [];
+            if (pgfnList.length) {
+                const totalDiv = pgfnList.reduce((s, d) => s + (d.valor_consolidado || 0), 0);
+                badges += `<span class="badge badge-orange">Divida PGFN ${_shortBrl(totalDiv)}</span>`;
+            }
+            // Empenhos badge
+            const emp = empMap[c];
+            if (emp) {
+                badges += `<span class="badge badge-yellow">Recebeu ${_shortBrl(emp.total_pago)} (${emp.qtd_empenhos} empenhos)</span>`;
+            }
+            return _renderEmpresaCard(empresaMap[c], c, badges);
+        }).join('');
+        html += '</div>';
+    }
+
+    // Bolsa Familia
+    if (bf.length) {
+        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
+        const ultimo = bf[0];
+        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
+        html += `<div class="empresa-card">
+            <div class="empresa-header">
+                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
+                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
+            </div>
+            <div class="empresa-details">
+                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
+                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
+            </div>
+        </div>`;
+        html += '</div>';
+    }
+
+    if (!html || html === '<div class="stats-grid"></div>') html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
 }
-
-// Store current municipio for fornecedor dialog
-let _currentMunicipio = '';
 
 async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun) {
     const dialog = document.getElementById('empresa-dialog');
@@ -1170,13 +1213,9 @@ function buildServidoresPanel(data) {
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title">Servidores com sinais de atencao</h3>
-            <p class="text-muted text-sm">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude — por padrao esses cargos ficam ocultos.</p>
+            <p class="text-muted text-sm">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</p>
             ${servLegend}
-        </div>
-        <label class="toggle-row">
-            <input type="checkbox" data-hide-medicos checked>
-            <span>Ocultar medicos</span>
-        </label></div>
+        </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">

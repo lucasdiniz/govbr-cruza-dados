@@ -458,10 +458,11 @@ async def invalidate_web_cache(payload: dict = Body(...)):
 
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
-    """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo."""
+    """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
     cpf6 = payload.get("cpf6", "")
     nome = payload.get("nome", "")
     cnpjs = (payload.get("cnpjs") or [])[:100]
+    municipio = payload.get("municipio", "")
     if not cpf6 or not nome:
         return JSONResponse({})
     try:
@@ -548,6 +549,90 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                                 r[k] = v.isoformat()
                         vinculos.append(r)
                     result["vinculos"] = vinculos
+
+                # Sancoes CEIS/CNEP das empresas vinculadas
+                if cnpjs:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
+                               'CEIS' AS fonte,
+                               nome_sancionado, categoria_sancao, orgao_sancionador,
+                               dt_inicio_sancao, dt_final_sancao
+                        FROM ceis_sancao
+                        WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
+                        UNION ALL
+                        SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
+                               'CNEP' AS fonte,
+                               nome_sancionado, categoria_sancao, orgao_sancionador,
+                               dt_inicio_sancao, dt_final_sancao
+                        FROM cnep_sancao
+                        WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
+                    """, cnpjs + cnpjs)
+                    san_cols = [d[0] for d in cur.description]
+                    san_rows = cur.fetchall()
+                    sancoes_map = {}
+                    for row in san_rows:
+                        r = _row_to_dict(san_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        cb = r["cnpj_basico"]
+                        sancoes_map.setdefault(cb, []).append(r)
+                    if sancoes_map:
+                        result["empresa_sancoes"] = sancoes_map
+
+                # PGFN dividas das empresas vinculadas
+                if cnpjs:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
+                               tipo_devedor, valor_consolidado, situacao_inscricao
+                        FROM pgfn_divida
+                        WHERE LENGTH(cpf_cnpj_norm) = 14
+                          AND LEFT(cpf_cnpj_norm, 8) IN ({ph})
+                    """, cnpjs)
+                    pgfn_cols = [d[0] for d in cur.description]
+                    pgfn_rows = cur.fetchall()
+                    pgfn_map = {}
+                    for row in pgfn_rows:
+                        r = _row_to_dict(pgfn_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                        cb = r["cnpj_basico"]
+                        pgfn_map.setdefault(cb, []).append(r)
+                    if pgfn_map:
+                        result["empresa_pgfn"] = pgfn_map
+
+                # Empenhos recebidos pelas empresas no municipio
+                if cnpjs and municipio:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        SELECT cnpj_basico,
+                               SUM(valor_pago) AS total_pago,
+                               SUM(valor_empenhado) AS total_empenhado,
+                               COUNT(*) AS qtd_empenhos,
+                               MIN(data_empenho) AS primeiro_empenho,
+                               MAX(data_empenho) AS ultimo_empenho
+                        FROM tce_pb_despesa
+                        WHERE cnpj_basico IN ({ph})
+                          AND municipio = %s
+                          AND valor_pago > 0
+                        GROUP BY cnpj_basico
+                    """, cnpjs + [municipio])
+                    emp_cols = [d[0] for d in cur.description]
+                    emp_rows = cur.fetchall()
+                    empenhos_map = {}
+                    for row in emp_rows:
+                        r = _row_to_dict(emp_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        empenhos_map[r["cnpj_basico"]] = r
+                    if empenhos_map:
+                        result["empresa_empenhos"] = empenhos_map
 
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:

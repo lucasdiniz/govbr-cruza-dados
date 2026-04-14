@@ -6,7 +6,7 @@
 - [x] **Fornecedores nunca carrega** — era problema de performance pre-otimizacao. Funciona com cache e sem cache apos otimizacao de queries
 - [x] **Servidores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
 - [x] **Fornecedores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina
-- [x] **Botao ocultar medicos quebrado** — toggle conflitava com paginacao (setava display em rows escondidos pela paginacao). Reescrito para integrar com sistema de paginacao via _refilter
+- [x] **Botao ocultar medicos removido** — checkbox removido, mantido apenas disclaimer sobre acumulacao constitucional para profissionais de saude
 - [x] **Compras sem licitacao sempre 0%** — MV `mv_municipio_pb_risco` nao detectava `numero_licitacao = '000000000'` nem `modalidade_licitacao ILIKE '%sem licit%'`. Corrigido no SQL e MV recriada
 - [x] **Badges sem contexto** — badges de servidores agora mostram detalhes: "Socio de X empresas que fornece ao municipio", "Recebe Bolsa Familia", "Salario alto + vinculo societario", etc.
 - [x] **Q67 e Q89 timeout** — Q67 reescrita com CTE pre-agrupado + pgfn_agg (120s→56s). Q89 adicionado filtro por nome_municipio no pb_convenio (3742→~10 iteracoes LATERAL)
@@ -32,9 +32,6 @@
 ### Frontend web — Arquitetura
 - [x] **Endpoint batch para cache** — `POST /api/batch/{municipio}` retorna todos os resultados do `web_cache` de uma vez (JSON com query_id -> {columns, rows, row_count}). Frontend renderiza instantaneamente do cache, endpoints individuais viram fallback
 - [ ] **Landing page escura precisa ajuste** — features strip nao esta 100% integrada visualmente com o backdrop
-
-### Infra / DX
-- [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando.
 
 ### Deploy Azure
 - [x] **Deploy workflow corrigido** — `etl.01_schema` removido da fase `sql` (causava DROP+CREATE e perda de dados). Adicionada opcao `etl_phase=web` para sync de codigo sem reprocessar ETL
@@ -153,13 +150,15 @@
 - Cache warmer suporta PB + PNCP (--all) com 2 queries por municipio nao-PB
 - Servidores com row expandivel mostrando CNPJs das empresas associadas
 - Dialog de servidor com 3 secoes: Vinculos (admissao, ultimo registro, salario), Bolsa Familia (ultimo recebimento, valor), Empresas vinculadas (razao social, CNPJ, situacao, CNAE)
+- Dialog de servidor enriquecido: stats grid no topo (salario, empresas, pagamentos, sancoes, PGFN, BF), badges nas empresas (CEIS/CNEP, PGFN, empenhos recebidos), secoes reordenadas (vinculos, empresas, bolsa familia)
+- Indice idx_pgfn_cnpj_basico_norm para consulta rapida de dividas PGFN por cnpj_basico (40M rows, 114s → 0.14ms)
 - Lazy fetch on click (1 request por servidor ao clicar, sem prefetch em massa)
 - Tabela de servidores full-width com colunas: Servidor, Cargo, Municipio(s), Maior Salario, Empresas, Sinais de Atencao
 - Q59, Q63, Q74 removidas (redundantes com tabela + dialog)
 - Q60 filtrada por natureza_juridica (exclui entidades publicas)
 - Datas formatadas em formato brasileiro (DD/MM/YYYY, MM/YYYY)
 - Bolsa Familia atualizado: download busca snapshot mais recente (de tras pra frente), nao todos os meses
-- Toggle ocultar medicos integrado com paginacao (nao quebra mais contagem)
+- Toggle ocultar medicos removido, mantido disclaimer sobre acumulacao constitucional
 - Q67 e Q89 otimizadas (pre-agrupamento CTE, filtro municipio no LATERAL)
 - Dialog de fornecedor: dados cadastrais, sancoes CEIS (datas inicio/fim, vigencia), divida PGFN, empenhos recentes com modalidade de licitacao
 - Graficos no dialog de fornecedor: mini bar chart (pagamentos mensais) e progress bars (elementos de despesa)
