@@ -12,8 +12,8 @@
             {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list %}
             {% if has_red_serv or has_yellow_serv %}
             <div class="color-legend">
-                {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#fef2f2;border:1px solid #fecaca"></span> Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>{% endif %}
-                {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#fffbeb;border:1px solid #fde68a"></span> Socio de empresa com Impedimento ou sancao CNEP</span>{% endif %}
+                {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>{% endif %}
+                {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Socio de empresa com Impedimento ou sancao CNEP</span>{% endif %}
             </div>
             {% endif %}
         </div>

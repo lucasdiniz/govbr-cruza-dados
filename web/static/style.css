@@ -435,19 +435,19 @@ tr:hover { background: #fbfdff; }
 .color-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: .35rem .9rem;
+    gap: .4rem 1.1rem;
     margin-top: .5rem;
-    font-size: .72rem;
-    color: #64748b;
+    font-size: .82rem;
+    color: #475569;
 }
 .color-legend-item {
     display: flex;
     align-items: center;
-    gap: .3rem;
+    gap: .35rem;
 }
 .color-legend-dot {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     border-radius: 3px;
     flex-shrink: 0;
 }

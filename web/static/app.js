@@ -454,17 +454,17 @@ function buildFornecedoresPanel(data) {
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
     const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
     const hasAcordo = data.rows.some(r => _val(r, data.columns, 'flag_acordo_leniencia'));
-    const _fldot = (bg, border) => `<span class="color-legend-dot" style="background:${bg};border:1px solid ${border}"></span>`;
+    const _fldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     let fornLegend = '';
     if (hasSancaoRows || hasAcordo) {
         let items = [];
         if (hasSancaoRows && hasInidoneidade) {
-            items.push(`<span class="color-legend-item">${_fldot('#fef2f2','#fecaca')} Recebeu durante Inidoneidade</span>`);
-            items.push(`<span class="color-legend-item">${_fldot('#fffbeb','#fde68a')} Recebeu durante Impedimento ou CNEP</span>`);
+            items.push(`<span class="color-legend-item">${_fldot('#ef4444')} Recebeu durante Inidoneidade</span>`);
+            items.push(`<span class="color-legend-item">${_fldot('#f59e0b')} Recebeu durante Impedimento ou CNEP</span>`);
         } else if (hasSancaoRows) {
-            items.push(`<span class="color-legend-item">${_fldot('#fffbeb','#fde68a')} Recebeu durante Impedimento ou CNEP</span>`);
+            items.push(`<span class="color-legend-item">${_fldot('#f59e0b')} Recebeu durante Impedimento ou CNEP</span>`);
         }
-        if (hasAcordo) items.push(`<span class="color-legend-item">${_fldot('#eff6ff','#93c5fd')} Acordo de leniencia vigente</span>`);
+        if (hasAcordo) items.push(`<span class="color-legend-item">${_fldot('#3b82f6')} Acordo de leniencia vigente</span>`);
         fornLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
@@ -1509,14 +1509,14 @@ function buildServidoresPanel(data) {
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
-    const _ldot = (bg, border) => `<span class="color-legend-dot" style="background:${bg};border:1px solid ${border}"></span>`;
+    const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_empresas') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
     const hasYellowServ = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade'));
     let servLegend = '';
     if (hasRedServ || hasYellowServ) {
         let items = [];
-        if (hasRedServ) items.push(`<span class="color-legend-item">${_ldot('#fef2f2','#fecaca')} Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>`);
-        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#fffbeb','#fde68a')} Socio de empresa com Impedimento ou sancao CNEP</span>`);
+        if (hasRedServ) items.push(`<span class="color-legend-item">${_ldot('#ef4444')} Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>`);
+        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#f59e0b')} Socio de empresa com Impedimento ou sancao CNEP</span>`);
         servLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
