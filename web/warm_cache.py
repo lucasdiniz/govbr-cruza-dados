@@ -2,6 +2,7 @@
 
 Uso:
     python -m web.warm_cache                      # processa PB uma vez
+    python -m web.warm_cache --pb                  # processa apenas PB (explicito)
     python -m web.warm_cache --pncp               # processa PNCP (nao-PB) uma vez
     python -m web.warm_cache --all                # processa PB + PNCP uma vez
     python -m web.warm_cache --daemon --loop      # loop continuo PB
@@ -250,13 +251,14 @@ def main():
     parser.add_argument("--daemon", action="store_true", help="Processa todos os municipios (use com --loop para repetir)")
     parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista")
     parser.add_argument("--pncp", action="store_true", help="Processar municipios PNCP (nao-PB)")
+    parser.add_argument("--pb", action="store_true", help="Processar apenas municipios PB (explicito, mesmo que o padrao)")
     parser.add_argument("--all", action="store_true", dest="all_mun", help="Processar PB + PNCP")
     args = parser.parse_args()
 
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
 
-    run_pb = not args.pncp or args.all_mun
+    run_pb = args.pb or args.all_mun or not args.pncp
     run_pncp = args.pncp or args.all_mun
 
     municipios_pb = _get_municipios_pb(conn, args.mun) if run_pb else []

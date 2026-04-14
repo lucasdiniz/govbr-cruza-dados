@@ -90,8 +90,11 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 # Iniciar local
 python -m uvicorn web.main:app --port 8000
 
-# Cache warmer — PB (1 ciclo)
-python -m web.warm_cache --daemon
+# Cache warmer — apenas PB (1 ciclo)
+python -m web.warm_cache --pb
+
+# Cache warmer — apenas PNCP (nao-PB)
+python -m web.warm_cache --pncp
 
 # Cache warmer — todos os estados (PB + PNCP)
 python -m web.warm_cache --all --daemon

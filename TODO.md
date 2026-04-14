@@ -115,7 +115,7 @@
 ### Frontend web
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Iniciar local**: `python -m uvicorn web.main:app --port 8000`
-- **Cache warmer**: `python -m web.warm_cache --daemon` (PB), `--pncp` (outros estados), `--all` (PB + PNCP), `--daemon --loop` (continuo)
+- **Cache warmer**: `python -m web.warm_cache --pb` (apenas PB), `--pncp` (outros estados), `--all` (PB + PNCP), `--daemon --loop` (continuo)
 - **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
 - **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
 - **15 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
