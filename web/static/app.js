@@ -453,11 +453,19 @@ function buildFornecedoresPanel(data) {
 
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
     const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
+    const hasAcordo = data.rows.some(r => _val(r, data.columns, 'flag_acordo_leniencia'));
+    const _fdot = (bg, border) => `<span style="display:inline-block;width:12px;height:12px;background:${bg};border:1px solid ${border};border-radius:3px;vertical-align:middle;margin-right:.3rem"></span>`;
     let fornLegend = '';
-    if (hasSancaoRows && hasInidoneidade) {
-        fornLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: recebeu durante Declaracao de Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: recebeu durante Impedimento ou sancao CNEP (restrita ao ente sancionador).</p>';
-    } else if (hasSancaoRows) {
-        fornLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: fornecedor recebeu pagamentos durante periodo de Impedimento ou sancao CNEP (restrita ao ente sancionador).</p>';
+    if (hasSancaoRows || hasAcordo) {
+        let parts = [];
+        if (hasSancaoRows && hasInidoneidade) {
+            parts.push(`${_fdot('#fef2f2','#fecaca')} Vermelho: recebeu durante Inidoneidade (bloqueio nacional)`);
+            parts.push(`${_fdot('#fffbeb','#fde68a')} Amarelo: recebeu durante Impedimento ou CNEP`);
+        } else if (hasSancaoRows) {
+            parts.push(`${_fdot('#fffbeb','#fde68a')} Amarelo: recebeu durante Impedimento ou CNEP`);
+        }
+        if (hasAcordo) parts.push(`${_fdot('#eff6ff','#93c5fd')} Azul: acordo de leniencia vigente (informativo)`);
+        fornLegend = `<p class="text-sm text-muted" style="margin-top:.4rem">${parts.join(' ')}</p>`;
     }
 
     return `<section class="result-block">
@@ -1496,17 +1504,20 @@ function buildServidoresPanel(data) {
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
-        const rowClass = ceafExpulso ? 'clickable-row row-sancao' : socioSancionado ? (socioInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
+        const totalPagoRow = _val(r, cols, 'total_pago_empresas') > 0;
+        const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : socioSancionado ? 'clickable-row row-sancao-leve' : 'clickable-row';
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
-    const hasSancaoServRows = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado'));
-    const hasInidServRows = data.rows.some(r => _val(r, data.columns, 'flag_socio_inidoneidade'));
+    const _dot = (bg, border) => `<span style="display:inline-block;width:12px;height:12px;background:${bg};border:1px solid ${border};border-radius:3px;vertical-align:middle;margin-right:.3rem"></span>`;
+    const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_empresas') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
+    const hasYellowServ = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade'));
     let servLegend = '';
-    if (hasSancaoServRows && hasInidServRows) {
-        servLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: socio de empresa com Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: socio de empresa com Impedimento ou sancao CNEP.</p>';
-    } else if (hasSancaoServRows) {
-        servLegend = '<p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: servidor eh socio de empresa com sancao vigente (Impedimento ou CNEP).</p>';
+    if (hasRedServ || hasYellowServ) {
+        let parts = [];
+        if (hasRedServ) parts.push(`${_dot('#fef2f2','#fecaca')} Vermelho: expulso da adm. federal, empresa recebeu empenhos durante vinculo, ou socio de empresa com Inidoneidade`);
+        if (hasYellowServ) parts.push(`${_dot('#fffbeb','#fde68a')} Amarelo: socio de empresa com Impedimento ou sancao CNEP`);
+        servLegend = `<p class="text-sm text-muted" style="margin-top:.4rem">${parts.join(' ')}</p>`;
     }
 
     return `<section class="result-block">

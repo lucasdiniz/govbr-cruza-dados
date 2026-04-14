@@ -8,13 +8,13 @@
                 vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social
                 ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.
             </p>
-            {% if servidores|selectattr('flag_socio_sancionado')|list %}
-            {% set has_inid_serv = servidores|selectattr('flag_socio_inidoneidade')|list %}
-            {% if has_inid_serv %}
-            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: socio de empresa com Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: socio de empresa com Impedimento ou sancao CNEP.</p>
-            {% else %}
-            <p class="text-sm text-muted" style="margin-top:.4rem"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Destaque: servidor eh socio de empresa com sancao vigente (Impedimento ou CNEP).</p>
-            {% endif %}
+            {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_empresas')|list %}
+            {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list %}
+            {% if has_red_serv or has_yellow_serv %}
+            <p class="text-sm text-muted" style="margin-top:.4rem">
+                {% if has_red_serv %}<span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: expulso da adm. federal, empresa recebeu empenhos durante vinculo, ou socio de empresa com Inidoneidade.{% endif %}
+                {% if has_yellow_serv %} <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: socio de empresa com Impedimento ou sancao CNEP.{% endif %}
+            </p>
             {% endif %}
         </div>
     </div>
@@ -46,7 +46,7 @@
                     {% set nome_up = s.nome_upper|default('')|string %}
                     {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
                     {% if cpf6 and nome_up %}
-                    <tr class="clickable-row{% if s.flag_ceaf_expulso %} row-sancao{% elif s.flag_socio_sancionado %}{% if s.flag_socio_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_empresas and s.total_pago_empresas > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
                     {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
