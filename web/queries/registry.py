@@ -28,6 +28,102 @@ def _reg(qid, title, desc, cat, sql_full, timeout=30):
     )
 
 
+# ── Fornecedores Irregulares ─────────────────────────────────────
+
+_reg("Q65", "Fornecedor sancionado (CEIS/CNEP) recebendo",
+     "Empresas que receberam pagamentos durante periodo de sancao vigente. Unifica os cadastros CEIS (empresas inidoneas/suspensas) e CNEP (punidas pela Lei Anticorrupcao).",
+     "Fornecedores Irregulares",
+     """
+SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
+       san.categoria_sancao, san.origem,
+       san.dt_inicio_sancao, san.dt_final_sancao,
+       d.municipio, d.nome_credor,
+       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+FROM (
+    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
+           dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem
+    FROM ceis_sancao
+    UNION ALL
+    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
+           dt_inicio_sancao, dt_final_sancao, 'CNEP' AS origem
+    FROM cnep_sancao
+) san
+JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
+WHERE d.cnpj_basico IS NOT NULL
+  AND d.data_empenho >= san.dt_inicio_sancao
+  AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+  AND d.valor_pago > 0
+  AND d.municipio = %(municipio)s
+GROUP BY san.nome_sancionado, san.cpf_cnpj_sancionado,
+         san.categoria_sancao, san.origem,
+         san.dt_inicio_sancao, san.dt_final_sancao,
+         d.municipio, d.nome_credor
+ORDER BY total_pago DESC
+LIMIT 500
+""", timeout=30)
+
+
+_reg("Q67", "Fornecedor com divida PGFN recebendo",
+     "Empresa com divida ativa na Uniao recebendo do municipio",
+     "Fornecedores Irregulares",
+     """
+WITH desp AS (
+    SELECT cnpj_basico, MAX(cpf_cnpj) AS cpf_cnpj, MAX(nome_credor) AS nome_credor,
+           SUM(valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+    FROM tce_pb_despesa
+    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0 AND ano >= 2022
+      AND municipio = %(municipio)s
+    GROUP BY cnpj_basico
+    HAVING SUM(valor_pago) > 50000
+),
+pgfn_agg AS (
+    SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
+           MAX(situacao_inscricao) AS situacao_inscricao,
+           SUM(valor_consolidado) AS divida_pgfn
+    FROM pgfn_divida
+    WHERE LENGTH(cpf_cnpj_norm) = 14
+      AND LEFT(cpf_cnpj_norm, 8) IN (SELECT cnpj_basico FROM desp)
+    GROUP BY LEFT(cpf_cnpj_norm, 8)
+)
+SELECT d.cpf_cnpj, d.nome_credor, %(municipio)s AS municipio,
+       pg.situacao_inscricao,
+       pg.divida_pgfn,
+       d.total_pago, d.qtd_empenhos
+FROM desp d
+JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico
+ORDER BY pg.divida_pgfn DESC
+LIMIT 500
+""", timeout=90)
+
+
+_reg("Q70", "Empresa inativa recebendo pagamento",
+     "Empresa com situacao cadastral diferente de ativa na RFB recebendo do municipio",
+     "Fornecedores Irregulares",
+     """
+SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
+       CASE est.situacao_cadastral
+           WHEN '1' THEN 'Nula' WHEN '3' THEN 'Suspensa'
+           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
+           ELSE 'Sit. ' || est.situacao_cadastral
+       END AS desc_situacao,
+       est.dt_situacao, e.razao_social,
+       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+FROM tce_pb_despesa d
+JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
+    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral != '2'
+JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
+  AND d.data_empenho > est.dt_situacao
+  AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
+  AND d.municipio = %(municipio)s
+GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
+         est.situacao_cadastral, est.dt_situacao, e.razao_social
+HAVING SUM(d.valor_pago) > 10000
+ORDER BY total_pago DESC
+LIMIT 500
+""", timeout=15)
+
+
 # ── Conflito de Interesses ───────────────────────────────────────
 
 _reg("Q87", "Socio de contratada estadual e servidor municipal",
@@ -83,6 +179,33 @@ HAVING SUM(pp.valor_pagamento) > 5000
 ORDER BY total_recebido_estado DESC
 LIMIT 500
 """, timeout=30)
+
+
+# ── Politico-Eleitoral ──────────────────────────────────────────
+
+_reg("Q72", "Doador de campanha recebendo do municipio",
+     "Empresa doou para prefeito eleito e depois recebeu pagamento municipal",
+     "Politico-Eleitoral",
+     """
+SELECT tc.nm_candidato AS prefeito, d.municipio,
+       tr.nm_doador, tr.cpf_cnpj_doador AS cnpj_doador,
+       tr.vr_receita AS valor_doacao,
+       SUM(d.valor_pago) AS total_recebido, COUNT(*) AS qtd_empenhos
+FROM tse_candidato tc
+JOIN tse_receita_candidato tr ON tr.sq_candidato = tc.sq_candidato
+    AND tr.cpf_cnpj_doador IS NOT NULL AND LENGTH(tr.cpf_cnpj_doador) >= 14
+JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
+WHERE tc.ds_cargo = 'PREFEITO'
+  AND tc.ds_sit_tot_turno IN ('ELEITO', 'ELEITO POR MEDIA', 'ELEITO POR QP')
+  AND tc.sg_uf = 'PB'
+  AND UPPER(TRIM(d.municipio)) = UPPER(TRIM(tc.nm_ue))
+  AND d.ano >= CAST(tc.ano_eleicao AS INT)
+  AND d.valor_pago > 0
+  AND d.municipio = %(municipio)s
+GROUP BY tc.nm_candidato, d.municipio, tr.nm_doador, tr.cpf_cnpj_doador, tr.vr_receita
+ORDER BY total_recebido DESC
+LIMIT 500
+""", timeout=45)
 
 
 # ── Licitacao e Concorrencia ─────────────────────────────────────
@@ -201,100 +324,58 @@ LIMIT 500
 """, timeout=45)
 
 
-# ── Fornecedores Irregulares ─────────────────────────────────────
+# ── Cruzamento Estado x Municipio ────────────────────────────────
 
-_reg("Q65", "Fornecedor sancionado (CEIS/CNEP) recebendo",
-     "Empresas que receberam pagamentos durante periodo de sancao vigente. Unifica os cadastros CEIS (empresas inidoneas/suspensas) e CNEP (punidas pela Lei Anticorrupcao).",
-     "Fornecedores Irregulares",
+_reg("Q83", "Empresa dominante estado + municipio",
+     "Empresa que recebe do estado E de municipios PB",
+     "Cruzamento Estado x Municipio",
      """
-SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
-       san.categoria_sancao, san.origem,
-       san.dt_inicio_sancao, san.dt_final_sancao,
-       d.municipio, d.nome_credor,
-       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-FROM (
-    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
-           dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem
-    FROM ceis_sancao
-    UNION ALL
-    SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
-           dt_inicio_sancao, dt_final_sancao, 'CNEP' AS origem
-    FROM cnep_sancao
-) san
-JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
-WHERE d.cnpj_basico IS NOT NULL
-  AND d.data_empenho >= san.dt_inicio_sancao
-  AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
-  AND d.valor_pago > 0
-  AND d.municipio = %(municipio)s
-GROUP BY san.nome_sancionado, san.cpf_cnpj_sancionado,
-         san.categoria_sancao, san.origem,
-         san.dt_inicio_sancao, san.dt_final_sancao,
-         d.municipio, d.nome_credor
-ORDER BY total_pago DESC
-LIMIT 500
-""", timeout=30)
-
-
-_reg("Q67", "Fornecedor com divida PGFN recebendo",
-     "Empresa com divida ativa na Uniao recebendo do municipio",
-     "Fornecedores Irregulares",
-     """
-WITH desp AS (
-    SELECT cnpj_basico, MAX(cpf_cnpj) AS cpf_cnpj, MAX(nome_credor) AS nome_credor,
-           SUM(valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-    FROM tce_pb_despesa
-    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0 AND ano >= 2022
-      AND municipio = %(municipio)s
-    GROUP BY cnpj_basico
-    HAVING SUM(valor_pago) > 50000
+WITH pb_agg AS (
+    SELECT cnpj_basico, SUM(valor_empenho) AS total_estado, COUNT(*) AS qtd_estado
+    FROM pb_empenho WHERE cnpj_basico IS NOT NULL
+    GROUP BY cnpj_basico HAVING SUM(valor_empenho) > 100000
 ),
-pgfn_agg AS (
-    SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
-           MAX(situacao_inscricao) AS situacao_inscricao,
-           SUM(valor_consolidado) AS divida_pgfn
-    FROM pgfn_divida
-    WHERE LENGTH(cpf_cnpj_norm) = 14
-      AND LEFT(cpf_cnpj_norm, 8) IN (SELECT cnpj_basico FROM desp)
-    GROUP BY LEFT(cpf_cnpj_norm, 8)
+tce_agg AS (
+    SELECT cnpj_basico, SUM(valor_pago) AS total_municipal, COUNT(*) AS qtd_municipal
+    FROM tce_pb_despesa
+    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
+      AND municipio = %(municipio)s
+    GROUP BY cnpj_basico HAVING SUM(valor_pago) > 10000
 )
-SELECT d.cpf_cnpj, d.nome_credor, %(municipio)s AS municipio,
-       pg.situacao_inscricao,
-       pg.divida_pgfn,
-       d.total_pago, d.qtd_empenhos
-FROM desp d
-JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico
-ORDER BY pg.divida_pgfn DESC
+SELECT e.razao_social, e.cnpj_basico,
+       pb.total_estado, tce.total_municipal,
+       pb.total_estado + tce.total_municipal AS total_combinado
+FROM pb_agg pb
+JOIN tce_agg tce ON tce.cnpj_basico = pb.cnpj_basico
+JOIN empresa e ON e.cnpj_basico = pb.cnpj_basico
+ORDER BY total_combinado DESC
+LIMIT 500
+""", timeout=45)
+
+
+_reg("Q89", "Convenio estado com despesas suspeitas",
+     "Municipio recebeu convenio estadual e teve despesas atipicas no periodo",
+     "Cruzamento Estado x Municipio",
+     """
+SELECT cv.cnpj_basico, cv.nome_convenente, cv.objetivo_convenio,
+       cv.valor_concedente, cv.valor_contrapartida,
+       cv.data_celebracao_convenio, cv.data_termino_vigencia,
+       tce_agg.total_empenhado_periodo, tce_agg.qtd_empenhos
+FROM pb_convenio cv
+JOIN LATERAL (
+    SELECT SUM(d.valor_empenhado) AS total_empenhado_periodo,
+           COUNT(*) AS qtd_empenhos
+    FROM tce_pb_despesa d
+    WHERE d.municipio = %(municipio)s
+      AND d.data_empenho BETWEEN cv.data_celebracao_convenio
+          AND COALESCE(cv.data_termino_vigencia, cv.data_celebracao_convenio + INTERVAL '1 year')
+      AND d.valor_empenhado > 0
+) tce_agg ON tce_agg.total_empenhado_periodo > cv.valor_concedente * 0.5
+WHERE cv.valor_concedente > 100000
+  AND UPPER(unaccent(cv.nome_municipio)) = UPPER(unaccent(%(municipio)s))
+ORDER BY tce_agg.total_empenhado_periodo DESC
 LIMIT 500
 """, timeout=90)
-
-
-_reg("Q70", "Empresa inativa recebendo pagamento",
-     "Empresa com situacao cadastral diferente de ativa na RFB recebendo do municipio",
-     "Fornecedores Irregulares",
-     """
-SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
-       CASE est.situacao_cadastral
-           WHEN '1' THEN 'Nula' WHEN '3' THEN 'Suspensa'
-           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE 'Sit. ' || est.situacao_cadastral
-       END AS desc_situacao,
-       est.dt_situacao, e.razao_social,
-       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-FROM tce_pb_despesa d
-JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
-    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral != '2'
-JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
-WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
-  AND d.data_empenho > est.dt_situacao
-  AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
-  AND d.municipio = %(municipio)s
-GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
-         est.situacao_cadastral, est.dt_situacao, e.razao_social
-HAVING SUM(d.valor_pago) > 10000
-ORDER BY total_pago DESC
-LIMIT 500
-""", timeout=15)
 
 
 # ── Orcamento e Financeiro ───────────────────────────────────────
@@ -364,87 +445,6 @@ HAVING ABS(SUM(d.valor_pago) - pc.valor_global) > pc.valor_global * 0.25
 ORDER BY ABS(SUM(d.valor_pago) - pc.valor_global) DESC
 LIMIT 500
 """, timeout=30)
-
-
-# ── Politico-Eleitoral ──────────────────────────────────────────
-
-_reg("Q72", "Doador de campanha recebendo do municipio",
-     "Empresa doou para prefeito eleito e depois recebeu pagamento municipal",
-     "Politico-Eleitoral",
-     """
-SELECT tc.nm_candidato AS prefeito, d.municipio,
-       tr.nm_doador, tr.cpf_cnpj_doador AS cnpj_doador,
-       tr.vr_receita AS valor_doacao,
-       SUM(d.valor_pago) AS total_recebido, COUNT(*) AS qtd_empenhos
-FROM tse_candidato tc
-JOIN tse_receita_candidato tr ON tr.sq_candidato = tc.sq_candidato
-    AND tr.cpf_cnpj_doador IS NOT NULL AND LENGTH(tr.cpf_cnpj_doador) >= 14
-JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
-WHERE tc.ds_cargo = 'PREFEITO'
-  AND tc.ds_sit_tot_turno IN ('ELEITO', 'ELEITO POR MEDIA', 'ELEITO POR QP')
-  AND tc.sg_uf = 'PB'
-  AND UPPER(TRIM(d.municipio)) = UPPER(TRIM(tc.nm_ue))
-  AND d.ano >= CAST(tc.ano_eleicao AS INT)
-  AND d.valor_pago > 0
-  AND d.municipio = %(municipio)s
-GROUP BY tc.nm_candidato, d.municipio, tr.nm_doador, tr.cpf_cnpj_doador, tr.vr_receita
-ORDER BY total_recebido DESC
-LIMIT 500
-""", timeout=45)
-
-
-# ── Cruzamento Estado x Municipio ────────────────────────────────
-
-_reg("Q83", "Empresa dominante estado + municipio",
-     "Empresa que recebe do estado E de municipios PB",
-     "Cruzamento Estado x Municipio",
-     """
-WITH pb_agg AS (
-    SELECT cnpj_basico, SUM(valor_empenho) AS total_estado, COUNT(*) AS qtd_estado
-    FROM pb_empenho WHERE cnpj_basico IS NOT NULL
-    GROUP BY cnpj_basico HAVING SUM(valor_empenho) > 100000
-),
-tce_agg AS (
-    SELECT cnpj_basico, SUM(valor_pago) AS total_municipal, COUNT(*) AS qtd_municipal
-    FROM tce_pb_despesa
-    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
-      AND municipio = %(municipio)s
-    GROUP BY cnpj_basico HAVING SUM(valor_pago) > 10000
-)
-SELECT e.razao_social, e.cnpj_basico,
-       pb.total_estado, tce.total_municipal,
-       pb.total_estado + tce.total_municipal AS total_combinado
-FROM pb_agg pb
-JOIN tce_agg tce ON tce.cnpj_basico = pb.cnpj_basico
-JOIN empresa e ON e.cnpj_basico = pb.cnpj_basico
-ORDER BY total_combinado DESC
-LIMIT 500
-""", timeout=45)
-
-
-_reg("Q89", "Convenio estado com despesas suspeitas",
-     "Municipio recebeu convenio estadual e teve despesas atipicas no periodo",
-     "Cruzamento Estado x Municipio",
-     """
-SELECT cv.cnpj_basico, cv.nome_convenente, cv.objetivo_convenio,
-       cv.valor_concedente, cv.valor_contrapartida,
-       cv.data_celebracao_convenio, cv.data_termino_vigencia,
-       tce_agg.total_empenhado_periodo, tce_agg.qtd_empenhos
-FROM pb_convenio cv
-JOIN LATERAL (
-    SELECT SUM(d.valor_empenhado) AS total_empenhado_periodo,
-           COUNT(*) AS qtd_empenhos
-    FROM tce_pb_despesa d
-    WHERE d.municipio = %(municipio)s
-      AND d.data_empenho BETWEEN cv.data_celebracao_convenio
-          AND COALESCE(cv.data_termino_vigencia, cv.data_celebracao_convenio + INTERVAL '1 year')
-      AND d.valor_empenhado > 0
-) tce_agg ON tce_agg.total_empenhado_periodo > cv.valor_concedente * 0.5
-WHERE cv.valor_concedente > 100000
-  AND UPPER(unaccent(cv.nome_municipio)) = UPPER(unaccent(%(municipio)s))
-ORDER BY tce_agg.total_empenhado_periodo DESC
-LIMIT 500
-""", timeout=90)
 
 
 def get_categories() -> list[tuple[str, list[QueryDef]]]:

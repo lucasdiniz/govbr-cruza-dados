@@ -118,7 +118,7 @@
 - **Cache warmer**: `python -m web.warm_cache --pb` (apenas PB), `--pncp` (outros estados), `--all` (PB + PNCP), `--daemon --loop` (continuo)
 - **Tabela web_cache**: armazena resultados pre-processados (query_id, municipio) -> JSON
 - **Services systemd**: `deploy/cruza-web.service` e `deploy/cruza-warm-cache.service`
-- **15 queries PB** em 6 categorias, 224 municipios PB + qualquer municipio via PNCP
+- **15 queries PB** em 6 categorias priorizadas (Fornecedores Irregulares > Conflito de Interesses > Politico-Eleitoral > Licitacao > Estado x Municipio > Orcamento), 224 municipios PB + qualquer municipio via PNCP
 - **Autocomplete**: busca PB (MV risco_score DESC) + outros estados (PNCP, formato "Nome - UF")
 
 ### Notas tecnicas importantes
@@ -183,3 +183,4 @@
 - Seletor de municipio no dialog: dropdown para alternar entre municipios onde o fornecedor recebeu
 - flag_socio_sancionado: EXISTS otimizado com CTE (7.6s → 487ms) cruzando cnpjs_socio com sancoes vigentes
 - docker-compose.yml removido (nao utilizado, PostgreSQL roda local)
+- Secoes de investigacao reordenadas por potencial investigativo: Fornecedores Irregulares primeiro (evidencia direta de ilegalidade), Orcamento e Financeiro por ultimo (mais contextual)

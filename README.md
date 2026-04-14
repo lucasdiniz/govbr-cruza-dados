@@ -77,8 +77,8 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
-- **15 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
-- **Dialog de servidor**: ao clicar um servidor, mostra vinculos (admissao, salario), Bolsa Familia, empresas vinculadas com qualificacao societaria e data de entrada
+- **15 queries de investigacao** em 6 categorias priorizadas por potencial investigativo: Fornecedores Irregulares, Conflito de Interesses, Politico-Eleitoral, Licitacao e Concorrencia, Cruzamento Estado x Municipio, Orcamento e Financeiro
+- **Dialog de servidor**: ao clicar um servidor, mostra stats grid (salario, empresas, pagamentos, sancoes), vinculos (admissao, salario), empresas vinculadas com badges (CEIS/CNEP, PGFN, empenhos recebidos) e Bolsa Familia
 - **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem e vigencia), divida PGFN, empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas de empenho feitas durante periodo de sancao sao destacadas em vermelho.
 - **Destaque de risco**: fornecedores que receberam pagamentos durante sancao e servidores socios de empresas sancionadas (CEIS/CNEP) sao destacados em vermelho com legendas explicativas
 - **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
