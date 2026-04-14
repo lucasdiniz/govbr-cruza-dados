@@ -432,6 +432,26 @@ tr:hover { background: #fbfdff; }
 .badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 .badge-blue { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
 
+.color-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem .9rem;
+    margin-top: .5rem;
+    font-size: .72rem;
+    color: #64748b;
+}
+.color-legend-item {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+}
+.color-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
 .btn {
     display: inline-flex;
     align-items: center;

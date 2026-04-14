@@ -454,18 +454,18 @@ function buildFornecedoresPanel(data) {
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
     const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
     const hasAcordo = data.rows.some(r => _val(r, data.columns, 'flag_acordo_leniencia'));
-    const _fdot = (bg, border) => `<span style="display:inline-block;width:12px;height:12px;background:${bg};border:1px solid ${border};border-radius:3px;vertical-align:middle;margin-right:.3rem"></span>`;
+    const _fldot = (bg, border) => `<span class="color-legend-dot" style="background:${bg};border:1px solid ${border}"></span>`;
     let fornLegend = '';
     if (hasSancaoRows || hasAcordo) {
-        let parts = [];
+        let items = [];
         if (hasSancaoRows && hasInidoneidade) {
-            parts.push(`${_fdot('#fef2f2','#fecaca')} Vermelho: recebeu durante Inidoneidade (bloqueio nacional)`);
-            parts.push(`${_fdot('#fffbeb','#fde68a')} Amarelo: recebeu durante Impedimento ou CNEP`);
+            items.push(`<span class="color-legend-item">${_fldot('#fef2f2','#fecaca')} Recebeu durante Inidoneidade</span>`);
+            items.push(`<span class="color-legend-item">${_fldot('#fffbeb','#fde68a')} Recebeu durante Impedimento ou CNEP</span>`);
         } else if (hasSancaoRows) {
-            parts.push(`${_fdot('#fffbeb','#fde68a')} Amarelo: recebeu durante Impedimento ou CNEP`);
+            items.push(`<span class="color-legend-item">${_fldot('#fffbeb','#fde68a')} Recebeu durante Impedimento ou CNEP</span>`);
         }
-        if (hasAcordo) parts.push(`${_fdot('#eff6ff','#93c5fd')} Azul: acordo de leniencia vigente (informativo)`);
-        fornLegend = `<p class="text-sm text-muted" style="margin-top:.4rem">${parts.join(' ')}</p>`;
+        if (hasAcordo) items.push(`<span class="color-legend-item">${_fldot('#eff6ff','#93c5fd')} Acordo de leniencia vigente</span>`);
+        fornLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
     return `<section class="result-block">
@@ -1509,15 +1509,15 @@ function buildServidoresPanel(data) {
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
-    const _dot = (bg, border) => `<span style="display:inline-block;width:12px;height:12px;background:${bg};border:1px solid ${border};border-radius:3px;vertical-align:middle;margin-right:.3rem"></span>`;
+    const _ldot = (bg, border) => `<span class="color-legend-dot" style="background:${bg};border:1px solid ${border}"></span>`;
     const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_empresas') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
     const hasYellowServ = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade'));
     let servLegend = '';
     if (hasRedServ || hasYellowServ) {
-        let parts = [];
-        if (hasRedServ) parts.push(`${_dot('#fef2f2','#fecaca')} Vermelho: expulso da adm. federal, empresa recebeu empenhos durante vinculo, ou socio de empresa com Inidoneidade`);
-        if (hasYellowServ) parts.push(`${_dot('#fffbeb','#fde68a')} Amarelo: socio de empresa com Impedimento ou sancao CNEP`);
-        servLegend = `<p class="text-sm text-muted" style="margin-top:.4rem">${parts.join(' ')}</p>`;
+        let items = [];
+        if (hasRedServ) items.push(`<span class="color-legend-item">${_ldot('#fef2f2','#fecaca')} Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>`);
+        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#fffbeb','#fde68a')} Socio de empresa com Impedimento ou sancao CNEP</span>`);
+        servLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
     return `<section class="result-block">

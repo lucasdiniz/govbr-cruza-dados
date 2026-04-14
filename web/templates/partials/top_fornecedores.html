@@ -8,11 +8,11 @@
             {% set has_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao')|list %}
             {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
             {% if has_sancao or has_acordo %}
-            <p class="text-sm text-muted" style="margin-top:.4rem">
-                {% if has_sancao and has_inid %}<span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Vermelho: recebeu durante Inidoneidade (bloqueio nacional). <span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Amarelo: recebeu durante Impedimento ou CNEP.
-                {% elif has_sancao %}<span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:3px;vertical-align:middle;margin-right:.3rem"></span> Amarelo: recebeu durante Impedimento ou CNEP.{% endif %}
-                {% if has_acordo %} <span style="display:inline-block;width:12px;height:12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:3px;vertical-align:middle;margin-left:.5rem;margin-right:.3rem"></span> Azul: acordo de leniencia vigente (informativo).{% endif %}
-            </p>
+            <div class="color-legend">
+                {% if has_sancao and has_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#fef2f2;border:1px solid #fecaca"></span> Recebeu durante Inidoneidade</span>{% endif %}
+                {% if has_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#fffbeb;border:1px solid #fde68a"></span> Recebeu durante Impedimento ou CNEP</span>{% endif %}
+                {% if has_acordo %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#eff6ff;border:1px solid #93c5fd"></span> Acordo de leniencia vigente</span>{% endif %}
+            </div>
             {% endif %}
         </div>
     </div>
