@@ -14,6 +14,7 @@ from etl.config import DSN, SQL_DIR
 def get_conn():
     """Retorna uma conexão nova ao banco."""
     conn = psycopg2.connect(DSN)
+    conn.set_client_encoding('UTF8')
     conn.autocommit = False
     return conn
 

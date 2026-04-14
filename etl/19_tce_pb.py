@@ -71,7 +71,18 @@ def _staging_load(conn, staging, filepath, n_cols):
     count = 0
 
     def clean_lines(fp):
-        with open(fp, "r", encoding="utf-8-sig", errors="replace") as f:
+        # Tenta UTF-8-sig primeiro, fallback para Latin-1
+        for enc in ("utf-8-sig", "latin-1"):
+            try:
+                with open(fp, "r", encoding=enc) as f:
+                    sample = f.read(8192)
+                if "\ufffd" not in sample:
+                    break
+            except (UnicodeDecodeError, ValueError):
+                continue
+        else:
+            enc = "latin-1"
+        with open(fp, "r", encoding=enc) as f:
             for line in f:
                 yield line.replace("\x00", "")
 

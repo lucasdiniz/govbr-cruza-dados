@@ -18,10 +18,16 @@
 - [x] **Carregamento sequencial** — implementado `POST /api/batch/{municipio}` que serve todos os dados do cache em uma unica requisicao. Frontend renderiza cards do cache instantaneamente, fallback individual para cache miss com concorrencia 4
 - [x] **Ordenacao de colunas** — click-to-sort implementado em todas as tabelas (numerico e alfabetico, ASC/DESC com indicador visual)
 - [x] **Suporte a municipios de qualquer estado** — autocomplete busca em PB (MV) + todos os estados (PNCP). Municipios fora da PB mostram perfil e fornecedores baseados em dados PNCP, cruzados com CEIS/PGFN/RFB
+- [x] **Acentuacao quebrada** — CSVs Latin-1 de dados.pb.gov.br eram lidos como UTF-8 com `errors="replace"`, gerando U+FFFD. Corrigido com fallback UTF-8 → Latin-1 no `_load_csv()` e `set_client_encoding('UTF8')` na conexao ETL
+- [x] **Dialogs fullscreen** — width/height 100vw/100vh, scroll isolado (body.dialog-open bloqueia scroll do fundo)
+- [x] **Formatacao numerica em todas as tabelas** — `_shortBrl` e `_shortNum` aplicados tanto no client-side (app.js) quanto server-side (result_table.html) para colunas valor/total/pct/qtd
+- [x] **Graficos de fornecedor** — mini bar chart (pagamentos mensais) e progress bars (elementos de despesa) com max-width, titulos e proporções corrigidas
+- [x] **Q87 duplicatas** — tce_pb_servidor gerava N rows por mes por servidor no JOIN. Corrigido com subquery GROUP BY com MAX(valor_vantagem)
+- [x] **Qualificacao societaria no dialog de servidor** — empresas vinculadas agora mostram qualificacao (ex: Socio-Administrador) e data de entrada na sociedade
+- [x] **Cache invalidation endpoint** — `POST /api/cache/invalidate` permite limpar queries especificas do web_cache
 - [ ] **Descricoes vagas nas secoes** — textos como "Situacoes em que servidores podem estar relacionados de forma inadequada" nao explicam nada. Reescrever com: o que estamos mostrando, por que e relevante, qual lei/norma se aplica. Menos tecnico, mais explicativo
-- [ ] **Melhorar graficos/visualizacoes** na pagina de detalhes
-- [ ] **Acentuacao quebrada** em algumas tabelas (dados vindos do banco com encoding errado)
-- [ ] **Adicionar mais graficos** — graficos de barras/pizza nos blocos de investigacao
+- [ ] **Integrar mv_fornecedor_pb_perfil** — view com score de risco (0-5) por fornecedor. Pode alimentar badges de risco no dialog e ordenar Top Fornecedores por risco
+- [ ] **HTTPS** — requer dominio. Opcoes: Let's Encrypt (gratis), Cloudflare proxy, ou Azure Application Gateway
 
 ### Frontend web — Arquitetura
 - [x] **Endpoint batch para cache** — `POST /api/batch/{municipio}` retorna todos os resultados do `web_cache` de uma vez (JSON com query_id -> {columns, rows, row_count}). Frontend renderiza instantaneamente do cache, endpoints individuais viram fallback
@@ -31,7 +37,10 @@
 - [ ] **Docker Compose completo** — adicionar service `etl` (Dockerfile com Python + deps) para deploy local de 1 comando. Hoje o compose so sobe o Postgres.
 
 ### Deploy Azure
-- [ ] **Deploy travado 48h+** — run 24294818214, commit `4556f15`. Travou na fase 17 (normalizacao), especificamente no ALTER TABLE bolsa_familia ADD COLUMN cpf_digitos + UPDATE 14.7M rows. Provavelmente lock ou OOM. VM preservada com dados ja carregados (fases 0-16 completas). Precisamos: (1) cancelar o job, (2) SSH na VM, (3) rodar manualmente as operacoes faltantes (fase 17+, views, indices, web) sem reprocessar dados ja carregados.
+- [x] **Deploy workflow corrigido** — `etl.01_schema` removido da fase `sql` (causava DROP+CREATE e perda de dados). Adicionada opcao `etl_phase=web` para sync de codigo sem reprocessar ETL
+- [x] **Nginx reverse proxy** — porta 80 → uvicorn 8000, gzip habilitado, config em `deploy/nginx-cruza.conf`
+- [ ] **ETL E2E em andamento** — run 24383758256 (`clean=true`, `etl_phase=all`), fase de download
+- [ ] **mv_fornecedor_pb_perfil ownership** — view criada por user `postgres`, app roda como `govbr`. Corrigir com `ALTER MATERIALIZED VIEW mv_fornecedor_pb_perfil OWNER TO govbr`
 - [x] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
 - [x] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
 - [x] **Services systemd corrigidos** — paths atualizados para `/home/govbr/govbr-project` e `venv/` (matching deploy.yml)
@@ -153,6 +162,15 @@
 - Toggle ocultar medicos integrado com paginacao (nao quebra mais contagem)
 - Q67 e Q89 otimizadas (pre-agrupamento CTE, filtro municipio no LATERAL)
 - Dialog de fornecedor: dados cadastrais, sancoes CEIS (datas inicio/fim, vigencia), divida PGFN, empenhos recentes com modalidade de licitacao
+- Graficos no dialog de fornecedor: mini bar chart (pagamentos mensais) e progress bars (elementos de despesa)
+- Dialogs fullscreen com scroll isolado e navegacao em pilha
+- Formatacao numerica (R$ X bi/mi/mil, X.X%, X mil) em client-side e server-side
+- Encoding Latin-1 corrigido nos CSVs de dados.pb.gov.br (fallback UTF-8 → Latin-1)
+- Q87 corrigida (subquery GROUP BY para eliminar duplicatas de tce_pb_servidor)
+- Qualificacao societaria e data de entrada no dialog de servidor
+- Cache invalidation endpoint (POST /api/cache/invalidate)
+- Nginx reverse proxy para producao (porta 80)
+- etl.01_schema removido da fase sql do deploy (previne data loss)
 - Tabela de fornecedores full-width com colunas: Fornecedor, CNPJ, Total Pago, Empenhos, Situacao, Sinais de Atencao
 - pct_sem_licitacao na MV corrigido para filtrar entidades publicas (natureza_juridica NOT LIKE '1%')
 - Lazy fetch on click para fornecedores (mesmo padrao de servidores)

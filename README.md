@@ -78,10 +78,12 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
 - **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
 - **15 queries de investigacao** organizadas em 6 categorias (conflito de interesse, licitacao, fornecedores, etc.)
-- **Dialog de servidor**: ao clicar um servidor, mostra vinculos (admissao, salario), Bolsa Familia e empresas vinculadas
-- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS (com datas), divida PGFN e empenhos recentes
-- **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` para manter dados prontos
+- **Dialog de servidor**: ao clicar um servidor, mostra vinculos (admissao, salario), Bolsa Familia, empresas vinculadas com qualificacao societaria e data de entrada
+- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS (com datas), divida PGFN, empenhos recentes, graficos de pagamentos mensais e elementos de despesa
+- **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
+- **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
 - **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
+- **Nginx reverse proxy** para producao (porta 80 → uvicorn 8000, gzip habilitado)
 
 ```bash
 # Iniciar local
@@ -153,7 +155,8 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 | Parametro | Descricao |
 |---|---|
 | `etl_phase=all` | ETL completo (download + carga + indices + views) |
-| `etl_phase=sql` | Apenas schema, indices e views (rapido) |
+| `etl_phase=sql` | Apenas indices, normalizacao e views (sem schema destrutivo) |
+| `etl_phase=web` | Sync de codigo apenas (git pull + reinicia web services) |
 | `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB) |
 | `skip_download=true` | Pular downloads, usar dados ja existentes na VM |
 | `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) |

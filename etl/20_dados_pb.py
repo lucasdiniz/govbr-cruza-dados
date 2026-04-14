@@ -76,9 +76,18 @@ def _sql_digits(col):
 
 
 def _load_csv(filepath):
-    """Carrega CSV de disco. Download feito por etl/00_download.py."""
+    """Carrega CSV de disco. Tenta UTF-8, fallback para Latin-1."""
     if filepath.exists() and filepath.stat().st_size > 100:
-        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        for enc in ("utf-8-sig", "latin-1"):
+            try:
+                with open(filepath, "r", encoding=enc) as f:
+                    data = f.read()
+                if "\ufffd" not in data:
+                    return data
+            except (UnicodeDecodeError, ValueError):
+                continue
+        # último recurso
+        with open(filepath, "r", encoding="latin-1") as f:
             return f.read()
     return None
 

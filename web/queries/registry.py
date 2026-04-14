@@ -39,15 +39,20 @@ SELECT pc.nome_contratado, pc.cpfcnpj_contratado,
        s.nome AS nome_socio, s.cpf_cnpj_norm AS cpf_socio_6dig,
        s.qualificacao,
        sv.municipio, sv.nome_servidor, sv.descricao_cargo,
-       sv.valor_vantagem
+       sv.salario
 FROM pb_contrato pc
 JOIN socio s ON s.cnpj_basico = pc.cnpj_basico AND s.tipo_socio = 2
-JOIN tce_pb_servidor sv ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
+JOIN (
+    SELECT cpf_digitos_6, nome_upper, municipio, nome_servidor, descricao_cargo,
+           MAX(valor_vantagem) AS salario
+    FROM tce_pb_servidor
+    WHERE ano_mes >= '2022-01'
+      AND municipio = %(municipio)s
+    GROUP BY cpf_digitos_6, nome_upper, municipio, nome_servidor, descricao_cargo
+) sv ON sv.cpf_digitos_6 = s.cpf_cnpj_norm
     AND sv.nome_upper = UPPER(TRIM(s.nome))
 WHERE pc.cnpj_basico IS NOT NULL
   AND s.cpf_cnpj_norm IS NOT NULL AND s.cpf_cnpj_norm != ''
-  AND sv.ano_mes >= '2022-01'
-  AND sv.municipio = %(municipio)s
 ORDER BY pc.valor_original DESC
 LIMIT 500
 """, timeout=30)
@@ -58,7 +63,7 @@ _reg("Q88", "Servidor municipal que recebe pagamento estadual como PF",
      "Conflito de Interesses",
      """
 SELECT sv.municipio, sv.nome_servidor, sv.cpf_cnpj AS cpf_servidor,
-       sv.descricao_cargo, sv.valor_vantagem,
+       sv.descricao_cargo, sv.valor_vantagem AS salario,
        pp.nome_credor AS nome_credor_estado, pp.cpfcnpj_credor,
        SUM(pp.valor_pagamento) AS total_recebido_estado,
        COUNT(*) AS qtd_pagamentos_estado,
@@ -72,7 +77,7 @@ WHERE sv.cpf_digitos_6 IS NOT NULL AND sv.cpf_digitos_6 != ''
   AND sv.ano_mes >= '2024-01'
   AND sv.municipio = %(municipio)s
 GROUP BY sv.municipio, sv.nome_servidor, sv.cpf_cnpj,
-         sv.descricao_cargo, sv.valor_vantagem,
+         sv.descricao_cargo, salario,
          pp.nome_credor, pp.cpfcnpj_credor, pp.tipo_despesa
 HAVING SUM(pp.valor_pagamento) > 5000
 ORDER BY total_recebido_estado DESC

@@ -254,10 +254,25 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const hasLicitacao = iLicNum >= 0;
 
     const bodyRows = rows.map(row => {
-        const cells = row.map(val => {
+        const cells = row.map((val, ci) => {
             if (val === null || val === undefined) return '<td>-</td>';
             if (typeof val === 'boolean') return `<td>${val ? 'Sim' : 'Nao'}</td>`;
             if (Array.isArray(val)) return `<td>${val.join(', ')}</td>`;
+            const col = columns[ci] || '';
+            if (typeof val === 'number' || (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val))) {
+                const n = parseFloat(val);
+                if (!isNaN(n)) {
+                    if (col.startsWith('valor') || col.startsWith('total') || col === 'capital_social' || col === 'maior_salario' || col === 'salario') {
+                        return `<td>${_shortBrl(n)}</td>`;
+                    }
+                    if (col.startsWith('pct')) {
+                        return `<td>${n.toFixed(1)}%</td>`;
+                    }
+                    if (col.startsWith('qtd') || col === 'empenhos') {
+                        return `<td>${_shortNum(n)}</td>`;
+                    }
+                }
+            }
             return `<td>${val}</td>`;
         }).join('');
 
@@ -444,6 +459,7 @@ function _dialogReset() {
     _dialogStack.length = 0;
     const dialog = document.getElementById('empresa-dialog');
     if (dialog) dialog.querySelector('.dialog-back').style.display = 'none';
+    document.body.classList.remove('dialog-open');
 }
 
 function _reattachDialogLinks(body) {
@@ -538,12 +554,15 @@ function _renderEmpresaCard(e, cnpjBasico) {
     const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
     const nome = _esc(e.razao_social || 'Razao social nao disponivel');
     const nomeLink = `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-nome="${nome}">${nome}</a>`;
+    const qualif = e.qualificacao_socio ? `<span>Qualificacao: <strong>${_esc(e.qualificacao_socio)}</strong></span>` : '';
+    const dtEntrada = e.dt_entrada_sociedade ? `<span>Entrada: ${_fmtDate(e.dt_entrada_sociedade)}</span>` : '';
     return `<div class="empresa-card">
         <div class="empresa-header">
             <strong>${nomeLink}</strong>
             <code>${cnpjFmt}</code>
         </div>
         <div class="empresa-details">
+            ${qualif}${dtEntrada}
             <span>Situacao: <span class="${sitClass}">${sit}</span></span>
             <span>Capital: ${capital}</span>
             <span>Sede: ${_esc(local)}</span>
@@ -561,6 +580,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     title.textContent = servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
+    document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs);
     let html = '';
@@ -633,6 +653,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
     title.textContent = fornecedorNome || 'Fornecedor';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
+    document.body.classList.add('dialog-open');
 
     const data = await _fetchFornecedorDetails(cnpjBasico, _currentMunicipio);
     let html = '';
@@ -692,12 +713,13 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
         // Mini bar chart - monthly payments
         if (data.monthly && data.monthly.length > 1) {
             const maxVal = Math.max(...data.monthly.map(m => m.total_mes));
+            html += '<p class="text-sm text-muted" style="margin-top:.8rem;margin-bottom:.2rem">Pagamentos mensais</p>';
             html += '<div class="mini-chart">';
             html += data.monthly.map(m => {
                 const pct = maxVal > 0 ? (m.total_mes / maxVal * 100) : 0;
                 const label = m.mes.slice(5);
                 return `<div class="mini-bar-col" title="${m.mes}: ${_shortBrl(m.total_mes)}">
-                    <div class="mini-bar" style="height:${Math.max(pct, 2)}%"></div>
+                    <div class="mini-bar" style="height:${Math.max(pct, 4)}%"></div>
                     <span class="mini-bar-label">${label}</span>
                 </div>`;
             }).join('');
@@ -707,13 +729,14 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome) {
         // Top elementos de despesa
         if (data.top_elementos && data.top_elementos.length) {
             const topMax = data.top_elementos[0].total_elemento;
+            html += '<p class="text-sm text-muted" style="margin-top:.8rem;margin-bottom:.2rem">Principais elementos de despesa</p>';
             html += '<div class="top-elementos">';
             html += data.top_elementos.map(el => {
                 const pct = topMax > 0 ? (el.total_elemento / topMax * 100) : 0;
                 return `<div class="top-el-row">
-                    <span class="top-el-name text-sm">${_esc(el.elemento_despesa || '-')}</span>
+                    <span class="top-el-name">${_esc(el.elemento_despesa || '-')}</span>
                     <div class="top-el-track"><div class="top-el-fill" style="width:${pct}%"></div></div>
-                    <span class="top-el-value text-sm">${_shortBrl(el.total_elemento)}</span>
+                    <span class="top-el-value">${_shortBrl(el.total_elemento)}</span>
                 </div>`;
             }).join('');
             html += '</div>';
@@ -816,6 +839,7 @@ async function openEmpenhoDialog(empenhoId) {
     title.textContent = 'Detalhes do empenho';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
+    document.body.classList.add('dialog-open');
 
     const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });
     if (!data || !data.numero_empenho) {
@@ -919,6 +943,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     title.textContent = label || `Licitacao ${numeroLicitacao}`;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
+    document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio);
     let html = '';

@@ -58,8 +58,16 @@
                                 <span class="badge badge-red">Sim</span>
                             {% elif value is sameas false %}
                                 <span class="badge badge-gray">Nao</span>
-                            {% elif value is number and (col.startswith("valor") or col.startswith("total")) %}
-                                R$ {{ "{:,.2f}".format(value) }}
+                            {% elif value is number and (col.startswith("valor") or col.startswith("total") or col == "capital_social" or col == "maior_salario" or col == "salario") %}
+                                {% if value|abs >= 1000000000 %}
+                                    R$ {{ "{:,.1f}".format(value / 1000000000) }} bi
+                                {% elif value|abs >= 1000000 %}
+                                    R$ {{ "{:,.1f}".format(value / 1000000) }} mi
+                                {% elif value|abs >= 1000 %}
+                                    R$ {{ "{:,.1f}".format(value / 1000) }} mil
+                                {% else %}
+                                    R$ {{ "{:,.0f}".format(value) }}
+                                {% endif %}
                             {% elif value is number and col.startswith("pct") %}
                                 <span class="{% if value >= 70 %}color-red{% elif value >= 30 %}color-yellow{% else %}color-green{% endif %}">
                                     {{ "{:,.1f}".format(value) }}%

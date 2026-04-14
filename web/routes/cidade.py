@@ -437,6 +437,25 @@ async def batch_cache(municipio_path: str):
     return JSONResponse(result)
 
 
+@router.post("/api/cache/invalidate")
+async def invalidate_web_cache(payload: dict = Body(...)):
+    """Invalida entradas do web_cache por query_id(s)."""
+    query_ids = payload.get("query_ids", [])
+    if not query_ids:
+        return JSONResponse({"deleted": 0})
+    try:
+        from web.db import get_conn
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                ph = ",".join(["%s"] * len(query_ids))
+                cur.execute(f"DELETE FROM web_cache WHERE query_id IN ({ph})", query_ids)
+                deleted = cur.rowcount
+        return JSONResponse({"deleted": deleted})
+    except Exception:
+        return JSONResponse({"error": "falha ao invalidar"}, status_code=500)
+
+
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo."""
@@ -458,13 +477,19 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         SELECT e.cnpj_basico, e.razao_social, e.capital_social,
                                est.cnpj_completo, est.situacao_cadastral,
                                est.cnae_principal, est.uf,
-                               COALESCE(dm.descricao, est.municipio) AS municipio
+                               COALESCE(dm.descricao, est.municipio) AS municipio,
+                               COALESCE(dq.descricao, s.qualificacao) AS qualificacao_socio,
+                               s.dt_entrada AS dt_entrada_sociedade
                         FROM empresa e
                         LEFT JOIN estabelecimento est ON est.cnpj_basico = e.cnpj_basico
                             AND est.cnpj_ordem = '0001'
                         LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
+                        LEFT JOIN socio s ON s.cnpj_basico = e.cnpj_basico
+                            AND s.cpf_cnpj_norm = %s
+                            AND UPPER(TRIM(s.nome)) = %s
+                        LEFT JOIN dom_qualificacao dq ON dq.codigo = s.qualificacao
                         WHERE e.cnpj_basico IN ({ph})
-                    """, cnpjs)
+                    """, [cpf6, nome] + cnpjs)
                     cols = [d[0] for d in cur.description]
                     rows = cur.fetchall()
                     empresas = []
@@ -473,6 +498,8 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         for k, v in r.items():
                             if hasattr(v, 'as_tuple'):
                                 r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
                         empresas.append(r)
                     result["empresas"] = empresas
 
