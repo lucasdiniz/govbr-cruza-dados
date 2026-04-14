@@ -84,6 +84,11 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
        EXISTS(
+           SELECT 1 FROM acordo_leniencia al
+           WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
+             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
+       ) AS flag_acordo_leniencia,
+       EXISTS(
            SELECT 1 FROM tce_pb_despesa d2
            JOIN (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
@@ -152,6 +157,11 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
        EXISTS(
+           SELECT 1 FROM acordo_leniencia al
+           WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
+             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
+       ) AS flag_acordo_leniencia,
+       EXISTS(
            SELECT 1 FROM tce_pb_despesa d2
            JOIN (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
@@ -187,6 +197,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        FALSE AS flag_inidoneidade,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
+       FALSE AS flag_acordo_leniencia,
        FALSE AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
@@ -236,6 +247,11 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        ) AS flag_inidoneidade,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
+       EXISTS(
+           SELECT 1 FROM acordo_leniencia al
+           WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
+             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
+       ) AS flag_acordo_leniencia,
        EXISTS(
            SELECT 1 FROM tce_pb_despesa d2
            JOIN (
@@ -304,6 +320,11 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
        EXISTS(
+           SELECT 1 FROM acordo_leniencia al
+           WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
+             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
+       ) AS flag_acordo_leniencia,
+       EXISTS(
            SELECT 1 FROM tce_pb_despesa d2
            JOIN (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
@@ -340,6 +361,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        FALSE AS flag_inidoneidade,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
+       FALSE AS flag_acordo_leniencia,
        FALSE AS flag_recebeu_durante_sancao,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
@@ -389,6 +411,11 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
        EXISTS(
+           SELECT 1 FROM acordo_leniencia al
+           WHERE LEFT(al.cnpj_norm, 8) = pc.cnpj_basico_fornecedor
+             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
+       ) AS flag_acordo_leniencia,
+       EXISTS(
            SELECT 1 FROM pncp_contrato pc2
            JOIN (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
@@ -430,6 +457,10 @@ cnpjs_inidoneidade AS (
     SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) AS cb FROM ceis_sancao
     WHERE (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE)
       AND categoria_sancao ILIKE '%%inidone%%'
+),
+ceaf_expulsos AS (
+    SELECT DISTINCT cpf_cnpj_norm AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome
+    FROM ceaf_expulsao
 )
 SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
@@ -445,10 +476,15 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
        EXISTS(
            SELECT 1 FROM unnest(cnpjs_socio) AS cs(cnpj)
            JOIN cnpjs_inidoneidade ini ON ini.cb = TRIM(cs.cnpj)
-       ) AS flag_socio_inidoneidade
+       ) AS flag_socio_inidoneidade,
+       EXISTS(
+           SELECT 1 FROM ceaf_expulsos ce
+           WHERE ce.cpf6 = mv_servidor_pb_risco.cpf_digitos_6
+             AND ce.nome = mv_servidor_pb_risco.nome_upper
+       ) AS flag_ceaf_expulso
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
-ORDER BY flag_socio_sancionado DESC, risco_score DESC
+ORDER BY flag_ceaf_expulso DESC, flag_socio_sancionado DESC, risco_score DESC
 LIMIT 200
 """
 

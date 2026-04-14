@@ -51,9 +51,10 @@
                             {% if f.flag_inidoneidade %}<span class="badge badge-red">Inidoneidade - CEIS</span>
                             {% elif f.flag_ceis %}<span class="badge badge-orange">Impedimento - CEIS</span>{% endif %}
                             {% if f.flag_cnep %}<span class="badge badge-orange">Sancao anticorrupcao - CNEP</span>{% endif %}
+                            {% if f.flag_acordo_leniencia %}<span class="badge badge-blue">Acordo de Leniencia</span>{% endif %}
                             {% if f.flag_pgfn %}<span class="badge badge-yellow">Divida ativa</span>{% endif %}
                             {% if f.flag_inativa %}<span class="badge badge-gray">Cadastro inativo</span>{% endif %}
-                            {% if not f.flag_inidoneidade and not f.flag_ceis and not f.flag_cnep and not f.flag_pgfn and not f.flag_inativa %}
+                            {% if not f.flag_inidoneidade and not f.flag_ceis and not f.flag_cnep and not f.flag_acordo_leniencia and not f.flag_pgfn and not f.flag_inativa %}
                                 <span class="text-sm text-muted">Sem sinal automatico</span>
                             {% endif %}
                         </td>

@@ -774,6 +774,48 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                     if empenhos_map:
                         result["empresa_empenhos"] = empenhos_map
 
+                # CEAF - Expulsoes da Administracao Federal
+                cur.execute("""
+                    SELECT categoria_sancao, cargo_efetivo, funcao_confianca,
+                           orgao_lotacao, orgao_sancionador, dt_inicio_sancao,
+                           dt_final_sancao, dt_transito_julgado, fundamentacao_legal,
+                           numero_processo
+                    FROM ceaf_expulsao
+                    WHERE cpf_cnpj_norm = %s
+                      AND UPPER(unaccent(nome_sancionado)) = %s
+                    ORDER BY dt_inicio_sancao DESC
+                """, (cpf6, nome))
+                ceaf_cols = [d[0] for d in cur.description]
+                ceaf_rows = cur.fetchall()
+                if ceaf_rows:
+                    ceaf_list = []
+                    for row in ceaf_rows:
+                        r = _row_to_dict(ceaf_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        ceaf_list.append(r)
+                    result["ceaf"] = ceaf_list
+
+                # Acordos de Leniencia das empresas vinculadas
+                if cnpjs:
+                    ph = ",".join(["%s"] * len(cnpjs))
+                    cur.execute(f"""
+                        SELECT LEFT(al.cnpj_norm, 8) AS cnpj_basico,
+                               al.situacao_acordo
+                        FROM acordo_leniencia al
+                        WHERE LEFT(al.cnpj_norm, 8) IN ({ph})
+                    """, cnpjs)
+                    ac_cols = [d[0] for d in cur.description]
+                    ac_rows = cur.fetchall()
+                    if ac_rows:
+                        acordos_map = {}
+                        for row in ac_rows:
+                            r = _row_to_dict(ac_cols, row)
+                            cb = r["cnpj_basico"]
+                            acordos_map.setdefault(cb, []).append(r)
+                        result["empresa_acordos"] = acordos_map
+
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:
         import logging; logging.exception("servidor detalhes failed")
@@ -1025,6 +1067,35 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                                 r[k] = v.isoformat()
                         dividas.append(r)
                     result["pgfn"] = dividas
+
+                # Acordos de Leniencia
+                cur.execute("""
+                    SELECT al.cnpj_sancionado, al.razao_social_rfb, al.situacao_acordo,
+                           al.orgao_sancionador, al.dt_inicio_acordo, al.dt_fim_acordo,
+                           al.numero_processo, al.id_acordo
+                    FROM acordo_leniencia al
+                    WHERE LEFT(al.cnpj_norm, 8) = %s
+                    ORDER BY al.dt_inicio_acordo DESC
+                """, (cnpj_basico,))
+                al_cols = [d[0] for d in cur.description]
+                al_rows = cur.fetchall()
+                if al_rows:
+                    acordos = []
+                    for row in al_rows:
+                        a = _row_to_dict(al_cols, row)
+                        for k, v in a.items():
+                            if hasattr(v, 'isoformat'):
+                                a[k] = v.isoformat()
+                        # Buscar efeitos do acordo
+                        cur.execute("""
+                            SELECT efeito, complemento FROM acordo_efeito
+                            WHERE id_acordo = %s
+                        """, (a["id_acordo"],))
+                        ef_cols = [d[0] for d in cur.description]
+                        ef_rows = cur.fetchall()
+                        a["efeitos"] = [_row_to_dict(ef_cols, er) for er in ef_rows]
+                        acordos.append(a)
+                    result["acordos_leniencia"] = acordos
 
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:

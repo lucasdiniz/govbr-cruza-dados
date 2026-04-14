@@ -430,6 +430,7 @@ tr:hover { background: #fbfdff; }
 .badge-yellow { background: #fff7ed; color: var(--yellow); border: 1px solid #fed7aa; }
 .badge-green { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
 .badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+.badge-blue { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
 
 .btn {
     display: inline-flex;

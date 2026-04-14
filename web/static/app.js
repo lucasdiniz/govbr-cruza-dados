@@ -442,6 +442,7 @@ function buildFornecedoresPanel(data) {
         if (isInidoneidade) badges += '<span class="badge badge-red">Inidoneidade - CEIS</span>';
         else if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-orange">Impedimento - CEIS</span>';
         if (_val(r, cols, 'flag_cnep')) badges += '<span class="badge badge-orange">Sancao anticorrupcao - CNEP</span>';
+        if (_val(r, cols, 'flag_acordo_leniencia')) badges += '<span class="badge badge-blue">Acordo de Leniencia</span>';
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
@@ -785,6 +786,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     const sancoes = data.empresa_sancoes || {};
     const pgfn = data.empresa_pgfn || {};
     const empMap = data.empresa_empenhos || {};
+    const acordosMap = data.empresa_acordos || {};
     let html = '';
 
     // Stats grid
@@ -804,6 +806,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">Empresas sancionadas</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">Empresas c/ divida PGFN</span></div>`;
     if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
+    if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell" style="border-color:var(--red)"><span class="stat-value" style="color:var(--red)">${data.ceaf.length}</span><span class="stat-label">Expulsao federal</span></div>`;
     html += '</div>';
 
     // Vinculos como servidor (first)
@@ -855,6 +858,13 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
                 const totalDiv = pgfnList.reduce((s, d) => s + (d.valor_consolidado || 0), 0);
                 badges += `<span class="badge badge-orange">Divida PGFN ${_shortBrl(totalDiv)}</span>`;
             }
+            // Acordo de Leniencia badge
+            const acordoList = acordosMap[c] || [];
+            if (acordoList.length) {
+                const ativos = acordoList.filter(a => a.situacao_acordo !== 'Cumprido');
+                if (ativos.length) badges += '<span class="badge badge-blue">Acordo de Leniencia ativo</span>';
+                else badges += '<span class="badge badge-gray">Acordo de Leniencia (cumprido)</span>';
+            }
             // Empenhos badge
             const emp = empMap[c];
             if (emp) {
@@ -880,6 +890,31 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
                 <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
             </div>
         </div>`;
+        html += '</div>';
+    }
+
+    // CEAF - Expulsoes da Administracao Federal
+    if (data.ceaf && data.ceaf.length) {
+        html += '<div class="dialog-section"><h4>Expulsoes da Administracao Federal (CEAF)</h4>';
+        html += data.ceaf.map(c => {
+            return `<div class="empresa-card" style="border-left: 3px solid var(--red)">
+                <div class="empresa-header">
+                    <strong>${_esc(c.categoria_sancao || 'Sancao')}</strong>
+                    <span class="badge badge-red">CEAF</span>
+                </div>
+                <div class="empresa-details">
+                    ${c.cargo_efetivo ? `<span>Cargo efetivo: ${_esc(c.cargo_efetivo)}</span>` : ''}
+                    ${c.funcao_confianca ? `<span>Funcao de confianca: ${_esc(c.funcao_confianca)}</span>` : ''}
+                    ${c.orgao_lotacao ? `<span>Orgao de lotacao: ${_esc(c.orgao_lotacao)}</span>` : ''}
+                    ${c.orgao_sancionador ? `<span>Sancionador: ${_esc(c.orgao_sancionador)}</span>` : ''}
+                    ${c.dt_inicio_sancao ? `<span>Inicio: ${_fmtDate(c.dt_inicio_sancao)}</span>` : ''}
+                    ${c.dt_final_sancao ? `<span>Fim: ${_fmtDate(c.dt_final_sancao)}</span>` : ''}
+                    ${c.dt_transito_julgado ? `<span>Transito em julgado: ${_fmtDate(c.dt_transito_julgado)}</span>` : ''}
+                    ${c.fundamentacao_legal ? `<span>Fund. legal: ${_esc(c.fundamentacao_legal)}</span>` : ''}
+                    ${c.numero_processo ? `<span>Processo: ${_esc(c.numero_processo)}</span>` : ''}
+                </div>
+            </div>`;
+        }).join('');
         html += '</div>';
     }
 
@@ -1084,6 +1119,34 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             </div>`;
         }).join('');
         html += `<a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener" class="ext-link text-sm">Consultar na Lista de Devedores &#8599;</a>`;
+        html += '</div>';
+    }
+
+    // Acordos de Leniencia
+    if (data.acordos_leniencia && data.acordos_leniencia.length) {
+        html += '<div class="dialog-section"><h4>Acordos de Leniencia</h4>';
+        html += data.acordos_leniencia.map(a => {
+            const status = a.situacao_acordo || 'Desconhecido';
+            const statusBadge = status === 'Cumprido'
+                ? '<span class="badge badge-green">Cumprido</span>'
+                : '<span class="badge badge-blue">Em Execucao</span>';
+            const efeitos = (a.efeitos || []).map(e =>
+                `<li><strong>${_esc(e.efeito)}</strong>${e.complemento ? ': ' + _esc(e.complemento).slice(0, 150) : ''}</li>`
+            ).join('');
+            return `<div class="empresa-card" style="border-left: 3px solid #3b82f6">
+                <div class="empresa-header">
+                    <strong>Acordo de Leniencia</strong> ${statusBadge}
+                </div>
+                <div class="empresa-details">
+                    ${a.orgao_sancionador ? `<span>Orgao: ${_esc(a.orgao_sancionador)}</span>` : ''}
+                    ${a.dt_inicio_acordo ? `<span>Inicio: ${_fmtDate(a.dt_inicio_acordo)}</span>` : ''}
+                    <span>Fim: ${a.dt_fim_acordo ? _fmtDate(a.dt_fim_acordo) : 'Em aberto'}</span>
+                    ${a.numero_processo ? `<span>Processo: ${_esc(a.numero_processo)}</span>` : ''}
+                </div>
+                ${efeitos ? '<div style="margin-top:0.5rem"><strong style="font-size:0.82rem">Efeitos:</strong><ul style="margin:0.25rem 0 0 1rem;font-size:0.82rem">' + efeitos + '</ul></div>' : ''}
+            </div>`;
+        }).join('');
+        html += '<p class="text-sm text-muted" style="margin-top:0.5rem">Acordos de Leniencia (Lei 12.846/13) nao impedem a empresa de contratar com o poder publico. Sao informacoes de transparencia.</p>';
         html += '</div>';
     }
 
@@ -1353,6 +1416,8 @@ function buildServidoresPanel(data) {
         const municipios = _val(r, cols, 'municipios') || [];
         const municipiosStr = municipios.map(m => _esc(m)).join(', ') || '-';
         let badges = '';
+        const ceafExpulso = _val(r, cols, 'flag_ceaf_expulso');
+        if (ceafExpulso) badges += '<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>';
         if (_val(r, cols, 'flag_conflito_interesses')) {
             badges += qtdEmpresas > 0
                 ? `<span class="badge badge-red">Socio de ${qtdEmpresas} empresa${qtdEmpresas > 1 ? 's' : ''} que fornece ao municipio</span>`
@@ -1372,7 +1437,7 @@ function buildServidoresPanel(data) {
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
-        const rowClass = socioSancionado ? (socioInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
+        const rowClass = ceafExpulso ? 'clickable-row row-sancao' : socioSancionado ? (socioInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
