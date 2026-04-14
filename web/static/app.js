@@ -542,8 +542,12 @@ async function _refreshPerfilLive(municipio, uf) {
             const perfil = await res.json();
             _updateHeroStats(perfil);
             _updateInsightCards(perfil);
+        } else {
+            console.warn('perfil endpoint returned', res.status);
         }
-    } catch {}
+    } catch (e) {
+        console.warn('perfil fetch failed', e);
+    }
 }
 
 // ── Dialog navigation stack ─────────────────────────────────────
