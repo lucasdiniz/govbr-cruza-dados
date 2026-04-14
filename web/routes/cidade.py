@@ -83,6 +83,19 @@ def _row_to_dict(cols, row):
     return dict(zip(cols, row))
 
 
+def _row_to_json_dict(cols, row):
+    """Like _row_to_dict but converts Decimal/date for JSON serialization."""
+    d = {}
+    for c, v in zip(cols, row):
+        if hasattr(v, 'as_tuple'):  # Decimal
+            d[c] = float(v)
+        elif hasattr(v, 'isoformat'):  # date/datetime
+            d[c] = v.isoformat()
+        else:
+            d[c] = v
+    return d
+
+
 def _normalize_municipio(value: str) -> str:
     return " ".join(value.strip().split())
 
@@ -539,7 +552,7 @@ async def get_perfil(payload: MunicipioPayload):
         if cached:
             cols, rows = cached
             if rows:
-                return JSONResponse(_row_to_dict(cols, rows[0]))
+                return JSONResponse(_row_to_json_dict(cols, rows[0]))
 
     if _has_date_filter(payload):
         try:
@@ -558,7 +571,7 @@ async def get_perfil(payload: MunicipioPayload):
             return JSONResponse({})
 
     if rows:
-        return JSONResponse(_row_to_dict(cols, rows[0]))
+        return JSONResponse(_row_to_json_dict(cols, rows[0]))
     return JSONResponse({})
 
 
