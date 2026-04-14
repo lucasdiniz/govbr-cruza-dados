@@ -450,7 +450,7 @@ function _dialogPush() {
     const title = dialog.querySelector('.dialog-title').textContent;
     const html = dialog.querySelector('.dialog-body').innerHTML;
     _dialogStack.push({ title, html });
-    dialog.querySelector('.dialog-back').style.display = '';
+    dialog.querySelector('.dialog-back').style.visibility = 'visible';
 }
 
 function _dialogPop() {
@@ -461,13 +461,13 @@ function _dialogPop() {
     const body = dialog.querySelector('.dialog-body');
     body.innerHTML = prev.html;
     _reattachDialogLinks(body);
-    if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.display = 'none';
+    if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
 }
 
 function _dialogReset() {
     _dialogStack.length = 0;
     const dialog = document.getElementById('empresa-dialog');
-    if (dialog) dialog.querySelector('.dialog-back').style.display = 'none';
+    if (dialog) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
     document.body.classList.remove('dialog-open');
 }
 
@@ -496,8 +496,7 @@ function _reattachDialogLinks(body) {
             const cnpj = sel.dataset.fornCnpj;
             const nome = sel.dataset.fornNome;
             const mun = sel.value;
-            _dialogReset();
-            openFornecedorDialog(cnpj, nome, mun);
+            openFornecedorDialog(cnpj, nome, mun, true);
         });
     });
     // Cross-municipality sanction rows
@@ -506,8 +505,7 @@ function _reattachDialogLinks(body) {
             const cnpj = row.dataset.fornCnpj;
             const nome = row.dataset.fornNome;
             const mun = row.dataset.switchMun;
-            _dialogReset();
-            openFornecedorDialog(cnpj, nome, mun);
+            openFornecedorDialog(cnpj, nome, mun, true);
         });
     });
     _initDialogTableSort(body);
@@ -706,10 +704,14 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 // Store current municipio for fornecedor dialog
 let _currentMunicipio = '';
 
-async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride) {
+async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
-    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    if (!switchMun) {
+        if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    } else {
+        _dialogPush();
+    }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = fornecedorNome || 'Fornecedor';
@@ -880,13 +882,13 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         let munSelect = '';
         if (munOptions.length > 1) {
             const opts = munOptions.map(m => {
-                const sel = m.municipio === _currentMunicipio ? ' selected' : '';
+                const sel = m.municipio === viewMunicipio ? ' selected' : '';
                 return `<option value="${_esc(m.municipio)}"${sel}>${_esc(m.municipio)} (${_shortBrl(m.total_pago)})</option>`;
             }).join('');
             munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}">${opts}</select>`;
         }
 
-        html += `<div class="dialog-section"><h4>Empenhos recentes ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
+        html += `<div class="dialog-section" id="forn-empenhos"><h4>Empenhos recentes ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
         html += _buildEmpenhoTable(data.empenhos, sancaoRanges);
         if (data.empenhos.length >= 50) {
             html += '<p class="text-sm text-muted">Mostrando os 50 empenhos mais recentes.</p>';
@@ -916,6 +918,10 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    if (switchMun) {
+        const empSection = body.querySelector('#forn-empenhos');
+        if (empSection) empSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 async function openEmpenhoDialog(empenhoId) {

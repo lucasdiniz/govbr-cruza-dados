@@ -682,7 +682,7 @@ tr:hover { background: #fbfdff; }
 .dialog-table { font-size: .82rem; }
 .dialog-table th { font-size: .72rem; padding: .45rem .5rem; }
 .dialog-table td { padding: .45rem .5rem; }
-.dialog-back { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); padding: 0 .3rem; line-height: 1; }
+.dialog-back { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); padding: 0 .3rem; line-height: 1; min-width: 1.5rem; }
 .dialog-back:hover { color: var(--text); }
 .dialog-link { color: var(--accent); cursor: pointer; text-decoration: underline; background: none; border: none; font: inherit; padding: 0; }
 
