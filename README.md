@@ -83,6 +83,8 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 - **Destaque de risco**: fornecedores que receberam pagamentos durante sancao e servidores socios de empresas sancionadas (CEIS/CNEP) sao destacados em vermelho com legendas explicativas
 - **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
 - **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
+- **Cache duplo (all + ano)**: `warm_cache` pre-computa variantes all-time e ano-atual por query. Filtro temporal no frontend usa cache para 01/01-31/12 do ano, queries live para ranges custom
+- **Filtro temporal**: barra de datas no perfil PB filtra hero stats, insight cards, fornecedores e todos os finding cards. Servidores (MV) sempre mostram todos os periodos
 - **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
 - **Nginx reverse proxy** para producao (porta 80 → uvicorn 8000, gzip habilitado)
 

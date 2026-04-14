@@ -184,3 +184,4 @@
 - flag_socio_sancionado: EXISTS otimizado com CTE (7.6s → 487ms) cruzando cnpjs_socio com sancoes vigentes
 - docker-compose.yml removido (nao utilizado, PostgreSQL roda local)
 - Secoes de investigacao reordenadas por potencial investigativo: Fornecedores Irregulares primeiro (evidencia direta de ilegalidade), Orcamento e Financeiro por ultimo (mais contextual)
+- Filtro temporal global na pagina de municipio PB: barra de datas (De/Ate) com default ano atual, cache duplo (all-time + ANO), queries live para ranges custom. Hero stats, insight cards, fornecedores e 16 finding cards respondem ao filtro. Servidores (MV) mostram badge "todos os periodos". Export CSV inclui parametros de data

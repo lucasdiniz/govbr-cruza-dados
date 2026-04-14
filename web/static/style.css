@@ -844,6 +844,27 @@ tr:hover { background: #fbfdff; }
     text-decoration: none;
 }
 
+/* Date filter bar */
+.date-filter-bar {
+    display: flex; align-items: center; gap: 1rem;
+    flex-wrap: wrap;
+}
+.date-filter-fields {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+}
+.date-field {
+    display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem;
+}
+.date-field input[type="date"] {
+    padding: 0.3rem 0.5rem; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 0.85rem; background: var(--surface);
+    color: var(--text);
+}
+.period-badge {
+    font-size: 0.78rem; color: var(--muted);
+    font-style: italic; margin-bottom: 0.5rem;
+}
+
 /* Responsive: stack stats on narrow dialogs */
 @media (max-width: 700px) {
     .charts-grid { grid-template-columns: 1fr; }
@@ -851,4 +872,5 @@ tr:hover { background: #fbfdff; }
 @media (max-width: 500px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .top-el-row { grid-template-columns: 1fr; gap: .2rem; }
+    .date-filter-fields { gap: 0.3rem; }
 }

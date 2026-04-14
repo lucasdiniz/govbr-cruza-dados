@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
 
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -22,10 +23,14 @@ from web.queries.cidade import (
     AUTOCOMPLETE_MUNICIPIO,
     AUTOCOMPLETE_MUNICIPIO_FALLBACK,
     PERFIL_MUNICIPIO,
+    PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
     TOP_FORNECEDORES_BASIC,
+    TOP_FORNECEDORES_BASIC_DATED,
+    TOP_FORNECEDORES_DATED,
     TOP_FORNECEDORES_FALLBACK,
+    TOP_FORNECEDORES_FALLBACK_DATED,
     TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
 )
@@ -70,6 +75,8 @@ SECTION_META = {
 class MunicipioPayload(BaseModel):
     municipio: str
     uf: str = ""
+    data_inicio: str | None = None
+    data_fim: str | None = None
 
 
 def _row_to_dict(cols, row):
@@ -78,6 +85,34 @@ def _row_to_dict(cols, row):
 
 def _normalize_municipio(value: str) -> str:
     return " ".join(value.strip().split())
+
+
+def _has_date_filter(payload: MunicipioPayload) -> bool:
+    return bool(payload.data_inicio or payload.data_fim)
+
+
+def _get_periodo(payload: MunicipioPayload) -> str:
+    """'ANO' se datas batem com ano atual, '' se sem filtro, 'CUSTOM' se custom."""
+    if not _has_date_filter(payload):
+        return ""
+    today = date.today()
+    yr = str(today.year)
+    if payload.data_inicio == f"{yr}-01-01" and (payload.data_fim or "").startswith(yr):
+        return "ANO"
+    return "CUSTOM"
+
+
+def _date_params(payload: MunicipioPayload) -> dict:
+    params = {"municipio": _normalize_municipio(payload.municipio)}
+    if payload.data_inicio:
+        params["data_inicio"] = payload.data_inicio
+        params["ano_inicio"] = int(payload.data_inicio[:4])
+        params["ano_mes_inicio"] = payload.data_inicio[:7]
+    if payload.data_fim:
+        params["data_fim"] = payload.data_fim
+        params["ano_fim"] = int(payload.data_fim[:4])
+        params["ano_mes_fim"] = payload.data_fim[:7]
+    return params
 
 
 def _parse_municipio_uf(raw: str) -> tuple[str, str]:
@@ -133,6 +168,17 @@ def _load_top_fornecedores_pncp(municipio: str, uf: str):
         )
     except QueryCanceled:
         return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
+
+
+def _load_top_fornecedores_dated(params: dict):
+    """Carrega top fornecedores com filtro de data (live, sem cache in-memory)."""
+    empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
+    for sql in [TOP_FORNECEDORES_DATED, TOP_FORNECEDORES_FALLBACK_DATED, TOP_FORNECEDORES_BASIC_DATED]:
+        try:
+            return execute_query(sql, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        except (UndefinedTable, QueryCanceled):
+            continue
+    return empty
 
 
 def _load_top_servidores(municipio: str):
@@ -264,6 +310,12 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             },
         )
 
+    today = date.today()
+    date_ctx = {
+        "default_data_inicio": f"{today.year}-01-01",
+        "default_data_fim": today.isoformat(),
+    }
+
     return templates.TemplateResponse(
         request,
         "results/cidade.html",
@@ -271,6 +323,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "municipio": municipio,
             "uf": uf,
             "perfil": perfil,
+            **date_ctx,
             "fornecedores": [],
             "servidores": [],
             "report_sections": _build_report_sections() if is_pb else [],
@@ -342,19 +395,25 @@ async def run_query(request: Request, query_id: str, payload: MunicipioPayload):
         return HTMLResponse("<p class='color-red text-sm'>Query nao encontrada.</p>", status_code=404)
 
     municipio = _normalize_municipio(payload.municipio)
+    periodo = _get_periodo(payload)
 
-    # Try pre-computed cache first
-    cached = read_web_cache(query_def.id, municipio)
-    if cached:
-        cols, rows = cached
-        return _render_result_table(request, query_def.title, cols, rows)
+    # Try pre-computed cache first (ALL or ANO)
+    if periodo != "CUSTOM":
+        cached = read_web_cache(query_def.id, municipio, periodo=periodo)
+        if cached:
+            cols, rows = cached
+            return _render_result_table(request, query_def.title, cols, rows)
+
+    # Live query (CUSTOM range or cache miss)
+    if _has_date_filter(payload) and query_def.sql_full_dated:
+        sql = query_def.sql_full_dated
+        params = _date_params(payload)
+    else:
+        sql = query_def.sql_full
+        params = {"municipio": municipio}
 
     try:
-        cols, rows = execute_query(
-            query_def.sql_full,
-            {"municipio": municipio},
-            timeout_sec=query_def.timeout_sec,
-        )
+        cols, rows = execute_query(sql, params, timeout_sec=query_def.timeout_sec)
     except QueryCanceled:
         return HTMLResponse(
             "<p class='color-red text-sm'>Tempo excedido ao executar a query.</p>",
@@ -368,11 +427,24 @@ async def run_query(request: Request, query_id: str, payload: MunicipioPayload):
 async def top_fornecedores(request: Request, payload: MunicipioPayload):
     municipio = _normalize_municipio(payload.municipio)
     uf = payload.uf.strip().upper() if payload.uf else ""
-    cached = read_web_cache("TOP_FORNECEDORES", municipio)
-    if cached and _is_pb(uf):
-        cols, rows = cached
+    periodo = _get_periodo(payload)
+
+    if _has_date_filter(payload) and _is_pb(uf):
+        # Date-filtered: try cache ANO then live
+        if periodo != "CUSTOM":
+            cached = read_web_cache("TOP_FORNECEDORES", municipio, periodo=periodo)
+            if cached:
+                cols, rows = cached
+            else:
+                cols, rows = _load_top_fornecedores_dated(_date_params(payload))
+        else:
+            cols, rows = _load_top_fornecedores_dated(_date_params(payload))
     else:
-        cols, rows = _load_top_fornecedores(municipio, uf)
+        cached = read_web_cache("TOP_FORNECEDORES", municipio)
+        if cached and _is_pb(uf):
+            cols, rows = cached
+        else:
+            cols, rows = _load_top_fornecedores(municipio, uf)
     fornecedores = [_row_to_dict(cols, row) for row in rows]
     response = _render_partial(
         request,
@@ -412,8 +484,12 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
 
 
 @router.post("/api/batch/{municipio_path}")
-async def batch_cache(municipio_path: str):
-    """Retorna todos os dados do cache de uma vez para o municipio."""
+async def batch_cache(municipio_path: str, periodo: str = ""):
+    """Retorna todos os dados do cache de uma vez para o municipio.
+
+    periodo: '' para all-time, 'ANO' para ano atual.
+    Busca todos os rows e filtra por prefixo, com fallback.
+    """
     municipio = _normalize_municipio(municipio_path)
     result = {}
     try:
@@ -425,16 +501,65 @@ async def batch_cache(municipio_path: str):
                     "SELECT query_id, columns, rows, row_count FROM web_cache WHERE municipio = %s",
                     (municipio,),
                 )
+                prefix = f"{periodo}:" if periodo else ""
                 for row in cur.fetchall():
                     qid, cols, rows_data, count = row
-                    result[qid] = {
+                    entry = {
                         "columns": cols if isinstance(cols, list) else [],
                         "rows": rows_data if isinstance(rows_data, list) else [],
                         "row_count": count or 0,
                     }
+                    if periodo and qid.startswith(prefix):
+                        # Prefixed entry: strip prefix for the response key
+                        base_qid = qid[len(prefix):]
+                        result[base_qid] = entry
+                    elif not periodo and ":" not in qid:
+                        # Unprefixed entry for all-time
+                        result[qid] = entry
+                    elif ":" in qid:
+                        # Prefixed but not matching: skip
+                        pass
+                    else:
+                        # Fallback: unprefixed when requesting periodo
+                        if qid not in result:
+                            result[qid] = entry
     except Exception:
         pass
     return JSONResponse(result)
+
+
+@router.post("/api/perfil")
+async def get_perfil(payload: MunicipioPayload):
+    """Retorna perfil do municipio como JSON, com filtro temporal opcional."""
+    municipio = _normalize_municipio(payload.municipio)
+    periodo = _get_periodo(payload)
+
+    if periodo != "CUSTOM":
+        cached = read_web_cache("PERFIL", municipio, periodo=periodo)
+        if cached:
+            cols, rows = cached
+            if rows:
+                return JSONResponse(_row_to_dict(cols, rows[0]))
+
+    if _has_date_filter(payload):
+        try:
+            cols, rows = execute_query(PERFIL_MUNICIPIO_LIVE, _date_params(payload), timeout_sec=15)
+        except QueryCanceled:
+            return JSONResponse({})
+    else:
+        try:
+            cols, rows = cached_query(
+                f"perfil:{municipio.casefold()}",
+                PERFIL_MUNICIPIO,
+                {"municipio": municipio},
+                timeout_sec=TIMEOUT_PROFILE,
+            )
+        except (QueryCanceled, Exception):
+            return JSONResponse({})
+
+    if rows:
+        return JSONResponse(_row_to_dict(cols, rows[0]))
+    return JSONResponse({})
 
 
 @router.post("/api/cache/invalidate")
@@ -1014,19 +1139,30 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
 
 
 @router.get("/api/export/{query_id}")
-async def export_query_csv(query_id: str, municipio: str = Query(..., min_length=2)):
+async def export_query_csv(
+    query_id: str,
+    municipio: str = Query(..., min_length=2),
+    data_inicio: str | None = Query(None),
+    data_fim: str | None = Query(None),
+):
     try:
         query_def = _get_query_def(query_id)
     except KeyError:
         return Response("Query nao encontrada", status_code=404)
 
     normalized = _normalize_municipio(municipio)
+
+    if data_inicio and data_fim and query_def.sql_full_dated:
+        params = {"municipio": normalized, "data_inicio": data_inicio, "data_fim": data_fim,
+                  "ano_inicio": int(data_inicio[:4]), "ano_fim": int(data_fim[:4]),
+                  "ano_mes_inicio": data_inicio[:7], "ano_mes_fim": data_fim[:7]}
+        sql = query_def.sql_full_dated
+    else:
+        params = {"municipio": normalized}
+        sql = query_def.sql_full
+
     try:
-        cols, rows = execute_query(
-            query_def.sql_full,
-            {"municipio": normalized},
-            timeout_sec=query_def.timeout_sec,
-        )
+        cols, rows = execute_query(sql, params, timeout_sec=query_def.timeout_sec)
     except QueryCanceled:
         return Response("Tempo excedido ao exportar", status_code=504)
 

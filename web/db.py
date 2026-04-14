@@ -90,15 +90,19 @@ def cached_query(
     return result
 
 
-def read_web_cache(query_id: str, municipio: str) -> tuple[list[str], list[tuple]] | None:
-    """Le resultado pre-processado de web_cache. Retorna None se nao existir."""
+def read_web_cache(query_id: str, municipio: str, periodo: str = "") -> tuple[list[str], list[tuple]] | None:
+    """Le resultado pre-processado de web_cache. Retorna None se nao existir.
+
+    periodo: prefixo temporal (ex: 'ANO'). Se informado, busca '{periodo}:{query_id}'.
+    """
+    effective_qid = f"{periodo}:{query_id}" if periodo else query_id
     try:
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT columns, rows FROM web_cache WHERE query_id = %s AND municipio = %s",
-                    (query_id, municipio),
+                    (effective_qid, municipio),
                 )
                 row = cur.fetchone()
                 if row:

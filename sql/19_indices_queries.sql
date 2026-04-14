@@ -67,6 +67,10 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_siape_cpf_digitos
 -- =============================================
 -- ALTO: Datas e filtros compostos
 -- =============================================
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tce_desp_mun_data
+    ON tce_pb_despesa(municipio, data_empenho)
+    WHERE valor_pago > 0;
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pncp_contrato_dt_assinatura
     ON pncp_contrato (dt_assinatura);
 

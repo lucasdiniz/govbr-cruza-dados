@@ -24,10 +24,14 @@ import psycopg2
 from etl.config import DSN
 from web.queries.cidade import (
     PERFIL_MUNICIPIO,
+    PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
     TOP_FORNECEDORES_BASIC,
+    TOP_FORNECEDORES_BASIC_DATED,
+    TOP_FORNECEDORES_DATED,
     TOP_FORNECEDORES_FALLBACK,
+    TOP_FORNECEDORES_FALLBACK_DATED,
     TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
 )
@@ -134,6 +138,24 @@ def _run_and_cache(conn, query_id: str, sql: str, mun: str, timeout_sec: int, ve
         return False
 
 
+def _run_and_cache_dated(conn, query_id: str, sql: str, params: dict, timeout_sec: int, verbose: bool):
+    """Executa query com params de data e salva no cache. Retorna True se ok."""
+    try:
+        cols, rows = _execute(conn, sql, params, timeout_sec)
+        conn.commit()
+        mun = params["municipio"]
+        with conn.cursor() as cur:
+            _upsert(cur, query_id, mun, cols, rows)
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        msg = str(e).split("\n")[0]
+        if verbose and "statement_timeout" not in msg:
+            print(f"  {query_id}: {msg}")
+        return False
+
+
 def _ensure_cache_table(conn):
     with conn.cursor() as cur:
         cur.execute(SCHEMA_DDL)
@@ -188,6 +210,55 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         elapsed = time.time() - t0
         if verbose:
             print(f"[{i}/{total}] {mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
+
+    # 2o loop: variantes ANO (ano atual)
+    from datetime import date as _date
+    today = _date.today()
+    ano_params_base = {
+        "data_inicio": f"{today.year}-01-01",
+        "data_fim": f"{today.year}-12-31",
+        "ano_inicio": today.year,
+        "ano_fim": today.year,
+        "ano_mes_inicio": f"{today.year}-01",
+        "ano_mes_fim": f"{today.year}-12",
+    }
+    if verbose:
+        print(f"\n--- ANO {today.year}: {total} municipios ---")
+
+    for i, mun in enumerate(municipios, 1):
+        t0 = time.time()
+        ok, fail = 0, 0
+        params = {"municipio": mun, **ano_params_base}
+
+        # PERFIL ANO
+        if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, 15, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # TOP_FORNECEDORES ANO (fallback chain)
+        forn_ok = False
+        for sql in [TOP_FORNECEDORES_DATED, TOP_FORNECEDORES_FALLBACK_DATED, TOP_FORNECEDORES_BASIC_DATED]:
+            if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", sql, params, 30, False):
+                forn_ok = True
+                break
+        ok += 1 if forn_ok else 0
+        fail += 0 if forn_ok else 1
+
+        # Registry queries ANO
+        for qdef in all_queries:
+            if qdef.sql_full_dated:
+                cache_timeout = max(qdef.timeout_sec, 60)
+                if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
+                    ok += 1
+                else:
+                    fail += 1
+
+        cycle_ok += ok
+        cycle_fail += fail
+        elapsed = time.time() - t0
+        if verbose:
+            print(f"[{i}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
 
     conn.close()
     return cycle_ok, cycle_fail

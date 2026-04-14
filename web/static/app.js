@@ -118,15 +118,38 @@ setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (
     window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
 });
 
-async function bootstrapCityReport(municipio, uf) {
+async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     uf = uf || 'PB';
     _currentMunicipio = municipio;
-    // Single batch request for everything
+    _currentUf = uf;
+    _dateInicio = dataInicio || null;
+    _dateFim = dataFim || null;
+
+    const periodo = _getPeriodo();
+
+    // Single batch request for everything (skip for CUSTOM — no cache)
     let batchData = {};
-    try {
-        const res = await fetch(`/api/batch/${encodeURIComponent(municipio)}`, { method: 'POST' });
-        if (res.ok) batchData = await res.json();
-    } catch {}
+    if (periodo !== 'CUSTOM') {
+        try {
+            const batchUrl = `/api/batch/${encodeURIComponent(municipio)}${periodo ? '?periodo=' + periodo : ''}`;
+            const res = await fetch(batchUrl, { method: 'POST' });
+            if (res.ok) batchData = await res.json();
+        } catch {}
+    }
+
+    // Update hero/insight when date-filtered
+    if (_isDateFiltered()) {
+        if (batchData.PERFIL && batchData.PERFIL.rows && batchData.PERFIL.rows.length) {
+            const cols = batchData.PERFIL.columns;
+            const row = batchData.PERFIL.rows[0];
+            const perfil = {};
+            cols.forEach((c, i) => perfil[c] = row[i]);
+            _updateHeroStats(perfil);
+            _updateInsightCards(perfil);
+        } else {
+            await _refreshPerfilLive(municipio, uf);
+        }
+    }
 
     // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
     const fornPanel = document.querySelector('[data-async-panel="fornecedores"]');
@@ -149,6 +172,10 @@ async function bootstrapCityReport(municipio, uf) {
             servPanel.innerHTML = buildServidoresPanel(servData);
             initDataTables(servPanel);
             initClickableRows(servPanel);
+            if (_isDateFiltered()) {
+                servPanel.insertAdjacentHTML('afterbegin',
+                    '<p class="period-badge">Servidores: dados de todos os periodos (esta consulta nao suporta filtro temporal)</p>');
+            }
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
         }
@@ -182,7 +209,7 @@ async function bootstrapCityReport(municipio, uf) {
                 const response = await fetch(`/api/run/${queryId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ municipio }),
+                    body: JSON.stringify(_buildBody(municipio, uf)),
                 });
 
                 if (!response.ok) {
@@ -200,7 +227,12 @@ async function bootstrapCityReport(municipio, uf) {
                 card.dataset.count = String(rowCount);
                 body.innerHTML = html;
                 const exportLink = body.querySelector('[data-export-link]');
-                if (exportLink) exportLink.href = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
+                if (exportLink) {
+                    let exportUrl = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
+                    if (_dateInicio) exportUrl += `&data_inicio=${_dateInicio}`;
+                    if (_dateFim) exportUrl += `&data_fim=${_dateFim}`;
+                    exportLink.href = exportUrl;
+                }
                 if (rowCount === 0) card.classList.add('is-empty');
                 card.classList.remove('loading');
                 initDataTables(body);
@@ -306,10 +338,14 @@ function buildResultTable(queryId, columns, rows, municipio) {
         return `<tr>${cells}</tr>`;
     }).join('');
 
+    let exportHref = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
+    if (_dateInicio) exportHref += `&data_inicio=${_dateInicio}`;
+    if (_dateFim) exportHref += `&data_fim=${_dateFim}`;
+
     return `<div class="result-block">
         <div class="result-toolbar">
             <div></div>
-            <a href="/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}" data-export-link class="btn btn-outline btn-sm">Exportar CSV</a>
+            <a href="${exportHref}" data-export-link class="btn btn-outline btn-sm">Exportar CSV</a>
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
@@ -438,6 +474,76 @@ function _formatCnpj(cnpjBasico, cnpjCompleto) {
 function _situacaoLabel(sit) {
     const map = {'1': 'Nula', '2': 'Ativa', '3': 'Suspensa', '4': 'Inapta', '8': 'Baixada'};
     return map[String(sit)] || (sit ? `Sit. ${sit}` : '-');
+}
+
+// ── Date filter state ───────────────────────────────────────────
+let _dateInicio = null;
+let _dateFim = null;
+let _currentUf = 'PB';
+
+function _isDateFiltered() { return !!(_dateInicio || _dateFim); }
+
+function _getPeriodo() {
+    if (!_isDateFiltered()) return '';
+    const yr = new Date().getFullYear();
+    if (_dateInicio === `${yr}-01-01` && _dateFim && _dateFim.startsWith(`${yr}`)) return 'ANO';
+    return 'CUSTOM';
+}
+
+function _buildBody(municipio, uf) {
+    const body = { municipio, uf: uf || _currentUf };
+    if (_dateInicio) body.data_inicio = _dateInicio;
+    if (_dateFim) body.data_fim = _dateFim;
+    return body;
+}
+
+function _formatDatePt(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+}
+
+function _updateHeroStats(perfil) {
+    const el = id => document.getElementById(id);
+    if (el('heroQtdEmpenhos')) el('heroQtdEmpenhos').textContent = _shortNum(perfil.qtd_empenhos || 0);
+    if (el('heroTotalPago')) el('heroTotalPago').textContent = _shortBrl(perfil.total_pago || 0);
+    if (el('heroQtdFornecedores')) el('heroQtdFornecedores').textContent = _shortNum(perfil.qtd_fornecedores || 0);
+}
+
+function _updateInsightCards(perfil) {
+    const el = id => document.getElementById(id);
+    const totalEmpenhado = parseFloat(perfil.total_empenhado) || 0;
+    const totalPago = parseFloat(perfil.total_pago) || 0;
+    const pctPago = totalEmpenhado ? (totalPago / totalEmpenhado * 100) : 0;
+    const gap = totalEmpenhado - totalPago;
+
+    if (el('insightPctPago')) el('insightPctPago').textContent = `${pctPago.toFixed(1)}% do valor empenhado foi pago`;
+    if (el('progressPctPago')) el('progressPctPago').style.width = `${pctPago.toFixed(1)}%`;
+    if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = `Diferenca entre empenhado e pago: ${_shortBrl(gap)}`;
+
+    const pctSemLicit = perfil.pct_sem_licitacao;
+    if (el('insightPctSemLicit')) el('insightPctSemLicit').textContent = pctSemLicit != null ? `${parseFloat(pctSemLicit).toFixed(1)}%` : 'N/D';
+
+    const pctProp = perfil.pct_proponente_unico;
+    if (el('insightPctProponente')) el('insightPctProponente').textContent = pctProp != null ? `${parseFloat(pctProp).toFixed(1)}%` : 'N/D';
+
+    const pctDez = perfil.pct_dezembro;
+    if (el('insightPctDezembro')) el('insightPctDezembro').textContent = pctDez != null ? `${parseFloat(pctDez).toFixed(1)}%` : 'N/D';
+}
+
+async function _refreshPerfilLive(municipio, uf) {
+    try {
+        const res = await fetch('/api/perfil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_buildBody(municipio, uf)),
+        });
+        if (res.ok) {
+            const perfil = await res.json();
+            _updateHeroStats(perfil);
+            _updateInsightCards(perfil);
+        }
+    } catch {}
 }
 
 // ── Dialog navigation stack ─────────────────────────────────────
@@ -1262,7 +1368,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         const response = await fetch(`/api/top/${panelName}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ municipio, uf: panelUf }),
+            body: JSON.stringify(_buildBody(municipio, panelUf)),
         });
         panel.innerHTML = await response.text();
         initDataTables(panel);
@@ -1457,6 +1563,68 @@ document.addEventListener('DOMContentLoaded', () => {
         const backBtn = dialog.querySelector('.dialog-back');
         if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
     }
+
+    // Date filter handlers
+    document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
+        const inicio = document.getElementById('dateInicio')?.value;
+        const fim = document.getElementById('dateFim')?.value;
+        if (!inicio || !fim) return;
+
+        // Reset all cards to loading state
+        document.querySelectorAll('.finding-card').forEach(card => {
+            card.classList.add('loading');
+            card.classList.remove('is-empty', 'is-timeout');
+            const body = card.querySelector('.finding-body');
+            if (body) body.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line short"></div>';
+            const countEl = card.querySelector('[data-count]');
+            if (countEl) countEl.textContent = '...';
+            delete card.dataset.count;
+        });
+        // Reset section summaries
+        document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
+
+        // Reset async panels
+        document.querySelectorAll('[data-async-panel]').forEach(panel => {
+            panel.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line short"></div>';
+        });
+
+        // Show clear button + status
+        const btnLimpar = document.getElementById('btnLimparData');
+        if (btnLimpar) btnLimpar.style.display = '';
+        const status = document.getElementById('dateFilterStatus');
+        if (status) status.textContent = `Periodo: ${_formatDatePt(inicio)} a ${_formatDatePt(fim)}`;
+
+        bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+    });
+
+    document.getElementById('btnLimparData')?.addEventListener('click', () => {
+        const yr = new Date().getFullYear();
+        const diEl = document.getElementById('dateInicio');
+        const dfEl = document.getElementById('dateFim');
+        if (diEl) diEl.value = `${yr}-01-01`;
+        if (dfEl) dfEl.value = new Date().toISOString().slice(0, 10);
+        const btnLimpar = document.getElementById('btnLimparData');
+        if (btnLimpar) btnLimpar.style.display = 'none';
+        const status = document.getElementById('dateFilterStatus');
+        if (status) status.textContent = '';
+
+        // Reset all cards to loading
+        document.querySelectorAll('.finding-card').forEach(card => {
+            card.classList.add('loading');
+            card.classList.remove('is-empty', 'is-timeout');
+            const body = card.querySelector('.finding-body');
+            if (body) body.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line short"></div>';
+            const countEl = card.querySelector('[data-count]');
+            if (countEl) countEl.textContent = '...';
+            delete card.dataset.count;
+        });
+        document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
+        document.querySelectorAll('[data-async-panel]').forEach(panel => {
+            panel.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line short"></div>';
+        });
+
+        bootstrapCityReport(_currentMunicipio, _currentUf);
+    });
 });
 
 function initInteractiveToggles(root = document) {

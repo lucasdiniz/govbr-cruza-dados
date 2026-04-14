@@ -77,19 +77,35 @@
     </div>
     <div class="hero-stats">
         <div class="hero-stat">
-            <span class="hero-stat-value">{{ perfil.qtd_empenhos|default(0)|short_number }}</span>
+            <span class="hero-stat-value" id="heroQtdEmpenhos">{{ perfil.qtd_empenhos|default(0)|short_number }}</span>
             <span class="hero-stat-label">despesas analisadas</span>
         </div>
         <div class="hero-stat">
-            <span class="hero-stat-value">{{ total_pago|short_brl }}</span>
+            <span class="hero-stat-value" id="heroTotalPago">{{ total_pago|short_brl }}</span>
             <span class="hero-stat-label">pagos ao todo</span>
         </div>
         <div class="hero-stat">
-            <span class="hero-stat-value">{{ perfil.qtd_fornecedores|default(0)|short_number }}</span>
+            <span class="hero-stat-value" id="heroQtdFornecedores">{{ perfil.qtd_fornecedores|default(0)|short_number }}</span>
             <span class="hero-stat-label">fornecedores distintos</span>
         </div>
     </div>
 </section>
+
+<div class="date-filter-bar card" id="dateFilterBar">
+    <div class="date-filter-fields">
+        <label class="date-field">
+            <span>De</span>
+            <input type="date" id="dateInicio" value="{{ default_data_inicio }}">
+        </label>
+        <label class="date-field">
+            <span>Ate</span>
+            <input type="date" id="dateFim" value="{{ default_data_fim }}">
+        </label>
+        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+        <button class="btn btn-outline btn-sm" id="btnLimparData" style="display:none">Todos os periodos</button>
+    </div>
+    <span class="text-sm text-muted" id="dateFilterStatus"></span>
+</div>
 
 <section class="insight-grid">
     <article class="insight-card">
@@ -98,10 +114,10 @@
             O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.
         </p>
         <div class="chart-progress">
-            <div class="chart-progress-fill" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
+            <div class="chart-progress-fill" id="progressPctPago" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
         </div>
-        <p class="insight-value">{{ "%.1f"|format(pct_pago) }}% do valor empenhado foi pago</p>
-        <p class="text-sm text-muted">Diferenca entre empenhado e pago: {{ gap_financeiro|short_brl }}</p>
+        <p class="insight-value" id="insightPctPago">{{ "%.1f"|format(pct_pago) }}% do valor empenhado foi pago</p>
+        <p class="text-sm text-muted" id="insightGapFinanceiro">Diferenca entre empenhado e pago: {{ gap_financeiro|short_brl }}</p>
     </article>
 
     <article class="insight-card">
@@ -109,7 +125,7 @@
         <p class="text-muted">
             Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.
         </p>
-        <p class="insight-value">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
+        <p class="insight-value" id="insightPctSemLicit">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
         <p class="text-sm text-muted">Quanto maior esse numero, maior a importancia de revisar justificativas e documentos.</p>
     </article>
 
@@ -118,7 +134,7 @@
         <p class="text-muted">
             Esse indicador mostra casos em que so uma empresa apareceu na disputa.
         </p>
-        <p class="insight-value">{{ "%.1f"|format(perfil.pct_proponente_unico|default(0)|float) }}%</p>
+        <p class="insight-value" id="insightPctProponente">{{ "%.1f"|format(perfil.pct_proponente_unico|default(0)|float) }}%</p>
         <p class="text-sm text-muted">Participacao unica nao prova irregularidade, mas merece contexto e comparacao com outras compras.</p>
     </article>
 
@@ -127,7 +143,7 @@
         <p class="text-muted">
             Mede quanto do valor empenhado se concentrou em dezembro.
         </p>
-        <p class="insight-value">{{ "%.1f"|format(perfil.pct_dezembro|default(0)|float) }}%</p>
+        <p class="insight-value" id="insightPctDezembro">{{ "%.1f"|format(perfil.pct_dezembro|default(0)|float) }}%</p>
         <p class="text-sm text-muted">Concentracoes fortes no fim do ano podem indicar pressa para executar o orcamento.</p>
     </article>
 </section>
