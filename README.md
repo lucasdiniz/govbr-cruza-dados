@@ -28,7 +28,7 @@ O repositorio hoje inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
 - **125+ queries SQL** em 17 arquivos tematicos (`Q01-Q310`)
-- **26 relatorios de investigacao** derivados dos resultados
+- **37 relatorios de investigacao** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
 
 ## Queries de investigacao
@@ -70,6 +70,7 @@ Relatorios ja produzidos cobrem temas como:
 - Porta giratoria: servidores municipais socios de fornecedores (4.616 casos)
 - Fornecedores de saude dominantes: monopolio em dezenas de municipios
 - BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
+- Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
 
 ## Frontend web
 
@@ -198,7 +199,7 @@ sql/           Schema do banco (extensoes, tabelas, indices, views materializada
 etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
 queries/       125+ queries SQL em 17 arquivos tematicos
 resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    26 investigacoes baseadas nos resultados (Markdown)
+relatorios/    37 investigacoes baseadas nos resultados (Markdown)
 web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
 deploy/        Systemd services e configuracao de deploy
 data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
