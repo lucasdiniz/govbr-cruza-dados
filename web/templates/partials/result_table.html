@@ -3,6 +3,12 @@
         <div>
             <h3 class="card-title">{{ title }}</h3>
             <p class="text-muted text-sm">Use o filtro para localizar nomes, empresas, documentos ou termos relevantes nesta tabela.</p>
+            {% if 'abrangencia' in columns %}
+            <div class="color-legend">
+                <span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Sancao de abrangencia nacional ou inidoneidade</span>
+                <span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Sancao de abrangencia restrita (informativo)</span>
+            </div>
+            {% endif %}
         </div>
         <a
             class="btn btn-outline btn-sm"
@@ -42,14 +48,24 @@
                     {% set nome_upper_val = row.get('nome_upper', '') or row.get('nome_servidor', '') or '' %}
                     {% set lic_num_val = row.get('numero_licitacao', '') or '' %}
                     {% set lic_ano_val = row.get('ano_licitacao', '0') or '0' %}
+                    {% set abr_val = row.get('abrangencia', '') or '' %}
+                    {% set cat_val = row.get('categoria_sancao', '') or '' %}
+                    {% set row_hl = '' %}
+                    {% if abr_val %}
+                        {% if 'inidone' in cat_val|lower or 'Nacional' in abr_val or 'Todas as Esferas' in abr_val %}
+                            {% set row_hl = ' row-sancao' %}
+                        {% else %}
+                            {% set row_hl = ' row-sancao-leve' %}
+                        {% endif %}
+                    {% endif %}
                     {% if cpf6_val and nome_upper_val %}
-                    <tr class="clickable-row" data-cpf6="{{ cpf6_val }}" data-nome-upper="{{ nome_upper_val }}" data-nome="{{ nome_upper_val }}" data-cnpjs="[]">
+                    <tr class="clickable-row{{ row_hl }}" data-cpf6="{{ cpf6_val }}" data-nome-upper="{{ nome_upper_val }}" data-nome="{{ nome_upper_val }}" data-cnpjs="[]">
                     {% elif lic_num_val and lic_num_val != '000000000' %}
-                    <tr class="clickable-row" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}">
+                    <tr class="clickable-row{{ row_hl }}" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}">
                     {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
-                    <tr class="clickable-row" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-nome="{{ nome_val|clean_text }}">
+                    <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-nome="{{ nome_val|clean_text }}">
                     {% else %}
-                    <tr>
+                    <tr{% if row_hl %} class="{{ row_hl|trim }}"{% endif %}>
                     {% endif %}
                         {% for col in columns %}
                         {% set value = row[col] %}

@@ -384,7 +384,7 @@ lic AS (
 ),
 receita AS (
     SELECT municipio,
-           SUM(valor) FILTER (WHERE tipo_atualizacao_receita = 'Receita Arrecadada') AS receita_arrecadada
+           SUM(valor) FILTER (WHERE tipo_atualizacao_receita ILIKE 'Lançamento de Receita') AS receita_arrecadada
     FROM tce_pb_receita
     WHERE ano >= 2022
     GROUP BY municipio

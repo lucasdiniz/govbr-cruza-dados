@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
-from psycopg2.errors import QueryCanceled, UndefinedTable
+from psycopg2.errors import QueryCanceled, UndefinedTable, UndefinedColumn
 
 from web.config import (
     LIMIT_AUTOCOMPLETE,
@@ -17,6 +17,8 @@ from web.config import (
     TIMEOUT_COUNT,
     TIMEOUT_PROFILE,
     TIMEOUT_QUERY_LIGHT,
+    TIMEOUT_QUERY_MEDIUM,
+    TIMEOUT_QUERY_HEAVY,
 )
 from web.db import cached_query, execute_query, read_web_cache
 from web.queries.cidade import (
@@ -26,11 +28,7 @@ from web.queries.cidade import (
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
-    TOP_FORNECEDORES_BASIC,
-    TOP_FORNECEDORES_BASIC_DATED,
     TOP_FORNECEDORES_DATED,
-    TOP_FORNECEDORES_FALLBACK,
-    TOP_FORNECEDORES_FALLBACK_DATED,
     TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
@@ -150,26 +148,10 @@ def _load_top_fornecedores(municipio: str, uf: str = ""):
             f"forn:{municipio}",
             TOP_FORNECEDORES,
             {"municipio": municipio},
-            timeout_sec=TIMEOUT_QUERY_LIGHT,
+            timeout_sec=TIMEOUT_QUERY_MEDIUM,
         )
-    except (UndefinedTable, QueryCanceled):
-        try:
-            return cached_query(
-                f"fornfb:{municipio}",
-                TOP_FORNECEDORES_FALLBACK,
-                {"municipio": municipio},
-                timeout_sec=TIMEOUT_QUERY_LIGHT,
-            )
-        except QueryCanceled:
-            try:
-                return cached_query(
-                    f"fornbasic:{municipio}",
-                    TOP_FORNECEDORES_BASIC,
-                    {"municipio": municipio},
-                    timeout_sec=TIMEOUT_PROFILE + 2,
-                )
-            except QueryCanceled:
-                return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
+    except QueryCanceled:
+        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
 
 
 def _load_top_fornecedores_pncp(municipio: str, uf: str):
@@ -178,7 +160,7 @@ def _load_top_fornecedores_pncp(municipio: str, uf: str):
             f"fornpncp:{uf}:{municipio}",
             TOP_FORNECEDORES_PNCP,
             {"municipio": municipio, "uf": uf},
-            timeout_sec=TIMEOUT_QUERY_LIGHT,
+            timeout_sec=TIMEOUT_QUERY_MEDIUM,
         )
     except QueryCanceled:
         return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
@@ -187,12 +169,10 @@ def _load_top_fornecedores_pncp(municipio: str, uf: str):
 def _load_top_fornecedores_dated(params: dict):
     """Carrega top fornecedores com filtro de data (live, sem cache in-memory)."""
     empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
-    for sql in [TOP_FORNECEDORES_DATED, TOP_FORNECEDORES_FALLBACK_DATED, TOP_FORNECEDORES_BASIC_DATED]:
-        try:
-            return execute_query(sql, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
-        except (UndefinedTable, QueryCanceled):
-            continue
-    return empty
+    try:
+        return execute_query(TOP_FORNECEDORES_DATED, params, timeout_sec=TIMEOUT_QUERY_MEDIUM)
+    except (UndefinedTable, UndefinedColumn, QueryCanceled):
+        return empty
 
 
 def _load_top_servidores(municipio: str, params: dict | None = None):
@@ -203,7 +183,7 @@ def _load_top_servidores(municipio: str, params: dict | None = None):
             f"serv:{municipio.casefold()}",
             query,
             qparams,
-            timeout_sec=TIMEOUT_QUERY_LIGHT,
+            timeout_sec=TIMEOUT_QUERY_HEAVY,
         )
     except QueryCanceled:
         return [
@@ -238,10 +218,36 @@ def _build_report_sections(pb_only: bool = True):
     return sections
 
 
+def _servidor_severity_key(s: dict) -> tuple:
+    """Sort key: red severity (0), yellow (1), rest (2), then by -maior_salario."""
+    is_red = bool(
+        s.get('flag_ceaf_expulso')
+        or (s.get('total_pago_durante_vinculo') and s['total_pago_durante_vinculo'] > 0)
+        or s.get('flag_socio_inidoneidade')
+    )
+    is_yellow = bool(s.get('flag_socio_sancionado') or s.get('flag_bolsa_familia'))
+    severity = 0 if is_red else (1 if is_yellow else 2)
+    salary = -(s.get('maior_salario') or 0)
+    return (severity, salary)
+
+
 def _render_result_table(request: Request, title: str, cols: list[str], rows: list[tuple]):
     from web.main import templates
 
     items = [_row_to_dict(cols, row) for row in rows]
+
+    # Sort by sanction severity when abrangencia column exists: red first, yellow, rest
+    if 'abrangencia' in cols:
+        def _sancao_sort_key(item):
+            abr = str(item.get('abrangencia', '') or '')
+            cat = str(item.get('categoria_sancao', '') or '')
+            if 'inidone' in cat.lower() or 'Nacional' in abr or 'Todas as Esferas' in abr:
+                return 0
+            if abr:
+                return 1
+            return 2
+        items.sort(key=_sancao_sort_key)
+
     response = templates.TemplateResponse(
         request,
         "partials/result_table.html",
@@ -488,7 +494,11 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
     periodo = _get_periodo(payload) if has_dates else ""
     if has_dates:
         params = _date_params(payload)
-        cols, rows = _load_top_servidores(municipio, params)
+        cached = read_web_cache("TOP_SERVIDORES", municipio, periodo) if periodo != "CUSTOM" else None
+        if cached:
+            cols, rows = cached
+        else:
+            cols, rows = _load_top_servidores(municipio, params)
     else:
         cached = read_web_cache("TOP_SERVIDORES", municipio)
         if cached:
@@ -496,6 +506,7 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
         else:
             cols, rows = _load_top_servidores(municipio)
     servidores = [_row_to_dict(cols, row) for row in rows]
+    servidores.sort(key=_servidor_severity_key)
     response = _render_partial(
         request,
         "partials/top_servidores.html",
@@ -1248,14 +1259,16 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
 
                 # Proponentes
                 cur.execute("""
-                    SELECT nome_proponente, cpf_cnpj_proponente,
-                           valor_ofertado, situacao_proposta,
-                           e.razao_social
+                    SELECT l.nome_proponente, l.cpf_cnpj_proponente,
+                           SUM(l.valor_ofertado) AS valor_ofertado,
+                           MAX(l.situacao_proposta) AS situacao_proposta,
+                           MAX(e.razao_social) AS razao_social
                     FROM tce_pb_licitacao l
                     LEFT JOIN empresa e ON e.cnpj_basico = l.cnpj_basico_proponente
                     WHERE l.numero_licitacao = %s AND l.municipio = %s
                       AND (%s = 0 OR l.ano_licitacao = %s)
-                    ORDER BY l.valor_ofertado DESC
+                    GROUP BY l.nome_proponente, l.cpf_cnpj_proponente
+                    ORDER BY SUM(l.valor_ofertado) DESC
                 """, (numero, municipio, ano, ano))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()

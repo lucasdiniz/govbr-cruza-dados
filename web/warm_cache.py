@@ -27,13 +27,10 @@ from web.queries.cidade import (
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
-    TOP_FORNECEDORES_BASIC,
-    TOP_FORNECEDORES_BASIC_DATED,
     TOP_FORNECEDORES_DATED,
-    TOP_FORNECEDORES_FALLBACK,
-    TOP_FORNECEDORES_FALLBACK_DATED,
     TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
+    TOP_SERVIDORES_RISCO_DATED,
 )
 from web.queries.registry import CIDADE_QUERIES
 
@@ -182,14 +179,11 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         else:
             fail += 1
 
-        # Top fornecedores (fallback chain)
-        forn_ok = False
-        for sql in [TOP_FORNECEDORES, TOP_FORNECEDORES_FALLBACK, TOP_FORNECEDORES_BASIC]:
-            if _run_and_cache(conn, "TOP_FORNECEDORES", sql, mun, 30, False):
-                forn_ok = True
-                break
-        ok += 1 if forn_ok else 0
-        fail += 0 if forn_ok else 1
+        # Top fornecedores
+        if _run_and_cache(conn, "TOP_FORNECEDORES", TOP_FORNECEDORES, mun, 90, verbose):
+            ok += 1
+        else:
+            fail += 1
 
         # Top servidores
         if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, 30, verbose):
@@ -236,14 +230,17 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         else:
             fail += 1
 
-        # TOP_FORNECEDORES ANO (fallback chain)
-        forn_ok = False
-        for sql in [TOP_FORNECEDORES_DATED, TOP_FORNECEDORES_FALLBACK_DATED, TOP_FORNECEDORES_BASIC_DATED]:
-            if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", sql, params, 30, False):
-                forn_ok = True
-                break
-        ok += 1 if forn_ok else 0
-        fail += 0 if forn_ok else 1
+        # TOP_FORNECEDORES ANO
+        if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, 90, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # TOP_SERVIDORES ANO
+        if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, 90, verbose):
+            ok += 1
+        else:
+            fail += 1
 
         # Registry queries ANO
         for qdef in all_queries:

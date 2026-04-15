@@ -499,6 +499,18 @@ tr:hover { background: #fbfdff; }
 }
 .finding-card.is-empty { background: #fafafa; }
 .finding-card.is-timeout { background: #fffbeb; }
+.finding-card .finding-head { cursor: pointer; user-select: none; }
+.finding-card .finding-toggle {
+    display: inline-block;
+    transition: transform 0.2s;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+    align-self: center;
+}
+.finding-card.collapsed .finding-toggle { transform: rotate(-90deg); }
+.finding-card.collapsed .finding-body { display: none; }
 .finding-title {
     font-size: 1.02rem;
     font-weight: 600;

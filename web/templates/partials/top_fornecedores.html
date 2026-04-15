@@ -37,7 +37,6 @@
                         <th class="text-right">Empenhos</th>
                         <th>Situacao</th>
                         <th>Sinais de Atencao</th>
-                        <th>Abrangencia</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -71,7 +70,6 @@
                                 <span class="text-sm text-muted">Sem sinal automatico</span>
                             {% endif %}
                         </td>
-                        <td class="text-sm">{{ f.abrangencia_sancao_info|default('')|replace('!', '') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

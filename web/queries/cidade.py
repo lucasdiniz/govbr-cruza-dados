@@ -32,9 +32,27 @@ SELECT %(municipio)s AS municipio,
        NULL::bigint AS qtd_proponente_unico,
        NULL::numeric AS pct_proponente_unico,
        ROUND(100.0 * (1 - SUM(d.valor_pago) / NULLIF(SUM(d.valor_empenhado), 0)), 1) AS pct_nao_executado,
-       NULL::numeric AS receita_arrecadada,
-       NULL::numeric AS total_folha,
-       NULL::numeric AS pct_folha_receita,
+       (SELECT SUM(valor) FROM tce_pb_receita
+        WHERE unaccent(municipio) = unaccent(%(municipio)s)
+          AND tipo_atualizacao_receita ILIKE 'Lançamento de Receita'
+          AND ano >= %(ano_inicio)s AND ano <= %(ano_fim)s
+       ) AS receita_arrecadada,
+       (SELECT SUM(valor_vantagem) FROM tce_pb_servidor
+        WHERE unaccent(municipio) = unaccent(%(municipio)s)
+          AND ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
+          AND ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')
+       ) AS total_folha,
+       (SELECT ROUND(100.0 * COALESCE(
+            (SELECT SUM(valor_vantagem) FROM tce_pb_servidor
+             WHERE unaccent(municipio) = unaccent(%(municipio)s)
+               AND ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
+               AND ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')), 0)
+          / NULLIF(
+            (SELECT SUM(valor) FROM tce_pb_receita
+             WHERE unaccent(municipio) = unaccent(%(municipio)s)
+               AND tipo_atualizacao_receita ILIKE 'Lançamento de Receita'
+               AND ano >= %(ano_inicio)s AND ano <= %(ano_fim)s), 0), 1)
+       ) AS pct_folha_receita,
        NULL::numeric AS risco_score
 FROM tce_pb_despesa d
 WHERE d.municipio = %(municipio)s
@@ -70,7 +88,8 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+SELECT * FROM (
+    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        est.cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
@@ -102,27 +121,20 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
                     || ' (' || COALESCE(san.orgao_sancionador, '?')
                     || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
            END
-           FROM tce_pb_despesa d2
-           JOIN (
+           FROM (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
-           ) san ON san.cb = d2.cnpj_basico
-           WHERE d2.cnpj_basico = tf.cnpj_basico
-             AND d2.municipio = %(municipio)s
-             AND d2.valor_pago > 0
-             AND d2.data_empenho >= san.dt_inicio_sancao
-             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+           ) san
+           WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
                WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
                WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
@@ -140,7 +152,8 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
+) q
+ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK = """
@@ -158,7 +171,8 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+SELECT * FROM (
+    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        est.cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        EXISTS(
@@ -205,27 +219,20 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
                     || ' (' || COALESCE(san.orgao_sancionador, '?')
                     || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
            END
-           FROM tce_pb_despesa d2
-           JOIN (
+           FROM (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
-           ) san ON san.cb = d2.cnpj_basico
-           WHERE d2.cnpj_basico = tf.cnpj_basico
-             AND d2.municipio = %(municipio)s
-             AND d2.valor_pago > 0
-             AND d2.data_empenho >= san.dt_inicio_sancao
-             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+           ) san
+           WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
                WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
                WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
@@ -244,7 +251,8 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
+) q
+ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
@@ -294,7 +302,8 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+SELECT * FROM (
+    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        est.cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
@@ -326,28 +335,20 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
                     || ' (' || COALESCE(san.orgao_sancionador, '?')
                     || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
            END
-           FROM tce_pb_despesa d2
-           JOIN (
+           FROM (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
-           ) san ON san.cb = d2.cnpj_basico
-           WHERE d2.cnpj_basico = tf.cnpj_basico
-             AND d2.municipio = %(municipio)s
-             AND d2.valor_pago > 0
-             AND d2.data_empenho >= san.dt_inicio_sancao
-             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
-             AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
+           ) san
+           WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
                WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
                WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
@@ -365,7 +366,8 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
+) q
+ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK_DATED = """
@@ -384,7 +386,8 @@ WITH top_forn AS (
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
 )
-SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
+SELECT * FROM (
+    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
        est.cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        EXISTS(
@@ -428,28 +431,20 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
                     || ' (' || COALESCE(san.orgao_sancionador, '?')
                     || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
            END
-           FROM tce_pb_despesa d2
-           JOIN (
+           FROM (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
-           ) san ON san.cb = d2.cnpj_basico
-           WHERE d2.cnpj_basico = tf.cnpj_basico
-             AND d2.municipio = %(municipio)s
-             AND d2.valor_pago > 0
-             AND d2.data_empenho >= san.dt_inicio_sancao
-             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
-             AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
+           ) san
+           WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
                WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
                WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
@@ -468,7 +463,8 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
+) q
+ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC_DATED = """
@@ -502,7 +498,8 @@ LIMIT 200
 """
 
 TOP_FORNECEDORES_PNCP = """
-SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
+SELECT * FROM (
+    SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
        pc.nome_fornecedor AS nome_credor,
        e.razao_social,
        est.cnpj_completo,
@@ -549,26 +546,20 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
                     || ' (' || COALESCE(san.orgao_sancionador, '?')
                     || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
            END
-           FROM pncp_contrato pc2
-           JOIN (
+           FROM (
                SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      dt_inicio_sancao, dt_final_sancao,
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
-           ) san ON san.cb = pc2.cnpj_basico_fornecedor
-           WHERE pc2.cnpj_basico_fornecedor = pc.cnpj_basico_fornecedor
-             AND pc2.municipio_nome = %(municipio)s AND pc2.uf = %(uf)s
-             AND pc2.data_assinatura >= san.dt_inicio_sancao
-             AND (san.dt_final_sancao IS NULL OR pc2.data_assinatura <= san.dt_final_sancao)
+           ) san
+           WHERE san.cb = pc.cnpj_basico_fornecedor
            ORDER BY CASE
                WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
                WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
@@ -591,7 +582,8 @@ WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
   AND pc.cnpj_basico_fornecedor IS NOT NULL
 GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
          e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY abrangencia_sancao_info IS NOT NULL DESC, total_contratado DESC
+) q
+ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_contratado DESC
 LIMIT 200
 """
 
@@ -664,21 +656,21 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
        ), 0) AS total_pago_durante_vinculo
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
-ORDER BY flag_ceaf_expulso DESC, flag_socio_sancionado DESC, risco_score DESC
+ORDER BY flag_ceaf_expulso DESC, flag_socio_inidoneidade DESC, flag_socio_sancionado DESC, flag_bolsa_familia DESC, risco_score DESC
 LIMIT 200
 """
 
 TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
     "WHERE %(municipio)s = ANY(municipios)",
-    """WHERE %(municipio)s = ANY(municipios)
-  AND EXISTS (
-      SELECT 1 FROM tce_pb_servidor s
-      WHERE s.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
-        AND s.nome_upper = mv_servidor_pb_risco.nome_upper
-        AND s.municipio = %(municipio)s
+    """JOIN (
+      SELECT DISTINCT s.cpf_digitos_6 AS _cpf6, s.nome_upper AS _nome
+      FROM tce_pb_servidor s
+      WHERE s.municipio = %(municipio)s
         AND s.ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
         AND s.ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')
-  )"""
+  ) _periodo ON _periodo._cpf6 = mv_servidor_pb_risco.cpf_digitos_6
+            AND _periodo._nome = mv_servidor_pb_risco.nome_upper
+WHERE %(municipio)s = ANY(municipios)"""
 )
 
 AUTOCOMPLETE_MUNICIPIO_FALLBACK = """

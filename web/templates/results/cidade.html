@@ -130,53 +130,22 @@
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">Licitacoes com apenas um participante</h2>
+        <h2 class="card-title">Dispensas e inexigibilidades</h2>
         <p class="text-muted">
-            Esse indicador mostra casos em que so uma empresa apareceu na disputa.
+            Proporcao das despesas sem processo competitivo de licitacao.
         </p>
-        <p class="insight-value" id="insightPctProponente">{{ "%.1f"|format(perfil.pct_proponente_unico|default(0)|float) }}%</p>
-        <p class="text-sm text-muted">Participacao unica nao prova irregularidade, mas merece contexto e comparacao com outras compras.</p>
+        <p class="insight-value" id="insightPctDispensa">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
+        <p class="text-sm text-muted">Valores altos podem indicar baixa concorrencia.</p>
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">Concentracao de gastos no fim do ano</h2>
+        <h2 class="card-title">Folha de pagamento sobre receita</h2>
         <p class="text-muted">
-            Mede quanto do valor empenhado se concentrou em dezembro.
+            Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.
         </p>
-        <p class="insight-value" id="insightPctDezembro">{{ "%.1f"|format(perfil.pct_dezembro|default(0)|float) }}%</p>
-        <p class="text-sm text-muted">Concentracoes fortes no fim do ano podem indicar pressa para executar o orcamento.</p>
+        <p class="insight-value" id="insightPctFolha">{{ "%.1f"|format(perfil.pct_folha_receita|default(0)|float) }}%</p>
+        <p class="text-sm text-muted">Acima de 60% pode indicar rigidez orcamentaria.</p>
     </article>
-</section>
-
-<section class="card chart-card">
-    <div class="section-head">
-        <div>
-            <p class="eyebrow">Leitura rapida</p>
-            <h2 class="card-title">Visao geral dos valores do municipio</h2>
-        </div>
-    </div>
-    <div class="chart-bars">
-        <div class="chart-bar-row">
-            <div>
-                <strong>Empenhado</strong>
-                <p class="text-sm text-muted">Valor reservado no orcamento para despesas.</p>
-            </div>
-            <div class="chart-bar-track wide">
-                <div class="chart-bar-fill fill-blue" id="barFillEmpenhado" style="width: 100%"></div>
-            </div>
-            <strong id="barEmpenhado">{{ total_empenhado|short_brl }}</strong>
-        </div>
-        <div class="chart-bar-row">
-            <div>
-                <strong>Pago</strong>
-                <p class="text-sm text-muted">Valor que efetivamente foi pago.</p>
-            </div>
-            <div class="chart-bar-track wide">
-                <div class="chart-bar-fill fill-green" id="barFillPago" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
-            </div>
-            <strong id="barPago">{{ total_pago|short_brl }}</strong>
-        </div>
-    </div>
 </section>
 
 <div class="two-col">
@@ -242,9 +211,12 @@
                         <h3 class="finding-title">{{ query.title }}</h3>
                         <p class="text-sm text-muted">{{ query.description }}</p>
                     </div>
-                    <div class="finding-summary">
-                        <strong data-count>...</strong>
-                        <span class="text-sm text-muted">registros</span>
+                    <div class="finding-summary" style="display:flex;align-items:center;gap:0.5rem;">
+                        <div style="text-align:right">
+                            <strong data-count>...</strong>
+                            <span class="text-sm text-muted">registros</span>
+                        </div>
+                        <span class="finding-toggle">&#9660;</span>
                     </div>
                 </div>
                 <div class="finding-body">

@@ -33,6 +33,11 @@ def _reg(qid, title, desc, cat, sql_full, timeout=30, sql_dated=None):
     )
 
 
+def _skip(*_args, **_kwargs):
+    """No-op: query desativada temporariamente."""
+    pass
+
+
 # ── Fornecedores Irregulares ─────────────────────────────────────
 
 _reg("Q65", "Fornecedor sancionado (CEIS/CNEP) recebendo",
@@ -43,11 +48,10 @@ SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        san.categoria_sancao, san.origem,
        CASE
            WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional (Inidoneidade)'
-           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 'Nacional'
-           WHEN san.esfera = 'MUNICIPAL'
-               THEN COALESCE(san.abrangencia, 'Sem Informação') || ' (' || san.orgao || ')'
+           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN san.abrangencia
            ELSE COALESCE(san.abrangencia, 'Sem Informação')
-                || ' (' || COALESCE(san.esfera, '?') || ', ' || COALESCE(san.uf, '?') || ')'
+                || ' (' || COALESCE(san.orgao, '?')
+                || COALESCE(' - ' || san.uf, '') || ')'
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
@@ -74,21 +78,25 @@ WHERE d.cnpj_basico IS NOT NULL
   AND d.valor_pago > 0
   AND d.municipio = %(municipio)s
 GROUP BY san.nome_sancionado, san.cpf_cnpj_sancionado,
-         san.categoria_sancao, san.origem, abrangencia,
+         san.categoria_sancao, san.origem,
+         san.abrangencia, san.orgao, san.uf,
          san.dt_inicio_sancao, san.dt_final_sancao,
          d.municipio, d.nome_credor
-ORDER BY total_pago DESC
+ORDER BY CASE
+    WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+    WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 1
+    ELSE 2
+END, total_pago DESC
 LIMIT 500
-""", timeout=30, sql_dated="""
+""", timeout=90, sql_dated="""
 SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        san.categoria_sancao, san.origem,
        CASE
            WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional (Inidoneidade)'
-           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 'Nacional'
-           WHEN san.esfera = 'MUNICIPAL'
-               THEN COALESCE(san.abrangencia, 'Sem Informação') || ' (' || san.orgao || ')'
+           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN san.abrangencia
            ELSE COALESCE(san.abrangencia, 'Sem Informação')
-                || ' (' || COALESCE(san.esfera, '?') || ', ' || COALESCE(san.uf, '?') || ')'
+                || ' (' || COALESCE(san.orgao, '?')
+                || COALESCE(' - ' || san.uf, '') || ')'
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
@@ -116,10 +124,15 @@ WHERE d.cnpj_basico IS NOT NULL
   AND d.municipio = %(municipio)s
   AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
 GROUP BY san.nome_sancionado, san.cpf_cnpj_sancionado,
-         san.categoria_sancao, san.origem, abrangencia,
+         san.categoria_sancao, san.origem,
+         san.abrangencia, san.orgao, san.uf,
          san.dt_inicio_sancao, san.dt_final_sancao,
          d.municipio, d.nome_credor
-ORDER BY total_pago DESC
+ORDER BY CASE
+    WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+    WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 1
+    ELSE 2
+END, total_pago DESC
 LIMIT 500
 """)
 
@@ -238,7 +251,8 @@ LIMIT 500
 
 # ── Conflito de Interesses ───────────────────────────────────────
 
-_reg("Q87", "Socio de contratada estadual e servidor municipal",
+# DISABLED: 0 municipios com resultado no web_cache
+_skip("Q87", "Socio de contratada estadual e servidor municipal",
      "Servidor municipal que e socio de empresa com contrato estadual",
      "Conflito de Interesses",
      """
@@ -288,7 +302,8 @@ LIMIT 500
 """)
 
 
-_reg("Q88", "Servidor municipal que recebe pagamento estadual como PF",
+# DISABLED: 1 municipio com resultado no web_cache
+_skip("Q88", "Servidor municipal que recebe pagamento estadual como PF",
      "Duplo vinculo: servidor em municipio e credor no governo estadual",
      "Conflito de Interesses",
      """
@@ -338,7 +353,8 @@ LIMIT 500
 
 # ── Politico-Eleitoral ──────────────────────────────────────────
 
-_reg("Q72", "Doador de campanha recebendo do municipio",
+# DISABLED: 0 municipios com resultado no web_cache
+_skip("Q72", "Doador de campanha recebendo do municipio",
      "Empresa doou para prefeito eleito e depois recebeu pagamento municipal",
      "Politico-Eleitoral",
      """
@@ -385,7 +401,8 @@ LIMIT 500
 
 # ── Licitacao e Concorrencia ─────────────────────────────────────
 
-_reg("Q60", "Fornecedor 'Sem Licitacao' em multiplos municipios",
+# DISABLED: pertence a view estadual, sempre QTD_MUNICIPIOS=1
+_skip("Q60", "Fornecedor 'Sem Licitacao' em multiplos municipios",
      "Empresas que recebem sem licitacao em 5+ municipios PB",
      "Licitacao e Concorrencia",
      """
@@ -422,7 +439,8 @@ LIMIT 500
 """)
 
 
-_reg("Q62", "Fornecedor vencedor em muitos municipios",
+# DISABLED: pertence a view estadual, sempre QTD_MUNICIPIOS=1
+_skip("Q62", "Fornecedor vencedor em muitos municipios",
      "Empresa ganhando licitacoes em 10+ municipios PB",
      "Licitacao e Concorrencia",
      """
@@ -454,7 +472,7 @@ LIMIT 500
 """)
 
 
-_reg("Q68", "Licitacao com proponente unico",
+_skip("Q68", "Licitacao com proponente unico",
      "Licitacoes onde apenas 1 empresa participou — possivel direcionamento",
      "Licitacao e Concorrencia",
      """
@@ -494,6 +512,38 @@ WHERE l.ano_licitacao >= %(ano_inicio)s AND l.ano_licitacao <= %(ano_fim)s
   )
   AND l.valor_ofertado > 50000
 ORDER BY l.valor_ofertado DESC
+LIMIT 500
+""")
+
+
+_reg("Q69", "Todas as licitacoes do municipio",
+     "Lista completa de licitacoes registradas com quantidade de vencedores e maior valor ofertado",
+     "Licitacao e Concorrencia",
+     """
+SELECT l.numero_licitacao, l.ano_licitacao,
+       MAX(l.modalidade) AS modalidade,
+       MAX(l.objeto_licitacao) AS objeto_licitacao,
+       COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
+       MAX(l.valor_ofertado) AS maior_valor,
+       MAX(l.data_homologacao) AS data_homologacao
+FROM tce_pb_licitacao l
+WHERE l.ano_licitacao >= 2022
+  AND l.municipio = %(municipio)s
+GROUP BY l.numero_licitacao, l.ano_licitacao
+ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
+LIMIT 500
+""", timeout=30, sql_dated="""
+SELECT l.numero_licitacao, l.ano_licitacao,
+       MAX(l.modalidade) AS modalidade,
+       MAX(l.objeto_licitacao) AS objeto_licitacao,
+       COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
+       MAX(l.valor_ofertado) AS maior_valor,
+       MAX(l.data_homologacao) AS data_homologacao
+FROM tce_pb_licitacao l
+WHERE l.ano_licitacao >= %(ano_inicio)s AND l.ano_licitacao <= %(ano_fim)s
+  AND l.municipio = %(municipio)s
+GROUP BY l.numero_licitacao, l.ano_licitacao
+ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
 LIMIT 500
 """)
 
@@ -587,7 +637,7 @@ LIMIT 500
 
 # ── Cruzamento Estado x Municipio ────────────────────────────────
 
-_reg("Q83", "Empresa dominante estado + municipio",
+_skip("Q83", "Empresa dominante estado + municipio",
      "Empresa que recebe do estado E de municipios PB",
      "Cruzamento Estado x Municipio",
      """
@@ -636,7 +686,7 @@ LIMIT 500
 """)
 
 
-_reg("Q89", "Convenio estado com despesas suspeitas",
+_skip("Q89", "Convenio estado com despesas suspeitas",
      "Municipio recebeu convenio estadual e teve despesas atipicas no periodo",
      "Cruzamento Estado x Municipio",
      """
@@ -721,7 +771,8 @@ LIMIT 500
 """)
 
 
-_reg("Q66", "Empenhos concentrados em dezembro",
+# DISABLED: 0 municipios com resultado no web_cache
+_skip("Q66", "Empenhos concentrados em dezembro",
      "Queima de orcamento: proporcao anormal de despesas em dezembro",
      "Orcamento e Financeiro",
      """
@@ -760,7 +811,8 @@ LIMIT 500
 """)
 
 
-_reg("Q64", "Despesa TCE-PB x contrato PNCP divergente",
+# DISABLED: 0 municipios com resultado no web_cache
+_skip("Q64", "Despesa TCE-PB x contrato PNCP divergente",
      "Discrepancia > 25%% entre valor contratado PNCP e valor pago TCE-PB",
      "Orcamento e Financeiro",
      """

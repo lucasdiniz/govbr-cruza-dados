@@ -152,7 +152,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         ['heroQtdEmpenhos', 'heroTotalPago', 'heroQtdFornecedores'].forEach(id => {
             if (el(id)) el(id).textContent = '...';
         });
-        ['insightPctPago', 'insightPctSemLicit', 'insightPctProponente', 'insightPctDezembro'].forEach(id => {
+        ['insightPctPago', 'insightPctSemLicit', 'insightPctDispensa', 'insightPctFolha'].forEach(id => {
             if (el(id)) el(id).textContent = '...';
         });
         if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = '';
@@ -243,7 +243,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                     if (_dateFim) exportUrl += `&data_fim=${_dateFim}`;
                     exportLink.href = exportUrl;
                 }
-                if (rowCount === 0) card.classList.add('is-empty');
+                if (rowCount === 0) card.classList.add('is-empty', 'collapsed');
                 card.classList.remove('loading');
                 initDataTables(body);
                 initClickableRows(body);
@@ -266,7 +266,7 @@ function renderFindingCard(card, queryId, data, municipio) {
     countEl.textContent = rowCount;
     card.dataset.count = String(rowCount);
     if (rowCount === 0) {
-        card.classList.add('is-empty');
+        card.classList.add('is-empty', 'collapsed');
         body.innerHTML = '<p class="text-sm text-muted">Nenhum registro encontrado.</p>';
     } else {
         body.innerHTML = buildResultTable(queryId, data.columns, data.rows, municipio);
@@ -294,6 +294,27 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const hasServidor = iCpf6 >= 0 && (iNomeUpper >= 0 || iNomeServidor >= 0);
     const hasLicitacao = iLicNum >= 0;
 
+    // Row highlight: detect abrangencia + categoria_sancao for sanction severity
+    const iAbrangencia = columns.indexOf('abrangencia');
+    const iCategoria = columns.indexOf('categoria_sancao');
+
+    // Sort by severity when abrangencia column is present: red first, yellow next, rest last
+    if (iAbrangencia >= 0) {
+        rows = [...rows].sort((a, b) => {
+            const aAbr = String(a[iAbrangencia] || '');
+            const aCat = iCategoria >= 0 ? String(a[iCategoria] || '') : '';
+            const bAbr = String(b[iAbrangencia] || '');
+            const bCat = iCategoria >= 0 ? String(b[iCategoria] || '') : '';
+            const aRed = /inidone/i.test(aCat) || /Nacional/i.test(aAbr) || /Todas as Esferas/i.test(aAbr);
+            const bRed = /inidone/i.test(bCat) || /Nacional/i.test(bAbr) || /Todas as Esferas/i.test(bAbr);
+            const aYellow = !aRed && !!aAbr;
+            const bYellow = !bRed && !!bAbr;
+            const aScore = aRed ? 0 : aYellow ? 1 : 2;
+            const bScore = bRed ? 0 : bYellow ? 1 : 2;
+            return aScore - bScore;
+        });
+    }
+
     const bodyRows = rows.map(row => {
         const cells = row.map((val, ci) => {
             if (val === null || val === undefined) return '<td>-</td>';
@@ -317,19 +338,28 @@ function buildResultTable(queryId, columns, rows, municipio) {
             return `<td>${val}</td>`;
         }).join('');
 
+        // Determine row highlight class for sanction severity
+        let rowHighlight = '';
+        if (iAbrangencia >= 0) {
+            const abr = String(row[iAbrangencia] || '');
+            const cat = iCategoria >= 0 ? String(row[iCategoria] || '') : '';
+            if (/inidone/i.test(cat) || /Nacional/i.test(abr) || /Todas as Esferas/i.test(abr)) rowHighlight = ' row-sancao';
+            else if (abr) rowHighlight = ' row-sancao-leve';
+        }
+
         // Servidor row detection (highest priority)
         if (hasServidor) {
             const cpf6 = _esc(row[iCpf6] || '');
             const nomeUp = _esc(row[iNomeUpper] || row[iNomeServidor] || '');
             const displayNome = _esc(row[iNomeServidor >= 0 ? iNomeServidor : iNomeUpper] || '');
-            return `<tr class="clickable-row" data-cpf6="${cpf6}" data-nome-upper="${nomeUp}" data-nome="${displayNome}" data-cnpjs="[]">${cells}</tr>`;
+            return `<tr class="clickable-row${rowHighlight}" data-cpf6="${cpf6}" data-nome-upper="${nomeUp}" data-nome="${displayNome}" data-cnpjs="[]">${cells}</tr>`;
         }
         // Licitacao row detection (prioritize over fornecedor when both exist)
         if (hasLicitacao) {
             const licNum = String(row[iLicNum] || '');
             const licAno = iLicAno >= 0 ? String(row[iLicAno] || '0') : '0';
             if (licNum && licNum !== '000000000') {
-                return `<tr class="clickable-row" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}">${cells}</tr>`;
+                return `<tr class="clickable-row${rowHighlight}" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}">${cells}</tr>`;
             }
         }
         // Fornecedor row detection
@@ -342,19 +372,24 @@ function buildResultTable(queryId, columns, rows, municipio) {
             }
             const nome = _esc(row[iNomeCredor >= 0 ? iNomeCredor : (iCpfCnpj >= 0 ? iCpfCnpj : 0)] || '');
             if (cnpjB.length === 8) {
-                return `<tr class="clickable-row" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}">${cells}</tr>`;
+                return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}">${cells}</tr>`;
             }
         }
-        return `<tr>${cells}</tr>`;
+        return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
     }).join('');
 
     let exportHref = `/api/export/${queryId}?municipio=${encodeURIComponent(municipio)}`;
     if (_dateInicio) exportHref += `&data_inicio=${_dateInicio}`;
     if (_dateFim) exportHref += `&data_fim=${_dateFim}`;
 
+    const legendHtml = iAbrangencia >= 0 ? `<div class="color-legend" style="margin-top:.5rem">
+        <span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Sancao de abrangencia nacional ou inidoneidade</span>
+        <span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Sancao de abrangencia restrita (informativo)</span>
+    </div>` : '';
+
     return `<div class="result-block">
         <div class="result-toolbar">
-            <div></div>
+            <div>${legendHtml}</div>
             <a href="${exportHref}" data-export-link class="btn btn-outline btn-sm">Exportar CSV</a>
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -450,7 +485,7 @@ function buildFornecedoresPanel(data) {
         const rowClass = sancaoAplica
             ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
             : abrangenciaRaw ? 'clickable-row row-sancao-leve' : 'clickable-row';
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td><td class="text-sm">${abrangenciaInfo ? _esc(abrangenciaInfo) : ''}</td></tr>`;
+        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'abrangencia_sancao_info'));
@@ -482,7 +517,7 @@ function buildFornecedoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table>
-                <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Situacao</th><th>Sinais de Atencao</th><th>Abrangencia</th></tr></thead>
+                <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Situacao</th><th>Sinais de Atencao</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
@@ -557,11 +592,11 @@ function _updateInsightCards(perfil) {
     const pctSemLicit = perfil.pct_sem_licitacao;
     if (el('insightPctSemLicit')) el('insightPctSemLicit').textContent = pctSemLicit != null ? `${parseFloat(pctSemLicit).toFixed(1)}%` : 'N/D';
 
-    const pctProp = perfil.pct_proponente_unico;
-    if (el('insightPctProponente')) el('insightPctProponente').textContent = pctProp != null ? `${parseFloat(pctProp).toFixed(1)}%` : 'N/D';
+    const pctDispensa = perfil.pct_sem_licitacao;
+    if (el('insightPctDispensa')) el('insightPctDispensa').textContent = pctDispensa != null ? `${parseFloat(pctDispensa).toFixed(1)}%` : 'N/D';
 
-    const pctDez = perfil.pct_dezembro;
-    if (el('insightPctDezembro')) el('insightPctDezembro').textContent = pctDez != null ? `${parseFloat(pctDez).toFixed(1)}%` : 'N/D';
+    const pctFolha = perfil.pct_folha_receita;
+    if (el('insightPctFolha')) el('insightPctFolha').textContent = pctFolha != null ? `${parseFloat(pctFolha).toFixed(1)}%` : 'N/D';
 
     // Update bar chart
     if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
@@ -1500,7 +1535,19 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
 function buildServidoresPanel(data) {
     const cols = data.columns;
-    const bodyRows = data.rows.map(r => {
+
+    // Sort by severity: red first, yellow, then rest (preserving salary order within groups)
+    const sortedRows = [...data.rows].sort((a, b) => {
+        const aRed = _val(a, cols, 'flag_ceaf_expulso') || _val(a, cols, 'total_pago_durante_vinculo') > 0 || _val(a, cols, 'flag_socio_inidoneidade');
+        const bRed = _val(b, cols, 'flag_ceaf_expulso') || _val(b, cols, 'total_pago_durante_vinculo') > 0 || _val(b, cols, 'flag_socio_inidoneidade');
+        const aYellow = !aRed && (_val(a, cols, 'flag_socio_sancionado') || _val(a, cols, 'flag_bolsa_familia'));
+        const bYellow = !bRed && (_val(b, cols, 'flag_socio_sancionado') || _val(b, cols, 'flag_bolsa_familia'));
+        const aScore = aRed ? 0 : aYellow ? 1 : 2;
+        const bScore = bRed ? 0 : bYellow ? 1 : 2;
+        return aScore - bScore;
+    });
+
+    const bodyRows = sortedRows.map(r => {
         const nome = _esc(_val(r, cols, 'nome_servidor'));
         const cargo = _esc(_val(r, cols, 'cargo') || '-');
         const salario = _shortBrl(_val(r, cols, 'maior_salario'));
@@ -1769,6 +1816,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initInteractiveToggles(document);
     initClickableRows(document);
+
+    // Finding card collapse toggle
+    document.querySelectorAll('.finding-card .finding-head').forEach(head => {
+        head.addEventListener('click', () => {
+            head.closest('.finding-card').classList.toggle('collapsed');
+        });
+    });
 
     const dialog = document.getElementById('empresa-dialog');
     if (dialog) {
