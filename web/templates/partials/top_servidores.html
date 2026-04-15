@@ -34,6 +34,7 @@
                 <thead>
                     <tr>
                         <th>Servidor</th>
+                        <th>CPF</th>
                         <th>Cargo</th>
                         <th class="text-right">Maior Salario</th>
                         <th>Sinais de Atencao</th>
@@ -51,6 +52,7 @@
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
                         <td>{{ s.nome_servidor|clean_text }}</td>
+                        <td><code class="text-sm">***.{{ cpf6[:3] }}.{{ cpf6[3:5] }}*-**</code></td>
                         <td>{{ cargo }}</td>
                         <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>
                         <td>

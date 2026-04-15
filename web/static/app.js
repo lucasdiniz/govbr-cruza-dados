@@ -785,7 +785,8 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
-    title.textContent = servidorNome;
+    const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,5)}*-**` : '';
+    title.textContent = cpfMask ? `${servidorNome}  —  CPF: ${cpfMask}` : servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
     document.body.classList.add('dialog-open');
@@ -1507,7 +1508,8 @@ function buildServidoresPanel(data) {
         const totalPagoRow = _val(r, cols, 'total_pago_empresas') > 0;
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
-        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
+        const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,5)}*-**` : '';
+        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td><code class="text-sm">${cpfFmt}</code></td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
@@ -1533,7 +1535,7 @@ function buildServidoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table>
-                <thead><tr><th>Servidor</th><th>Cargo</th><th>Municipio(s)</th><th class="text-right">Maior Salario</th><th class="text-right">Empresas</th><th>Sinais de Atencao</th></tr></thead>
+                <thead><tr><th>Servidor</th><th>CPF</th><th>Cargo</th><th>Municipio(s)</th><th class="text-right">Maior Salario</th><th class="text-right">Empresas</th><th>Sinais de Atencao</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
