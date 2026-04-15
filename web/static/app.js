@@ -1505,18 +1505,19 @@ function buildServidoresPanel(data) {
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
         const totalPagoRow = _val(r, cols, 'total_pago_empresas') > 0;
-        const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : socioSancionado ? 'clickable-row row-sancao-leve' : 'clickable-row';
+        const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
+        const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_empresas') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
-    const hasYellowServ = data.rows.some(r => _val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade'));
+    const hasYellowServ = data.rows.some(r => (_val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade')) || _val(r, data.columns, 'flag_bolsa_familia'));
     let servLegend = '';
     if (hasRedServ || hasYellowServ) {
         let items = [];
         if (hasRedServ) items.push(`<span class="color-legend-item">${_ldot('#ef4444')} Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>`);
-        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#f59e0b')} Socio de empresa com Impedimento ou sancao CNEP</span>`);
+        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#f59e0b')} Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span>`);
         servLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
