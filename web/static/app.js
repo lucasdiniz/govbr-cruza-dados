@@ -181,7 +181,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     }
 
     if (servPanel) {
-        if (batchData.TOP_SERVIDORES && batchData.TOP_SERVIDORES.row_count > 0) {
+        if (!_isDateFiltered() && batchData.TOP_SERVIDORES && batchData.TOP_SERVIDORES.row_count > 0) {
             const servData = batchData.TOP_SERVIDORES;
             servPanel.innerHTML = buildServidoresPanel(servData);
             initDataTables(servPanel);
@@ -192,12 +192,6 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     }
 
     if (panelPromises.length) await Promise.all(panelPromises);
-
-    // Add period badge for servidores (after panels loaded — works for batch and async)
-    if (servPanel && _isDateFiltered() && !servPanel.querySelector('.period-badge')) {
-        servPanel.insertAdjacentHTML('afterbegin',
-            '<p class="period-badge">Servidores: dados de todos os periodos (esta consulta nao suporta filtro temporal)</p>');
-    }
 
     const cards = Array.from(document.querySelectorAll('.finding-card[data-query]'));
     if (!cards.length) return;
@@ -785,7 +779,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
-    const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,5)}*-**` : '';
+    const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
     title.textContent = cpfMask ? `${servidorNome}  —  CPF: ${cpfMask}` : servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.showModal();
@@ -1507,7 +1501,7 @@ function buildServidoresPanel(data) {
         const totalPagoRow = _val(r, cols, 'total_pago_durante_vinculo') > 0;
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
-        const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,5)}*-**` : '';
+        const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
         return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td><code class="text-sm">${cpfFmt}</code></td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
     }).join('');
 

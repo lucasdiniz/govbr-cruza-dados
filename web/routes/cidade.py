@@ -33,6 +33,7 @@ from web.queries.cidade import (
     TOP_FORNECEDORES_FALLBACK_DATED,
     TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
+    TOP_SERVIDORES_RISCO_DATED,
 )
 from web.queries.registry import CIDADE_QUERIES, get_categories
 
@@ -194,12 +195,14 @@ def _load_top_fornecedores_dated(params: dict):
     return empty
 
 
-def _load_top_servidores(municipio: str):
+def _load_top_servidores(municipio: str, params: dict | None = None):
+    query = TOP_SERVIDORES_RISCO_DATED if params and "ano_mes_inicio" in params else TOP_SERVIDORES_RISCO
+    qparams = params if params else {"municipio": municipio}
     try:
         return cached_query(
             f"serv:{municipio.casefold()}",
-            TOP_SERVIDORES_RISCO,
-            {"municipio": municipio},
+            query,
+            qparams,
             timeout_sec=TIMEOUT_QUERY_LIGHT,
         )
     except QueryCanceled:
@@ -481,11 +484,17 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
         )
         response.headers["X-Row-Count"] = "0"
         return response
-    cached = read_web_cache("TOP_SERVIDORES", municipio)
-    if cached:
-        cols, rows = cached
+    has_dates = _has_date_filter(payload)
+    periodo = _get_periodo(payload) if has_dates else ""
+    if has_dates:
+        params = _date_params(payload)
+        cols, rows = _load_top_servidores(municipio, params)
     else:
-        cols, rows = _load_top_servidores(municipio)
+        cached = read_web_cache("TOP_SERVIDORES", municipio)
+        if cached:
+            cols, rows = cached
+        else:
+            cols, rows = _load_top_servidores(municipio)
     servidores = [_row_to_dict(cols, row) for row in rows]
     response = _render_partial(
         request,

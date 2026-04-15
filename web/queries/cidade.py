@@ -518,6 +518,19 @@ ORDER BY flag_ceaf_expulso DESC, flag_socio_sancionado DESC, risco_score DESC
 LIMIT 200
 """
 
+TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
+    "WHERE %(municipio)s = ANY(municipios)",
+    """WHERE %(municipio)s = ANY(municipios)
+  AND EXISTS (
+      SELECT 1 FROM tce_pb_servidor s
+      WHERE s.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
+        AND s.nome_upper = mv_servidor_pb_risco.nome_upper
+        AND s.municipio = %(municipio)s
+        AND s.ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
+        AND s.ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')
+  )"""
+)
+
 AUTOCOMPLETE_MUNICIPIO_FALLBACK = """
 SELECT municipio_nome AS nome, uf, 0 AS rank_val
 FROM pncp_municipio
