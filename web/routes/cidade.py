@@ -642,15 +642,24 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         empresas.append(r)
                     result["empresas"] = empresas
 
-                # Bolsa Família
+                # Bolsa Família (apenas durante vínculo ativo)
                 cur.execute("""
-                    SELECT mes_competencia, valor_parcela, nm_municipio
-                    FROM bolsa_familia
-                    WHERE cpf_digitos = %s
-                      AND UPPER(TRIM(nm_favorecido)) = %s
-                    ORDER BY mes_competencia DESC
+                    WITH vinculo AS (
+                        SELECT COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
+                               MAX(ano_mes) AS fim
+                        FROM tce_pb_servidor
+                        WHERE cpf_digitos_6 = %s AND nome_upper = %s
+                          AND ano_mes >= '2022-01'
+                    )
+                    SELECT bf.mes_competencia, bf.valor_parcela, bf.nm_municipio
+                    FROM bolsa_familia bf, vinculo v
+                    WHERE bf.cpf_digitos = %s
+                      AND UPPER(TRIM(bf.nm_favorecido)) = %s
+                      AND bf.mes_competencia >= v.inicio
+                      AND bf.mes_competencia <= v.fim
+                    ORDER BY bf.mes_competencia DESC
                     LIMIT 5
-                """, (cpf6, nome))
+                """, (cpf6, nome, cpf6, nome))
                 bf_cols = [d[0] for d in cur.description]
                 bf_rows = cur.fetchall()
                 if bf_rows:
