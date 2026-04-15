@@ -433,19 +433,27 @@ function buildFornecedoresPanel(data) {
         const sitClass = situacao === 'Ativa' ? '' : (situacao === '-' ? '' : 'badge badge-gray');
         let badges = '';
         const isInidoneidade = _val(r, cols, 'flag_inidoneidade');
-        if (isInidoneidade) badges += '<span class="badge badge-red">Inidoneidade - CEIS</span>';
-        else if (_val(r, cols, 'flag_ceis')) badges += '<span class="badge badge-orange">Impedimento - CEIS</span>';
-        if (_val(r, cols, 'flag_cnep')) badges += '<span class="badge badge-orange">Sancao anticorrupcao - CNEP</span>';
+        const abrangenciaRaw = _val(r, cols, 'abrangencia_sancao_info') || '';
+        const sancaoAplica = abrangenciaRaw.startsWith('!');
+        const abrangenciaInfo = abrangenciaRaw.replace(/^!/, '');
+        const parenMatch = abrangenciaInfo.match(/\(([^)]+)\)/);
+        const scopeSuffix = abrangenciaInfo.startsWith('Nacional')
+            ? ' (Nacional)'
+            : parenMatch ? ` (${parenMatch[1].slice(0, 50)})` : '';
+        if (isInidoneidade) badges += '<span class="badge badge-red">Inidoneidade - CEIS (Nacional)</span>';
+        else if (_val(r, cols, 'flag_ceis')) badges += `<span class="badge badge-orange">Impedimento - CEIS${_esc(scopeSuffix)}</span>`;
+        if (_val(r, cols, 'flag_cnep')) badges += `<span class="badge badge-orange">CNEP${_esc(scopeSuffix)}</span>`;
         if (_val(r, cols, 'flag_acordo_leniencia')) badges += '<span class="badge badge-blue">Acordo de Leniencia</span>';
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
-        const duranteSancao = _val(r, cols, 'flag_recebeu_durante_sancao');
-        const rowClass = duranteSancao ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve') : 'clickable-row';
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
+        const rowClass = sancaoAplica
+            ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
+            : abrangenciaRaw ? 'clickable-row row-sancao-leve' : 'clickable-row';
+        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td><td class="text-sm">${abrangenciaInfo ? _esc(abrangenciaInfo) : ''}</td></tr>`;
     }).join('');
 
-    const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao'));
+    const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'abrangencia_sancao_info'));
     const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
     const hasAcordo = data.rows.some(r => _val(r, data.columns, 'flag_acordo_leniencia'));
     const _fldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
@@ -474,7 +482,7 @@ function buildFornecedoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table>
-                <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Situacao</th><th>Sinais de Atencao</th></tr></thead>
+                <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Situacao</th><th>Sinais de Atencao</th><th>Abrangencia</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
@@ -719,11 +727,15 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
             modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
         }
         const empDate = e.data_empenho ? new Date(e.data_empenho) : null;
-        const duranteSancao = empDate && sancaoRanges.some(r =>
+        const matchedSancao = empDate && sancaoRanges.find(r =>
             empDate >= r.inicio && (!r.fim || empDate <= r.fim)
         );
-        const rowClass = duranteSancao ? 'clickable-row row-sancao' : 'clickable-row';
-        const sancaoTag = duranteSancao ? ' <span class="badge badge-red" style="font-size:.6rem">durante sancao</span>' : '';
+        const rowClass = matchedSancao
+            ? (matchedSancao.grave ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
+            : 'clickable-row';
+        const sancaoTag = matchedSancao
+            ? ` <span class="badge ${matchedSancao.grave ? 'badge-red' : 'badge-orange'}" style="font-size:.6rem">durante sancao</span>`
+            : '';
         return `<tr class="${rowClass}" data-empenho-id="${e.id}">
             <td>${dt}${sancaoTag}</td>
             <td>${_esc(e.elemento_despesa || '-')}</td>
@@ -852,9 +864,12 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
                 if (hasInid) {
                     badges += '<span class="badge badge-red">Inidoneidade (bloqueio nacional)</span>';
                 } else {
+                    const abr = vigentes[0].abrangencia_sancao || '';
+                    const orgao = vigentes[0].orgao_sancionador || '';
+                    const scopeLabel = abr ? `${abr}` : (vigentes[0].esfera_orgao_sancionador || 'Restrita ao ente');
                     const tipos = [...new Set(vigentes.map(s => s.fonte))];
                     tipos.forEach(t => {
-                        badges += `<span class="badge badge-orange">Sancionada - ${t}</span>`;
+                        badges += `<span class="badge badge-orange">Sancionada - ${_esc(t)} (${_esc(scopeLabel)})</span>`;
                     });
                 }
             }
@@ -1005,10 +1020,18 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     let html = '';
 
     // Pre-compute sanction date ranges (used by charts and empenho table)
-    const sancaoRanges = (data.sancoes || []).map(s => ({
-        inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
-        fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null
-    })).filter(r => r.inicio);
+    const sancaoRanges = (data.sancoes || []).map(s => {
+        const isInid = /inidone/i.test(s.categoria_sancao);
+        const isNacional = isInid
+            || s.abrangencia_sancao === 'Todas as Esferas em todos os Poderes';
+        const isMunicipal = (s.esfera_orgao_sancionador || '').toUpperCase() === 'MUNICIPAL'
+            && (s.orgao_sancionador || '').toUpperCase().includes(viewMunicipio.toUpperCase());
+        return {
+            inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
+            fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null,
+            grave: isNacional || isMunicipal
+        };
+    }).filter(r => r.inicio);
 
     // Situacao cadastral
     if (data.estabelecimento) {
@@ -1078,10 +1101,12 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
                 // Check if month overlaps with any sanction period
                 const monthStart = new Date(m.mes + '-01');
                 const monthEnd = new Date(monthStart); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
-                const inSancao = sancaoRanges.some(r =>
+                const inSancao = sancaoRanges.find(r =>
                     r.inicio <= monthEnd && (!r.fim || r.fim >= monthStart)
                 );
-                const barClass = inSancao ? 'mini-bar bar-sancao' : 'mini-bar';
+                const barClass = inSancao
+                    ? (inSancao.grave ? 'mini-bar bar-sancao' : 'mini-bar bar-sancao-leve')
+                    : 'mini-bar';
                 return `<div class="mini-bar-col">
                     <span class="mini-bar-tip">${_shortBrl(m.total_mes)}</span>
                     <div class="${barClass}" style="height:${Math.max(pct, 3)}%"></div>
@@ -1128,12 +1153,18 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             const multa = s.valor_multa ? `<span>Multa: ${_shortBrl(s.valor_multa)}</span>` : '';
             const categoria = s.categoria_sancao || 'Sancao';
             const isInid = /inidone/i.test(categoria);
-            const esfera = s.esfera_orgao_sancionador || '';
-            const abrangencia = isInid
-                ? '<span class="badge badge-red">Bloqueio nacional</span>'
-                : esfera
-                    ? `<span class="badge badge-orange">Restrito: ${_esc(esfera)}</span>`
-                    : '<span class="badge badge-orange">Restrito ao ente sancionador</span>';
+            const abrang = s.abrangencia_sancao || '';
+            const isNacional = isInid || abrang === 'Todas as Esferas em todos os Poderes';
+            const abrangenciaLabel = isInid
+                ? 'Nacional (Inidoneidade)'
+                : abrang === 'Todas as Esferas em todos os Poderes'
+                    ? 'Nacional'
+                    : abrang
+                        ? `${abrang} (${_esc(s.orgao_sancionador || '?')})`
+                        : `${_esc(s.esfera_orgao_sancionador || 'Restrita ao ente')}`;
+            const abrangencia = isNacional
+                ? `<span class="badge badge-red">${_esc(abrangenciaLabel)}</span>`
+                : `<span class="badge badge-orange">${_esc(abrangenciaLabel)}</span>`;
             return `<div class="empresa-card">
                 <div class="empresa-header">
                     <strong>${_esc(categoria)}</strong>

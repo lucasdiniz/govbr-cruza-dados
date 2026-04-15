@@ -5,7 +5,7 @@
             <h3 class="card-title">Maiores fornecedores do municipio</h3>
             <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</p>
             {% set has_inid = fornecedores|selectattr('flag_inidoneidade')|list %}
-            {% set has_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao')|list %}
+            {% set has_sancao = fornecedores|selectattr('abrangencia_sancao_info')|list %}
             {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
             {% if has_sancao or has_acordo %}
             <div class="color-legend">
@@ -37,11 +37,13 @@
                         <th class="text-right">Empenhos</th>
                         <th>Situacao</th>
                         <th>Sinais de Atencao</th>
+                        <th>Abrangencia</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for f in fornecedores %}
-                    <tr class="clickable-row{% if f.flag_recebeu_durante_sancao %}{% if f.flag_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% endif %}"
+                    {% set sancao_aplica = f.abrangencia_sancao_info and f.abrangencia_sancao_info.startswith('!') %}
+                    <tr class="clickable-row{% if sancao_aplica %}{% if f.flag_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% elif f.abrangencia_sancao_info %} row-sancao-leve{% endif %}"
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}">
                         <td>{{ f.nome_credor|clean_text }}</td>
@@ -50,9 +52,18 @@
                         <td class="text-right">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
                         <td>{{ f.desc_situacao|default('-') }}</td>
                         <td>
-                            {% if f.flag_inidoneidade %}<span class="badge badge-red">Inidoneidade - CEIS</span>
-                            {% elif f.flag_ceis %}<span class="badge badge-orange">Impedimento - CEIS</span>{% endif %}
-                            {% if f.flag_cnep %}<span class="badge badge-orange">Sancao anticorrupcao - CNEP</span>{% endif %}
+                            {% set scope_suffix = '' %}
+                            {% if f.abrangencia_sancao_info %}
+                                {% set info_clean = f.abrangencia_sancao_info|replace('!', '') %}
+                                {% if 'Nacional' in info_clean %}
+                                    {% set scope_suffix = ' (Nacional)' %}
+                                {% elif '(' in info_clean %}
+                                    {% set scope_suffix = ' ' + info_clean[info_clean.index('('):] %}
+                                {% endif %}
+                            {% endif %}
+                            {% if f.flag_inidoneidade %}<span class="badge badge-red">Inidoneidade - CEIS (Nacional)</span>
+                            {% elif f.flag_ceis %}<span class="badge badge-orange">Impedimento - CEIS{{ scope_suffix|truncate(55, True) }}</span>{% endif %}
+                            {% if f.flag_cnep %}<span class="badge badge-orange">CNEP{{ scope_suffix|truncate(55, True) }}</span>{% endif %}
                             {% if f.flag_acordo_leniencia %}<span class="badge badge-blue">Acordo de Leniencia</span>{% endif %}
                             {% if f.flag_pgfn %}<span class="badge badge-yellow">Divida ativa</span>{% endif %}
                             {% if f.flag_inativa %}<span class="badge badge-gray">Cadastro inativo</span>{% endif %}
@@ -60,6 +71,7 @@
                                 <span class="text-sm text-muted">Sem sinal automatico</span>
                             {% endif %}
                         </td>
+                        <td class="text-sm">{{ f.abrangencia_sancao_info|default('')|replace('!', '') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

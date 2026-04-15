@@ -88,19 +88,49 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
              AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
        ) AS flag_acordo_leniencia,
-       EXISTS(
-           SELECT 1 FROM tce_pb_despesa d2
+       (
+           SELECT CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%'
+                   THEN '!Nacional (Inidoneidade)'
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                   THEN '!' || san.abrangencia_sancao
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
+                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
+                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                        || ' (' || san.orgao_sancionador || ')'
+               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                    || ' (' || COALESCE(san.orgao_sancionador, '?')
+                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
+           END
+           FROM tce_pb_despesa d2
            JOIN (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM ceis_sancao
                UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM cnep_sancao
            ) san ON san.cb = d2.cnpj_basico
            WHERE d2.cnpj_basico = tf.cnpj_basico
              AND d2.municipio = %(municipio)s
              AND d2.valor_pago > 0
              AND d2.data_empenho >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
-       ) AS flag_recebeu_durante_sancao,
+           ORDER BY CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
+               ELSE 4
+           END
+           LIMIT 1
+       ) AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -110,7 +140,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
+ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK = """
@@ -161,19 +191,49 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
              AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
        ) AS flag_acordo_leniencia,
-       EXISTS(
-           SELECT 1 FROM tce_pb_despesa d2
+       (
+           SELECT CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%'
+                   THEN '!Nacional (Inidoneidade)'
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                   THEN '!' || san.abrangencia_sancao
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
+                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
+                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                        || ' (' || san.orgao_sancionador || ')'
+               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                    || ' (' || COALESCE(san.orgao_sancionador, '?')
+                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
+           END
+           FROM tce_pb_despesa d2
            JOIN (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM ceis_sancao
                UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM cnep_sancao
            ) san ON san.cb = d2.cnpj_basico
            WHERE d2.cnpj_basico = tf.cnpj_basico
              AND d2.municipio = %(municipio)s
              AND d2.valor_pago > 0
              AND d2.data_empenho >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
-       ) AS flag_recebeu_durante_sancao,
+           ORDER BY CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
+               ELSE 4
+           END
+           LIMIT 1
+       ) AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -184,7 +244,7 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
+ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
@@ -198,7 +258,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
        FALSE AS flag_acordo_leniencia,
-       FALSE AS flag_recebeu_durante_sancao,
+       NULL::text AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -252,12 +312,35 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
              AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
        ) AS flag_acordo_leniencia,
-       EXISTS(
-           SELECT 1 FROM tce_pb_despesa d2
+       (
+           SELECT CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%'
+                   THEN '!Nacional (Inidoneidade)'
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                   THEN '!' || san.abrangencia_sancao
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
+                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
+                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                        || ' (' || san.orgao_sancionador || ')'
+               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                    || ' (' || COALESCE(san.orgao_sancionador, '?')
+                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
+           END
+           FROM tce_pb_despesa d2
            JOIN (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM ceis_sancao
                UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM cnep_sancao
            ) san ON san.cb = d2.cnpj_basico
            WHERE d2.cnpj_basico = tf.cnpj_basico
              AND d2.municipio = %(municipio)s
@@ -265,7 +348,14 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
              AND d2.data_empenho >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
              AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
-       ) AS flag_recebeu_durante_sancao,
+           ORDER BY CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
+               ELSE 4
+           END
+           LIMIT 1
+       ) AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -275,7 +365,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
-ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
+ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK_DATED = """
@@ -324,12 +414,35 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
              AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
        ) AS flag_acordo_leniencia,
-       EXISTS(
-           SELECT 1 FROM tce_pb_despesa d2
+       (
+           SELECT CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%'
+                   THEN '!Nacional (Inidoneidade)'
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                   THEN '!' || san.abrangencia_sancao
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
+                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
+                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                        || ' (' || san.orgao_sancionador || ')'
+               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                    || ' (' || COALESCE(san.orgao_sancionador, '?')
+                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
+           END
+           FROM tce_pb_despesa d2
            JOIN (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM ceis_sancao
                UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM cnep_sancao
            ) san ON san.cb = d2.cnpj_basico
            WHERE d2.cnpj_basico = tf.cnpj_basico
              AND d2.municipio = %(municipio)s
@@ -337,7 +450,14 @@ SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
              AND d2.data_empenho >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
              AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
-       ) AS flag_recebeu_durante_sancao,
+           ORDER BY CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
+               ELSE 4
+           END
+           LIMIT 1
+       ) AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -348,7 +468,7 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est
     ON est.cnpj_basico = tf.cnpj_basico
    AND est.cnpj_ordem = '0001'
-ORDER BY flag_recebeu_durante_sancao DESC, tf.total_pago DESC
+ORDER BY abrangencia_sancao_info IS NOT NULL DESC, tf.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC_DATED = """
@@ -362,7 +482,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
        FALSE AS flag_pgfn,
        FALSE AS flag_inativa,
        FALSE AS flag_acordo_leniencia,
-       FALSE AS flag_recebeu_durante_sancao,
+       NULL::text AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -415,18 +535,48 @@ SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
            WHERE LEFT(al.cnpj_norm, 8) = pc.cnpj_basico_fornecedor
              AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
        ) AS flag_acordo_leniencia,
-       EXISTS(
-           SELECT 1 FROM pncp_contrato pc2
+       (
+           SELECT CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%'
+                   THEN '!Nacional (Inidoneidade)'
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                   THEN '!' || san.abrangencia_sancao
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
+                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
+                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                        || ' (' || san.orgao_sancionador || ')'
+               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
+                    || ' (' || COALESCE(san.orgao_sancionador, '?')
+                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
+           END
+           FROM pncp_contrato pc2
            JOIN (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb, dt_inicio_sancao, dt_final_sancao FROM ceis_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM ceis_sancao
                UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8), dt_inicio_sancao, dt_final_sancao FROM cnep_sancao
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      orgao_sancionador, uf_orgao_sancionador,
+                      esfera_orgao_sancionador
+               FROM cnep_sancao
            ) san ON san.cb = pc2.cnpj_basico_fornecedor
            WHERE pc2.cnpj_basico_fornecedor = pc.cnpj_basico_fornecedor
              AND pc2.municipio_nome = %(municipio)s AND pc2.uf = %(uf)s
              AND pc2.data_assinatura >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR pc2.data_assinatura <= san.dt_final_sancao)
-       ) AS flag_recebeu_durante_sancao,
+           ORDER BY CASE
+               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
+               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
+               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
+               ELSE 4
+           END
+           LIMIT 1
+       ) AS abrangencia_sancao_info,
        CASE est.situacao_cadastral::text
            WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
            WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
@@ -441,7 +591,7 @@ WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
   AND pc.cnpj_basico_fornecedor IS NOT NULL
 GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
          e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY flag_recebeu_durante_sancao DESC, total_contratado DESC
+ORDER BY abrangencia_sancao_info IS NOT NULL DESC, total_contratado DESC
 LIMIT 200
 """
 

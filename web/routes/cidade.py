@@ -169,7 +169,7 @@ def _load_top_fornecedores(municipio: str, uf: str = ""):
                     timeout_sec=TIMEOUT_PROFILE + 2,
                 )
             except QueryCanceled:
-                return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
+                return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
 
 
 def _load_top_fornecedores_pncp(municipio: str, uf: str):
@@ -181,12 +181,12 @@ def _load_top_fornecedores_pncp(municipio: str, uf: str):
             timeout_sec=TIMEOUT_QUERY_LIGHT,
         )
     except QueryCanceled:
-        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
+        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_contratado", "qtd_contratos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
 
 
 def _load_top_fornecedores_dated(params: dict):
     """Carrega top fornecedores com filtro de data (live, sem cache in-memory)."""
-    empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "desc_situacao"], []
+    empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
     for sql in [TOP_FORNECEDORES_DATED, TOP_FORNECEDORES_FALLBACK_DATED, TOP_FORNECEDORES_BASIC_DATED]:
         try:
             return execute_query(sql, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
@@ -713,7 +713,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
                                'CEIS' AS fonte,
                                nome_sancionado, categoria_sancao, orgao_sancionador,
-                               esfera_orgao_sancionador,
+                               esfera_orgao_sancionador, abrangencia_sancao,
                                dt_inicio_sancao, dt_final_sancao
                         FROM ceis_sancao
                         WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
@@ -721,7 +721,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
                                'CNEP' AS fonte,
                                nome_sancionado, categoria_sancao, orgao_sancionador,
-                               esfera_orgao_sancionador,
+                               esfera_orgao_sancionador, abrangencia_sancao,
                                dt_inicio_sancao, dt_final_sancao
                         FROM cnep_sancao
                         WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
@@ -989,7 +989,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 # Sancoes CEIS
                 cur.execute("""
                     SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
-                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal
+                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal,
+                           abrangencia_sancao
                     FROM ceis_sancao
                     WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
                     ORDER BY dt_inicio_sancao DESC
@@ -1008,7 +1009,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 # Sancoes CNEP
                 cur.execute("""
                     SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
-                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal, valor_multa
+                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal, valor_multa,
+                           abrangencia_sancao
                     FROM cnep_sancao
                     WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
                     ORDER BY dt_inicio_sancao DESC

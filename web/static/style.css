@@ -774,6 +774,9 @@ tr:hover { background: #fbfdff; }
 .mini-bar.bar-sancao {
     background: linear-gradient(180deg, #fca5a5, #dc2626);
 }
+.mini-bar.bar-sancao-leve {
+    background: linear-gradient(180deg, #fde68a, #f59e0b);
+}
 .mini-bar-col:hover .mini-bar {
     opacity: .8;
 }

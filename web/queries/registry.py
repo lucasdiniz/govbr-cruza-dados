@@ -41,8 +41,13 @@ _reg("Q65", "Fornecedor sancionado (CEIS/CNEP) recebendo",
      """
 SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        san.categoria_sancao, san.origem,
-       CASE WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional'
-            ELSE COALESCE(san.esfera, 'Restrita ao ente')
+       CASE
+           WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional (Inidoneidade)'
+           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 'Nacional'
+           WHEN san.esfera = 'MUNICIPAL'
+               THEN COALESCE(san.abrangencia, 'Sem Informação') || ' (' || san.orgao || ')'
+           ELSE COALESCE(san.abrangencia, 'Sem Informação')
+                || ' (' || COALESCE(san.esfera, '?') || ', ' || COALESCE(san.uf, '?') || ')'
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
@@ -50,12 +55,16 @@ SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
 FROM (
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem,
-           esfera_orgao_sancionador AS esfera
+           esfera_orgao_sancionador AS esfera,
+           orgao_sancionador AS orgao, uf_orgao_sancionador AS uf,
+           abrangencia_sancao AS abrangencia
     FROM ceis_sancao
     UNION ALL
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CNEP' AS origem,
-           esfera_orgao_sancionador AS esfera
+           esfera_orgao_sancionador AS esfera,
+           orgao_sancionador AS orgao, uf_orgao_sancionador AS uf,
+           abrangencia_sancao AS abrangencia
     FROM cnep_sancao
 ) san
 JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
@@ -73,8 +82,13 @@ LIMIT 500
 """, timeout=30, sql_dated="""
 SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        san.categoria_sancao, san.origem,
-       CASE WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional'
-            ELSE COALESCE(san.esfera, 'Restrita ao ente')
+       CASE
+           WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 'Nacional (Inidoneidade)'
+           WHEN san.abrangencia = 'Todas as Esferas em todos os Poderes' THEN 'Nacional'
+           WHEN san.esfera = 'MUNICIPAL'
+               THEN COALESCE(san.abrangencia, 'Sem Informação') || ' (' || san.orgao || ')'
+           ELSE COALESCE(san.abrangencia, 'Sem Informação')
+                || ' (' || COALESCE(san.esfera, '?') || ', ' || COALESCE(san.uf, '?') || ')'
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
@@ -82,12 +96,16 @@ SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
 FROM (
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem,
-           esfera_orgao_sancionador AS esfera
+           esfera_orgao_sancionador AS esfera,
+           orgao_sancionador AS orgao, uf_orgao_sancionador AS uf,
+           abrangencia_sancao AS abrangencia
     FROM ceis_sancao
     UNION ALL
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CNEP' AS origem,
-           esfera_orgao_sancionador AS esfera
+           esfera_orgao_sancionador AS esfera,
+           orgao_sancionador AS orgao, uf_orgao_sancionador AS uf,
+           abrangencia_sancao AS abrangencia
     FROM cnep_sancao
 ) san
 JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
