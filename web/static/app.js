@@ -806,12 +806,15 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     const qtdSancionadas = Object.keys(sancoes).length;
     const qtdPgfn = Object.keys(pgfn).length;
     const totalPago = Object.values(empMap).reduce((s, e) => s + (e.total_pago || 0), 0);
+    const empVincData = data.empenhos_durante_vinculo || [];
+    const totalDuranteVinc = empVincData.reduce((s, e) => s + (e.valor_pago || 0), 0);
     const maiorSalario = vinculos.reduce((m, v) => Math.max(m, v.maior_salario || 0), 0);
 
     html += '<div class="stats-grid">';
     if (maiorSalario > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(maiorSalario)}</span><span class="stat-label">Maior salario</span></div>`;
     html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">Empresas vinculadas</span></div>`;
-    if (totalPago > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (${_esc(_currentMunicipio)})</span></div>`;
+    if (totalDuranteVinc > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalDuranteVinc)}</span><span class="stat-label">Pago as empresas durante vinculo</span></div>`;
+    if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
     if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">Empresas sancionadas</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">Empresas c/ divida PGFN</span></div>`;
     if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
@@ -1483,13 +1486,9 @@ function buildServidoresPanel(data) {
         let badges = '';
         const ceafExpulso = _val(r, cols, 'flag_ceaf_expulso');
         if (ceafExpulso) badges += '<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>';
-        if (_val(r, cols, 'flag_conflito_interesses')) {
-            const totalPagoEmpresas = _val(r, cols, 'total_pago_empresas');
-            if (totalPagoEmpresas > 0) {
-                badges += `<span class="badge badge-red">Empresa recebeu ${_shortBrl(totalPagoEmpresas)} no municipio</span>`;
-            } else {
-                badges += '<span class="badge badge-red">Socio de empresa que fornece ao municipio</span>';
-            }
+        const totalDuranteVinculo = _val(r, cols, 'total_pago_durante_vinculo');
+        if (totalDuranteVinculo > 0) {
+            badges += `<span class="badge badge-red">Empresa recebeu ${_shortBrl(totalDuranteVinculo)} durante vinculo</span>`;
         }
         if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += '<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>';
         if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;
@@ -1505,7 +1504,7 @@ function buildServidoresPanel(data) {
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
         const hasDetail = cpf6 && nomeUpper;
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
-        const totalPagoRow = _val(r, cols, 'total_pago_empresas') > 0;
+        const totalPagoRow = _val(r, cols, 'total_pago_durante_vinculo') > 0;
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,5)}*-**` : '';
@@ -1513,7 +1512,7 @@ function buildServidoresPanel(data) {
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
-    const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_empresas') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
+    const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_durante_vinculo') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
     const hasYellowServ = data.rows.some(r => (_val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade')) || _val(r, data.columns, 'flag_bolsa_familia'));
     let servLegend = '';
     if (hasRedServ || hasYellowServ) {

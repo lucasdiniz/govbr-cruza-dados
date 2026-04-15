@@ -467,6 +467,15 @@ empresa_pagamentos AS (
     FROM tce_pb_despesa d
     WHERE d.municipio = %(municipio)s AND d.valor_pago > 0
     GROUP BY d.cnpj_basico
+),
+vinculo_datas AS (
+    SELECT cpf_digitos_6, nome_upper,
+           COALESCE(MIN(data_admissao), TO_DATE(MIN(ano_mes), 'YYYYMM')) AS dt_ini,
+           TO_DATE(MAX(ano_mes), 'YYYYMM') + INTERVAL '1 month' - INTERVAL '1 day' AS dt_fim
+    FROM tce_pb_servidor
+    WHERE municipio = %(municipio)s
+      AND cpf_digitos_6 IS NOT NULL AND nome_upper IS NOT NULL
+    GROUP BY cpf_digitos_6, nome_upper
 )
 SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
@@ -492,7 +501,17 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
            SELECT SUM(ep.total_pago)
            FROM unnest(cnpjs_socio) AS cs(cnpj)
            JOIN empresa_pagamentos ep ON ep.cnpj_basico = TRIM(cs.cnpj)
-       ), 0) AS total_pago_empresas
+       ), 0) AS total_pago_empresas,
+       COALESCE((
+           SELECT SUM(d.valor_pago)
+           FROM unnest(cnpjs_socio) AS cs(cnpj)
+           JOIN tce_pb_despesa d ON d.cnpj_basico = TRIM(cs.cnpj)
+               AND d.municipio = %(municipio)s
+               AND d.valor_pago > 0
+           JOIN vinculo_datas vd ON vd.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
+               AND vd.nome_upper = mv_servidor_pb_risco.nome_upper
+           WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim
+       ), 0) AS total_pago_durante_vinculo
 FROM mv_servidor_pb_risco
 WHERE %(municipio)s = ANY(municipios)
 ORDER BY flag_ceaf_expulso DESC, flag_socio_sancionado DESC, risco_score DESC

@@ -8,7 +8,7 @@
                 vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social
                 ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.
             </p>
-            {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_empresas')|list %}
+            {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_durante_vinculo')|list %}
             {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list %}
             {% if has_red_serv or has_yellow_serv %}
             <div class="color-legend">
@@ -47,7 +47,7 @@
                     {% set nome_up = s.nome_upper|default('')|string %}
                     {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
                     {% if cpf6 and nome_up %}
-                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_empresas and s.total_pago_empresas > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_durante_vinculo and s.total_pago_durante_vinculo > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
                     {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
@@ -57,12 +57,8 @@
                         <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>
                         <td>
                             {% if s.flag_ceaf_expulso %}<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>{% endif %}
-                            {% if s.flag_conflito_interesses %}
-                                {% if s.total_pago_empresas and s.total_pago_empresas > 0 %}
-                                    <span class="badge badge-red">Empresa recebeu {{ s.total_pago_empresas|short_brl }} no municipio</span>
-                                {% else %}
-                                    <span class="badge badge-red">Socio de empresa que fornece ao municipio</span>
-                                {% endif %}
+                            {% if s.total_pago_durante_vinculo and s.total_pago_durante_vinculo > 0 %}
+                                <span class="badge badge-red">Empresa recebeu {{ s.total_pago_durante_vinculo|short_brl }} durante vinculo</span>
                             {% endif %}
                             {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>{% endif %}
                             {% if s.flag_multi_empresa %}
