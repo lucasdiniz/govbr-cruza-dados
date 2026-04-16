@@ -3,7 +3,7 @@
 ## Pendente
 
 ### Pivot PB-first — novas visualizacoes e cruzamentos
-- [ ] **Mapa coropletico PB (em andamento)** — 223 municipios pintados por metrica, 5 camadas: risco composto (default), % pago a fornecedores irregulares, % sem licitacao, concentracao top-5, gasto per capita. Click no municipio abre detalhe. Toggle de camada no topo do mapa. Cutoff minimo para municipios pequenos evitarem virar falso positivo
+- [x] **Mapa coropletico PB** — 223 municipios pintados por metrica, 5 camadas (risco, % irregulares, % sem licitacao, top-5, per capita). Toggle, legenda, click navega para detalhe. Breaks calibrados aos percentis reais. Aliases TCE→IBGE para municipios renomeados
 - [ ] **Rotatividade de credores pos-eleicao** — top 20 fornecedores antes vs depois de cada eleicao municipal. Substituicoes abruptas sinalizam troca de grupo contratado. Visual: tabela com `delta_pago`, icone de "novo" para quem nao existia no mandato anterior
 - [ ] **Aditivos como % do contrato original** — `pb_aditivo_contrato` / `pb_contrato.valor_original`. Alertas >25% (limite Lei 14.133) e >100% (presuncao grave). Relatorio ja existe (`relatorio_aditivos_abusivos_estado_pb.md`), falta UI no detalhe do municipio
 - [ ] **Grafo fornecedor x municipio** — rede visual mostrando CNPJs que dominam cluster de prefeituras vizinhas. Nos = municipios + CNPJs, arestas = pagamentos. Filtros por valor minimo e por N municipios. Base: `tce_pb_despesa`. Util para detectar carteis regionais
