@@ -48,7 +48,16 @@ a:hover { text-decoration: underline; }
     color: #bfdbfe;
 }
 .logo:hover { color: #dbeafe; text-decoration: none; }
-.nav-desc { font-size: 0.82rem; color: #cbd5e1; }
+.nav-link {
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+.nav-link:hover { color: #fff; background: rgba(59, 92, 206, 0.2); }
+.nav-desc { font-size: 0.82rem; color: #cbd5e1; margin-left: auto; }
 
 .container {
     max-width: 1240px;
@@ -911,4 +920,131 @@ tr:hover { background: #fbfdff; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .top-el-row { grid-template-columns: 1fr; gap: .2rem; }
     .date-filter-fields { gap: 0.3rem; }
+}
+
+/* ── Mapa coropletico PB ─────────────────────────────────────── */
+.mapa-page main.container {
+    max-width: 1400px;
+    padding-top: 1.2rem;
+}
+.mapa-hero {
+    padding: 1rem 0 3rem;
+    position: relative;
+    z-index: 1;
+}
+.mapa-header {
+    text-align: left;
+    margin-bottom: 1rem;
+}
+.mapa-header h1 {
+    font-size: 1.9rem;
+    color: #e5edf7;
+    margin: 0 0 .25rem 0;
+}
+.mapa-sub {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    margin: 0 0 0.9rem 0;
+}
+.mapa-toggle {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+}
+.mt-btn {
+    background: #0d1627;
+    color: #cbd5e1;
+    border: 1px solid #1f2b44;
+    padding: 0.5rem 0.9rem;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+.mt-btn:hover {
+    border-color: #3b5680;
+    color: #fff;
+}
+.mt-btn.active {
+    background: #1e3a8a;
+    border-color: #3b5cce;
+    color: #fff;
+}
+.mapa-cutoff-note {
+    color: #64748b;
+    font-size: 0.78rem;
+    margin: 0.1rem 0 0.8rem 0;
+    font-style: italic;
+}
+#mapa-pb {
+    width: 100%;
+    height: 640px;
+    background: #060a14;
+    border: 1px solid #1f2b44;
+    border-radius: 8px;
+}
+.mapa-tooltip {
+    background: #0b1220 !important;
+    border: 1px solid #2a3a5a !important;
+    color: #e5edf7 !important;
+    padding: 0.55rem 0.7rem !important;
+    font-size: 0.82rem !important;
+    line-height: 1.4 !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6) !important;
+}
+.mapa-tooltip::before {
+    border-right-color: #2a3a5a !important;
+}
+.mapa-tooltip hr {
+    border: none;
+    border-top: 1px solid #1f2b44;
+    margin: 0.3rem 0;
+}
+.mapa-tooltip .tt-k {
+    color: #94a3b8;
+}
+.mapa-tooltip .tt-v {
+    color: #fff;
+    font-weight: 600;
+}
+.mapa-tooltip .tt-small {
+    font-size: 0.74rem;
+    color: #64748b;
+}
+.mapa-legend {
+    margin-top: 0.8rem;
+    padding: 0.7rem 1rem;
+    background: #0d1627;
+    border: 1px solid #1f2b44;
+    border-radius: 8px;
+}
+.legend-title {
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+.legend-row {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+.legend-step {
+    padding: 0.25rem 0.55rem;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.72rem;
+    min-width: 4.5rem;
+    text-align: center;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.4);
+}
+.legend-nodata {
+    color: #94a3b8;
+    border: 1px dashed #3b5680;
+}
+@media (max-width: 700px) {
+    #mapa-pb { height: 440px; }
+    .mapa-header h1 { font-size: 1.4rem; }
 }

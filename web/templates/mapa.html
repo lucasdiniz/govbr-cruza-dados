@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mapa da Paraiba{% endblock %}
+{% block body_class %}dark-page mapa-page{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<section class="mapa-hero">
+    <div class="mapa-header">
+        <h1>Paraiba - Panorama municipal</h1>
+        <p class="mapa-sub">
+            223 municipios pintados por indicador. Clique em um municipio para abrir o detalhe.
+        </p>
+        <div class="mapa-toggle" role="tablist">
+            <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais">Risco composto</button>
+            <button class="mt-btn" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos">% Irregulares</button>
+            <button class="mt-btn" data-metric="pct_sem_licitacao" title="% de empenhos feitos sem licitacao">Sem licitacao</button>
+            <button class="mt-btn" data-metric="pct_top5" title="% do pago concentrado nos top-5 fornecedores">Concentracao top-5</button>
+            <button class="mt-btn" data-metric="pago_per_capita" title="Total pago por habitante (IBGE 2022)">Per capita</button>
+        </div>
+        <p class="mapa-cutoff-note" id="mapa-cutoff-note">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</p>
+    </div>
+    <div id="mapa-pb"></div>
+    <div class="mapa-legend" id="mapa-legend"></div>
+</section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/mapa.js"></script>
+{% endblock %}
