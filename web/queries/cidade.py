@@ -125,6 +125,60 @@ ORDER BY total_empenhado DESC
 LIMIT 10
 """
 
+HEATMAP_MES_FUNCOES = """
+SELECT COALESCE(funcao, 'Nao informada') AS funcao,
+       COALESCE(programa, 'Nao informado') AS programa,
+       SUM(valor_empenhado) AS total_empenhado,
+       SUM(valor_pago) AS total_pago,
+       COUNT(*) AS qtd_empenhos
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano = %(ano)s
+  AND LEFT(mes, 2) = %(mes)s
+  AND valor_empenhado > 0
+GROUP BY COALESCE(funcao, 'Nao informada'), COALESCE(programa, 'Nao informado')
+ORDER BY total_empenhado DESC
+LIMIT 10
+"""
+
+HEATMAP_MES_MODALIDADES = """
+SELECT COALESCE(NULLIF(TRIM(modalidade_licitacao), ''), 'Sem licitacao informada') AS modalidade,
+       SUM(valor_empenhado) AS total_empenhado,
+       COUNT(*) AS qtd_empenhos,
+       COUNT(DISTINCT numero_licitacao) FILTER (WHERE numero_licitacao IS NOT NULL AND TRIM(numero_licitacao) <> '') AS qtd_licitacoes
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano = %(ano)s
+  AND LEFT(mes, 2) = %(mes)s
+  AND valor_empenhado > 0
+GROUP BY COALESCE(NULLIF(TRIM(modalidade_licitacao), ''), 'Sem licitacao informada')
+ORDER BY total_empenhado DESC
+"""
+
+HEATMAP_MES_EMPENHOS = """
+SELECT id,
+       numero_empenho,
+       data_empenho,
+       nome_credor,
+       cpf_cnpj,
+       elemento_despesa,
+       funcao,
+       programa,
+       modalidade_licitacao,
+       numero_licitacao,
+       valor_empenhado,
+       valor_liquidado,
+       valor_pago,
+       LEFT(COALESCE(historico, ''), 160) AS historico_resumo
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano = %(ano)s
+  AND LEFT(mes, 2) = %(mes)s
+  AND valor_empenhado > 0
+ORDER BY valor_empenhado DESC
+LIMIT 50
+"""
+
 PERFIL_MUNICIPIO_PNCP = """
 SELECT
     %(municipio)s AS municipio,

@@ -1481,6 +1481,9 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
     const resumo = data.resumo || {};
     const fornecedores = data.fornecedores || [];
     const elementos = data.elementos || [];
+    const funcoes = data.funcoes || [];
+    const modalidades = data.modalidades || [];
+    const empenhos = data.empenhos || [];
     let html = '';
 
     html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
@@ -1515,7 +1518,46 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
         html += '</tbody></table></div>';
     }
 
-    if (!fornecedores.length && !elementos.length) {
+    if (funcoes.length) {
+        html += '<div class="dialog-section"><h4>Funcao / Programa</h4>';
+        html += '<table class="data-table"><thead><tr><th>Funcao</th><th>Programa</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        for (const fu of funcoes) {
+            html += `<tr><td>${_esc(fu.funcao || '-')}</td><td>${_esc(fu.programa || '-')}</td><td class="num">${Number(fu.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(fu.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(fu.total_pago || 0))}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+    }
+
+    if (modalidades.length) {
+        html += '<div class="dialog-section"><h4>Modalidade de licitacao</h4>';
+        html += '<table class="data-table"><thead><tr><th>Modalidade</th><th class="num">Empenhos</th><th class="num">Licitacoes</th><th class="num">Empenhado</th></tr></thead><tbody>';
+        for (const m of modalidades) {
+            html += `<tr><td>${_esc(m.modalidade || '-')}</td><td class="num">${Number(m.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${Number(m.qtd_licitacoes || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(m.total_empenhado || 0))}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+    }
+
+    if (empenhos.length) {
+        html += `<div class="dialog-section"><h4>Empenhos do mes (top ${empenhos.length} por valor)</h4>`;
+        html += '<table class="data-table"><thead><tr><th>Nº</th><th>Data</th><th>Credor</th><th>Elemento</th><th>Funcao</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        for (const e of empenhos) {
+            const dt = e.data_empenho ? _fmtDate(e.data_empenho) : '-';
+            const historico = _esc(e.historico_resumo || '');
+            html += `<tr class="clickable-row" data-empenho-id="${e.id}" title="${historico}">`
+                + `<td><code>${_esc(e.numero_empenho || '-')}</code></td>`
+                + `<td>${dt}</td>`
+                + `<td>${_esc(e.nome_credor || '-')}</td>`
+                + `<td>${_esc(e.elemento_despesa || '-')}</td>`
+                + `<td>${_esc(e.funcao || '-')}</td>`
+                + `<td class="num">${_shortBrl(Number(e.valor_empenhado || 0))}</td>`
+                + `<td class="num">${_shortBrl(Number(e.valor_pago || 0))}</td>`
+                + `</tr>`;
+        }
+        html += '</tbody></table>';
+        html += '<p class="text-sm text-muted" style="margin-top:.5rem">Clique em uma linha para ver os detalhes do empenho.</p>';
+        html += '</div>';
+    }
+
+    if (!fornecedores.length && !elementos.length && !empenhos.length) {
         html += '<p class="text-sm text-muted">Sem detalhes disponiveis para este mes.</p>';
     }
 

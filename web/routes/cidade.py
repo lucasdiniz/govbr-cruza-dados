@@ -28,6 +28,9 @@ from web.queries.cidade import (
     HEATMAP_MES_RESUMO,
     HEATMAP_MES_FORNECEDORES,
     HEATMAP_MES_ELEMENTOS,
+    HEATMAP_MES_FUNCOES,
+    HEATMAP_MES_MODALIDADES,
+    HEATMAP_MES_EMPENHOS,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
@@ -628,12 +631,18 @@ async def get_heatmap_mes(municipio_path: str, ano: int, mes: int):
         rcols, rrows = execute_query(HEATMAP_MES_RESUMO, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
         fcols, frows = execute_query(HEATMAP_MES_FORNECEDORES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
         ecols, erows = execute_query(HEATMAP_MES_ELEMENTOS, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        fucols, furows = execute_query(HEATMAP_MES_FUNCOES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        mcols, mrows = execute_query(HEATMAP_MES_MODALIDADES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        emcols, emrows = execute_query(HEATMAP_MES_EMPENHOS, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
     except (QueryCanceled, Exception) as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     return JSONResponse({
         "resumo": _row_to_json_dict(rcols, rrows[0]) if rrows else {},
         "fornecedores": [_row_to_json_dict(fcols, r) for r in frows],
         "elementos": [_row_to_json_dict(ecols, r) for r in erows],
+        "funcoes": [_row_to_json_dict(fucols, r) for r in furows],
+        "modalidades": [_row_to_json_dict(mcols, r) for r in mrows],
+        "empenhos": [_row_to_json_dict(emcols, r) for r in emrows],
     })
 
 
