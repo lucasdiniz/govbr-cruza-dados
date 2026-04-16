@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from web import db
 from web.routes.cidade import router as cidade_router
+from web.routes.mapa import router as mapa_router
 
 _dir = Path(__file__).resolve().parent
 
@@ -68,6 +69,7 @@ templates.env.filters["short_brl"] = _format_short_brl
 templates.env.filters["clean_text"] = _clean_text
 
 app.include_router(cidade_router)
+app.include_router(mapa_router)
 
 
 @app.get("/")
