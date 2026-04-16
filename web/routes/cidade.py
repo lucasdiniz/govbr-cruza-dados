@@ -25,6 +25,9 @@ from web.queries.cidade import (
     AUTOCOMPLETE_MUNICIPIO,
     AUTOCOMPLETE_MUNICIPIO_FALLBACK,
     HEATMAP_MENSAL,
+    HEATMAP_MES_RESUMO,
+    HEATMAP_MES_FORNECEDORES,
+    HEATMAP_MES_ELEMENTOS,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
@@ -611,6 +614,27 @@ async def get_heatmap(municipio_path: str):
         return JSONResponse({"cells": []})
     cells = [_row_to_json_dict(cols, r) for r in rows]
     return JSONResponse({"cells": cells})
+
+
+@router.get("/api/heatmap/{municipio_path}/{ano}/{mes}")
+async def get_heatmap_mes(municipio_path: str, ano: int, mes: int):
+    """Drill-down de um mes especifico: resumo, top fornecedores, top elementos."""
+    municipio = _normalize_municipio(municipio_path)
+    if not (1 <= mes <= 12) or not (2000 <= ano <= 2100):
+        return JSONResponse({"error": "parametros invalidos"}, status_code=400)
+    mes_str = f"{mes:02d}"
+    params = {"municipio": municipio, "ano": ano, "mes": mes_str}
+    try:
+        rcols, rrows = execute_query(HEATMAP_MES_RESUMO, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        fcols, frows = execute_query(HEATMAP_MES_FORNECEDORES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+        ecols, erows = execute_query(HEATMAP_MES_ELEMENTOS, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
+    except (QueryCanceled, Exception) as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({
+        "resumo": _row_to_json_dict(rcols, rrows[0]) if rrows else {},
+        "fornecedores": [_row_to_json_dict(fcols, r) for r in frows],
+        "elementos": [_row_to_json_dict(ecols, r) for r in erows],
+    })
 
 
 @router.post("/api/cache/invalidate")

@@ -1085,6 +1085,12 @@ tr:hover { background: #fbfdff; }
     z-index: 2;
     position: relative;
 }
+.hm-clickable {
+    cursor: pointer;
+}
+.hm-clickable:hover {
+    box-shadow: 0 0 0 2px #60a5fa;
+}
 .hm-year-label {
     min-width: 42px;
     max-width: 42px;

@@ -663,15 +663,17 @@ function _renderHeatmap(cells) {
     const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length;
     const std = Math.sqrt(variance);
 
-    // Escala log p/ compressão de outliers
-    const logMax = Math.log1p(maxVal);
+    // Escala linear min-max (ignora zeros — sem-dados usa cor neutra)
+    const nonZero = vals.filter(v => v > 0);
+    const minVal = nonZero.length ? Math.min(...nonZero) : 0;
+    const spread = Math.max(1, maxVal - minVal);
     const mesesLabel = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
     const ramp = ['#e6efff', '#c2d6f7', '#9bbbed', '#6f9ae0', '#4579cf', '#2555ab', '#0f3380'];
     const colorFor = v => {
         if (!v) return { bg: '#1e2a3a', color: '#4a5568' };
-        const t = Math.log1p(v) / logMax;
-        const idx = Math.min(ramp.length - 1, Math.floor(t * ramp.length));
+        const t = (v - minVal) / spread;
+        const idx = Math.min(ramp.length - 1, Math.max(0, Math.floor(t * ramp.length)));
         return { bg: ramp[idx], color: idx >= 4 ? '#fff' : '#0f2056' };
     };
 
@@ -687,18 +689,28 @@ function _renderHeatmap(cells) {
             const outlier = z > 2 ? ' hm-outlier' : '';
             const { bg, color } = colorFor(v);
             const label = v ? _shortBrl(v) : '—';
-            const title = `${mesesLabel[m - 1]}/${ano}: ${v ? _shortBrl(v) : 'sem dados'}${z > 2 ? ` (${z.toFixed(1)}σ acima da média)` : ''}`;
-            html.push(`<div class="hm-cell hm-value${outlier}" style="background:${bg};color:${color}" title="${title}"><span>${label}</span></div>`);
+            const title = v ? `${mesesLabel[m - 1]}/${ano}: ${_shortBrl(v)} — clique para drill-down${z > 2 ? ` (${z.toFixed(1)}σ acima da média)` : ''}` : `${mesesLabel[m - 1]}/${ano}: sem dados`;
+            const clickable = v ? ' hm-clickable' : '';
+            const dataAttrs = v ? ` data-ano="${ano}" data-mes="${m}"` : '';
+            html.push(`<div class="hm-cell hm-value${outlier}${clickable}" style="background:${bg};color:${color}" title="${title}"${dataAttrs}><span>${label}</span></div>`);
         }
         html.push('</div>');
     });
 
     grid.innerHTML = html.join('');
 
+    grid.querySelectorAll('.hm-clickable').forEach(cell => {
+        cell.addEventListener('click', () => {
+            const ano = parseInt(cell.dataset.ano, 10);
+            const mes = parseInt(cell.dataset.mes, 10);
+            if (ano && mes) openHeatmapMonthDialog(_currentMunicipio, ano, mes);
+        });
+    });
+
     if (legend) {
         const steps = ramp.map((c, i) => {
-            const lo = Math.expm1((i / ramp.length) * logMax);
-            const hi = Math.expm1(((i + 1) / ramp.length) * logMax);
+            const lo = minVal + (i / ramp.length) * spread;
+            const hi = minVal + ((i + 1) / ramp.length) * spread;
             return `<div class="hm-legend-step" style="background:${c}" title="${_shortBrl(lo)} – ${_shortBrl(hi)}"></div>`;
         }).join('');
         legend.innerHTML = `
@@ -1441,6 +1453,74 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         const empSection = body.querySelector('#forn-empenhos');
         if (empSection) empSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+}
+
+async function openHeatmapMonthDialog(municipio, ano, mes) {
+    const dialog = document.getElementById('empresa-dialog');
+    if (!dialog) return;
+    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    const title = dialog.querySelector('.dialog-title');
+    const body = dialog.querySelector('.dialog-body');
+    const mesesLabel = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const mesNome = mesesLabel[mes - 1] || mes;
+    title.textContent = `${mesNome}/${ano} — ${municipio}`;
+    body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
+    if (!dialog.open) dialog.showModal();
+    document.body.classList.add('dialog-open');
+
+    let data;
+    try {
+        const resp = await fetch(`/api/heatmap/${encodeURIComponent(municipio)}/${ano}/${mes}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        data = await resp.json();
+    } catch (err) {
+        body.innerHTML = `<p class="text-sm text-muted">Erro ao carregar: ${_esc(err.message || String(err))}</p>`;
+        return;
+    }
+
+    const resumo = data.resumo || {};
+    const fornecedores = data.fornecedores || [];
+    const elementos = data.elementos || [];
+    let html = '';
+
+    html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
+    html += '<div class="stats-grid">';
+    html += `<div class="stat"><div class="stat-label">Total empenhado</div><div class="stat-value">${_shortBrl(Number(resumo.total_empenhado || 0))}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">Total pago</div><div class="stat-value">${_shortBrl(Number(resumo.total_pago || 0))}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">Empenhos</div><div class="stat-value">${Number(resumo.qtd_empenhos || 0).toLocaleString('pt-BR')}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">Fornecedores</div><div class="stat-value">${Number(resumo.qtd_fornecedores || 0).toLocaleString('pt-BR')}</div></div>`;
+    html += '</div></div>';
+
+    if (fornecedores.length) {
+        html += '<div class="dialog-section"><h4>Top fornecedores</h4>';
+        html += '<table class="data-table"><thead><tr><th>Fornecedor</th><th>CPF/CNPJ</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        for (const f of fornecedores) {
+            const nome = _esc(f.nome_credor || '-');
+            const doc = _esc(f.cpf_cnpj || '-');
+            const isPJ = f.eh_pj && f.cpf_cnpj && f.cpf_cnpj.length === 14;
+            const nomeCell = isPJ
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
+                : nome;
+            html += `<tr><td>${nomeCell}</td><td><code>${doc}</code></td><td class="num">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+    }
+
+    if (elementos.length) {
+        html += '<div class="dialog-section"><h4>Top elementos de despesa</h4>';
+        html += '<table class="data-table"><thead><tr><th>Elemento</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        for (const e of elementos) {
+            html += `<tr><td>${_esc(e.elemento_despesa || '-')}</td><td class="num">${Number(e.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(e.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(e.total_pago || 0))}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+    }
+
+    if (!fornecedores.length && !elementos.length) {
+        html += '<p class="text-sm text-muted">Sem detalhes disponiveis para este mes.</p>';
+    }
+
+    body.innerHTML = html;
+    _reattachDialogLinks(body);
 }
 
 async function openEmpenhoDialog(empenhoId) {

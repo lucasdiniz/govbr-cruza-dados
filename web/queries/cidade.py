@@ -76,6 +76,55 @@ GROUP BY ano, LEFT(mes, 2)
 ORDER BY ano, mes
 """
 
+HEATMAP_MES_RESUMO = """
+SELECT COALESCE(SUM(valor_empenhado), 0) AS total_empenhado,
+       COALESCE(SUM(valor_pago), 0) AS total_pago,
+       COUNT(*) AS qtd_empenhos,
+       COUNT(DISTINCT cpf_cnpj) AS qtd_fornecedores
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano = %(ano)s
+  AND LEFT(mes, 2) = %(mes)s
+  AND valor_empenhado > 0
+"""
+
+HEATMAP_MES_FORNECEDORES = """
+SELECT d.cpf_cnpj,
+       MAX(d.nome_credor) AS nome_credor,
+       SUM(d.valor_empenhado) AS total_empenhado,
+       SUM(d.valor_pago) AS total_pago,
+       COUNT(*) AS qtd_empenhos,
+       EXISTS (
+           SELECT 1 FROM estabelecimento e
+           WHERE e.cnpj_completo = d.cpf_cnpj
+       ) AS eh_pj
+FROM tce_pb_despesa d
+WHERE d.municipio = %(municipio)s
+  AND d.ano = %(ano)s
+  AND LEFT(d.mes, 2) = %(mes)s
+  AND d.valor_empenhado > 0
+  AND d.cpf_cnpj IS NOT NULL
+GROUP BY d.cpf_cnpj
+ORDER BY total_empenhado DESC
+LIMIT 20
+"""
+
+HEATMAP_MES_ELEMENTOS = """
+SELECT elemento_despesa,
+       SUM(valor_empenhado) AS total_empenhado,
+       SUM(valor_pago) AS total_pago,
+       COUNT(*) AS qtd_empenhos
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano = %(ano)s
+  AND LEFT(mes, 2) = %(mes)s
+  AND valor_empenhado > 0
+  AND elemento_despesa IS NOT NULL
+GROUP BY elemento_despesa
+ORDER BY total_empenhado DESC
+LIMIT 10
+"""
+
 PERFIL_MUNICIPIO_PNCP = """
 SELECT
     %(municipio)s AS municipio,
