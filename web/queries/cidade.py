@@ -1,5 +1,52 @@
 """SQL parametrizado para modo cidade."""
 
+# Fragmento reusavel: flags que verificam se o empenho DESTE municipio ocorreu
+# dentro do periodo de uma sancao que afeta contratos com este municipio.
+# Usado em TOP_FORNECEDORES* (PB) onde tf.cnpj_basico esta disponivel.
+_FLAGS_SANCAO_DURANTE_PB = """,
+       EXISTS (
+           SELECT 1
+           FROM tce_pb_despesa d2
+           JOIN ceis_sancao cs ON LEFT(cs.cpf_cnpj_sancionado, 8) = d2.cnpj_basico
+                              AND LENGTH(cs.cpf_cnpj_sancionado) = 14
+           WHERE d2.municipio = %(municipio)s
+             AND d2.cnpj_basico = tf.cnpj_basico
+             AND d2.valor_empenhado > 0
+             AND d2.data_empenho IS NOT NULL
+             AND d2.data_empenho >= cs.dt_inicio_sancao
+             AND (cs.dt_final_sancao IS NULL OR d2.data_empenho <= cs.dt_final_sancao)
+             AND cs.categoria_sancao ILIKE '%%inidone%%'
+       ) AS flag_recebeu_durante_inidoneidade,
+       EXISTS (
+           SELECT 1
+           FROM tce_pb_despesa d2
+           JOIN (
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      esfera_orgao_sancionador, orgao_sancionador
+               FROM ceis_sancao WHERE LENGTH(cpf_cnpj_sancionado) = 14
+               UNION ALL
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao,
+                      categoria_sancao, abrangencia_sancao,
+                      esfera_orgao_sancionador, orgao_sancionador
+               FROM cnep_sancao WHERE LENGTH(cpf_cnpj_sancionado) = 14
+           ) san ON san.cb = d2.cnpj_basico
+           WHERE d2.municipio = %(municipio)s
+             AND d2.cnpj_basico = tf.cnpj_basico
+             AND d2.valor_empenhado > 0
+             AND d2.data_empenho IS NOT NULL
+             AND d2.data_empenho >= san.dt_inicio_sancao
+             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+             AND (
+                 san.categoria_sancao ILIKE '%%inidone%%'
+                 OR san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+                 OR (san.esfera_orgao_sancionador = 'MUNICIPAL'
+                     AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%')
+             )
+       ) AS flag_recebeu_durante_sancao_aplicavel"""
+
 PERFIL_MUNICIPIO = """
 SELECT municipio,
        qtd_empenhos, total_empenhado, total_pago, qtd_fornecedores,
@@ -792,3 +839,12 @@ UNION
 ORDER BY rank_val DESC, nome
 LIMIT %(limit)s
 """
+
+# Injeta flags 'recebeu durante sancao' nas queries PB (nao afeta TOP_FORNECEDORES_PNCP).
+_PB_ANCHOR = ') AS flag_inidoneidade'
+_PB_REPLACEMENT = ') AS flag_inidoneidade' + _FLAGS_SANCAO_DURANTE_PB
+TOP_FORNECEDORES = TOP_FORNECEDORES.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
+TOP_FORNECEDORES_FALLBACK = TOP_FORNECEDORES_FALLBACK.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
+TOP_FORNECEDORES_DATED = TOP_FORNECEDORES_DATED.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
+TOP_FORNECEDORES_FALLBACK_DATED = TOP_FORNECEDORES_FALLBACK_DATED.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
+

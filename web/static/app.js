@@ -500,25 +500,25 @@ function buildFornecedoresPanel(data) {
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow">Divida ativa</span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray">Cadastro inativo</span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
-        const rowClass = sancaoAplica
-            ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
-            : abrangenciaRaw ? 'clickable-row row-sancao-leve' : 'clickable-row';
+        const rowClass = (() => {
+            const recInid = _val(r, cols, 'flag_recebeu_durante_inidoneidade');
+            const recSan = _val(r, cols, 'flag_recebeu_durante_sancao_aplicavel');
+            if (recInid) return 'clickable-row row-sancao';
+            if (recSan) return 'clickable-row row-sancao-leve';
+            return 'clickable-row';
+        })();
         return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
     }).join('');
 
-    const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'abrangencia_sancao_info'));
-    const hasInidoneidade = data.rows.some(r => _val(r, data.columns, 'flag_inidoneidade'));
+    const hasRecInid = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_inidoneidade'));
+    const hasRecSancao = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao_aplicavel'));
     const hasAcordo = data.rows.some(r => _val(r, data.columns, 'flag_acordo_leniencia'));
     const _fldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     let fornLegend = '';
-    if (hasSancaoRows || hasAcordo) {
+    if (hasRecInid || hasRecSancao || hasAcordo) {
         let items = [];
-        if (hasSancaoRows && hasInidoneidade) {
-            items.push(`<span class="color-legend-item">${_fldot('#ef4444')} Recebeu durante Inidoneidade</span>`);
-            items.push(`<span class="color-legend-item">${_fldot('#f59e0b')} Recebeu durante Impedimento ou CNEP</span>`);
-        } else if (hasSancaoRows) {
-            items.push(`<span class="color-legend-item">${_fldot('#f59e0b')} Recebeu durante Impedimento ou CNEP</span>`);
-        }
+        if (hasRecInid) items.push(`<span class="color-legend-item">${_fldot('#ef4444')} Recebeu durante Inidoneidade</span>`);
+        if (hasRecSancao) items.push(`<span class="color-legend-item">${_fldot('#f59e0b')} Recebeu durante sancao aplicavel</span>`);
         if (hasAcordo) items.push(`<span class="color-legend-item">${_fldot('#3b82f6')} Acordo de leniencia vigente</span>`);
         fornLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
