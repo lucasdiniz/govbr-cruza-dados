@@ -44,7 +44,9 @@
                     {% set sancao_aplica = f.abrangencia_sancao_info and f.abrangencia_sancao_info.startswith('!') %}
                     <tr class="clickable-row{% if sancao_aplica %}{% if f.flag_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% elif f.abrangencia_sancao_info %} row-sancao-leve{% endif %}"
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
-                        data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}">
+                        data-fornecedor-cpf-cnpj="{{ f.cnpj_completo|default('', true) }}"
+                        data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
+                        data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}">
                         <td>{{ f.nome_credor|clean_text }}</td>
                         <td><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
                         <td class="text-right">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>

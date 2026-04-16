@@ -88,6 +88,7 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 - **Filtro temporal**: barra de datas no perfil PB filtra hero stats, insight cards, fornecedores e todos os finding cards. Servidores (MV) sempre mostram todos os periodos
 - **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
 - **Nginx reverse proxy** para producao (porta 80 → uvicorn 8000, gzip habilitado)
+- **Identificacao precisa de fornecedores**: usa `cpf_cnpj` completo (14 digitos) em vez de apenas `cnpj_basico` (8 digitos) para evitar colisoes entre CPFs e CNPJs que compartilham o mesmo prefixo. Queries de sancoes (Q65), doadores eleitorais e empenhos durante sancao filtram com `EXISTS (estabelecimento)` para excluir falsos positivos de CPFs
 
 ```bash
 # Iniciar local

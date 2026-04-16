@@ -76,6 +76,7 @@ WHERE municipio_nome = %(municipio)s AND uf = %(uf)s
 TOP_FORNECEDORES = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
+           MAX(d.cpf_cnpj) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -89,8 +90,9 @@ WITH top_forn AS (
     LIMIT 200
 )
 SELECT * FROM (
-    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
-       est.cnpj_completo,
+    SELECT tf.cnpj_basico, tf.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, tf.cpf_cnpj) AS cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_cnep_vigente, FALSE) AS flag_cnep,
@@ -151,7 +153,7 @@ SELECT * FROM (
 FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
-LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
@@ -159,6 +161,7 @@ ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 TOP_FORNECEDORES_FALLBACK = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
+           MAX(d.cpf_cnpj) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -172,8 +175,9 @@ WITH top_forn AS (
     LIMIT 200
 )
 SELECT * FROM (
-    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
-       est.cnpj_completo,
+    SELECT tf.cnpj_basico, tf.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, tf.cpf_cnpj) AS cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        EXISTS(
            SELECT 1
@@ -248,16 +252,15 @@ SELECT * FROM (
        END AS desc_situacao
 FROM top_forn tf
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
-LEFT JOIN estabelecimento est
-    ON est.cnpj_basico = tf.cnpj_basico
-   AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC = """
-SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
-       est.cnpj_completo,
+SELECT d.cnpj_basico, d.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, MAX(d.cpf_cnpj)) AS cnpj_completo,
        SUM(d.valor_pago) AS total_pago,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
@@ -275,7 +278,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
     AND e.natureza_juridica NOT LIKE '1%%'
-LEFT JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
 WHERE d.municipio = %(municipio)s
   AND d.valor_pago > 0
   AND d.cnpj_basico IS NOT NULL
@@ -289,6 +292,7 @@ LIMIT 200
 TOP_FORNECEDORES_DATED = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
+           MAX(d.cpf_cnpj) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -303,8 +307,9 @@ WITH top_forn AS (
     LIMIT 200
 )
 SELECT * FROM (
-    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
-       est.cnpj_completo,
+    SELECT tf.cnpj_basico, tf.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, tf.cpf_cnpj) AS cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        COALESCE(meg.flag_ceis_vigente, FALSE) AS flag_ceis,
        COALESCE(meg.flag_cnep_vigente, FALSE) AS flag_cnep,
@@ -365,7 +370,7 @@ SELECT * FROM (
 FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
-LEFT JOIN estabelecimento est ON est.cnpj_basico = tf.cnpj_basico AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
@@ -373,6 +378,7 @@ ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 TOP_FORNECEDORES_FALLBACK_DATED = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
+           MAX(d.cpf_cnpj) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -387,8 +393,9 @@ WITH top_forn AS (
     LIMIT 200
 )
 SELECT * FROM (
-    SELECT tf.cnpj_basico, tf.nome_credor, e.razao_social,
-       est.cnpj_completo,
+    SELECT tf.cnpj_basico, tf.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, tf.cpf_cnpj) AS cnpj_completo,
        tf.total_pago, tf.qtd_empenhos,
        EXISTS(
            SELECT 1 FROM ceis_sancao cs
@@ -460,16 +467,15 @@ SELECT * FROM (
        END AS desc_situacao
 FROM top_forn tf
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
-LEFT JOIN estabelecimento est
-    ON est.cnpj_basico = tf.cnpj_basico
-   AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
 TOP_FORNECEDORES_BASIC_DATED = """
-SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
-       est.cnpj_completo,
+SELECT d.cnpj_basico, d.nome_credor,
+       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
+       COALESCE(est.cnpj_completo, MAX(d.cpf_cnpj)) AS cnpj_completo,
        SUM(d.valor_pago) AS total_pago,
        COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
        FALSE AS flag_ceis,
@@ -487,7 +493,7 @@ SELECT d.cnpj_basico, d.nome_credor, e.razao_social,
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
     AND e.natureza_juridica NOT LIKE '1%%'
-LEFT JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico AND est.cnpj_ordem = '0001'
+LEFT JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
 WHERE d.municipio = %(municipio)s
   AND d.valor_pago > 0
   AND d.cnpj_basico IS NOT NULL

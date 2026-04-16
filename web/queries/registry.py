@@ -72,6 +72,7 @@ FROM (
     FROM cnep_sancao
 ) san
 JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
+    AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
 WHERE d.cnpj_basico IS NOT NULL
   AND d.data_empenho >= san.dt_inicio_sancao
   AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
@@ -117,6 +118,7 @@ FROM (
     FROM cnep_sancao
 ) san
 JOIN tce_pb_despesa d ON LEFT(san.cpf_cnpj_sancionado, 8) = d.cnpj_basico
+    AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
 WHERE d.cnpj_basico IS NOT NULL
   AND d.data_empenho >= san.dt_inicio_sancao
   AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
@@ -366,6 +368,7 @@ FROM tse_candidato tc
 JOIN tse_receita_candidato tr ON tr.sq_candidato = tc.sq_candidato
     AND tr.cpf_cnpj_doador IS NOT NULL AND LENGTH(tr.cpf_cnpj_doador) >= 14
 JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
+    AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
 WHERE tc.ds_cargo = 'PREFEITO'
   AND tc.ds_sit_tot_turno IN ('ELEITO', 'ELEITO POR MEDIA', 'ELEITO POR QP')
   AND tc.sg_uf = 'PB'
@@ -385,6 +388,7 @@ FROM tse_candidato tc
 JOIN tse_receita_candidato tr ON tr.sq_candidato = tc.sq_candidato
     AND tr.cpf_cnpj_doador IS NOT NULL AND LENGTH(tr.cpf_cnpj_doador) >= 14
 JOIN tce_pb_despesa d ON d.cnpj_basico = LEFT(REGEXP_REPLACE(tr.cpf_cnpj_doador, '[^0-9]', '', 'g'), 8)
+    AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
 WHERE tc.ds_cargo = 'PREFEITO'
   AND tc.ds_sit_tot_turno IN ('ELEITO', 'ELEITO POR MEDIA', 'ELEITO POR QP')
   AND tc.sg_uf = 'PB'
@@ -521,7 +525,7 @@ _reg("Q69", "Todas as licitacoes do municipio",
      "Licitacao e Concorrencia",
      """
 SELECT l.numero_licitacao, l.ano_licitacao,
-       MAX(l.modalidade) AS modalidade,
+       l.modalidade,
        MAX(l.objeto_licitacao) AS objeto_licitacao,
        COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
        MAX(l.valor_ofertado) AS maior_valor,
@@ -529,12 +533,12 @@ SELECT l.numero_licitacao, l.ano_licitacao,
 FROM tce_pb_licitacao l
 WHERE l.ano_licitacao >= 2022
   AND l.municipio = %(municipio)s
-GROUP BY l.numero_licitacao, l.ano_licitacao
+GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade
 ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
 LIMIT 500
 """, timeout=30, sql_dated="""
 SELECT l.numero_licitacao, l.ano_licitacao,
-       MAX(l.modalidade) AS modalidade,
+       l.modalidade,
        MAX(l.objeto_licitacao) AS objeto_licitacao,
        COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
        MAX(l.valor_ofertado) AS maior_valor,
@@ -542,7 +546,7 @@ SELECT l.numero_licitacao, l.ano_licitacao,
 FROM tce_pb_licitacao l
 WHERE l.ano_licitacao >= %(ano_inicio)s AND l.ano_licitacao <= %(ano_fim)s
   AND l.municipio = %(municipio)s
-GROUP BY l.numero_licitacao, l.ano_licitacao
+GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade
 ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
 LIMIT 500
 """)

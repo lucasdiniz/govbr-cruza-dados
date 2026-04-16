@@ -893,6 +893,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes de um fornecedor: empenhos recentes, sancoes, situacao cadastral."""
     cnpj_basico = payload.get("cnpj_basico", "")
     municipio = payload.get("municipio", "")
+    nome_credor = payload.get("nome_credor", "")
+    cpf_cnpj = payload.get("cpf_cnpj", "")
     if not cnpj_basico:
         return JSONResponse({})
     try:
@@ -901,17 +903,26 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
+                # Build filters: prefer cpf_cnpj (exact entity), fallback to cnpj_basico + nome_credor
+                if cpf_cnpj:
+                    id_clause = "cpf_cnpj = %s AND municipio = %s"
+                    id_params = [cpf_cnpj, municipio]
+                else:
+                    nc_clause = " AND nome_credor = %s" if nome_credor else ""
+                    id_clause = f"cnpj_basico = %s AND municipio = %s{nc_clause}"
+                    id_params = [cnpj_basico, municipio] + ([nome_credor] if nome_credor else [])
+
                 # Empenhos recentes no municipio
-                cur.execute("""
+                cur.execute(f"""
                     SELECT id, numero_empenho, data_empenho, elemento_despesa,
                            valor_empenhado, valor_pago,
                            modalidade_licitacao, numero_licitacao
                     FROM tce_pb_despesa
-                    WHERE cnpj_basico = %s AND municipio = %s
+                    WHERE {id_clause}
                       AND valor_pago > 0
                     ORDER BY data_empenho DESC
                     LIMIT 50
-                """, (cnpj_basico, municipio))
+                """, id_params)
                 emp_cols = [d[0] for d in cur.description]
                 emp_rows = cur.fetchall()
                 empenhos = []
@@ -926,7 +937,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 result["empenhos"] = empenhos
 
                 # Aggregate stats (all empenhos, no LIMIT)
-                cur.execute("""
+                cur.execute(f"""
                     SELECT COUNT(*) AS qtd_empenhos,
                            COALESCE(SUM(valor_empenhado), 0) AS total_empenhado,
                            COALESCE(SUM(valor_pago), 0) AS total_pago,
@@ -938,9 +949,9 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                                   OR modalidade_licitacao ILIKE '%%sem licit%%'
                            ) AS qtd_sem_licitacao
                     FROM tce_pb_despesa
-                    WHERE cnpj_basico = %s AND municipio = %s
+                    WHERE {id_clause}
                       AND valor_pago > 0
-                """, (cnpj_basico, municipio))
+                """, id_params)
                 agg_cols = [d[0] for d in cur.description]
                 agg_row = cur.fetchone()
                 if agg_row:
@@ -953,16 +964,16 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["stats"] = stats
 
                 # Monthly payments (last 12 months)
-                cur.execute("""
+                cur.execute(f"""
                     SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
                            SUM(valor_pago) AS total_mes
                     FROM tce_pb_despesa
-                    WHERE cnpj_basico = %s AND municipio = %s
+                    WHERE {id_clause}
                       AND valor_pago > 0
                       AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
                     GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
                     ORDER BY mes
-                """, (cnpj_basico, municipio))
+                """, id_params)
                 m_cols = [d[0] for d in cur.description]
                 m_rows = cur.fetchall()
                 monthly = []
@@ -975,17 +986,17 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 result["monthly"] = monthly
 
                 # Top 3 elementos de despesa
-                cur.execute("""
+                cur.execute(f"""
                     SELECT elemento_despesa,
                            SUM(valor_pago) AS total_elemento,
                            COUNT(*) AS qtd
                     FROM tce_pb_despesa
-                    WHERE cnpj_basico = %s AND municipio = %s
+                    WHERE {id_clause}
                       AND valor_pago > 0
                     GROUP BY elemento_despesa
                     ORDER BY SUM(valor_pago) DESC
                     LIMIT 3
-                """, (cnpj_basico, municipio))
+                """, id_params)
                 el_cols = [d[0] for d in cur.description]
                 el_rows = cur.fetchall()
                 top_elementos = []
@@ -1042,7 +1053,14 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["sancoes"] = sancoes
 
                     # Empenhos durante sancao em OUTROS municipios
-                    cur.execute("""
+                    if cpf_cnpj:
+                        outros_where = "d.cpf_cnpj = %s AND d.municipio != %s"
+                        outros_params = [cpf_cnpj, municipio]
+                    else:
+                        outros_nc = " AND d.nome_credor = %s" if nome_credor else ""
+                        outros_where = f"d.cnpj_basico = %s AND d.municipio != %s{outros_nc}"
+                        outros_params = [cnpj_basico, municipio] + ([nome_credor] if nome_credor else [])
+                    cur.execute(f"""
                         SELECT d.municipio, COUNT(*) AS qtd_empenhos,
                                SUM(d.valor_pago) AS total_pago
                         FROM tce_pb_despesa d
@@ -1055,14 +1073,14 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                                    dt_inicio_sancao, dt_final_sancao
                             FROM cnep_sancao
                         ) san ON san.cb = d.cnpj_basico
-                        WHERE d.cnpj_basico = %s
-                          AND d.municipio != %s
+                            AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
+                        WHERE {outros_where}
                           AND d.valor_pago > 0
                           AND d.data_empenho >= san.dt_inicio_sancao
                           AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
                         GROUP BY d.municipio
                         ORDER BY total_pago DESC
-                    """, (cnpj_basico, municipio))
+                    """, outros_params)
                     es_cols = [d2[0] for d2 in cur.description]
                     es_rows = cur.fetchall()
                     if es_rows:
@@ -1076,13 +1094,20 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                         result["empenhos_sancao_outros"] = outros
 
                 # Municipios onde o fornecedor recebeu pagamentos
-                cur.execute("""
+                if cpf_cnpj:
+                    mun_where = "cpf_cnpj = %s AND valor_pago > 0"
+                    mun_params = [cpf_cnpj]
+                else:
+                    mun_nc = " AND nome_credor = %s" if nome_credor else ""
+                    mun_where = f"cnpj_basico = %s AND valor_pago > 0{mun_nc}"
+                    mun_params = [cnpj_basico] + ([nome_credor] if nome_credor else [])
+                cur.execute(f"""
                     SELECT municipio, SUM(valor_pago) AS total_pago
                     FROM tce_pb_despesa
-                    WHERE cnpj_basico = %s AND valor_pago > 0
+                    WHERE {mun_where}
                     GROUP BY municipio
                     ORDER BY total_pago DESC
-                """, (cnpj_basico,))
+                """, mun_params)
                 mun_cols = [d2[0] for d2 in cur.description]
                 mun_rows = cur.fetchall()
                 if mun_rows and len(mun_rows) > 1:
@@ -1096,14 +1121,20 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["municipios_ativos"] = mun_list
 
                 # Situacao cadastral (inatividade)
-                cur.execute("""
+                if cpf_cnpj:
+                    est_where = "est.cnpj_completo = %s"
+                    est_params = (cpf_cnpj,)
+                else:
+                    est_where = "est.cnpj_basico = %s AND est.cnpj_ordem = '0001'"
+                    est_params = (cnpj_basico,)
+                cur.execute(f"""
                     SELECT situacao_cadastral, dt_situacao,
                            cnpj_completo, cnae_principal, uf,
                            COALESCE(dm.descricao, est.municipio) AS municipio
                     FROM estabelecimento est
                     LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
-                    WHERE est.cnpj_basico = %s AND est.cnpj_ordem = '0001'
-                """, (cnpj_basico,))
+                    WHERE {est_where}
+                """, est_params)
                 sit_cols = [d[0] for d in cur.description]
                 sit_rows = cur.fetchall()
                 if sit_rows:
@@ -1216,6 +1247,7 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
     numero = payload.get("numero_licitacao", "")
     ano = payload.get("ano_licitacao", 0)
     municipio = payload.get("municipio", "")
+    modalidade = payload.get("modalidade", "")
     if not numero or not municipio:
         return JSONResponse({})
 
@@ -1250,8 +1282,9 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     FROM tce_pb_licitacao
                     WHERE numero_licitacao = %s AND municipio = %s
                       AND (%s = 0 OR ano_licitacao = %s)
+                      AND (%s = '' OR modalidade = %s)
                     LIMIT 1
-                """, (numero, municipio, ano, ano))
+                """, (numero, municipio, ano, ano, modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 if rows:
@@ -1267,9 +1300,10 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     LEFT JOIN empresa e ON e.cnpj_basico = l.cnpj_basico_proponente
                     WHERE l.numero_licitacao = %s AND l.municipio = %s
                       AND (%s = 0 OR l.ano_licitacao = %s)
+                      AND (%s = '' OR l.modalidade = %s)
                     GROUP BY l.nome_proponente, l.cpf_cnpj_proponente
                     ORDER BY SUM(l.valor_ofertado) DESC
-                """, (numero, municipio, ano, ano))
+                """, (numero, municipio, ano, ano, modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 result["proponentes"] = [_convert(_row_to_dict(cols, r)) for r in rows]

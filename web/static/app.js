@@ -290,6 +290,8 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const iNomeServidor = columns.indexOf('nome_servidor');
     const iLicNum = columns.indexOf('numero_licitacao');
     const iLicAno = columns.indexOf('ano_licitacao');
+    const iLicMod = columns.indexOf('modalidade');
+    const iNomeCredorExact = columns.indexOf('nome_credor');
     const hasFornecedor = iCnpjBasico >= 0 || iCpfCnpj >= 0;
     const hasServidor = iCpf6 >= 0 && (iNomeUpper >= 0 || iNomeServidor >= 0);
     const hasLicitacao = iLicNum >= 0;
@@ -358,8 +360,9 @@ function buildResultTable(queryId, columns, rows, municipio) {
         if (hasLicitacao) {
             const licNum = String(row[iLicNum] || '');
             const licAno = iLicAno >= 0 ? String(row[iLicAno] || '0') : '0';
+            const licMod = iLicMod >= 0 ? String(row[iLicMod] || '') : '';
             if (licNum && licNum !== '000000000') {
-                return `<tr class="clickable-row${rowHighlight}" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}">${cells}</tr>`;
+                return `<tr class="clickable-row${rowHighlight}" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}" data-licitacao-mod="${_esc(licMod)}">${cells}</tr>`;
             }
         }
         // Fornecedor row detection
@@ -372,7 +375,10 @@ function buildResultTable(queryId, columns, rows, municipio) {
             }
             const nome = _esc(row[iNomeCredor >= 0 ? iNomeCredor : (iCpfCnpj >= 0 ? iCpfCnpj : 0)] || '');
             if (cnpjB.length === 8) {
-                return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}">${cells}</tr>`;
+                const nomeCredorAttr = (iNomeCredorExact >= 0 && iNomeCredorExact !== iNomeCredor)
+                    ? ` data-fornecedor-nome-credor="${_esc(row[iNomeCredorExact] || '')}"`
+                    : '';
+                return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}"${nomeCredorAttr}>${cells}</tr>`;
             }
         }
         return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
@@ -485,7 +491,7 @@ function buildFornecedoresPanel(data) {
         const rowClass = sancaoAplica
             ? (isInidoneidade ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
             : abrangenciaRaw ? 'clickable-row row-sancao-leve' : 'clickable-row';
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-nome="${razao || nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
+        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td>${nome}</td><td><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right">${qtd}</td><td>${sitClass ? `<span class="${sitClass}">${situacao}</span>` : situacao}</td><td>${badges}</td></tr>`;
     }).join('');
 
     const hasSancaoRows = data.rows.some(r => _val(r, data.columns, 'abrangencia_sancao_info'));
@@ -664,7 +670,7 @@ function _reattachDialogLinks(body) {
     body.querySelectorAll('.dialog-link[data-forn-cnpj]').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            openFornecedorDialog(link.dataset.fornCnpj, link.dataset.fornNome || 'Fornecedor');
+            openFornecedorDialog(link.dataset.fornCnpj, link.dataset.fornNome || 'Fornecedor', null, false, link.dataset.fornNomeCredor || '', link.dataset.fornCpfCnpj || '');
         });
     });
     body.querySelectorAll('tr.clickable-row[data-empenho-id]').forEach(row => {
@@ -679,7 +685,9 @@ function _reattachDialogLinks(body) {
             const cnpj = sel.dataset.fornCnpj;
             const nome = sel.dataset.fornNome;
             const mun = sel.value;
-            openFornecedorDialog(cnpj, nome, mun, true);
+            const nc = sel.dataset.fornNomeCredor || '';
+            const cc = sel.dataset.fornCpfCnpj || '';
+            openFornecedorDialog(cnpj, nome, mun, true, nc, cc);
         });
     });
     // Cross-municipality sanction rows
@@ -688,7 +696,9 @@ function _reattachDialogLinks(body) {
             const cnpj = row.dataset.fornCnpj;
             const nome = row.dataset.fornNome;
             const mun = row.dataset.switchMun;
-            openFornecedorDialog(cnpj, nome, mun, true);
+            const nc = row.dataset.fornNomeCredor || '';
+            const cc = row.dataset.fornCpfCnpj || '';
+            openFornecedorDialog(cnpj, nome, mun, true, nc, cc);
         });
     });
     _initDialogTableSort(body);
@@ -744,8 +754,12 @@ function _fetchServidorDetails(cpf6, nome, cnpjs, municipio) {
     return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}`, { cpf6, nome, cnpjs, municipio });
 }
 
-function _fetchFornecedorDetails(cnpjBasico, municipio) {
-    return _cachedPost('/api/fornecedor/detalhes', `forn:${cnpjBasico}:${municipio}`, { cnpj_basico: cnpjBasico, municipio });
+function _fetchFornecedorDetails(cnpjBasico, municipio, nomeCredor, cpfCnpj) {
+    const payload = { cnpj_basico: cnpjBasico, municipio };
+    if (cpfCnpj) payload.cpf_cnpj = cpfCnpj;
+    if (nomeCredor) payload.nome_credor = nomeCredor;
+    const cacheKey = `forn:${cpfCnpj || cnpjBasico}:${municipio}${nomeCredor ? ':' + nomeCredor : ''}`;
+    return _cachedPost('/api/fornecedor/detalhes', cacheKey, payload);
 }
 
 function _buildEmpenhoTable(empenhos, sancaoRanges) {
@@ -1035,7 +1049,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     _reattachDialogLinks(body);
 }
 
-async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun) {
+async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     if (!switchMun) {
@@ -1051,7 +1065,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     document.body.classList.add('dialog-open');
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
-    const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio);
+    const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);
     let html = '';
 
     // Pre-compute sanction date ranges (used by charts and empenho table)
@@ -1288,7 +1302,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
                 const sel = m.municipio === viewMunicipio ? ' selected' : '';
                 return `<option value="${_esc(m.municipio)}"${sel}>${_esc(m.municipio)} (${_shortBrl(m.total_pago)})</option>`;
             }).join('');
-            munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}">${opts}</select>`;
+            munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">${opts}</select>`;
         }
 
         html += `<div class="dialog-section" id="forn-empenhos"><h4>Empenhos recentes ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
@@ -1305,7 +1319,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += '<div class="dialog-section"><h4>Pagamentos durante sancao em outros municipios</h4>';
         html += `<p class="text-sm text-muted" style="margin-bottom:.5rem">Total: ${_shortBrl(totalOutros)} em ${data.empenhos_sancao_outros.length} municipio(s)</p>`;
         const outrosRows = data.empenhos_sancao_outros.map(m =>
-            `<tr class="row-sancao clickable-row" data-switch-mun="${_esc(m.municipio)}" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}">
+            `<tr class="row-sancao clickable-row" data-switch-mun="${_esc(m.municipio)}" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">
                 <td>${_esc(m.municipio)}</td>
                 <td class="text-right">${m.qtd_empenhos}</td>
                 <td class="text-right">${_shortBrl(m.total_pago)}</td>
@@ -1379,7 +1393,7 @@ async function openEmpenhoDialog(empenhoId) {
     const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
     const credorNome = _esc(data.nome_credor || '-');
     const credorLink = isClickable
-        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${credorNome}">${credorNome}</a>`
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${credorNome}" data-forn-nome-credor="${credorNome}">${credorNome}</a>`
         : credorNome;
     html += `<div class="empresa-card"><div class="empresa-header">
         <strong>${credorLink}</strong>
@@ -1426,12 +1440,12 @@ async function openEmpenhoDialog(empenhoId) {
     _reattachDialogLinks(body);
 }
 
-function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio) {
-    return _cachedPost('/api/licitacao/detalhes', `lic:${numeroLicitacao}:${anoLicitacao}:${municipio}`,
-        { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0, municipio });
+function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade) {
+    return _cachedPost('/api/licitacao/detalhes', `lic:${numeroLicitacao}:${anoLicitacao}:${municipio}:${modalidade}`,
+        { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0, municipio, modalidade: modalidade || '' });
 }
 
-async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label) {
+async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label, modalidade) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
@@ -1442,7 +1456,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     if (!dialog.open) dialog.showModal();
     document.body.classList.add('dialog-open');
 
-    const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio);
+    const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
     let html = '';
 
     // Metadata — always render header
@@ -1483,7 +1497,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
             const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
             const nome = _esc(p.razao_social || p.nome_proponente || '-');
             const nomeLink = isClickable
-                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${nome}">${nome}</a>`
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${_esc(p.nome_proponente || '')}">${nome}</a>`
                 : nome;
             return `<tr>
                 <td>${nomeLink}</td>
@@ -1508,7 +1522,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
             const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
             const nome = _esc(d.nome_credor || '-');
             const nomeCell = isClickable
-                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-nome="${nome}">${nome}</a>`
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}">${nome}</a>`
                 : nome;
             return `<tr class="clickable-row" data-empenho-id="${d.id}">
                 <td>${nomeCell}</td>
@@ -1799,14 +1813,17 @@ function initClickableRows(root = document) {
             const fornCnpj = row.dataset.fornecedorCnpj || '';
             if (fornCnpj) {
                 const fornNome = row.dataset.fornecedorNome || '';
-                openFornecedorDialog(fornCnpj, fornNome);
+                const fornNomeCredor = row.dataset.fornecedorNomeCredor || '';
+                const fornCpfCnpj = row.dataset.fornecedorCpfCnpj || '';
+                openFornecedorDialog(fornCnpj, fornNome, null, false, fornNomeCredor, fornCpfCnpj);
                 return;
             }
             // Licitacao row
             const licNum = row.dataset.licitacaoNum || '';
             if (licNum) {
                 const licAno = row.dataset.licitacaoAno || '0';
-                openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`);
+                const licMod = row.dataset.licitacaoMod || '';
+                openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`, licMod);
             }
         });
     });
