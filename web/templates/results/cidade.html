@@ -242,7 +242,7 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }}, {{ default_data_inicio|default('')|tojson }}, {{ default_data_fim|default('')|tojson }});
+    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
 });
 // Close dialog on backdrop click
 document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
