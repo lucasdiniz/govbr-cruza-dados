@@ -219,6 +219,7 @@ JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.data_empenho > est.dt_situacao
   AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
+  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
          est.situacao_cadastral, est.dt_situacao, e.razao_social
@@ -242,6 +243,7 @@ WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.data_empenho > est.dt_situacao
   AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
   AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
+  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
          est.situacao_cadastral, est.dt_situacao, e.razao_social
@@ -568,6 +570,7 @@ JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.ano >= 2022
+  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND est.logradouro IS NOT NULL AND est.logradouro != ''
   AND est.numero IS NOT NULL AND est.numero != ''
   AND d.municipio = %(municipio)s
@@ -588,6 +591,7 @@ JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
+  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND est.logradouro IS NOT NULL AND est.logradouro != ''
   AND est.numero IS NOT NULL AND est.numero != ''
   AND d.municipio = %(municipio)s
@@ -613,6 +617,7 @@ JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.ano >= 2022 AND d.valor_empenhado > 0
   AND d.valor_empenhado < 50000
   AND d.cnpj_basico IS NOT NULL
+  AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor, d.elemento_despesa, d.ano, d.mes
 HAVING COUNT(*) >= 3 AND SUM(d.valor_empenhado) > 50000
@@ -631,6 +636,7 @@ WHERE d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
   AND d.valor_empenhado > 0
   AND d.valor_empenhado < 50000
   AND d.cnpj_basico IS NOT NULL
+  AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor, d.elemento_despesa, d.ano, d.mes
 HAVING COUNT(*) >= 3 AND SUM(d.valor_empenhado) > 50000

@@ -284,6 +284,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     // Auto-detect clickable columns for dialog reuse
     const iCnpjBasico = columns.indexOf('cnpj_basico');
     const iCpfCnpj = columns.findIndex(c => c === 'cpf_cnpj' || c === 'cpf_cnpj_sancionado' || c === 'cpfcnpj_contratado' || c === 'cpf_cnpj_proponente');
+    const iCnpjCompleto = columns.indexOf('cnpj_completo');
     const iNomeCredor = columns.findIndex(c => c === 'nome_credor' || c === 'razao_social' || c === 'nome_sancionado' || c === 'nome_contratado' || c === 'nome_proponente');
     const iCpf6 = columns.indexOf('cpf_digitos_6');
     const iNomeUpper = columns.indexOf('nome_upper');
@@ -378,7 +379,13 @@ function buildResultTable(queryId, columns, rows, municipio) {
                 const nomeCredorAttr = (iNomeCredorExact >= 0 && iNomeCredorExact !== iNomeCredor)
                     ? ` data-fornecedor-nome-credor="${_esc(row[iNomeCredorExact] || '')}"`
                     : '';
-                return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}"${nomeCredorAttr}>${cells}</tr>`;
+                let cpfCnpjFull = '';
+                if (iCnpjCompleto >= 0) cpfCnpjFull = String(row[iCnpjCompleto] || '').replace(/\D/g, '');
+                else if (iCpfCnpj >= 0) cpfCnpjFull = String(row[iCpfCnpj] || '').replace(/\D/g, '');
+                const cpfCnpjAttr = cpfCnpjFull.length >= 14
+                    ? ` data-fornecedor-cpf-cnpj="${_esc(cpfCnpjFull)}"`
+                    : '';
+                return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}"${nomeCredorAttr}${cpfCnpjAttr}>${cells}</tr>`;
             }
         }
         return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
@@ -1494,7 +1501,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         const propRows = data.proponentes.map(p => {
             const cnpjRaw = String(p.cpf_cnpj_proponente || '').replace(/\D/g, '');
             const cnpjB = cnpjRaw.slice(0, 8);
-            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
+            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
             const nome = _esc(p.razao_social || p.nome_proponente || '-');
             const nomeLink = isClickable
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${_esc(p.nome_proponente || '')}">${nome}</a>`
@@ -1519,7 +1526,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         const despRows = data.despesas.map(d => {
             const cnpjRaw = String(d.cpf_cnpj || '').replace(/\D/g, '');
             const cnpjB = cnpjRaw.slice(0, 8);
-            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB);
+            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
             const nome = _esc(d.nome_credor || '-');
             const nomeCell = isClickable
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}">${nome}</a>`

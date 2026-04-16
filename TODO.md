@@ -13,6 +13,13 @@
 - [x] **Q59 e Q63 removidas** — redundantes com tabela TOP_SERVIDORES + dialog de detalhes por servidor
 - [x] **Q74 removida** — redundante com dialog (Bolsa Família aparece no detalhe do servidor)
 - [x] **Alertas sem contexto nos fornecedores** — dialog mostra sancoes CEIS com datas, divida PGFN, situacao cadastral e empenhos recentes
+- [x] **Colisoes CPF/CNPJ no cnpj_basico (completo)** — CPFs armazenados como 14 digitos compartilham cnpj_basico com CNPJs reais. Todas as correcoes aplicadas:
+  - [x] Removido TOP_FORNECEDORES_BASIC e _BASIC_DATED (queries degradadas que retornam dados incompletos)
+  - [x] Q70: substituido LENGTH guard quebrado por EXISTS(estabelecimento)
+  - [x] Q71, Q77: adicionado EXISTS(estabelecimento) nos JOINs
+  - [x] TOP_FORNECEDORES CTEs (base, fallback, dated, fallback_dated, PNCP): adicionado EXISTS(estabelecimento) no WHERE
+  - [x] Adicionado LENGTH(cpf_cnpj_sancionado)=14 em todos os lookups CEIS/CNEP (cidade.py flags, servidores CTE, routes fornecedor/servidor detail)
+  - [x] Frontend: emitir data-fornecedor-cpf-cnpj no buildResultTable, guard length>=14 nos links de licitacao (empenho, proponentes, despesas)
 
 ### Frontend web — UX e performance
 - [x] **Carregamento sequencial** — implementado `POST /api/batch/{municipio}` que serve todos os dados do cache em uma unica requisicao. Frontend renderiza cards do cache instantaneamente, fallback individual para cache miss com concorrencia 4

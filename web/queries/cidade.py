@@ -85,6 +85,7 @@ WITH top_forn AS (
     WHERE d.municipio = %(municipio)s
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
@@ -99,6 +100,7 @@ SELECT * FROM (
        EXISTS(
            SELECT 1 FROM ceis_sancao cs
            WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
              AND cs.categoria_sancao ILIKE '%%inidone%%'
        ) AS flag_inidoneidade,
@@ -129,12 +131,14 @@ SELECT * FROM (
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
            ) san
            WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
@@ -170,6 +174,7 @@ WITH top_forn AS (
     WHERE d.municipio = %(municipio)s
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
@@ -183,17 +188,20 @@ SELECT * FROM (
            SELECT 1
            FROM ceis_sancao cs
            WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_ceis,
        EXISTS(
            SELECT 1
            FROM cnep_sancao cn
            WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cn.cpf_cnpj_sancionado) = 14
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
        EXISTS(
            SELECT 1 FROM ceis_sancao cs2
            WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs2.cpf_cnpj_sancionado) = 14
              AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
              AND cs2.categoria_sancao ILIKE '%%inidone%%'
        ) AS flag_inidoneidade,
@@ -229,12 +237,14 @@ SELECT * FROM (
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
            ) san
            WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
@@ -257,36 +267,6 @@ LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
-TOP_FORNECEDORES_BASIC = """
-SELECT d.cnpj_basico, d.nome_credor,
-       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
-       COALESCE(est.cnpj_completo, MAX(d.cpf_cnpj)) AS cnpj_completo,
-       SUM(d.valor_pago) AS total_pago,
-       COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
-       FALSE AS flag_ceis,
-       FALSE AS flag_cnep,
-       FALSE AS flag_inidoneidade,
-       FALSE AS flag_pgfn,
-       FALSE AS flag_inativa,
-       FALSE AS flag_acordo_leniencia,
-       NULL::text AS abrangencia_sancao_info,
-       CASE est.situacao_cadastral::text
-           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
-           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
-       END AS desc_situacao
-FROM tce_pb_despesa d
-JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
-    AND e.natureza_juridica NOT LIKE '1%%'
-LEFT JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
-WHERE d.municipio = %(municipio)s
-  AND d.valor_pago > 0
-  AND d.cnpj_basico IS NOT NULL
-GROUP BY d.cnpj_basico, d.nome_credor, e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY (COALESCE(est.situacao_cadastral::text != '2', FALSE))::int DESC, SUM(d.valor_pago) DESC
-LIMIT 200
-"""
-
 # ── Variantes com filtro temporal (dated) ───────────────────────
 
 TOP_FORNECEDORES_DATED = """
@@ -302,6 +282,7 @@ WITH top_forn AS (
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
       AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
@@ -316,6 +297,7 @@ SELECT * FROM (
        EXISTS(
            SELECT 1 FROM ceis_sancao cs
            WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
              AND cs.categoria_sancao ILIKE '%%inidone%%'
        ) AS flag_inidoneidade,
@@ -346,12 +328,14 @@ SELECT * FROM (
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
            ) san
            WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
@@ -388,6 +372,7 @@ WITH top_forn AS (
       AND d.valor_pago > 0
       AND d.cnpj_basico IS NOT NULL
       AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
@@ -400,16 +385,19 @@ SELECT * FROM (
        EXISTS(
            SELECT 1 FROM ceis_sancao cs
            WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_ceis,
        EXISTS(
            SELECT 1 FROM cnep_sancao cn
            WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cn.cpf_cnpj_sancionado) = 14
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
        EXISTS(
            SELECT 1 FROM ceis_sancao cs2
            WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = tf.cnpj_basico
+             AND LENGTH(cs2.cpf_cnpj_sancionado) = 14
              AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
              AND cs2.categoria_sancao ILIKE '%%inidone%%'
        ) AS flag_inidoneidade,
@@ -444,12 +432,14 @@ SELECT * FROM (
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
            ) san
            WHERE san.cb = tf.cnpj_basico
            ORDER BY CASE
@@ -472,37 +462,6 @@ LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
-TOP_FORNECEDORES_BASIC_DATED = """
-SELECT d.cnpj_basico, d.nome_credor,
-       CASE WHEN est.cnpj_completo IS NOT NULL THEN e.razao_social END AS razao_social,
-       COALESCE(est.cnpj_completo, MAX(d.cpf_cnpj)) AS cnpj_completo,
-       SUM(d.valor_pago) AS total_pago,
-       COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos,
-       FALSE AS flag_ceis,
-       FALSE AS flag_cnep,
-       FALSE AS flag_inidoneidade,
-       FALSE AS flag_pgfn,
-       FALSE AS flag_inativa,
-       FALSE AS flag_acordo_leniencia,
-       NULL::text AS abrangencia_sancao_info,
-       CASE est.situacao_cadastral::text
-           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
-           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
-       END AS desc_situacao
-FROM tce_pb_despesa d
-JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
-    AND e.natureza_juridica NOT LIKE '1%%'
-LEFT JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
-WHERE d.municipio = %(municipio)s
-  AND d.valor_pago > 0
-  AND d.cnpj_basico IS NOT NULL
-  AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
-GROUP BY d.cnpj_basico, d.nome_credor, e.razao_social, est.cnpj_completo, est.situacao_cadastral
-ORDER BY (COALESCE(est.situacao_cadastral::text != '2', FALSE))::int DESC, SUM(d.valor_pago) DESC
-LIMIT 200
-"""
-
 TOP_FORNECEDORES_PNCP = """
 SELECT * FROM (
     SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
@@ -514,16 +473,19 @@ SELECT * FROM (
        EXISTS(
            SELECT 1 FROM ceis_sancao cs
            WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
              AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_ceis,
        EXISTS(
            SELECT 1 FROM cnep_sancao cn
            WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND LENGTH(cn.cpf_cnpj_sancionado) = 14
              AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
        ) AS flag_cnep,
        EXISTS(
            SELECT 1 FROM ceis_sancao cs2
            WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
+             AND LENGTH(cs2.cpf_cnpj_sancionado) = 14
              AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
              AND cs2.categoria_sancao ILIKE '%%inidone%%'
        ) AS flag_inidoneidade,
@@ -558,12 +520,14 @@ SELECT * FROM (
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM ceis_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
                UNION ALL
                SELECT LEFT(cpf_cnpj_sancionado, 8),
                       categoria_sancao, abrangencia_sancao,
                       orgao_sancionador, uf_orgao_sancionador,
                       esfera_orgao_sancionador
                FROM cnep_sancao
+               WHERE LENGTH(cpf_cnpj_sancionado) = 14
            ) san
            WHERE san.cb = pc.cnpj_basico_fornecedor
            ORDER BY CASE
@@ -596,15 +560,18 @@ LIMIT 200
 TOP_SERVIDORES_RISCO = """
 WITH cnpjs_sancionados AS (
     SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) AS cb FROM ceis_sancao
-    WHERE dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE
+    WHERE (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE)
+      AND LENGTH(cpf_cnpj_sancionado) = 14
     UNION
     SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) FROM cnep_sancao
-    WHERE dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE
+    WHERE (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE)
+      AND LENGTH(cpf_cnpj_sancionado) = 14
 ),
 cnpjs_inidoneidade AS (
     SELECT DISTINCT LEFT(cpf_cnpj_sancionado, 8) AS cb FROM ceis_sancao
     WHERE (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE)
       AND categoria_sancao ILIKE '%%inidone%%'
+      AND LENGTH(cpf_cnpj_sancionado) = 14
 ),
 ceaf_expulsos AS (
     SELECT DISTINCT cpf_cnpj_norm AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome

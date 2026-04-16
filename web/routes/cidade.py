@@ -728,6 +728,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                                dt_inicio_sancao, dt_final_sancao
                         FROM ceis_sancao
                         WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
+                          AND LENGTH(cpf_cnpj_sancionado) = 14
                         UNION ALL
                         SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
                                'CNEP' AS fonte,
@@ -736,6 +737,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                                dt_inicio_sancao, dt_final_sancao
                         FROM cnep_sancao
                         WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
+                          AND LENGTH(cpf_cnpj_sancionado) = 14
                     """, cnpjs + cnpjs)
                     san_cols = [d[0] for d in cur.description]
                     san_rows = cur.fetchall()
@@ -1015,6 +1017,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                            abrangencia_sancao
                     FROM ceis_sancao
                     WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
+                      AND LENGTH(cpf_cnpj_sancionado) = 14
                     ORDER BY dt_inicio_sancao DESC
                 """, (cnpj_basico,))
                 san_cols = [d[0] for d in cur.description]
@@ -1035,6 +1038,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                            abrangencia_sancao
                     FROM cnep_sancao
                     WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
+                      AND LENGTH(cpf_cnpj_sancionado) = 14
                     ORDER BY dt_inicio_sancao DESC
                 """, (cnpj_basico,))
                 cnep_cols = [d[0] for d in cur.description]
