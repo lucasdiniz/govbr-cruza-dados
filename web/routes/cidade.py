@@ -606,15 +606,24 @@ async def get_perfil(payload: MunicipioPayload):
 async def get_heatmap(municipio_path: str):
     """Retorna grade (ano, mes) -> total_empenhado para heatmap mensal."""
     municipio = _normalize_municipio(municipio_path)
+    cols: list[str] = []
+    rows: list[tuple] = []
     try:
-        cols, rows = cached_query(
-            f"heatmap:{municipio.casefold()}",
-            HEATMAP_MENSAL,
-            {"municipio": municipio},
-            timeout_sec=TIMEOUT_QUERY_LIGHT,
-        )
-    except (QueryCanceled, Exception):
-        return JSONResponse({"cells": []})
+        cached = read_web_cache("HEATMAP", municipio)
+    except Exception:
+        cached = None
+    if cached:
+        cols, rows = cached
+    else:
+        try:
+            cols, rows = cached_query(
+                f"heatmap:{municipio.casefold()}",
+                HEATMAP_MENSAL,
+                {"municipio": municipio},
+                timeout_sec=TIMEOUT_QUERY_LIGHT,
+            )
+        except (QueryCanceled, Exception):
+            return JSONResponse({"cells": []})
     cells = [_row_to_json_dict(cols, r) for r in rows]
     return JSONResponse({"cells": cells})
 

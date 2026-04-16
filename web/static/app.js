@@ -893,12 +893,14 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
         const matchedSancao = empDate && sancaoRanges.find(r =>
             empDate >= r.inicio && (!r.fim || empDate <= r.fim)
         );
-        const rowClass = matchedSancao
-            ? (matchedSancao.grave ? 'clickable-row row-sancao' : 'clickable-row row-sancao-leve')
-            : 'clickable-row';
-        const sancaoTag = matchedSancao
-            ? ` <span class="badge ${matchedSancao.grave ? 'badge-red' : 'badge-orange'}" style="font-size:.6rem">durante sancao</span>`
-            : '';
+        const afeta = matchedSancao && matchedSancao.grave;
+        const rowClass = afeta ? 'clickable-row row-sancao' : 'clickable-row';
+        let sancaoTag = '';
+        if (afeta) {
+            sancaoTag = ` <span class="badge badge-red" style="font-size:.6rem" title="${_esc(matchedSancao.categoria || '')} — ${_esc(matchedSancao.abrangencia || '')}">durante sancao</span>`;
+        } else if (matchedSancao) {
+            sancaoTag = ` <span class="badge badge-muted" style="font-size:.6rem" title="Sancao vigente neste periodo mas nao afeta contratos com este municipio (${_esc(matchedSancao.abrangencia || 'abrangencia limitada')})">sancao nao aplicavel</span>`;
+        }
         return `<tr class="${rowClass}" data-empenho-id="${e.id}">
             <td>${dt}${sancaoTag}</td>
             <td>${_esc(e.elemento_despesa || '-')}</td>
@@ -1183,16 +1185,28 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     let html = '';
 
     // Pre-compute sanction date ranges (used by charts and empenho table)
+    // grave = sancao legalmente afeta contratos com este municipio
+    const normMun = (viewMunicipio || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
     const sancaoRanges = (data.sancoes || []).map(s => {
-        const isInid = /inidone/i.test(s.categoria_sancao);
-        const isNacional = isInid
-            || s.abrangencia_sancao === 'Todas as Esferas em todos os Poderes';
-        const isMunicipal = (s.esfera_orgao_sancionador || '').toUpperCase() === 'MUNICIPAL'
-            && (s.orgao_sancionador || '').toUpperCase().includes(viewMunicipio.toUpperCase());
+        const cat = s.categoria_sancao || '';
+        const abr = s.abrangencia_sancao || '';
+        const esfera = (s.esfera_orgao_sancionador || '').toUpperCase();
+        const orgao = (s.orgao_sancionador || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+        const isInid = /inidone/i.test(cat);
+        const isNacional = abr === 'Todas as Esferas em todos os Poderes';
+        // Sancao emitida por este municipio e com abrangencia que bloqueia contratos com ele
+        const isDoMunicipio = esfera === 'MUNICIPAL' && normMun && orgao.includes(normMun);
+        const abrangeEmisor = isDoMunicipio && (
+            abr === 'No órgão sancionador'
+            || abr === 'Na Esfera e no Poder do órgão sancionador'
+            || abr === 'Em todos os Poderes da Esfera do órgão sancionador'
+        );
         return {
             inicio: s.dt_inicio_sancao ? new Date(s.dt_inicio_sancao) : null,
             fim: s.dt_final_sancao ? new Date(s.dt_final_sancao) : null,
-            grave: isNacional || isMunicipal
+            grave: isInid || isNacional || abrangeEmisor,
+            categoria: cat,
+            abrangencia: abr
         };
     }).filter(r => r.inicio);
 

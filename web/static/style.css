@@ -436,6 +436,7 @@ tr:hover { background: #fbfdff; }
 }
 .badge-red { background: #fef2f2; color: var(--red); border: 1px solid #fecaca; }
 .badge-orange { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+.badge-muted { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
 .badge-yellow { background: #fff7ed; color: var(--yellow); border: 1px solid #fed7aa; }
 .badge-green { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
 .badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }

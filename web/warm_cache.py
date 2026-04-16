@@ -23,6 +23,7 @@ import psycopg2
 
 from etl.config import DSN
 from web.queries.cidade import (
+    HEATMAP_MENSAL,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
@@ -187,6 +188,12 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
         # Top servidores
         if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, 30, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # Heatmap mensal (empenhos por ano/mes)
+        if _run_and_cache(conn, "HEATMAP", HEATMAP_MENSAL, mun, 30, verbose):
             ok += 1
         else:
             fail += 1
