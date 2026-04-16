@@ -2,6 +2,17 @@
 
 ## Pendente
 
+### Pivot PB-first — novas visualizacoes e cruzamentos
+- [ ] **Mapa coropletico PB (em andamento)** — 223 municipios pintados por metrica, 5 camadas: risco composto (default), % pago a fornecedores irregulares, % sem licitacao, concentracao top-5, gasto per capita. Click no municipio abre detalhe. Toggle de camada no topo do mapa. Cutoff minimo para municipios pequenos evitarem virar falso positivo
+- [ ] **Rotatividade de credores pos-eleicao** — top 20 fornecedores antes vs depois de cada eleicao municipal. Substituicoes abruptas sinalizam troca de grupo contratado. Visual: tabela com `delta_pago`, icone de "novo" para quem nao existia no mandato anterior
+- [ ] **Aditivos como % do contrato original** — `pb_aditivo_contrato` / `pb_contrato.valor_original`. Alertas >25% (limite Lei 14.133) e >100% (presuncao grave). Relatorio ja existe (`relatorio_aditivos_abusivos_estado_pb.md`), falta UI no detalhe do municipio
+- [ ] **Grafo fornecedor x municipio** — rede visual mostrando CNPJs que dominam cluster de prefeituras vizinhas. Nos = municipios + CNPJs, arestas = pagamentos. Filtros por valor minimo e por N municipios. Base: `tce_pb_despesa`. Util para detectar carteis regionais
+- [ ] **Timeline empenho -> liquidacao -> pagamento -> anulacao** — por `numero_contrato` ou `numero_empenho`. Expoe ciclo anulacao/reempenho, atrasos suspeitos e pagamentos sem liquidacao. Base: `pb_empenho`, `pb_liquidacao_despesa`, `pb_pagamento`, `pb_empenho_anulacao`, `pb_pagamento_anulacao`
+- [ ] **Heatmap mensal de empenhos** — 12 meses x N anos por municipio. Mata a Q66 (queima de orcamento em dezembro) visualmente e expoe picos pre-eleitorais. Destacar celulas com desvio >2 sigmas da media do municipio
+- [ ] **Emendas federais -> municipios PB** — cruzar base de emendas parlamentares com `tce_pb_despesa` do municipio destinatario. Visual: mapa + tabela por parlamentar, cruzado com partido/aliado do prefeito. Estende o trabalho Hugo Motta para todos os parlamentares PB
+- [ ] **Mesma nota fiscal em multiplos empenhos** — `pb_liquidacao_despesa.numero_nota_fiscal` repetido em UGs/municipios diferentes com `cpf_cnpj` do fornecedor. Smoking gun de duplo pagamento. Alerta direto, baixa taxa de falso positivo se validado corretamente
+- [ ] **Diaria estadual x viagem federal mesmo CPF/data** — `pb_diaria` x tabelas de viagens federais. Servidor estadual recebendo diaria em D e aparecendo como passageiro/diarista federal no mesmo dia
+
 ### Frontend web — Bugs criticos
 - [x] **Fornecedores nunca carrega** — era problema de performance pre-otimizacao. Funciona com cache e sem cache apos otimizacao de queries
 - [x] **Servidores limitado a 10** — LIMIT aumentado para 200, paginacao client-side 10 por pagina

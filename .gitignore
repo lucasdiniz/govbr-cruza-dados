@@ -10,3 +10,7 @@ build/
 *.csv
 *.json
 .claude/
+
+# Assets estaticos do frontend nao sao ignorados
+!web/static/geo/*.json
+!web/static/geo/*.geojson
