@@ -14,7 +14,16 @@ MAPA_SQL = """
 SELECT municipio, risco_score, pct_sem_licitacao, pct_irregulares,
        pct_top5, total_pago
 FROM mv_municipio_pb_mapa
+WHERE municipio IS NOT NULL
 """
+
+# TCE-PB usa nomes antigos; GeoJSON IBGE usa nomes oficiais atuais.
+# Mapa aplicado no endpoint para que o frontend case pelo nome atual.
+MUNICIPIO_ALIASES = {
+    "Joca Claudino": "Santarém",
+    "São Vicente do Seridó": "Seridó",
+    "Tacima": "Campo de Santana",
+}
 
 
 @router.get("/mapa")
@@ -34,7 +43,8 @@ async def api_mapa_pb():
     data = {}
     for r in rows:
         d = dict(zip(cols, r))
-        data[d["municipio"]] = {
+        key = MUNICIPIO_ALIASES.get(d["municipio"], d["municipio"])
+        data[key] = {
             "risco": int(d["risco_score"]) if d["risco_score"] is not None else None,
             "pct_sem_licitacao": float(d["pct_sem_licitacao"]) if d["pct_sem_licitacao"] is not None else None,
             "pct_irregulares": float(d["pct_irregulares"]) if d["pct_irregulares"] is not None else None,

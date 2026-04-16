@@ -2,40 +2,41 @@
 (function () {
     const CUTOFF_PAGO = 5_000_000; // R$5mi: abaixo disso, municipio fica cinza
 
+    // Breaks calibrados aos percentis p20/p40/p60/p80/p95 da distribuicao real na PB
     const METRICS = {
         risco: {
             label: 'Risco composto (0-100)',
             unit: '',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [15, 30, 45, 60, 75],
+            breaks: [62, 65, 69, 73, 77],
             format: (v) => `${v}`,
         },
         pct_irregulares: {
             label: '% pago a fornecedores irregulares',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [1, 3, 7, 12, 20],
+            breaks: [17, 28, 45, 60, 70],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pct_sem_licitacao: {
             label: '% de empenhos sem licitacao',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [20, 35, 50, 65, 80],
+            breaks: [55, 65, 72, 80, 90],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pct_top5: {
             label: '% pago concentrado nos top-5 fornecedores',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [40, 55, 70, 80, 90],
+            breaks: [50, 58, 62, 66, 72],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pago_per_capita: {
             label: 'R$ pago por habitante',
             unit: 'R$',
             ramp: ['#0d2340', '#17416b', '#1e5e99', '#2a85c6', '#49a8e0', '#88d0f5'],
-            breaks: [500, 1500, 3000, 6000, 12000],
+            breaks: [6000, 9000, 12000, 17000, 24000],
             format: (v) => {
                 if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)} mil`;
                 return `R$ ${v.toFixed(0)}`;
