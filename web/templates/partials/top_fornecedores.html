@@ -4,13 +4,13 @@
         <div>
             <h3 class="card-title">Maiores fornecedores do municipio</h3>
             <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</p>
-            {% set has_inid = fornecedores|selectattr('flag_inidoneidade')|list %}
-            {% set has_sancao = fornecedores|selectattr('abrangencia_sancao_info')|list %}
+            {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
+            {% set has_rec_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list %}
             {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
-            {% if has_sancao or has_acordo %}
+            {% if has_rec_inid or has_rec_sancao or has_acordo %}
             <div class="color-legend">
-                {% if has_sancao and has_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Recebeu durante Inidoneidade</span>{% endif %}
-                {% if has_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Recebeu durante Impedimento ou CNEP</span>{% endif %}
+                {% if has_rec_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Recebeu durante Inidoneidade</span>{% endif %}
+                {% if has_rec_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Recebeu durante sancao aplicavel</span>{% endif %}
                 {% if has_acordo %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#3b82f6"></span> Acordo de leniencia vigente</span>{% endif %}
             </div>
             {% endif %}
@@ -41,8 +41,10 @@
                 </thead>
                 <tbody>
                     {% for f in fornecedores %}
-                    {% set sancao_aplica = f.abrangencia_sancao_info and f.abrangencia_sancao_info.startswith('!') %}
-                    <tr class="clickable-row{% if sancao_aplica %}{% if f.flag_inidoneidade %} row-sancao{% else %} row-sancao-leve{% endif %}{% elif f.abrangencia_sancao_info %} row-sancao-leve{% endif %}"
+                    {% if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
+                    {% elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
+                    {% else %}{% set row_extra = '' %}{% endif %}
+                    <tr class="clickable-row{{ row_extra }}"
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
                         data-fornecedor-cpf-cnpj="{{ f.cnpj_completo|default('', true) }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
