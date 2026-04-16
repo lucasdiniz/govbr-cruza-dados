@@ -145,6 +145,11 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         } catch {}
     }
 
+    // Heatmap mensal (PB apenas, all-time — não responde ao filtro de data)
+    if ((uf || 'PB') === 'PB' && document.getElementById('heatmapGrid')) {
+        _loadHeatmap(municipio);
+    }
+
     // Update hero/insight when date-filtered
     if (_isDateFiltered()) {
         // Show loading placeholders to avoid flash of all-time data
@@ -615,6 +620,96 @@ function _updateInsightCards(perfil) {
     if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
     if (el('barPago')) el('barPago').textContent = _shortBrl(totalPago);
     if (el('barFillPago')) el('barFillPago').style.width = `${pctPago.toFixed(1)}%`;
+}
+
+async function _loadHeatmap(municipio) {
+    const grid = document.getElementById('heatmapGrid');
+    if (!grid) return;
+    try {
+        const res = await fetch(`/api/heatmap/${encodeURIComponent(municipio)}`);
+        if (!res.ok) throw new Error('http ' + res.status);
+        const data = await res.json();
+        _renderHeatmap(data.cells || []);
+    } catch (e) {
+        grid.innerHTML = '<p class="text-sm text-muted">Não foi possível carregar o heatmap.</p>';
+    }
+}
+
+function _renderHeatmap(cells) {
+    const grid = document.getElementById('heatmapGrid');
+    const legend = document.getElementById('heatmapLegend');
+    if (!grid) return;
+    if (!cells.length) {
+        grid.innerHTML = '<p class="text-sm text-muted">Sem dados de empenho mensais para este município.</p>';
+        if (legend) legend.innerHTML = '';
+        return;
+    }
+
+    // Build (ano, mes) -> valor
+    const byKey = {};
+    const anos = new Set();
+    let maxVal = 0;
+    cells.forEach(c => {
+        const v = parseFloat(c.total_empenhado) || 0;
+        byKey[`${c.ano}-${c.mes}`] = v;
+        anos.add(c.ano);
+        if (v > maxVal) maxVal = v;
+    });
+    const anosSorted = Array.from(anos).sort((a, b) => b - a); // mais recente no topo
+
+    // Média e desvio-padrão (usa todos os valores reais, inclui zeros de meses com registros)
+    const vals = Object.values(byKey);
+    const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+    const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length;
+    const std = Math.sqrt(variance);
+
+    // Escala log p/ compressão de outliers
+    const logMax = Math.log1p(maxVal);
+    const mesesLabel = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    const ramp = ['#e6efff', '#c2d6f7', '#9bbbed', '#6f9ae0', '#4579cf', '#2555ab', '#0f3380'];
+    const colorFor = v => {
+        if (!v) return { bg: '#1e2a3a', color: '#4a5568' };
+        const t = Math.log1p(v) / logMax;
+        const idx = Math.min(ramp.length - 1, Math.floor(t * ramp.length));
+        return { bg: ramp[idx], color: idx >= 4 ? '#fff' : '#0f2056' };
+    };
+
+    const html = ['<div class="hm-row hm-header"><div class="hm-cell hm-year-label"></div>'];
+    mesesLabel.forEach(m => html.push(`<div class="hm-cell hm-month-label">${m}</div>`));
+    html.push('</div>');
+
+    anosSorted.forEach(ano => {
+        html.push(`<div class="hm-row"><div class="hm-cell hm-year-label">${ano}</div>`);
+        for (let m = 1; m <= 12; m++) {
+            const v = byKey[`${ano}-${m}`] || 0;
+            const z = std > 0 ? (v - mean) / std : 0;
+            const outlier = z > 2 ? ' hm-outlier' : '';
+            const { bg, color } = colorFor(v);
+            const label = v ? _shortBrl(v) : '—';
+            const title = `${mesesLabel[m - 1]}/${ano}: ${v ? _shortBrl(v) : 'sem dados'}${z > 2 ? ` (${z.toFixed(1)}σ acima da média)` : ''}`;
+            html.push(`<div class="hm-cell hm-value${outlier}" style="background:${bg};color:${color}" title="${title}"><span>${label}</span></div>`);
+        }
+        html.push('</div>');
+    });
+
+    grid.innerHTML = html.join('');
+
+    if (legend) {
+        const steps = ramp.map((c, i) => {
+            const lo = Math.expm1((i / ramp.length) * logMax);
+            const hi = Math.expm1(((i + 1) / ramp.length) * logMax);
+            return `<div class="hm-legend-step" style="background:${c}" title="${_shortBrl(lo)} – ${_shortBrl(hi)}"></div>`;
+        }).join('');
+        legend.innerHTML = `
+            <span class="hm-legend-label">Menor</span>
+            <div class="hm-legend-ramp">${steps}</div>
+            <span class="hm-legend-label">Maior</span>
+            <span class="hm-legend-sep"></span>
+            <span class="hm-legend-outlier"></span>
+            <span class="hm-legend-label">Mês atípico (>2σ)</span>
+        `;
+    }
 }
 
 async function _refreshPerfilLive(municipio, uf) {

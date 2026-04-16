@@ -24,6 +24,7 @@ from web.db import cached_query, execute_query, read_web_cache
 from web.queries.cidade import (
     AUTOCOMPLETE_MUNICIPIO,
     AUTOCOMPLETE_MUNICIPIO_FALLBACK,
+    HEATMAP_MENSAL,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
     PERFIL_MUNICIPIO_PNCP,
@@ -593,6 +594,23 @@ async def get_perfil(payload: MunicipioPayload):
     if rows:
         return JSONResponse(_row_to_json_dict(cols, rows[0]))
     return JSONResponse({})
+
+
+@router.get("/api/heatmap/{municipio_path}")
+async def get_heatmap(municipio_path: str):
+    """Retorna grade (ano, mes) -> total_empenhado para heatmap mensal."""
+    municipio = _normalize_municipio(municipio_path)
+    try:
+        cols, rows = cached_query(
+            f"heatmap:{municipio.casefold()}",
+            HEATMAP_MENSAL,
+            {"municipio": municipio},
+            timeout_sec=TIMEOUT_QUERY_LIGHT,
+        )
+    except (QueryCanceled, Exception):
+        return JSONResponse({"cells": []})
+    cells = [_row_to_json_dict(cols, r) for r in rows]
+    return JSONResponse({"cells": cells})
 
 
 @router.post("/api/cache/invalidate")

@@ -1048,3 +1048,87 @@ tr:hover { background: #fbfdff; }
     #mapa-pb { height: 440px; }
     .mapa-header h1 { font-size: 1.4rem; }
 }
+
+/* ── Heatmap mensal de empenhos ─────────────────────────────────── */
+.heatmap-wrap {
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+.heatmap-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 580px;
+}
+.hm-row {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+}
+.hm-header { margin-bottom: 2px; }
+.hm-cell {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    overflow: hidden;
+    cursor: default;
+    transition: transform 0.1s;
+}
+.hm-cell:hover {
+    transform: scale(1.06);
+    z-index: 2;
+    position: relative;
+}
+.hm-year-label {
+    min-width: 42px;
+    max-width: 42px;
+    flex: none;
+    background: transparent !important;
+    color: #94a3b8;
+    font-size: 0.78rem;
+    font-weight: 600;
+    justify-content: flex-end;
+    padding-right: 6px;
+}
+.hm-month-label {
+    background: transparent !important;
+    color: #64748b;
+    font-size: 0.7rem;
+    font-weight: 500;
+    height: 24px;
+}
+.hm-value span {
+    pointer-events: none;
+    white-space: nowrap;
+    padding: 0 3px;
+}
+.hm-outlier {
+    outline: 2px solid #ef4444;
+    outline-offset: -2px;
+}
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    flex-wrap: wrap;
+}
+.hm-legend-label { color: #64748b; font-size: 0.72rem; }
+.hm-legend-ramp { display: flex; gap: 2px; }
+.hm-legend-step { width: 24px; height: 16px; border-radius: 2px; cursor: default; }
+.hm-legend-sep { flex: 1; }
+.hm-legend-outlier {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    outline: 2px solid #ef4444;
+    outline-offset: -1px;
+    background: #4579cf;
+    display: inline-block;
+}

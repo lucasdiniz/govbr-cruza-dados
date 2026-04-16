@@ -61,6 +61,21 @@ WHERE d.municipio = %(municipio)s
   AND d.valor_empenhado > 0
 """
 
+HEATMAP_MENSAL = """
+SELECT ano::int AS ano,
+       LEFT(mes, 2)::int AS mes,
+       SUM(valor_empenhado) AS total_empenhado,
+       SUM(valor_pago) AS total_pago,
+       COUNT(*) AS qtd
+FROM tce_pb_despesa
+WHERE municipio = %(municipio)s
+  AND ano >= 2022
+  AND mes IS NOT NULL
+  AND valor_empenhado > 0
+GROUP BY ano, LEFT(mes, 2)
+ORDER BY ano, mes
+"""
+
 PERFIL_MUNICIPIO_PNCP = """
 SELECT
     %(municipio)s AS municipio,
