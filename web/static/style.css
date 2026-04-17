@@ -437,6 +437,7 @@ body.dark-page.mapa-page .container {
     gap: 1rem;
     margin-bottom: 1rem;
 }
+.insight-grid > * { min-width: 0; }
 
 .insight-card { padding: 1rem; }
 .insight-value {
@@ -496,6 +497,7 @@ body.dark-page.mapa-page .container {
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
 }
+.two-col > * { min-width: 0; }
 
 .tbl-wrap { overflow-x: auto; }
 table {
@@ -596,17 +598,20 @@ tr:hover { background: #fbfdff; }
     gap: 1rem;
     margin-top: 1rem;
 }
+.report-sections > * { min-width: 0; }
 
 .async-card {
     min-height: 120px;
 }
 
 .finding-list { display: grid; gap: 0.9rem; }
+.finding-list > * { min-width: 0; }
 .finding-card {
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: 1rem;
     background: #fcfdff;
+    min-width: 0;
 }
 .finding-card.is-empty { background: #fafafa; }
 .finding-card.is-timeout { background: #fffbeb; }

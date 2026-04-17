@@ -1,0 +1,40 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - link "TransparenciaPB" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - img [ref=e4]
+      - generic [ref=e8]:
+        - text: Transparencia
+        - strong [ref=e9]: PB
+  - main [ref=e10]:
+    - generic [ref=e12]:
+      - heading "Descubra como sua prefeitura gasta o dinheiro publico" [level=1] [ref=e13]
+      - generic [ref=e14]:
+        - textbox "Buscar municipio..." [ref=e16]
+        - paragraph
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - tablist [ref=e19]:
+          - button "Risco composto" [ref=e20] [cursor=pointer]
+          - button "% Irregulares" [ref=e21] [cursor=pointer]
+          - button "Sem licitacao" [ref=e22] [cursor=pointer]
+          - button "Concentracao top-5" [ref=e23] [cursor=pointer]
+          - button "Per capita" [ref=e24] [cursor=pointer]
+        - 'button "Score composto (0 a 100 pontos) calculado a partir de 5 sinais do TCE-PB, cada um com peso proprio: compras sem licitacao (ate 30 pts, satura em 50% dos empenhos), licitacoes com proponente unico (ate 25 pts, satura em 40% das licitacoes), concentracao de empenhos em dezembro (ate 20 pts, satura em 20%; uniforme seria 8,3%), valor empenhado que nao virou pagamento (ate 15 pts, satura em 30% de diferenca) e peso da folha de pessoal sobre a receita arrecadada (ate 10 pts, satura em 70%). Quanto maior, maior o numero de sinais de atencao acumulados. ▾" [ref=e25] [cursor=pointer]'
+        - paragraph [ref=e26]: Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).
+      - generic [ref=e27]:
+        - generic:
+          - generic:
+            - img
+        - generic [ref=e191]:
+          - button "Zoom in" [ref=e192] [cursor=pointer]: +
+          - button "Zoom out" [disabled] [ref=e193]: −
+      - generic [ref=e195]:
+        - generic [ref=e196]: "Risco composto (0-100):"
+        - generic [ref=e197]: < 62
+        - generic [ref=e199]: 62 – 65
+        - generic [ref=e201]: 65 – 69
+        - generic [ref=e203]: 69 – 73
+        - generic [ref=e205]: 73 – 77
+        - generic [ref=e207]: "> 77"
+        - generic [ref=e209]: sem dados

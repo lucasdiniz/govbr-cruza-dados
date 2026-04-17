@@ -1,0 +1,437 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - link "TransparenciaPB" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - img [ref=e4]
+      - generic [ref=e8]:
+        - text: Transparencia
+        - strong [ref=e9]: PB
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: Panorama do municipio
+        - heading "João Pessoa - PB" [level=1] [ref=e14]
+        - paragraph [ref=e15]: Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: 122.7 mil
+          - generic [ref=e19]: despesas analisadas
+        - generic [ref=e20]:
+          - generic [ref=e21]: R$ 6.2 bi
+          - generic [ref=e22]: pagos ao todo
+        - generic [ref=e23]:
+          - generic [ref=e24]: 16.3 mil
+          - generic [ref=e25]: fornecedores distintos
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]: De
+        - textbox "De" [ref=e30]: 2026-01-01
+      - generic [ref=e31]:
+        - generic [ref=e32]: Ate
+        - textbox "Ate" [ref=e33]: 2026-04-17
+      - button "Filtrar" [ref=e34] [cursor=pointer]
+    - generic [ref=e35]:
+      - article [ref=e36]:
+        - heading "Quanto do valor empenhado virou pagamento" [level=2] [ref=e37]
+        - paragraph [ref=e38]: O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.
+        - paragraph [ref=e41]: 80.3% do valor empenhado foi pago
+        - paragraph [ref=e42]: "Diferenca entre empenhado e pago: R$ 1.5 bi"
+      - article [ref=e43]:
+        - heading "Compras sem licitacao" [level=2] [ref=e44]
+        - paragraph [ref=e45]: Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.
+        - paragraph [ref=e46]: 66.7%
+        - paragraph [ref=e47]: Quanto maior esse numero, maior a importancia de revisar justificativas e documentos.
+      - article [ref=e48]:
+        - heading "Dispensas e inexigibilidades" [level=2] [ref=e49]
+        - paragraph [ref=e50]: Proporcao das despesas sem processo competitivo de licitacao.
+        - paragraph [ref=e51]: 66.7%
+        - paragraph [ref=e52]: Valores altos podem indicar baixa concorrencia.
+      - article [ref=e53]:
+        - heading "Folha de pagamento sobre receita" [level=2] [ref=e54]
+        - paragraph [ref=e55]: Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.
+        - paragraph [ref=e56]: 39.3%
+        - paragraph [ref=e57]: Acima de 60% pode indicar rigidez orcamentaria.
+    - generic [ref=e58]:
+      - generic [ref=e60]:
+        - paragraph [ref=e61]: Sazonalidade das despesas
+        - heading "Empenhos mês a mês" [level=2] [ref=e62]
+        - paragraph [ref=e63]: Quanto mais escura a célula, maior o valor empenhado naquele mês. Bordas vermelhas destacam meses com desvio acima de 2 sigmas da média do município — tipicamente fim de ano (queima de orçamento) ou picos pré-eleitorais.
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - generic [ref=e199]:
+            - generic [ref=e201]: Jan
+            - generic [ref=e202]: Fev
+            - generic [ref=e203]: Mar
+            - generic [ref=e204]: Abr
+            - generic [ref=e205]: Mai
+            - generic [ref=e206]: Jun
+            - generic [ref=e207]: Jul
+            - generic [ref=e208]: Ago
+            - generic [ref=e209]: Set
+            - generic [ref=e210]: Out
+            - generic [ref=e211]: Nov
+            - generic [ref=e212]: Dez
+          - generic [ref=e213]:
+            - generic [ref=e214]: "2026"
+            - 'generic "Jan/2026: R$ 502.9 mi — clique para drill-down" [ref=e215] [cursor=pointer]':
+              - generic: R$ 502.9 mi
+            - 'generic "Fev/2026: R$ 475.9 mi — clique para drill-down" [ref=e216] [cursor=pointer]':
+              - generic: R$ 475.9 mi
+            - 'generic "Mar/2026: R$ 139.6 mi — clique para drill-down" [ref=e217] [cursor=pointer]':
+              - generic: R$ 139.6 mi
+            - 'generic "Abr/2026: sem dados" [ref=e218]':
+              - generic: —
+            - 'generic "Mai/2026: sem dados" [ref=e219]':
+              - generic: —
+            - 'generic "Jun/2026: sem dados" [ref=e220]':
+              - generic: —
+            - 'generic "Jul/2026: sem dados" [ref=e221]':
+              - generic: —
+            - 'generic "Ago/2026: sem dados" [ref=e222]':
+              - generic: —
+            - 'generic "Set/2026: sem dados" [ref=e223]':
+              - generic: —
+            - 'generic "Out/2026: sem dados" [ref=e224]':
+              - generic: —
+            - 'generic "Nov/2026: sem dados" [ref=e225]':
+              - generic: —
+            - 'generic "Dez/2026: sem dados" [ref=e226]':
+              - generic: —
+          - generic [ref=e227]:
+            - generic [ref=e228]: "2025"
+            - 'generic "Jan/2025: R$ 505.0 mi — clique para drill-down" [ref=e229] [cursor=pointer]':
+              - generic: R$ 505.0 mi
+            - 'generic "Fev/2025: R$ 337.5 mi — clique para drill-down" [ref=e230] [cursor=pointer]':
+              - generic: R$ 337.5 mi
+            - 'generic "Mar/2025: R$ 326.9 mi — clique para drill-down" [ref=e231] [cursor=pointer]':
+              - generic: R$ 326.9 mi
+            - 'generic "Abr/2025: R$ 440.3 mi — clique para drill-down" [ref=e232] [cursor=pointer]':
+              - generic: R$ 440.3 mi
+            - 'generic "Mai/2025: R$ 404.8 mi — clique para drill-down" [ref=e233] [cursor=pointer]':
+              - generic: R$ 404.8 mi
+            - 'generic "Jun/2025: R$ 410.6 mi — clique para drill-down" [ref=e234] [cursor=pointer]':
+              - generic: R$ 410.6 mi
+            - 'generic "Jul/2025: R$ 417.7 mi — clique para drill-down" [ref=e235] [cursor=pointer]':
+              - generic: R$ 417.7 mi
+            - 'generic "Ago/2025: R$ 326.6 mi — clique para drill-down" [ref=e236] [cursor=pointer]':
+              - generic: R$ 326.6 mi
+            - 'generic "Set/2025: R$ 332.6 mi — clique para drill-down" [ref=e237] [cursor=pointer]':
+              - generic: R$ 332.6 mi
+            - 'generic "Out/2025: R$ 334.1 mi — clique para drill-down" [ref=e238] [cursor=pointer]':
+              - generic: R$ 334.1 mi
+            - 'generic "Nov/2025: R$ 350.9 mi — clique para drill-down" [ref=e239] [cursor=pointer]':
+              - generic: R$ 350.9 mi
+            - 'generic "Dez/2025: R$ 669.6 mi — clique para drill-down (2.9σ acima da média)" [ref=e240] [cursor=pointer]':
+              - generic: R$ 669.6 mi
+          - generic [ref=e241]:
+            - generic [ref=e242]: "2024"
+            - 'generic "Jan/2024: R$ 506.2 mi — clique para drill-down" [ref=e243] [cursor=pointer]':
+              - generic: R$ 506.2 mi
+            - 'generic "Fev/2024: R$ 397.7 mi — clique para drill-down" [ref=e244] [cursor=pointer]':
+              - generic: R$ 397.7 mi
+            - 'generic "Mar/2024: R$ 314.6 mi — clique para drill-down" [ref=e245] [cursor=pointer]':
+              - generic: R$ 314.6 mi
+            - 'generic "Abr/2024: R$ 339.4 mi — clique para drill-down" [ref=e246] [cursor=pointer]':
+              - generic: R$ 339.4 mi
+            - 'generic "Mai/2024: R$ 297.1 mi — clique para drill-down" [ref=e247] [cursor=pointer]':
+              - generic: R$ 297.1 mi
+            - 'generic "Jun/2024: R$ 430.9 mi — clique para drill-down" [ref=e248] [cursor=pointer]':
+              - generic: R$ 430.9 mi
+            - 'generic "Jul/2024: R$ 304.3 mi — clique para drill-down" [ref=e249] [cursor=pointer]':
+              - generic: R$ 304.3 mi
+            - 'generic "Ago/2024: R$ 390.5 mi — clique para drill-down" [ref=e250] [cursor=pointer]':
+              - generic: R$ 390.5 mi
+            - 'generic "Set/2024: R$ 291.9 mi — clique para drill-down" [ref=e251] [cursor=pointer]':
+              - generic: R$ 291.9 mi
+            - 'generic "Out/2024: R$ 326.5 mi — clique para drill-down" [ref=e252] [cursor=pointer]':
+              - generic: R$ 326.5 mi
+            - 'generic "Nov/2024: R$ 286.4 mi — clique para drill-down" [ref=e253] [cursor=pointer]':
+              - generic: R$ 286.4 mi
+            - 'generic "Dez/2024: R$ 656.0 mi — clique para drill-down (2.8σ acima da média)" [ref=e254] [cursor=pointer]':
+              - generic: R$ 656.0 mi
+          - generic [ref=e255]:
+            - generic [ref=e256]: "2023"
+            - 'generic "Jan/2023: R$ 494.4 mi — clique para drill-down" [ref=e257] [cursor=pointer]':
+              - generic: R$ 494.4 mi
+            - 'generic "Fev/2023: R$ 294.3 mi — clique para drill-down" [ref=e258] [cursor=pointer]':
+              - generic: R$ 294.3 mi
+            - 'generic "Mar/2023: R$ 312.0 mi — clique para drill-down" [ref=e259] [cursor=pointer]':
+              - generic: R$ 312.0 mi
+            - 'generic "Abr/2023: R$ 249.1 mi — clique para drill-down" [ref=e260] [cursor=pointer]':
+              - generic: R$ 249.1 mi
+            - 'generic "Mai/2023: R$ 258.5 mi — clique para drill-down" [ref=e261] [cursor=pointer]':
+              - generic: R$ 258.5 mi
+            - 'generic "Jun/2023: R$ 312.4 mi — clique para drill-down" [ref=e262] [cursor=pointer]':
+              - generic: R$ 312.4 mi
+            - 'generic "Jul/2023: R$ 268.2 mi — clique para drill-down" [ref=e263] [cursor=pointer]':
+              - generic: R$ 268.2 mi
+            - 'generic "Ago/2023: R$ 268.4 mi — clique para drill-down" [ref=e264] [cursor=pointer]':
+              - generic: R$ 268.4 mi
+            - 'generic "Set/2023: R$ 246.1 mi — clique para drill-down" [ref=e265] [cursor=pointer]':
+              - generic: R$ 246.1 mi
+            - 'generic "Out/2023: R$ 288.9 mi — clique para drill-down" [ref=e266] [cursor=pointer]':
+              - generic: R$ 288.9 mi
+            - 'generic "Nov/2023: R$ 276.3 mi — clique para drill-down" [ref=e267] [cursor=pointer]':
+              - generic: R$ 276.3 mi
+            - 'generic "Dez/2023: R$ 501.8 mi — clique para drill-down" [ref=e268] [cursor=pointer]':
+              - generic: R$ 501.8 mi
+          - generic [ref=e269]:
+            - generic [ref=e270]: "2022"
+            - 'generic "Jan/2022: R$ 364.3 mi — clique para drill-down" [ref=e271] [cursor=pointer]':
+              - generic: R$ 364.3 mi
+            - 'generic "Fev/2022: R$ 183.2 mi — clique para drill-down" [ref=e272] [cursor=pointer]':
+              - generic: R$ 183.2 mi
+            - 'generic "Mar/2022: R$ 198.3 mi — clique para drill-down" [ref=e273] [cursor=pointer]':
+              - generic: R$ 198.3 mi
+            - 'generic "Abr/2022: R$ 238.1 mi — clique para drill-down" [ref=e274] [cursor=pointer]':
+              - generic: R$ 238.1 mi
+            - 'generic "Mai/2022: R$ 200.2 mi — clique para drill-down" [ref=e275] [cursor=pointer]':
+              - generic: R$ 200.2 mi
+            - 'generic "Jun/2022: R$ 254.9 mi — clique para drill-down" [ref=e276] [cursor=pointer]':
+              - generic: R$ 254.9 mi
+            - 'generic "Jul/2022: R$ 327.0 mi — clique para drill-down" [ref=e277] [cursor=pointer]':
+              - generic: R$ 327.0 mi
+            - 'generic "Ago/2022: R$ 237.7 mi — clique para drill-down" [ref=e278] [cursor=pointer]':
+              - generic: R$ 237.7 mi
+            - 'generic "Set/2022: R$ 237.2 mi — clique para drill-down" [ref=e279] [cursor=pointer]':
+              - generic: R$ 237.2 mi
+            - 'generic "Out/2022: R$ 226.0 mi — clique para drill-down" [ref=e280] [cursor=pointer]':
+              - generic: R$ 226.0 mi
+            - 'generic "Nov/2022: R$ 244.6 mi — clique para drill-down" [ref=e281] [cursor=pointer]':
+              - generic: R$ 244.6 mi
+            - 'generic "Dez/2022: R$ 522.5 mi — clique para drill-down" [ref=e282] [cursor=pointer]':
+              - generic: R$ 522.5 mi
+        - generic [ref=e283]:
+          - generic [ref=e284]: Menor
+          - generic [ref=e285]:
+            - generic "R$ 139.6 mi – R$ 215.3 mi" [ref=e286]
+            - generic "R$ 215.3 mi – R$ 291.0 mi" [ref=e287]
+            - generic "R$ 291.0 mi – R$ 366.7 mi" [ref=e288]
+            - generic "R$ 366.7 mi – R$ 442.4 mi" [ref=e289]
+            - generic "R$ 442.4 mi – R$ 518.1 mi" [ref=e290]
+            - generic "R$ 518.1 mi – R$ 593.9 mi" [ref=e291]
+            - generic "R$ 593.9 mi – R$ 669.6 mi" [ref=e292]
+          - generic [ref=e293]: Maior
+          - generic [ref=e295]: Mês atípico (>2σ)
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - generic [ref=e71]:
+          - paragraph [ref=e72]: Quem mais recebeu
+          - heading "Fornecedores que mais aparecem no municipio" [level=2] [ref=e73]
+        - paragraph [ref=e74]: Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local. Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.
+        - generic [ref=e296]:
+          - generic [ref=e298]:
+            - heading "Maiores fornecedores do municipio" [level=3] [ref=e299]
+            - paragraph [ref=e300]: Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.
+            - generic [ref=e301]:
+              - generic [ref=e302]: Recebeu durante Inidoneidade
+              - generic [ref=e304]: Recebeu durante sancao aplicavel
+          - generic [ref=e306]:
+            - generic [ref=e307]:
+              - searchbox "Filtrar fornecedores" [ref=e308]
+              - paragraph [ref=e309]: 200 registro(s) encontrados
+            - table [ref=e311]:
+              - rowgroup [ref=e312]:
+                - row "Fornecedor CNPJ Total Pago Empenhos Situacao Sinais de Atencao" [ref=e313]:
+                  - columnheader "Fornecedor" [ref=e314] [cursor=pointer]
+                  - columnheader "CNPJ" [ref=e315] [cursor=pointer]
+                  - columnheader "Total Pago" [ref=e316] [cursor=pointer]
+                  - columnheader "Empenhos" [ref=e317] [cursor=pointer]
+                  - columnheader "Situacao" [ref=e318] [cursor=pointer]
+                  - columnheader "Sinais de Atencao" [ref=e319] [cursor=pointer]
+              - rowgroup [ref=e320]:
+                - row "OI S/A 76.535.764/****-** R$ 20.0 mi 165 Ativa Impedimento - CEIS (COMPANHIA ÁGUAS DE JOINVILLE/SC - SC) Divida ativa" [ref=e321] [cursor=pointer]:
+                  - cell "OI S/A" [ref=e322]
+                  - cell "76.535.764/****-**" [ref=e323]:
+                    - code [ref=e324]: 76.535.764/****-**
+                  - cell "R$ 20.0 mi" [ref=e325]
+                  - cell "165" [ref=e326]
+                  - cell "Ativa" [ref=e327]
+                  - cell "Impedimento - CEIS (COMPANHIA ÁGUAS DE JOINVILLE/SC - SC) Divida ativa" [ref=e328]:
+                    - generic [ref=e329]: Impedimento - CEIS (COMPANHIA ÁGUAS DE JOINVILLE/SC - SC)
+                    - generic [ref=e330]: Divida ativa
+                - row "MOREIRA & NEVES LTDA 12.373.930/****-** R$ 11.0 mi 266 Ativa Impedimento - CEIS (Governo do Estado de Pernambuco - PE)" [ref=e331] [cursor=pointer]:
+                  - cell "MOREIRA & NEVES LTDA" [ref=e332]
+                  - cell "12.373.930/****-**" [ref=e333]:
+                    - code [ref=e334]: 12.373.930/****-**
+                  - cell "R$ 11.0 mi" [ref=e335]
+                  - cell "266" [ref=e336]
+                  - cell "Ativa" [ref=e337]
+                  - cell "Impedimento - CEIS (Governo do Estado de Pernambuco - PE)" [ref=e338]:
+                    - generic [ref=e339]: Impedimento - CEIS (Governo do Estado de Pernambuco - PE)
+                - row "ICARO GUEDES ALCOFORADO COSTA LTDA. 36.563.839/****-** R$ 8.2 mi 61 Ativa Impedimento - CEIS (PREFEITURA DE TURVO - PR - PR) Divida ativa" [ref=e340] [cursor=pointer]:
+                  - cell "ICARO GUEDES ALCOFORADO COSTA LTDA." [ref=e341]
+                  - cell "36.563.839/****-**" [ref=e342]:
+                    - code [ref=e343]: 36.563.839/****-**
+                  - cell "R$ 8.2 mi" [ref=e344]
+                  - cell "61" [ref=e345]
+                  - cell "Ativa" [ref=e346]
+                  - cell "Impedimento - CEIS (PREFEITURA DE TURVO - PR - PR) Divida ativa" [ref=e347]:
+                    - generic [ref=e348]: Impedimento - CEIS (PREFEITURA DE TURVO - PR - PR)
+                    - generic [ref=e349]: Divida ativa
+                - row "PANORAMA COM. DE PROD. MÉDICOS E FARMACÊUTICOS LTDA 01.722.296/****-** R$ 7.7 mi 153 Ativa Impedimento - CEIS (Prefeitura Municipal de Viçosa do Ceará (CE) - CE)" [ref=e350] [cursor=pointer]:
+                  - cell "PANORAMA COM. DE PROD. MÉDICOS E FARMACÊUTICOS LTDA" [ref=e351]
+                  - cell "01.722.296/****-**" [ref=e352]:
+                    - code [ref=e353]: 01.722.296/****-**
+                  - cell "R$ 7.7 mi" [ref=e354]
+                  - cell "153" [ref=e355]
+                  - cell "Ativa" [ref=e356]
+                  - cell "Impedimento - CEIS (Prefeitura Municipal de Viçosa do Ceará (CE) - CE)" [ref=e357]:
+                    - generic [ref=e358]: Impedimento - CEIS (Prefeitura Municipal de Viçosa do Ceará (CE) - CE)
+                - row "MARBELLA RESIDENCE INCORPORADORA E CONSTRUTORA LTDA. 08.117.778/****-** R$ 7.1 mi 27 Ativa Inidoneidade - CEIS (Nacional) Divida ativa" [ref=e359] [cursor=pointer]:
+                  - cell "MARBELLA RESIDENCE INCORPORADORA E CONSTRUTORA LTDA." [ref=e360]
+                  - cell "08.117.778/****-**" [ref=e361]:
+                    - code [ref=e362]: 08.117.778/****-**
+                  - cell "R$ 7.1 mi" [ref=e363]
+                  - cell "27" [ref=e364]
+                  - cell "Ativa" [ref=e365]
+                  - cell "Inidoneidade - CEIS (Nacional) Divida ativa" [ref=e366]:
+                    - generic [ref=e367]: Inidoneidade - CEIS (Nacional)
+                    - generic [ref=e368]: Divida ativa
+                - row "INSTITUTO DE DESENVOLVIMENTO EDUCACIONAL, CULTURAL E ASSISTENCIAL NACIONAL - IDE 04.236.076/****-** R$ 6.7 mi 5 Ativa Impedimento - CEIS (INST.FED.DE EDUC.,CIENC.E TEC.DO CEARÁ - CE)" [ref=e369] [cursor=pointer]:
+                  - cell "INSTITUTO DE DESENVOLVIMENTO EDUCACIONAL, CULTURAL E ASSISTENCIAL NACIONAL - IDE" [ref=e370]
+                  - cell "04.236.076/****-**" [ref=e371]:
+                    - code [ref=e372]: 04.236.076/****-**
+                  - cell "R$ 6.7 mi" [ref=e373]
+                  - cell "5" [ref=e374]
+                  - cell "Ativa" [ref=e375]
+                  - cell "Impedimento - CEIS (INST.FED.DE EDUC.,CIENC.E TEC.DO CEARÁ - CE)" [ref=e376]:
+                    - generic [ref=e377]: Impedimento - CEIS (INST.FED.DE EDUC.,CIENC.E TEC.DO CEARÁ - CE)
+                - row "SOS COMERCIO DE MATERIAIS MEDICOS HOSPITALARES EIRELI-EPP 28.167.665/****-** R$ 6.5 mi 74 Ativa Impedimento - CEIS (ERN-DIRETORIA DE SAÚDE DA POLÍCIA MILITAR - RN)" [ref=e378] [cursor=pointer]:
+                  - cell "SOS COMERCIO DE MATERIAIS MEDICOS HOSPITALARES EIRELI-EPP" [ref=e379]
+                  - cell "28.167.665/****-**" [ref=e380]:
+                    - code [ref=e381]: 28.167.665/****-**
+                  - cell "R$ 6.5 mi" [ref=e382]
+                  - cell "74" [ref=e383]
+                  - cell "Ativa" [ref=e384]
+                  - cell "Impedimento - CEIS (ERN-DIRETORIA DE SAÚDE DA POLÍCIA MILITAR - RN)" [ref=e385]:
+                    - generic [ref=e386]: Impedimento - CEIS (ERN-DIRETORIA DE SAÚDE DA POLÍCIA MILITAR - RN)
+                - row "SOS GAS LTDA 09.266.128/****-** R$ 6.5 mi 271 Ativa CNEP (Empresa Brasileira de Correios e Telégrafos - DF)" [ref=e387] [cursor=pointer]:
+                  - cell "SOS GAS LTDA" [ref=e388]
+                  - cell "09.266.128/****-**" [ref=e389]:
+                    - code [ref=e390]: 09.266.128/****-**
+                  - cell "R$ 6.5 mi" [ref=e391]
+                  - cell "271" [ref=e392]
+                  - cell "Ativa" [ref=e393]
+                  - cell "CNEP (Empresa Brasileira de Correios e Telégrafos - DF)" [ref=e394]:
+                    - generic [ref=e395]: CNEP (Empresa Brasileira de Correios e Telégrafos - DF)
+                - row "MEGA MASTER COMERCIAL DE ALIMENTOS LTDA 08.370.039/****-** R$ 6.5 mi 119 Ativa Impedimento - CEIS (1º Grau - TRF5 / Seção Judiciária da Paraíba / Var..." [ref=e396] [cursor=pointer]:
+                  - cell "MEGA MASTER COMERCIAL DE ALIMENTOS LTDA" [ref=e397]
+                  - cell "08.370.039/****-**" [ref=e398]:
+                    - code [ref=e399]: 08.370.039/****-**
+                  - cell "R$ 6.5 mi" [ref=e400]
+                  - cell "119" [ref=e401]
+                  - cell "Ativa" [ref=e402]
+                  - cell "Impedimento - CEIS (1º Grau - TRF5 / Seção Judiciária da Paraíba / Var..." [ref=e403]:
+                    - generic [ref=e404]: Impedimento - CEIS (1º Grau - TRF5 / Seção Judiciária da Paraíba / Var...
+                - row "EXEMPLAR SERVICE E LIMPEZA LTDA 13.531.490/****-** R$ 496.2 mi 392 Ativa Divida ativa" [ref=e405] [cursor=pointer]:
+                  - cell "EXEMPLAR SERVICE E LIMPEZA LTDA" [ref=e406]
+                  - cell "13.531.490/****-**" [ref=e407]:
+                    - code [ref=e408]: 13.531.490/****-**
+                  - cell "R$ 496.2 mi" [ref=e409]
+                  - cell "392" [ref=e410]
+                  - cell "Ativa" [ref=e411]
+                  - cell "Divida ativa" [ref=e412]:
+                    - generic [ref=e413]: Divida ativa
+            - generic [ref=e414]:
+              - button "Anterior" [disabled] [ref=e415] [cursor=pointer]
+              - paragraph [ref=e416]: Pagina 1 de 20
+              - button "Proxima" [ref=e417] [cursor=pointer]
+      - generic [ref=e78]:
+        - generic [ref=e80]:
+          - paragraph [ref=e81]: Pessoas para revisar
+          - heading "Servidores que merecem verificacao adicional" [level=2] [ref=e82]
+        - paragraph [ref=e83]: Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios, pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores. Clique em um servidor para ver detalhes.
+    - generic [ref=e87]:
+      - article [ref=e88]:
+        - generic [ref=e89]:
+          - generic [ref=e90]:
+            - paragraph [ref=e91]: Tema de investigacao
+            - heading "Fornecedores com sinais de irregularidade" [level=2] [ref=e92]
+            - paragraph [ref=e93]: Empresas com sancoes, dividas ou situacao cadastral irregular que aparecem recebendo recursos do municipio.
+          - generic [ref=e94]:
+            - strong [ref=e95]: Carregando...
+            - text: achados nesta area
+        - generic [ref=e96]:
+          - generic [ref=e98] [cursor=pointer]:
+            - generic [ref=e99]:
+              - heading "Fornecedor sancionado (CEIS/CNEP) recebendo" [level=3] [ref=e100]
+              - paragraph [ref=e101]: "Empresas que receberam pagamentos durante periodo de sancao vigente. Inclui abrangencia da sancao: Inidoneidade tem bloqueio nacional, Impedimento eh restrito ao ente sancionador."
+            - generic [ref=e102]:
+              - generic [ref=e103]:
+                - strong [ref=e104]: ...
+                - text: registros
+              - generic [ref=e105]: ▼
+          - generic [ref=e110] [cursor=pointer]:
+            - generic [ref=e111]:
+              - heading "Fornecedor com divida PGFN recebendo" [level=3] [ref=e112]
+              - paragraph [ref=e113]: Empresa com divida ativa na Uniao recebendo do municipio
+            - generic [ref=e114]:
+              - generic [ref=e115]:
+                - strong [ref=e116]: ...
+                - text: registros
+              - generic [ref=e117]: ▼
+          - generic [ref=e122] [cursor=pointer]:
+            - generic [ref=e123]:
+              - heading "Empresa inativa recebendo pagamento" [level=3] [ref=e124]
+              - paragraph [ref=e125]: Empresa com situacao cadastral diferente de ativa na RFB recebendo do municipio
+            - generic [ref=e126]:
+              - generic [ref=e127]:
+                - strong [ref=e128]: ...
+                - text: registros
+              - generic [ref=e129]: ▼
+      - article [ref=e133]:
+        - generic [ref=e134]:
+          - generic [ref=e135]:
+            - paragraph [ref=e136]: Tema de investigacao
+            - heading "Sinais em compras e licitacoes" [level=2] [ref=e137]
+            - paragraph [ref=e138]: Padroes que podem indicar baixa concorrencia, direcionamento ou concentracao anormal de contratos.
+          - generic [ref=e139]:
+            - strong [ref=e140]: Carregando...
+            - text: achados nesta area
+        - generic [ref=e141]:
+          - generic [ref=e143] [cursor=pointer]:
+            - generic [ref=e144]:
+              - heading "Todas as licitacoes do municipio" [level=3] [ref=e145]
+              - paragraph [ref=e146]: Lista completa de licitacoes registradas com quantidade de vencedores e maior valor ofertado
+            - generic [ref=e147]:
+              - generic [ref=e148]:
+                - strong [ref=e149]: ...
+                - text: registros
+              - generic [ref=e150]: ▼
+          - generic [ref=e155] [cursor=pointer]:
+            - generic [ref=e156]:
+              - heading "Fornecedores com mesmo endereco" [level=3] [ref=e157]
+              - paragraph [ref=e158]: Empresas no mesmo endereco recebendo do municipio — possivel laranja
+            - generic [ref=e159]:
+              - generic [ref=e160]:
+                - strong [ref=e161]: ...
+                - text: registros
+              - generic [ref=e162]: ▼
+          - generic [ref=e167] [cursor=pointer]:
+            - generic [ref=e168]:
+              - heading "Fracionamento de despesa" [level=3] [ref=e169]
+              - paragraph [ref=e170]: Mesmo credor+elemento+mes com empenhos fracionados acima de R$50k
+            - generic [ref=e171]:
+              - generic [ref=e172]:
+                - strong [ref=e173]: ...
+                - text: registros
+              - generic [ref=e174]: ▼
+      - article [ref=e178]:
+        - generic [ref=e179]:
+          - generic [ref=e180]:
+            - paragraph [ref=e181]: Tema de investigacao
+            - heading "Execucao orcamentaria e financeira" [level=2] [ref=e182]
+            - paragraph [ref=e183]: Desvios entre o que foi empenhado, contratado e efetivamente pago, alem de concentracoes atipicas de despesas.
+          - generic [ref=e184]:
+            - strong [ref=e185]: Carregando...
+            - text: achados nesta area
+        - generic [ref=e188] [cursor=pointer]:
+          - generic [ref=e189]:
+            - heading "Divergencia empenhado vs pago" [level=3] [ref=e190]
+            - paragraph [ref=e191]: Credores com valor pago muito menor que empenhado no municipio
+          - generic [ref=e192]:
+            - generic [ref=e193]:
+              - strong [ref=e194]: ...
+              - text: registros
+            - generic [ref=e195]: ▼
