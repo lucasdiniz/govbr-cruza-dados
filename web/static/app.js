@@ -1279,11 +1279,9 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
                 const monthStart = new Date(m.mes + '-01');
                 const monthEnd = new Date(monthStart); monthEnd.setMonth(monthEnd.getMonth() + 1); monthEnd.setDate(0);
                 const inSancao = sancaoRanges.find(r =>
-                    r.inicio <= monthEnd && (!r.fim || r.fim >= monthStart)
+                    r.grave && r.inicio <= monthEnd && (!r.fim || r.fim >= monthStart)
                 );
-                const barClass = inSancao
-                    ? (inSancao.grave ? 'mini-bar bar-sancao' : 'mini-bar bar-sancao-leve')
-                    : 'mini-bar';
+                const barClass = inSancao ? 'mini-bar bar-sancao' : 'mini-bar';
                 return `<div class="mini-bar-col">
                     <span class="mini-bar-tip">${_shortBrl(m.total_mes)}</span>
                     <div class="${barClass}" style="height:${Math.max(pct, 3)}%"></div>
