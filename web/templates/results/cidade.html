@@ -3,6 +3,13 @@
 {% block meta_description %}Panorama de transparencia de {{ municipio }} - PB: despesas, fornecedores irregulares, servidores com conflito e contratos sem licitacao.{% endblock %}
 {% block og_title %}{{ municipio }} - PB | TransparenciaPB{% endblock %}
 {% block og_description %}Panorama de transparencia de {{ municipio }} - PB.{% endblock %}
+{% block twitter_card %}summary_large_image{% endblock %}
+{% block og_image %}
+<meta property="og:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
+{% endblock %}
 {% block body_class %}dark-page{% endblock %}
 {% block content %}
 
