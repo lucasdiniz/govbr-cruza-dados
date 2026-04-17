@@ -2,11 +2,20 @@
     <div class="result-toolbar">
         <div>
             <h3 class="card-title">{{ title }}</h3>
-            <p class="text-muted text-sm">Use o filtro para localizar nomes, empresas, documentos ou termos relevantes nesta tabela.</p>
+            <p class="text-muted text-sm">
+                <span class="citizen-only">Use o filtro para procurar uma empresa, um nome ou uma palavra nesta tabela.</span>
+                <span class="auditor-only">Use o filtro para localizar nomes, empresas, documentos ou termos relevantes nesta tabela.</span>
+            </p>
             {% if 'abrangencia' in columns %}
             <div class="color-legend">
-                <span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> Sancao de abrangencia nacional ou inidoneidade</span>
-                <span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> Sancao de abrangencia restrita (informativo)</span>
+                <span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span>
+                    <span class="citizen-only">Puni&ccedil;&atilde;o que vale em todo o Brasil ou proibida de contratar</span>
+                    <span class="auditor-only">Sancao de abrangencia nacional ou inidoneidade</span>
+                </span>
+                <span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span>
+                    <span class="citizen-only">Puni&ccedil;&atilde;o com alcance limitado (informativo)</span>
+                    <span class="auditor-only">Sancao de abrangencia restrita (informativo)</span>
+                </span>
             </div>
             {% endif %}
         </div>
@@ -15,7 +24,8 @@
             href="#"
             data-export-link
         >
-            Exportar CSV
+            <span class="citizen-only">Baixar planilha</span>
+            <span class="auditor-only">Exportar CSV</span>
         </a>
     </div>
 
@@ -41,7 +51,14 @@
                 <thead>
                     <tr>
                         {% for col in columns %}
-                    <th>{{ col|replace("_", " ")|title|clean_text }}</th>
+                        {% set meta = COLUMN_META.get(col, {}) %}
+                        {% set auditor_only = meta.get('auditor_only') %}
+                        {% set citizen_label = meta.get('citizen') %}
+                        {% set auditor_label = meta.get('auditor') or (col|replace('_', ' ')|title) %}
+                    <th{% if auditor_only %} class="auditor-only"{% endif %}>
+                        {% if auditor_only or not citizen_label %}{{ auditor_label|clean_text }}
+                        {% else %}<span class="citizen-only">{{ citizen_label|clean_text }}</span><span class="auditor-only">{{ auditor_label|clean_text }}</span>{% endif %}
+                    </th>
                         {% endfor %}
                     </tr>
                 </thead>
@@ -78,7 +95,8 @@
                     {% endif %}
                         {% for col in columns %}
                         {% set value = row[col] %}
-                        <td>
+                        {% set cell_auditor_only = COLUMN_META.get(col, {}).get('auditor_only') %}
+                        <td{% if cell_auditor_only %} class="auditor-only"{% endif %}>
                             {% if value is sameas true %}
                                 <span class="badge badge-red">Sim</span>
                             {% elif value is sameas false %}

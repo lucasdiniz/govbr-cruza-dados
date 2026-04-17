@@ -41,7 +41,21 @@ function initModeToggle() {
     });
 }
 
-// Tooltip em .term[data-tip] para mobile (tap alterna .tip-open)
+// Gera um par de spans citizen/auditor para rotular UI em dois modos.
+// Uso: `<span class="stat-label">${dualLabel('Recebido','Total pago')}</span>`
+// Se auditor for omitido, usa citizen para ambos (sem duplicar markup).
+// Tooltip opcional no span cidadao com o termo tecnico (acessivel via tap).
+function dualLabel(citizen, auditor, opts) {
+    const aud = (auditor == null) ? citizen : auditor;
+    if (citizen === aud) return String(citizen);
+    const tip = (opts && opts.tip !== false) ? ` data-tip="Termo t&eacute;cnico: ${aud}"` : '';
+    const termCls = (opts && opts.tip !== false) ? ' term' : '';
+    return `<span class="citizen-only${termCls}"${tip}>${citizen}</span><span class="auditor-only">${aud}</span>`;
+}
+// Expose globally for inline usage dentro de template literals
+window.dualLabel = dualLabel;
+
+
 function initTermTooltips() {
     document.addEventListener('click', (e) => {
         const term = e.target.closest('.term[data-tip]');
@@ -1284,8 +1298,8 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
     const nome = _esc(e.razao_social || 'Razao social nao disponivel');
     const nomeLink = `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-nome="${nome}">${nome}</a>`;
-    const qualif = e.qualificacao_socio ? `<span>Qualificacao: <strong>${_esc(e.qualificacao_socio)}</strong></span>` : '';
-    const dtEntrada = e.dt_entrada_sociedade ? `<span>Entrada: ${_fmtDate(e.dt_entrada_sociedade)}</span>` : '';
+    const qualif = e.qualificacao_socio ? `<span>${dualLabel('Papel:','Qualificacao:')} <strong>${_esc(e.qualificacao_socio)}</strong></span>` : '';
+    const dtEntrada = e.dt_entrada_sociedade ? `<span class="auditor-only">Entrada: ${_fmtDate(e.dt_entrada_sociedade)}</span>` : '';
     return `<div class="empresa-card">
         <div class="empresa-header">
             <strong>${nomeLink}</strong>
@@ -1293,10 +1307,10 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
         </div>
         <div class="empresa-details">
             ${qualif}${dtEntrada}
-            <span>Situacao: <span class="${sitClass}">${sit}</span></span>
-            <span>Capital: ${capital}</span>
+            <span>${dualLabel('Cadastro:','Situacao:')} <span class="${sitClass}">${sit}</span></span>
+            <span class="auditor-only">Capital: ${capital}</span>
             <span>Sede: ${_esc(local)}</span>
-            ${e.cnae_principal ? `<span>CNAE: ${_esc(e.cnae_principal)}</span>` : ''}
+            ${e.cnae_principal ? `<span class="auditor-only">CNAE: ${_esc(e.cnae_principal)}</span>` : ''}
         </div>
         ${extraBadges ? `<div style="margin-top:.35rem">${extraBadges}</div>` : ''}
     </div>`;
@@ -1335,18 +1349,18 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 
     html += '<div class="stats-grid">';
     if (maiorSalario > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(maiorSalario)}</span><span class="stat-label">Maior salario</span></div>`;
-    html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">Empresas vinculadas</span></div>`;
-    if (totalDuranteVinc > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalDuranteVinc)}</span><span class="stat-label">Pago as empresas durante vinculo</span></div>`;
+    html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">${dualLabel('Empresas onde atua','Empresas vinculadas')}</span></div>`;
+    if (totalDuranteVinc > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalDuranteVinc)}</span><span class="stat-label">${dualLabel('Pago as empresas enquanto era servidor','Pago as empresas durante vinculo')}</span></div>`;
     if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
-    if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">Empresas sancionadas</span></div>`;
-    if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">Empresas c/ divida PGFN</span></div>`;
+    if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
+    if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
     if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
-    if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell" style="border-color:var(--red)"><span class="stat-value" style="color:var(--red)">${data.ceaf.length}</span><span class="stat-label">Expulsao federal</span></div>`;
+    if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell" style="border-color:var(--red)"><span class="stat-value" style="color:var(--red)">${data.ceaf.length}</span><span class="stat-label">${dualLabel('Expulso do servico publico federal','Expulsao federal')}</span></div>`;
     html += '</div>';
 
     // Vinculos como servidor (first)
     if (vinculos.length) {
-        html += '<div class="dialog-section"><h4>Vinculos como servidor</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Empregos publicos','Vinculos como servidor')}</h4>`;
         html += vinculos.map(v => {
             const admissao = _fmtDate(v.data_admissao);
             const ultimo = _fmtDate(v.ultimo_registro);
@@ -1368,7 +1382,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 
     // Empresas vinculadas (with badges)
     if (cnpjs && cnpjs.length) {
-        html += '<div class="dialog-section"><h4>Empresas vinculadas</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Empresas onde aparece como socio','Empresas vinculadas')}</h4>`;
         const empresaMap = {};
         for (const e of empresas) empresaMap[e.cnpj_basico] = e;
         html += cnpjs.map(c => {
@@ -1415,7 +1429,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 
     // Bolsa Familia
     if (bf.length) {
-        html += '<div class="dialog-section"><h4>Bolsa Familia</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia')}</h4>`;
         const ultimo = bf[0];
         const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
         html += `<div class="empresa-card">
@@ -1433,7 +1447,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 
     // CEAF - Expulsoes da Administracao Federal
     if (data.ceaf && data.ceaf.length) {
-        html += '<div class="dialog-section"><h4>Expulsoes da Administracao Federal (CEAF)</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Expulsoes do servico publico federal','Expulsoes da Administracao Federal (CEAF)')}</h4>`;
         html += data.ceaf.map(c => {
             return `<div class="empresa-card" style="border-left: 3px solid var(--red)">
                 <div class="empresa-header">
@@ -1470,7 +1484,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             empresaNames[emp.cnpj_basico] = emp.razao_social || emp.cnpj_basico;
         }
 
-        html += `<div class="dialog-section"><h4>Empenhos recebidos pelas empresas durante vinculo</h4>`;
+        html += `<div class="dialog-section"><h4>${dualLabel('Pagamentos do governo as empresas enquanto era servidor','Empenhos recebidos pelas empresas durante vinculo')}</h4>`;
         html += `<p class="text-sm text-muted" style="margin-bottom:.5rem">Pagamentos realizados pelo municipio as empresas das quais o servidor e socio, durante o periodo em que manteve vinculo ativo.</p>`;
 
         // Summary by empresa
@@ -1569,17 +1583,17 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         const sitClass = String(est.situacao_cadastral) === '2' ? '' : 'badge badge-red';
         const cnpjFmt = _formatCnpj(cnpjBasico, est.cnpj_completo);
         const local = [est.municipio, est.uf].filter(Boolean).join(' - ') || '-';
-        html += '<div class="dialog-section"><h4>Dados cadastrais</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Dados da empresa','Dados cadastrais')}</h4>`;
         html += `<div class="empresa-card">
             <div class="empresa-header">
                 <strong>${_esc(fornecedorNome)}</strong>
                 <code>${cnpjFmt}</code>
             </div>
             <div class="empresa-details">
-                <span>Situacao: <span class="${sitClass}">${sit}</span></span>
-                ${est.dt_situacao ? `<span>Data situacao: ${_fmtDate(est.dt_situacao)}</span>` : ''}
+                <span>${dualLabel('Cadastro:','Situacao:')} <span class="${sitClass}">${sit}</span></span>
+                ${est.dt_situacao ? `<span class="auditor-only">Data situacao: ${_fmtDate(est.dt_situacao)}</span>` : ''}
                 <span>Sede: ${_esc(local)}</span>
-                ${est.cnae_principal ? `<span>CNAE: ${_esc(est.cnae_principal)}</span>` : ''}
+                ${est.cnae_principal ? `<span class="auditor-only">CNAE: ${_esc(est.cnae_principal)}</span>` : ''}
             </div>
         </div>`;
         html += '</div>';
@@ -1593,23 +1607,23 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             : '0.0';
         const periodo = `${_fmtDate(st.primeiro_empenho)} a ${_fmtDate(st.ultimo_empenho)}`;
 
-        html += '<div class="dialog-section"><h4>Resumo de pagamentos neste municipio</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Quanto esta empresa recebeu desta cidade','Resumo de pagamentos neste municipio')}</h4>`;
         html += `<div class="stats-grid">
             <div class="stat-cell">
                 <span class="stat-value">${_shortBrl(st.total_pago)}</span>
-                <span class="stat-label">Total pago</span>
+                <span class="stat-label">${dualLabel('Dinheiro ja entregue','Total pago')}</span>
             </div>
             <div class="stat-cell">
                 <span class="stat-value">${_shortBrl(st.total_empenhado)}</span>
-                <span class="stat-label">Total empenhado</span>
+                <span class="stat-label">${dualLabel('Reservado no orcamento','Total empenhado')}</span>
             </div>
             <div class="stat-cell">
                 <span class="stat-value">${st.qtd_empenhos}</span>
-                <span class="stat-label">Empenhos</span>
+                <span class="stat-label">${dualLabel('Qtd pagamentos','Empenhos')}</span>
             </div>
             <div class="stat-cell">
                 <span class="stat-value ${parseFloat(pctSemLic) >= 50 ? 'color-red' : ''}">${pctSemLic}%</span>
-                <span class="stat-label">Sem licitacao</span>
+                <span class="stat-label">${dualLabel('Sem concorrencia','Sem licitacao')}</span>
             </div>
         </div>`;
         html += `<p class="text-sm text-muted" style="margin-top:.4rem">Periodo: ${periodo}</p>`;
@@ -1671,7 +1685,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     if (data.sancoes && data.sancoes.length) {
         const sanCnpj = (data.sancoes[0].cpf_cnpj_sancionado || '').replace(/\D/g, '');
         const sanUrl = `https://portaldatransparencia.gov.br/sancoes/consulta?paginacaoSimples=true&tamanhoPagina=&offset=&direcaoOrdenacao=asc&cpfCnpj=${sanCnpj}&colunasSelecionadas=linkDetalhamento%2Ccadastro%2CcpfCnpj%2CnomeSancionado%2CufSancionado%2Corgao%2CcategoriaSancao%2CdataPublicacao%2CvalorMulta%2Cquantidade`;
-        html += `<div class="dialog-section"><h4>Sancoes ${sanCnpj ? `<a href="${sanUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>` : ''}</h4>`;
+        html += `<div class="dialog-section"><h4>${dualLabel('Punicoes','Sancoes')} ${sanCnpj ? `<a href="${sanUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>` : ''}</h4>`;
         html += data.sancoes.map(s => {
             const inicio = _fmtDate(s.dt_inicio_sancao);
             const fim = s.dt_final_sancao ? _fmtDate(s.dt_final_sancao) : 'Sem prazo definido';
@@ -1722,7 +1736,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
 
     // Divida PGFN
     if (data.pgfn && data.pgfn.length) {
-        html += '<div class="dialog-section"><h4>Divida ativa (PGFN) <a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener" class="ext-link-inline" title="Consultar na Lista de Devedores">&#8599;</a></h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Impostos federais em atraso','Divida ativa (PGFN)')} <a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener" class="ext-link-inline" title="Consultar na Lista de Devedores">&#8599;</a></h4>`;
         html += data.pgfn.map(d => {
             const ajuizado = d.indicador_ajuizado === 'S' || d.indicador_ajuizado === 'Sim';
             return `<div class="empresa-card">
@@ -1744,7 +1758,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
 
     // Acordos de Leniencia
     if (data.acordos_leniencia && data.acordos_leniencia.length) {
-        html += '<div class="dialog-section"><h4>Acordos de Leniencia</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Acordos de colaboracao (Lei Anticorrupcao)','Acordos de Leniencia')}</h4>`;
         html += data.acordos_leniencia.map(a => {
             const status = a.situacao_acordo || 'Desconhecido';
             const statusBadge = status === 'Cumprido'
@@ -1783,7 +1797,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">${opts}</select>`;
         }
 
-        html += `<div class="dialog-section" id="forn-empenhos"><h4>Empenhos recentes ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
+        html += `<div class="dialog-section" id="forn-empenhos"><h4>${dualLabel('Pagamentos recentes','Empenhos recentes')} ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
         html += _buildEmpenhoTable(data.empenhos, sancaoRanges);
         if (data.empenhos.length >= 50) {
             html += '<p class="text-sm text-muted">Mostrando os 50 empenhos mais recentes.</p>';
@@ -1794,7 +1808,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     // Empenhos durante sancao em outros municipios
     if (data.empenhos_sancao_outros && data.empenhos_sancao_outros.length) {
         const totalOutros = data.empenhos_sancao_outros.reduce((s, m) => s + m.total_pago, 0);
-        html += '<div class="dialog-section"><h4>Pagamentos durante sancao em outros municipios</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Recebeu pagamento em outras cidades mesmo estando punida','Pagamentos durante sancao em outros municipios')}</h4>`;
         html += `<p class="text-sm text-muted" style="margin-bottom:.5rem">Total: ${_shortBrl(totalOutros)} em ${data.empenhos_sancao_outros.length} municipio(s)</p>`;
         const outrosRows = data.empenhos_sancao_outros.map(m =>
             `<tr class="row-sancao clickable-row" data-switch-mun="${_esc(m.municipio)}" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">
@@ -1852,15 +1866,15 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
     html += '<div class="stats-grid">';
-    html += `<div class="stat"><div class="stat-label">Total empenhado</div><div class="stat-value">${_shortBrl(Number(resumo.total_empenhado || 0))}</div></div>`;
-    html += `<div class="stat"><div class="stat-label">Total pago</div><div class="stat-value">${_shortBrl(Number(resumo.total_pago || 0))}</div></div>`;
-    html += `<div class="stat"><div class="stat-label">Empenhos</div><div class="stat-value">${Number(resumo.qtd_empenhos || 0).toLocaleString('pt-BR')}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">${dualLabel('Reservado','Total empenhado')}</div><div class="stat-value">${_shortBrl(Number(resumo.total_empenhado || 0))}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">${dualLabel('Pago','Total pago')}</div><div class="stat-value">${_shortBrl(Number(resumo.total_pago || 0))}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">${dualLabel('Qtd pagamentos','Empenhos')}</div><div class="stat-value">${Number(resumo.qtd_empenhos || 0).toLocaleString('pt-BR')}</div></div>`;
     html += `<div class="stat"><div class="stat-label">Fornecedores</div><div class="stat-value">${Number(resumo.qtd_fornecedores || 0).toLocaleString('pt-BR')}</div></div>`;
     html += '</div></div>';
 
     if (fornecedores.length) {
-        html += '<div class="dialog-section"><h4>Top fornecedores</h4>';
-        html += '<table class="data-table"><thead><tr><th>Fornecedor</th><th>CPF/CNPJ</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Quem mais recebeu','Top fornecedores')}</h4>`;
+        html += `<table class="data-table"><thead><tr><th>${dualLabel('Empresa','Fornecedor')}</th><th class="auditor-only">CPF/CNPJ</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const f of fornecedores) {
             const nome = _esc(f.nome_credor || '-');
             const doc = _esc(f.cpf_cnpj || '-');
@@ -1868,50 +1882,50 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
             const nomeCell = isPJ
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
                 : nome;
-            html += `<tr><td>${nomeCell}</td><td><code>${doc}</code></td><td class="num">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
+            html += `<tr><td>${nomeCell}</td><td class="auditor-only"><code>${doc}</code></td><td class="num auditor-only">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
         }
         html += '</tbody></table></div>';
     }
 
     if (elementos.length) {
-        html += '<div class="dialog-section"><h4>Top elementos de despesa</h4>';
-        html += '<table class="data-table"><thead><tr><th>Elemento</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Em que a cidade gastou','Top elementos de despesa')}</h4>`;
+        html += `<table class="data-table"><thead><tr><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const e of elementos) {
-            html += `<tr><td>${_esc(e.elemento_despesa || '-')}</td><td class="num">${Number(e.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(e.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(e.total_pago || 0))}</td></tr>`;
+            html += `<tr><td>${_esc(e.elemento_despesa || '-')}</td><td class="num auditor-only">${Number(e.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(e.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(e.total_pago || 0))}</td></tr>`;
         }
         html += '</tbody></table></div>';
     }
 
     if (funcoes.length) {
-        html += '<div class="dialog-section"><h4>Funcao / Programa</h4>';
-        html += '<table class="data-table"><thead><tr><th>Funcao</th><th>Programa</th><th class="num">Empenhos</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Areas do governo que gastaram','Funcao / Programa')}</h4>`;
+        html += `<table class="data-table"><thead><tr><th>${dualLabel('Area','Funcao')}</th><th>Programa</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const fu of funcoes) {
-            html += `<tr><td>${_esc(fu.funcao || '-')}</td><td>${_esc(fu.programa || '-')}</td><td class="num">${Number(fu.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(fu.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(fu.total_pago || 0))}</td></tr>`;
+            html += `<tr><td>${_esc(fu.funcao || '-')}</td><td>${_esc(fu.programa || '-')}</td><td class="num auditor-only">${Number(fu.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(fu.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(fu.total_pago || 0))}</td></tr>`;
         }
         html += '</tbody></table></div>';
     }
 
     if (modalidades.length) {
-        html += '<div class="dialog-section"><h4>Modalidade de licitacao</h4>';
-        html += '<table class="data-table"><thead><tr><th>Modalidade</th><th class="num">Empenhos</th><th class="num">Licitacoes</th><th class="num">Empenhado</th></tr></thead><tbody>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Como foi contratado','Modalidade de licitacao')}</h4>`;
+        html += `<table class="data-table"><thead><tr><th>${dualLabel('Tipo de licitacao','Modalidade')}</th><th class="num auditor-only">Empenhos</th><th class="num">Licitacoes</th><th class="num">${dualLabel('Reservado','Empenhado')}</th></tr></thead><tbody>`;
         for (const m of modalidades) {
-            html += `<tr><td>${_esc(m.modalidade || '-')}</td><td class="num">${Number(m.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${Number(m.qtd_licitacoes || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(m.total_empenhado || 0))}</td></tr>`;
+            html += `<tr><td>${_esc(m.modalidade || '-')}</td><td class="num auditor-only">${Number(m.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${Number(m.qtd_licitacoes || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(m.total_empenhado || 0))}</td></tr>`;
         }
         html += '</tbody></table></div>';
     }
 
     if (empenhos.length) {
-        html += `<div class="dialog-section"><h4>Empenhos do mes (top ${empenhos.length} por valor)</h4>`;
-        html += '<table class="data-table"><thead><tr><th>Nº</th><th>Data</th><th>Credor</th><th>Elemento</th><th>Funcao</th><th class="num">Empenhado</th><th class="num">Pago</th></tr></thead><tbody>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Maiores pagamentos do mes','Empenhos do mes (top ' + empenhos.length + ' por valor)')}</h4>`;
+        html += `<table class="data-table"><thead><tr><th class="auditor-only">Nº</th><th>Data</th><th>${dualLabel('Empresa','Credor')}</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="auditor-only">Funcao</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const e of empenhos) {
             const dt = e.data_empenho ? _fmtDate(e.data_empenho) : '-';
             const historico = _esc(e.historico_resumo || '');
             html += `<tr class="clickable-row" data-empenho-id="${e.id}" title="${historico}">`
-                + `<td><code>${_esc(e.numero_empenho || '-')}</code></td>`
+                + `<td class="auditor-only"><code>${_esc(e.numero_empenho || '-')}</code></td>`
                 + `<td>${dt}</td>`
                 + `<td>${_esc(e.nome_credor || '-')}</td>`
                 + `<td>${_esc(e.elemento_despesa || '-')}</td>`
-                + `<td>${_esc(e.funcao || '-')}</td>`
+                + `<td class="auditor-only">${_esc(e.funcao || '-')}</td>`
                 + `<td class="num">${_shortBrl(Number(e.valor_empenhado || 0))}</td>`
                 + `<td class="num">${_shortBrl(Number(e.valor_pago || 0))}</td>`
                 + `</tr>`;
@@ -1961,21 +1975,21 @@ async function openEmpenhoDialog(empenhoId) {
     html += `<div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
         <div class="stat-cell">
             <span class="stat-value">${_shortBrl(data.valor_empenhado)}</span>
-            <span class="stat-label">Empenhado</span>
+            <span class="stat-label">${dualLabel('Reservado','Empenhado')}</span>
         </div>
         <div class="stat-cell">
             <span class="stat-value">${_shortBrl(data.valor_liquidado)}</span>
-            <span class="stat-label">Liquidado</span>
+            <span class="stat-label">${dualLabel('Servico entregue','Liquidado')}</span>
         </div>
         <div class="stat-cell">
             <span class="stat-value">${_shortBrl(data.valor_pago)}</span>
-            <span class="stat-label">Pago</span>
+            <span class="stat-label">${dualLabel('Dinheiro saiu','Pago')}</span>
         </div>
     </div>`;
     html += '</div>';
 
     // Credor
-    html += '<div class="dialog-section"><h4>Credor</h4>';
+    html += `<div class="dialog-section"><h4>${dualLabel('Quem recebeu','Credor')}</h4>`;
     const cnpjRaw = String(data.cpf_cnpj || '').replace(/\D/g, '');
     const cnpjB = cnpjRaw.slice(0, 8);
     const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
@@ -1990,26 +2004,26 @@ async function openEmpenhoDialog(empenhoId) {
     html += '</div>';
 
     // Classificacao orcamentaria
-    html += '<div class="dialog-section"><h4>Classificacao orcamentaria</h4>';
+    html += `<div class="dialog-section"><h4>${dualLabel('Em que foi gasto','Classificacao orcamentaria')}</h4>`;
     html += '<div class="empresa-card"><div class="empresa-details">';
-    if (data.funcao) html += `<span><strong>Funcao:</strong> ${_esc(data.funcao)}</span>`;
-    if (data.subfuncao) html += `<span><strong>Subfuncao:</strong> ${_esc(data.subfuncao)}</span>`;
+    if (data.funcao) html += `<span><strong>${dualLabel('Area:','Funcao:')}</strong> ${_esc(data.funcao)}</span>`;
+    if (data.subfuncao) html += `<span class="auditor-only"><strong>Subfuncao:</strong> ${_esc(data.subfuncao)}</span>`;
     if (data.programa) html += `<span><strong>Programa:</strong> ${_esc(data.programa)}</span>`;
-    if (data.acao) html += `<span><strong>Acao:</strong> ${_esc(data.acao)}</span>`;
-    if (data.elemento_despesa) html += `<span><strong>Elemento:</strong> ${_esc(data.elemento_despesa)}</span>`;
-    if (data.categoria_economica) html += `<span><strong>Categoria:</strong> ${_esc(data.categoria_economica)}</span>`;
-    if (data.grupo_natureza_despesa) html += `<span><strong>Natureza:</strong> ${_esc(data.grupo_natureza_despesa)}</span>`;
-    if (data.modalidade_aplicacao) html += `<span><strong>Aplicacao:</strong> ${_esc(data.modalidade_aplicacao)}</span>`;
+    if (data.acao) html += `<span class="auditor-only"><strong>Acao:</strong> ${_esc(data.acao)}</span>`;
+    if (data.elemento_despesa) html += `<span><strong>${dualLabel('Tipo de gasto:','Elemento:')}</strong> ${_esc(data.elemento_despesa)}</span>`;
+    if (data.categoria_economica) html += `<span class="auditor-only"><strong>Categoria:</strong> ${_esc(data.categoria_economica)}</span>`;
+    if (data.grupo_natureza_despesa) html += `<span class="auditor-only"><strong>Natureza:</strong> ${_esc(data.grupo_natureza_despesa)}</span>`;
+    if (data.modalidade_aplicacao) html += `<span class="auditor-only"><strong>Aplicacao:</strong> ${_esc(data.modalidade_aplicacao)}</span>`;
     html += '</div></div>';
     html += '</div>';
 
     // Origem / UG / fonte
-    html += '<div class="dialog-section"><h4>Origem</h4>';
+    html += `<div class="dialog-section"><h4>${dualLabel('De onde veio o dinheiro','Origem')}</h4>`;
     html += '<div class="empresa-card"><div class="empresa-details">';
     html += `<span><strong>Data:</strong> ${_fmtDate(data.data_empenho)}</span>`;
-    if (data.descricao_ug) html += `<span><strong>UG:</strong> ${_esc(data.descricao_ug)}</span>`;
+    if (data.descricao_ug) html += `<span><strong>${dualLabel('Setor:','UG:')}</strong> ${_esc(data.descricao_ug)}</span>`;
     if (data.descricao_unidade_orcamentaria) html += `<span><strong>Unidade:</strong> ${_esc(data.descricao_unidade_orcamentaria)}</span>`;
-    if (data.descricao_fonte_recurso) html += `<span><strong>Fonte:</strong> ${_esc(data.descricao_fonte_recurso)}</span>`;
+    if (data.descricao_fonte_recurso) html += `<span><strong>${dualLabel('Origem do recurso:','Fonte:')}</strong> ${_esc(data.descricao_fonte_recurso)}</span>`;
     if (data.municipio) html += `<span><strong>Municipio:</strong> ${_esc(data.municipio)}</span>`;
     html += '</div></div>';
 
@@ -2049,7 +2063,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
     // Metadata — always render header
     const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;
-    html += '<div class="dialog-section"><h4>Dados da licitacao</h4>';
+    html += `<div class="dialog-section"><h4>${dualLabel('Dados desta licitacao','Dados da licitacao')}</h4>`;
     if (data.licitacao) {
         const lic = data.licitacao;
         html += `<div class="empresa-card">
@@ -2078,7 +2092,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
     // Proponentes
     if (data.proponentes && data.proponentes.length) {
-        html += '<div class="dialog-section"><h4>Proponentes</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Empresas que participaram','Proponentes')}</h4>`;
         const propRows = data.proponentes.map(p => {
             const cnpjRaw = String(p.cpf_cnpj_proponente || '').replace(/\D/g, '');
             const cnpjB = cnpjRaw.slice(0, 8);
@@ -2089,13 +2103,13 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
                 : nome;
             return `<tr>
                 <td>${nomeLink}</td>
-                <td><code class="text-sm">${_esc(p.cpf_cnpj_proponente || '-')}</code></td>
+                <td class="auditor-only"><code class="text-sm">${_esc(p.cpf_cnpj_proponente || '-')}</code></td>
                 <td class="text-right">${_shortBrl(p.valor_ofertado)}</td>
                 <td>${_esc(p.situacao_proposta || '-')}</td>
             </tr>`;
         }).join('');
         html += `<div class="tbl-wrap"><table class="dialog-table">
-            <thead><tr><th>Proponente</th><th>CNPJ/CPF</th><th class="text-right">Valor ofertado</th><th>Situacao</th></tr></thead>
+            <thead><tr><th>${dualLabel('Empresa','Proponente')}</th><th class="auditor-only">CNPJ/CPF</th><th class="text-right">${dualLabel('Valor proposto','Valor ofertado')}</th><th>${dualLabel('Resultado','Situacao')}</th></tr></thead>
             <tbody>${propRows}</tbody>
         </table></div>`;
         html += '</div>';
@@ -2103,7 +2117,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
     // Despesas vinculadas
     if (data.despesas && data.despesas.length) {
-        html += '<div class="dialog-section"><h4>Despesas vinculadas</h4>';
+        html += `<div class="dialog-section"><h4>${dualLabel('Pagamentos desta licitacao','Despesas vinculadas')}</h4>`;
         const despRows = data.despesas.map(d => {
             const cnpjRaw = String(d.cpf_cnpj || '').replace(/\D/g, '');
             const cnpjB = cnpjRaw.slice(0, 8);
@@ -2121,7 +2135,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
             </tr>`;
         }).join('');
         html += `<div class="tbl-wrap"><table class="dialog-table">
-            <thead><tr><th>Credor</th><th>Data</th><th>Elemento</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th></tr></thead>
+            <thead><tr><th>${dualLabel('Empresa','Credor')}</th><th>Data</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="text-right">${dualLabel('Reservado','Empenhado')}</th><th class="text-right">Pago</th></tr></thead>
             <tbody>${despRows}</tbody>
         </table></div>`;
         if (data.despesas.length >= 50) {
