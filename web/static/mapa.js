@@ -189,17 +189,24 @@
         state.dataIdx = buildDataIndex(dataRes);
         state.pop = popRes;
 
-        state.map = L.map('mapa-pb', {
+        const map = L.map('mapa-pb', {
             zoomControl: true,
             attributionControl: false,
+            scrollWheelZoom: false,
         }).setView([-7.25, -36.8], 8);
+        state.map = map;
 
         state.layer = L.geoJSON(state.geojson, {
             style: styleFeature,
             onEachFeature,
         }).addTo(state.map);
 
-        state.map.fitBounds(state.layer.getBounds(), { padding: [10, 10] });
+        const bounds = state.layer.getBounds();
+        state.map.fitBounds(bounds, { padding: [10, 10] });
+        // Trava o zoom-out no enquadramento inicial e impede pan para fora da PB.
+        const minZoom = state.map.getZoom();
+        state.map.setMinZoom(minZoom);
+        state.map.setMaxBounds(bounds.pad(0.1));
         wireToggle();
         renderLegend();
     }

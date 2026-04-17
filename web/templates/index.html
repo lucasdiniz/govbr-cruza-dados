@@ -1,57 +1,53 @@
 {% extends "base.html" %}
-{% block title %}Busca{% endblock %}
-{% block body_class %}dark-page{% endblock %}
+{% block title %}Cruza Dados - Paraiba{% endblock %}
+{% block body_class %}dark-page mapa-page{% endblock %}
 {% block content %}
-<section class="search-hero">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<section class="search-hero hero-compact">
     <canvas id="graph-canvas" class="hero-backdrop"></canvas>
     <div class="hero-content">
-    <p class="eyebrow">Plataforma de investigacao</p>
-    <h1>Cruzamento inteligente de dados publicos</h1>
-    <p class="hero-copy">
-        Conectamos bases oficiais do governo para revelar padroes que passam despercebidos
-        quando cada fonte e analisada isoladamente.
-    </p>
+        <p class="eyebrow">Plataforma de investigacao</p>
+        <h1>Cruzamento inteligente de dados publicos</h1>
+        <p class="hero-copy">
+            Conectamos bases oficiais do governo para revelar padroes que passam despercebidos
+            quando cada fonte e analisada isoladamente.
+        </p>
 
-    <div class="search-tabs" role="tablist">
-        <button class="tab active" data-tab="cidade" role="tab" aria-selected="true">Municipio</button>
-        <button class="tab" data-tab="pessoa" role="tab" disabled title="Em breve">Pessoa</button>
-        <button class="tab" data-tab="empresa" role="tab" disabled title="Em breve">Empresa</button>
-        <button class="tab" data-tab="licitacao" role="tab" disabled title="Em breve">Licitacao</button>
-        <button class="tab" data-tab="parlamentar" role="tab" disabled title="Em breve">Parlamentar</button>
+        <section class="search-card search-card-inline">
+            <label class="search-label" for="ac-cidade">Busque por municipio</label>
+            <div class="autocomplete-wrap">
+                <input
+                    type="text"
+                    id="ac-cidade"
+                    placeholder="Digite o nome do municipio..."
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <ul class="ac-list" id="aclist-cidade"></ul>
+            </div>
+            <p class="search-status" id="cidade-status" aria-live="polite"></p>
+        </section>
     </div>
+</section>
 
-    <div class="tab-panels">
-        <div class="tab-panel active" id="panel-cidade">
-            <section class="search-card">
-                <label class="search-label" for="ac-cidade">Busque por municipio</label>
-                <div class="autocomplete-wrap">
-                    <input
-                        type="text"
-                        id="ac-cidade"
-                        placeholder="Digite o nome do municipio..."
-                        autocomplete="off"
-                        spellcheck="false"
-                    >
-                    <ul class="ac-list" id="aclist-cidade"></ul>
-                </div>
-                <p class="search-status" id="cidade-status" aria-live="polite"></p>
-            </section>
+<section class="mapa-hero">
+    <div class="mapa-header">
+        <h2>Paraiba - Panorama municipal</h2>
+        <p class="mapa-sub">
+            223 municipios pintados por indicador. Clique em um municipio para abrir o detalhe.
+        </p>
+        <div class="mapa-toggle" role="tablist">
+            <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais">Risco composto</button>
+            <button class="mt-btn" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos">% Irregulares</button>
+            <button class="mt-btn" data-metric="pct_sem_licitacao" title="% de empenhos feitos sem licitacao">Sem licitacao</button>
+            <button class="mt-btn" data-metric="pct_top5" title="% do pago concentrado nos top-5 fornecedores">Concentracao top-5</button>
+            <button class="mt-btn" data-metric="pago_per_capita" title="Total pago por habitante (IBGE 2022)">Per capita</button>
         </div>
-
-        <div class="tab-panel" id="panel-pessoa">
-            <p class="coming-soon">Modo pessoa em breve</p>
-        </div>
-        <div class="tab-panel" id="panel-empresa">
-            <p class="coming-soon">Modo empresa em breve</p>
-        </div>
-        <div class="tab-panel" id="panel-licitacao">
-            <p class="coming-soon">Modo licitacao em breve</p>
-        </div>
-        <div class="tab-panel" id="panel-parlamentar">
-            <p class="coming-soon">Modo parlamentar em breve</p>
-        </div>
+        <p class="mapa-cutoff-note" id="mapa-cutoff-note">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</p>
     </div>
-    </div>
+    <div id="mapa-pb"></div>
+    <div class="mapa-legend" id="mapa-legend"></div>
 </section>
 
 <section class="features-strip">
@@ -73,4 +69,7 @@
 </section>
 
 <script src="/static/graph-animation.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/mapa.js"></script>
 {% endblock %}
+

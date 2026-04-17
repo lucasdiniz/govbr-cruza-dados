@@ -32,6 +32,12 @@ async def mapa_pb(request: Request):
     return templates.TemplateResponse(request, "mapa.html")
 
 
+@router.get("/mapa/")
+async def mapa_pb_trailing(request: Request):
+    from web.main import templates
+    return templates.TemplateResponse(request, "mapa.html")
+
+
 @router.get("/api/mapa/pb")
 async def api_mapa_pb():
     cols, rows = cached_query(

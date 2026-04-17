@@ -89,6 +89,21 @@ body.dark-page .container {
     min-height: 540px;
     background: transparent;
 }
+.search-hero.hero-compact {
+    min-height: unset;
+    padding: 2.5rem 1.5rem 1.5rem;
+}
+.search-hero.hero-compact h1 {
+    font-size: 2rem;
+}
+.search-hero.hero-compact .hero-copy {
+    font-size: 0.95rem;
+    margin-bottom: 1.2rem;
+}
+.search-card-inline {
+    max-width: 560px;
+    margin: 0 auto;
+}
 
 .hero-backdrop {
     position: fixed;
