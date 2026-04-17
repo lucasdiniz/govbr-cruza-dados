@@ -962,12 +962,12 @@ function buildFornecedoresPanel(data) {
         const scopeSuffix = abrangenciaInfo.startsWith('Nacional')
             ? ' (Nacional)'
             : parenMatch ? ` (${parenMatch[1].slice(0, 50)})` : '';
-        if (isInidoneidade) badges += '<span class="badge badge-red" title="Inidoneidade - CEIS (Nacional)">Inidoneidade - CEIS (Nacional)</span>';
-        else if (_val(r, cols, 'flag_ceis')) badges += `<span class="badge badge-orange" title="Impedimento - CEIS${_esc(scopeSuffix)}">Impedimento - CEIS${_esc(scopeSuffix)}</span>`;
-        if (_val(r, cols, 'flag_cnep')) badges += `<span class="badge badge-orange" title="CNEP${_esc(scopeSuffix)}">CNEP${_esc(scopeSuffix)}</span>`;
-        if (_val(r, cols, 'flag_acordo_leniencia')) badges += '<span class="badge badge-blue" title="Acordo de Leniencia">Acordo de Leniencia</span>';
-        if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow" title="Divida ativa">Divida ativa</span>';
-        if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray" title="Empresa inativa na Receita">Cadastro inativo</span>';
+        if (isInidoneidade) badges += '<span class="badge badge-red" title="Declaracao de inidoneidade (CEIS) - impede contratar com toda administracao publica (nacional)"><span class="citizen-only">Proibida de contratar (nacional)</span><span class="auditor-only">Inidoneidade - CEIS (Nacional)</span></span>';
+        else if (_val(r, cols, 'flag_ceis')) badges += `<span class="badge badge-orange" title="Cadastro de Empresas Inidoneas e Suspensas (CEIS)${_esc(scopeSuffix)}. Pode decorrer de varios motivos: descumprimento contratual, nao assinar contrato, fraude em licitacao, documentacao falsa, entre outros."><span class="citizen-only">Impedida de contratar (CEIS)${_esc(scopeSuffix)}</span><span class="auditor-only">Impedimento - CEIS${_esc(scopeSuffix)}</span></span>`;
+        if (_val(r, cols, 'flag_cnep')) badges += `<span class="badge badge-orange" title="Cadastro Nacional de Empresas Punidas (CNEP) - Lei Anticorrupcao 12.846/2013${_esc(scopeSuffix)}"><span class="citizen-only">Punida (Lei Anticorrupcao)${_esc(scopeSuffix)}</span><span class="auditor-only">CNEP${_esc(scopeSuffix)}</span></span>`;
+        if (_val(r, cols, 'flag_acordo_leniencia')) badges += '<span class="badge badge-blue" title="Acordo de leniencia firmado com a empresa"><span class="citizen-only">Acordo de leniencia</span><span class="auditor-only">Acordo de Leniencia</span></span>';
+        if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow" title="Divida ativa da Uniao (PGFN) - impostos federais em aberto"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida ativa (PGFN)</span></span>';
+        if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray" title="Cadastro da empresa inativo na Receita Federal"><span class="citizen-only">Empresa inativa na Receita</span><span class="auditor-only">Cadastro inativo</span></span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
         const rowClass = (() => {
             const recInid = _val(r, cols, 'flag_recebeu_durante_inidoneidade');
