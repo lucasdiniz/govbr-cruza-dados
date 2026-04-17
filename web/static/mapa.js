@@ -162,6 +162,22 @@
         if (!el) return;
         const btn = document.querySelector(`.mt-btn[data-metric="${state.metric}"]`);
         el.textContent = btn ? (btn.dataset.desc || '') : '';
+        // reset colapso ao trocar de metrica
+        el.classList.remove('expanded');
+        el.setAttribute('aria-expanded', 'false');
+    }
+
+    function wireMetricDescToggle() {
+        const el = document.getElementById('mapa-metric-desc');
+        if (!el) return;
+        const toggle = () => {
+            const expanded = el.classList.toggle('expanded');
+            el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        };
+        el.addEventListener('click', toggle);
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
     }
 
     function updateLayer() {
@@ -220,6 +236,7 @@
         state.map.setMinZoom(minZoom);
         state.map.setMaxBounds(bounds.pad(0.1));
         wireToggle();
+        wireMetricDescToggle();
         renderLegend();
         renderMetricDesc();
     }

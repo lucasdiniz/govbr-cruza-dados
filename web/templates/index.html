@@ -41,7 +41,7 @@
             <button class="mt-btn" data-metric="pct_top5" data-desc="% do total pago que ficou concentrado nos 5 maiores fornecedores do municipio. Indica dependencia de poucos fornecedores e pode sinalizar possivel direcionamento de contratacoes.">Concentracao top-5</button>
             <button class="mt-btn" data-metric="pago_per_capita" data-desc="Total pago pelo municipio dividido pelo numero de habitantes (IBGE 2022). Util para comparar porte de gasto entre municipios de tamanhos diferentes.">Per capita</button>
         </div>
-        <p class="mapa-metric-desc" id="mapa-metric-desc"></p>
+        <p class="mapa-metric-desc" id="mapa-metric-desc" tabindex="0" role="button" aria-expanded="false" title="Toque para expandir"></p>
         <p class="mapa-cutoff-note" id="mapa-cutoff-note">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</p>
     </div>
     <div id="mapa-pb"></div>
@@ -49,6 +49,6 @@
 </section>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="/static/mapa.js?v=4"></script>
+<script src="/static/mapa.js?v=5"></script>
 {% endblock %}
 
