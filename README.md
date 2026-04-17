@@ -72,21 +72,24 @@ Relatorios ja produzidos cobrem temas como:
 - BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
 - Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
 
-## Frontend web
+## Frontend web (TransparenciaPB)
 
-Painel interativo para consulta por municipio com cruzamentos automaticos.
+Painel interativo para consulta por municipio da Paraiba com cruzamentos automaticos, branded como **TransparenciaPB**.
 
-- **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
-- **Cobertura**: 224 municipios da PB com perfil completo (TCE + dados.pb) + qualquer municipio do Brasil via PNCP
+- **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL, Leaflet para o mapa coropletico
+- **Cobertura**: 223 municipios da PB com perfil completo (TCE + dados.pb)
+- **Home page**: mapa coropletico da Paraiba em tela cheia com 5 metricas selecionaveis (risco composto, % irregulares, sem licitacao, concentracao top-5, per capita), busca por municipio inline e tema escuro unificado
+- **Modo escuro global**: todas as paginas (home + detalhes do municipio) usam a identidade visual escura com aurora + dot-field no fundo
+- **Risco composto (0-100)**: score ponderado computado em `mv_municipio_pb_risco` combinando 5 sinais do TCE-PB: compras sem licitacao (30 pts), licitacoes com proponente unico (25 pts), concentracao em dezembro (20 pts), valor empenhado nao pago (15 pts) e folha/receita (10 pts)
 - **15 queries de investigacao** em 6 categorias priorizadas por potencial investigativo: Fornecedores Irregulares, Conflito de Interesses, Politico-Eleitoral, Licitacao e Concorrencia, Cruzamento Estado x Municipio, Orcamento e Financeiro
 - **Dialog de servidor**: ao clicar um servidor, mostra stats grid (salario, empresas, pagamentos, sancoes), vinculos (admissao, salario), empresas vinculadas com badges (CEIS/CNEP, PGFN, Acordo de Leniencia, empenhos recebidos), Bolsa Familia, expulsoes CEAF e empenhos recebidos pelas empresas durante o vinculo funcional (conflito de interesses temporal)
-- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem, vigencia e abrangencia da sancao com orgao sancionador), divida PGFN, acordos de leniencia (com efeitos e status), empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas de empenho feitas durante periodo de sancao sao destacadas em vermelho (sancao se aplica ao municipio) ou amarelo (informativo)
+- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem, vigencia e abrangencia da sancao com orgao sancionador), divida PGFN, acordos de leniencia (com efeitos e status), empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas e barras de empenho feitas durante periodo de sancao sao destacadas em vermelho (sancao se aplica ao municipio) ou amarelo (informativo)
 - **Destaque de risco com abrangencia de sancao**: fornecedores que receberam pagamentos durante sancao sao destacados em vermelho (sancao se aplica legalmente: inidoneidade, abrangencia nacional, orgao municipal do mesmo municipio) ou amarelo (sancao de outro ente, informativo). Coluna "Abrangencia" mostra escopo da sancao com orgao sancionador. Badges incluem orgao sancionador entre parenteses. Servidores socios de empresas sancionadas (CEIS/CNEP), servidores expulsos (CEAF) e empresas que receberam empenhos sao destacados com legendas explicativas
 - **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
 - **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
 - **Cache duplo (all + ano)**: `warm_cache` pre-computa variantes all-time e ano-atual por query. Filtro temporal no frontend usa cache para 01/01-31/12 do ano, queries live para ranges custom
 - **Filtro temporal**: barra de datas no perfil PB filtra hero stats, insight cards, fornecedores e todos os finding cards. Servidores (MV) sempre mostram todos os periodos
-- **Autocomplete**: busca PB (score de risco) + outros estados (PNCP)
+- **Autocomplete**: restrito aos 223 municipios da PB (via `mv_municipio_pb_risco`)
 - **Nginx reverse proxy** para producao (porta 80 → uvicorn 8000, gzip habilitado)
 - **Identificacao precisa de fornecedores**: usa `cpf_cnpj` completo (14 digitos) em vez de apenas `cnpj_basico` (8 digitos) para evitar colisoes entre CPFs e CNPJs que compartilham o mesmo prefixo. Queries de sancoes (Q65), doadores eleitorais e empenhos durante sancao filtram com `EXISTS (estabelecimento)` para excluir falsos positivos de CPFs
 
@@ -94,20 +97,14 @@ Painel interativo para consulta por municipio com cruzamentos automaticos.
 # Iniciar local
 python -m uvicorn web.main:app --port 8000
 
-# Cache warmer — apenas PB (1 ciclo)
-python -m web.warm_cache --pb
-
-# Cache warmer — apenas PNCP (nao-PB)
-python -m web.warm_cache --pncp
-
-# Cache warmer — todos os estados (PB + PNCP)
-python -m web.warm_cache --all --daemon
+# Cache warmer — PB (1 ciclo)
+python -m web.warm_cache
 
 # Cache warmer — continuo
-python -m web.warm_cache --all --daemon --loop
+python -m web.warm_cache --daemon --loop
 ```
 
-Municipios PB recebem perfil completo com insight cards, servidores de risco, e secoes de investigacao. Municipios de outros estados recebem perfil baseado em contratos PNCP com cruzamento de fornecedores contra CEIS, PGFN e RFB.
+Todos os municipios da PB recebem perfil completo com insight cards, servidores de risco e secoes de investigacao.
 
 ## Stack
 

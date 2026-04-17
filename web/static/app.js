@@ -103,7 +103,7 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
         window.setTimeout(() => {
             if (input.value.trim() !== selectedValue) {
                 input.value = '';
-                if (status) status.textContent = 'Escolha uma cidade da lista para abrir a analise.';
+                if (status) status.textContent = '';
             }
             clearList();
         }, 120);
