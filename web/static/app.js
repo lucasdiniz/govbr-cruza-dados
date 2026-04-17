@@ -1896,7 +1896,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     if (fornecedores.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Quem mais recebeu','Top fornecedores')}</h4>`;
-        html += `<div class="tbl-wrap"><table class="data-table stack-mobile"><thead><tr><th>${dualLabel('Empresa','Fornecedor')}</th><th class="auditor-only">CPF/CNPJ</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
+        html += `<div class="tbl-wrap"><table class="data-table"><thead><tr><th>${dualLabel('Empresa','Fornecedor')}</th><th class="auditor-only">CPF/CNPJ</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const f of fornecedores) {
             const nome = _esc(f.nome_credor || '-');
             const doc = _esc(f.cpf_cnpj || '-');
@@ -1904,13 +1904,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
             const nomeCell = isPJ
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
                 : nome;
-            html += `<tr>`
-                + `<td data-label="Empresa" class="stack-title">${nomeCell}</td>`
-                + `<td class="auditor-only" data-label="CPF/CNPJ"><code>${doc}</code></td>`
-                + `<td class="num auditor-only" data-label="Empenhos">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td>`
-                + `<td class="num" data-label="${_lbl('Reservado','Empenhado')}">${_shortBrl(Number(f.total_empenhado || 0))}</td>`
-                + `<td class="num" data-label="Pago">${_shortBrl(Number(f.total_pago || 0))}</td>`
-                + `</tr>`;
+            html += `<tr><td>${nomeCell}</td><td class="auditor-only"><code>${doc}</code></td><td class="num auditor-only">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
         }
         html += '</tbody></table></div></div>';
     }
@@ -1928,13 +1922,21 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     if (funcoes.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Areas do governo que gastaram','Funcao / Programa')}</h4>`;
-        html += `<div class="tbl-wrap"><table class="data-table"><thead><tr><th>${dualLabel('Area','Funcao')}</th><th>Programa</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
+        html += `<div class="tbl-wrap"><table class="data-table stack-mobile"><thead><tr><th>${dualLabel('Area','Funcao')}</th><th>Programa</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const fu of funcoes) {
             const funcaoRaw = fu.funcao || '-';
             const progRaw = fu.programa || '-';
-            const funcaoCell = `<span class="citizen-only">${_esc(_stripCodePrefix(funcaoRaw))}</span><span class="auditor-only">${_esc(funcaoRaw)}</span>`;
-            const progCell = `<span class="citizen-only">${_esc(_stripCodePrefix(progRaw))}</span><span class="auditor-only">${_esc(progRaw)}</span>`;
-            html += `<tr><td>${funcaoCell}</td><td>${progCell}</td><td class="num auditor-only">${Number(fu.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(fu.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(fu.total_pago || 0))}</td></tr>`;
+            const funcaoCitizen = _stripCodePrefix(funcaoRaw) || funcaoRaw;
+            const progCitizen = _stripCodePrefix(progRaw) || progRaw;
+            const funcaoCell = `<span class="citizen-only">${_esc(funcaoCitizen)}</span><span class="auditor-only">${_esc(funcaoRaw)}</span>`;
+            const progCell = `<span class="citizen-only">${_esc(progCitizen)}</span><span class="auditor-only">${_esc(progRaw)}</span>`;
+            html += `<tr>`
+                + `<td data-label="${_lbl('Area','Funcao')}" class="stack-title">${funcaoCell}</td>`
+                + `<td data-label="Programa" class="stack-meta">${progCell}</td>`
+                + `<td class="num auditor-only" data-label="Empenhos">${Number(fu.qtd_empenhos || 0).toLocaleString('pt-BR')}</td>`
+                + `<td class="num" data-label="${_lbl('Reservado','Empenhado')}">${_shortBrl(Number(fu.total_empenhado || 0))}</td>`
+                + `<td class="num" data-label="Pago">${_shortBrl(Number(fu.total_pago || 0))}</td>`
+                + `</tr>`;
         }
         html += '</tbody></table></div></div>';
     }
