@@ -14,3 +14,8 @@ build/
 # Assets estaticos do frontend nao sao ignorados
 !web/static/geo/*.json
 !web/static/geo/*.geojson
+
+# Playwright MCP scratch artifacts
+.playwright-mcp/
+*-mobile.png
+*-mobile-*.png
