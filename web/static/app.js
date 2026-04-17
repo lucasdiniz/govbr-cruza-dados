@@ -64,6 +64,14 @@ function _stripCodePrefix(s) {
 }
 window._stripCodePrefix = _stripCodePrefix;
 
+// Versao string do dualLabel para uso em atributos (ex: data-label no
+// padrao stack-mobile). Retorna sempre o rotulo cidadao por padrao; use
+// o segundo argumento como data-label-auditor para sobrescrever via CSS.
+function _lbl(citizen, auditor) {
+    return String(citizen);
+}
+window._lbl = _lbl;
+
 
 function initTermTooltips() {
     document.addEventListener('click', (e) => {
@@ -1253,7 +1261,7 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
         const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
         let modCell;
         if (semLic) {
-            modCell = '<span class="badge badge-yellow">Sem licitacao</span>';
+            modCell = `<span class="badge badge-yellow"><span class="citizen-only">Sem concorrencia</span><span class="auditor-only">Sem licitacao</span></span>`;
         } else {
             const licLabel = `${mod} (${numLic})`;
             modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
@@ -1267,13 +1275,15 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
         const rowClass = afeta ? 'clickable-row row-sancao' : 'clickable-row';
         let sancaoTag = '';
         if (afeta) {
-            sancaoTag = ` <span class="badge badge-red" style="font-size:.6rem" title="${_esc(matchedSancao.categoria || '')} — ${_esc(matchedSancao.abrangencia || '')}">durante sancao</span>`;
+            sancaoTag = ` <span class="badge badge-red" style="font-size:.6rem" title="${_esc(matchedSancao.categoria || '')} — ${_esc(matchedSancao.abrangencia || '')}"><span class="citizen-only">empresa estava punida</span><span class="auditor-only">durante sancao</span></span>`;
         } else if (matchedSancao) {
-            sancaoTag = ` <span class="badge badge-muted" style="font-size:.6rem" title="Sancao vigente neste periodo mas nao afeta contratos com este municipio (${_esc(matchedSancao.abrangencia || 'abrangencia limitada')})">sancao nao aplicavel</span>`;
+            sancaoTag = ` <span class="badge badge-muted" style="font-size:.6rem" title="Sancao vigente neste periodo mas nao afeta contratos com este municipio (${_esc(matchedSancao.abrangencia || 'abrangencia limitada')})"><span class="citizen-only">punicao nao vale aqui</span><span class="auditor-only">sancao nao aplicavel</span></span>`;
         }
+        const elRaw = e.elemento_despesa || '-';
+        const elCitizen = _stripCodePrefix(elRaw) || elRaw;
         return `<tr class="${rowClass}" data-empenho-id="${e.id}">
             <td>${dt}${sancaoTag}</td>
-            <td>${_esc(e.elemento_despesa || '-')}</td>
+            <td><span class="citizen-only">${_esc(elCitizen)}</span><span class="auditor-only">${_esc(elRaw)}</span></td>
             <td class="text-right">${_shortBrl(e.valor_empenhado)}</td>
             <td class="text-right">${_shortBrl(e.valor_pago)}</td>
             <td>${modCell}</td>
@@ -1886,7 +1896,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     if (fornecedores.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Quem mais recebeu','Top fornecedores')}</h4>`;
-        html += `<div class="tbl-wrap"><table class="data-table"><thead><tr><th>${dualLabel('Empresa','Fornecedor')}</th><th class="auditor-only">CPF/CNPJ</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
+        html += `<div class="tbl-wrap"><table class="data-table stack-mobile"><thead><tr><th>${dualLabel('Empresa','Fornecedor')}</th><th class="auditor-only">CPF/CNPJ</th><th class="num auditor-only">Empenhos</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const f of fornecedores) {
             const nome = _esc(f.nome_credor || '-');
             const doc = _esc(f.cpf_cnpj || '-');
@@ -1894,7 +1904,13 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
             const nomeCell = isPJ
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
                 : nome;
-            html += `<tr><td>${nomeCell}</td><td class="auditor-only"><code>${doc}</code></td><td class="num auditor-only">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
+            html += `<tr>`
+                + `<td data-label="Empresa" class="stack-title">${nomeCell}</td>`
+                + `<td class="auditor-only" data-label="CPF/CNPJ"><code>${doc}</code></td>`
+                + `<td class="num auditor-only" data-label="Empenhos">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td>`
+                + `<td class="num" data-label="${_lbl('Reservado','Empenhado')}">${_shortBrl(Number(f.total_empenhado || 0))}</td>`
+                + `<td class="num" data-label="Pago">${_shortBrl(Number(f.total_pago || 0))}</td>`
+                + `</tr>`;
         }
         html += '</tbody></table></div></div>';
     }
@@ -1934,20 +1950,21 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     if (empenhos.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Maiores pagamentos do mes','Empenhos do mes (top ' + empenhos.length + ' por valor)')}</h4>`;
-        html += `<div class="tbl-wrap"><table class="data-table"><thead><tr><th class="auditor-only">Nº</th><th>Data</th><th>${dualLabel('Empresa','Credor')}</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="auditor-only">Funcao</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
+        html += `<div class="tbl-wrap"><table class="data-table stack-mobile"><thead><tr><th class="auditor-only">Nº</th><th>Data</th><th>${dualLabel('Empresa','Credor')}</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="auditor-only">Funcao</th><th class="num">${dualLabel('Reservado','Empenhado')}</th><th class="num">Pago</th></tr></thead><tbody>`;
         for (const e of empenhos) {
             const dt = e.data_empenho ? _fmtDate(e.data_empenho) : '-';
             const historico = _esc(e.historico_resumo || '');
             const elemRaw = e.elemento_despesa || '-';
-            const elemCell = `<span class="citizen-only">${_esc(_stripCodePrefix(elemRaw))}</span><span class="auditor-only">${_esc(elemRaw)}</span>`;
+            const elemCitizen = _stripCodePrefix(elemRaw) || elemRaw;
+            const elemCell = `<span class="citizen-only">${_esc(elemCitizen)}</span><span class="auditor-only">${_esc(elemRaw)}</span>`;
             html += `<tr class="clickable-row" data-empenho-id="${e.id}" title="${historico}">`
-                + `<td class="auditor-only"><code>${_esc(e.numero_empenho || '-')}</code></td>`
-                + `<td>${dt}</td>`
-                + `<td>${_esc(e.nome_credor || '-')}</td>`
-                + `<td>${elemCell}</td>`
-                + `<td class="auditor-only">${_esc(e.funcao || '-')}</td>`
-                + `<td class="num">${_shortBrl(Number(e.valor_empenhado || 0))}</td>`
-                + `<td class="num">${_shortBrl(Number(e.valor_pago || 0))}</td>`
+                + `<td class="auditor-only" data-label="Nº"><code>${_esc(e.numero_empenho || '-')}</code></td>`
+                + `<td data-label="Data" class="stack-meta">${dt}</td>`
+                + `<td data-label="${_lbl('Empresa','Credor')}" class="stack-title">${_esc(e.nome_credor || '-')}</td>`
+                + `<td data-label="${_lbl('Tipo de gasto','Elemento')}" class="stack-meta">${elemCell}</td>`
+                + `<td class="auditor-only" data-label="Funcao">${_esc(e.funcao || '-')}</td>`
+                + `<td class="num" data-label="${_lbl('Reservado','Empenhado')}">${_shortBrl(Number(e.valor_empenhado || 0))}</td>`
+                + `<td class="num" data-label="Pago">${_shortBrl(Number(e.valor_pago || 0))}</td>`
                 + `</tr>`;
         }
         html += '</tbody></table></div>';

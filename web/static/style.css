@@ -118,7 +118,6 @@ body.dark-page::after {
     mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
     -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
 }
-body.dark-page .topnav,
 body.dark-page .container {
     position: relative;
     z-index: 1;
@@ -2281,6 +2280,103 @@ html.audit-mode .city-narrative strong {
         font-size: 1rem;
         padding: 0.75rem 0.875rem;
         line-height: 1.5;
+    }
+
+    /* ============================================================
+       PADRAO STACK-ON-MOBILE: tabelas com 4+ colunas viram cards
+       empilhados em mobile. Usa data-label no <td> para mostrar
+       o rotulo. Hierarquia visual:
+         .stack-title  -> destaque (nome da empresa, credor)
+         .stack-meta   -> metadados secundarios (data, elemento)
+         td.num        -> linha de valor (Reservado/Pago lado a lado)
+       ============================================================ */
+    table.stack-mobile {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+    table.stack-mobile thead {
+        display: none;
+    }
+    table.stack-mobile tbody,
+    table.stack-mobile tfoot {
+        display: block;
+    }
+    table.stack-mobile tbody tr {
+        display: block;
+        padding: 0.55rem 0.75rem;
+        margin-bottom: 0.55rem;
+        background: var(--surface, #fff);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 0.6rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    body.dark-page table.stack-mobile tbody tr {
+        background: #0f172a;
+        border-color: rgba(148, 163, 184, 0.15);
+    }
+    table.stack-mobile tbody tr.row-sancao {
+        border-left: 3px solid var(--red, #dc2626);
+    }
+    table.stack-mobile tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.6rem;
+        padding: 0.15rem 0;
+        border: none;
+        min-width: 0;
+        white-space: normal;
+        word-break: break-word;
+        text-align: left;
+        max-width: none;
+    }
+    table.stack-mobile tbody td::before {
+        content: attr(data-label);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-muted, #64748b);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        flex-shrink: 0;
+    }
+    /* Celulas de destaque: sem label acima, fonte maior, ocupa linha cheia */
+    table.stack-mobile tbody td.stack-title {
+        display: block;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 0.05rem 0 0.25rem;
+    }
+    table.stack-mobile tbody td.stack-title::before {
+        display: none;
+    }
+    table.stack-mobile tbody td.stack-meta {
+        font-size: 0.82rem;
+        color: var(--text-muted, #64748b);
+    }
+    /* Valores alinham a direita com label a esquerda */
+    table.stack-mobile tbody td.num {
+        text-align: right;
+    }
+    /* Auditor-only em stack-mobile: esconde completamente no cidadao
+       (sobrescreve display:flex com !important do modo auditor) */
+    html:not(.audit-mode) table.stack-mobile tbody td.auditor-only {
+        display: none !important;
+    }
+    html.audit-mode table.stack-mobile tbody td.auditor-only {
+        display: flex;
+    }
+    /* Sticky/scroll do .tbl-wrap fica inerte aqui - garantimos que
+       nada force overflow horizontal */
+    .tbl-wrap:has(table.stack-mobile) {
+        overflow: visible;
+        background: none;
+    }
+    table.stack-mobile tbody td:first-child {
+        position: static;
+        box-shadow: none;
+        background: transparent;
+        max-width: none;
     }
 }
 
