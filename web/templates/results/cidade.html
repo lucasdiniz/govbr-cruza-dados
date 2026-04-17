@@ -270,6 +270,7 @@
                     <div>
                         <h3 class="finding-title">
                             {% if query.title_lay %}<span class="citizen-only">{{ query.title_lay|safe }}</span><span class="auditor-only">{{ query.title }}</span>{% else %}{{ query.title }}{% endif %}
+                            {% if query.explainer_lay %}<button type="button" class="explainer-btn citizen-only" data-explainer-target="exp-{{ query.id }}" aria-expanded="false" aria-label="O que isso significa?" title="O que isso significa?">&#8505;</button>{% endif %}
                         </h3>
                         <p class="text-sm text-muted">
                             {% if query.description_lay %}<span class="citizen-only">{{ query.description_lay|safe }}</span><span class="auditor-only">{{ query.description }}</span>{% else %}{{ query.description }}{% endif %}
@@ -286,6 +287,11 @@
                         <span class="finding-toggle">&#9660;</span>
                     </div>
                 </div>
+                {% if query.explainer_lay %}
+                <div class="finding-explainer citizen-only" id="exp-{{ query.id }}" hidden>
+                    <p>{{ query.explainer_lay|safe }}</p>
+                </div>
+                {% endif %}
                 <div class="finding-body">
                     <div class="skeleton-table" aria-hidden="true">
                         <div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block wide"></div><div class="skeleton-block narrow"></div></div>

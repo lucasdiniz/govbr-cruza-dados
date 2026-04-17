@@ -140,6 +140,38 @@ function initDestaques() {
 }
 
 
+function initExplainers() {
+    // Fase 4: "O que isso significa?" inline. Toggle com persistencia em localStorage.
+    const buttons = document.querySelectorAll('.explainer-btn[data-explainer-target]');
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+        const targetId = btn.dataset.explainerTarget;
+        const panel = document.getElementById(targetId);
+        if (!panel) return;
+        const key = `explainer:${targetId}`;
+        // Restaura estado salvo
+        if (localStorage.getItem(key) === 'open') {
+            panel.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            btn.classList.add('is-open');
+        }
+        btn.addEventListener('click', (e) => {
+            // Nao propaga para finding-head (evita toggle de collapse)
+            e.stopPropagation();
+            e.preventDefault();
+            const willOpen = panel.hidden;
+            panel.hidden = !willOpen;
+            btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            btn.classList.toggle('is-open', willOpen);
+            try {
+                if (willOpen) localStorage.setItem(key, 'open');
+                else localStorage.removeItem(key);
+            } catch (_) { /* quota/private mode */ }
+        });
+    });
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -2510,6 +2542,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTermTooltips();
     initNarrativeAnchors();
     initDestaques();
+    initExplainers();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {

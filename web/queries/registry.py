@@ -15,6 +15,7 @@ class QueryDef:
     timeout_sec: int = 30
     title_lay: str = ""
     description_lay: str = ""
+    explainer_lay: str = ""
 
 
 # ── Queries modo cidade ──────────────────────────────────────────
@@ -31,30 +32,65 @@ _LAY_TEXT: dict[str, dict[str, str]] = {
     "Q65": {
         "title": "Empresas punidas por fraude que receberam da prefeitura",
         "desc": "Empresas que o governo federal proibiu de contratar — por fraude, propina ou descumprimento grave. Esta cidade pagou a elas mesmo assim.",
+        "explainer": (
+            "CEIS, CNEP e Inidoneidade sao listas oficiais de empresas que a Uniao proibiu de contratar com o poder publico — por fraude, propina, corrupcao ou descumprimento grave de contrato. "
+            "Quando a prefeitura paga uma empresa nessa lista durante a vigencia da punicao, e um indicio forte de falha de controle (ou, em casos extremos, conluio). "
+            "Ao investigar, compare as datas: pagamentos feitos depois do inicio da sancao sao os mais graves."
+        ),
     },
     "Q67": {
         "title": "Empresas devendo impostos federais que receberam da prefeitura",
         "desc": "Empresas com divida ativa na Uniao (inscritas na PGFN) recebendo dinheiro publico municipal.",
+        "explainer": (
+            "A PGFN (Procuradoria-Geral da Fazenda Nacional) mantem o cadastro de empresas com dividas de impostos federais ja inscritas em divida ativa — ou seja, o governo ja cobrou e nao foi pago. "
+            "Pela Lei 14.133/2021 e pela antiga 8.666/93, contratar essas empresas so e permitido se elas apresentarem certidao negativa ou tiverem suas dividas parceladas/suspensas. "
+            "Volumes altos pagos a devedores cronicos podem indicar certidoes falsas, favorecimento, ou controle fragil."
+        ),
     },
     "Q70": {
         "title": "Empresas fechadas ou inaptas que continuaram recebendo",
         "desc": "Empresas com situacao irregular na Receita Federal (suspensas, inaptas ou baixadas) que mesmo assim receberam pagamentos da prefeitura.",
+        "explainer": (
+            "Toda empresa tem um status na Receita Federal: Ativa, Suspensa, Inapta ou Baixada. "
+            "Contratar e pagar uma empresa Suspensa, Inapta ou Baixada e irregular — a empresa pode nem existir mais de verdade, ou estar bloqueada por irregularidade fiscal. "
+            "E um indicio classico de uso de empresas 'fantasmas' ou 'de fachada' para escoar dinheiro publico sem entregar servico de fato."
+        ),
     },
     "Q69": {
         "title": "Todas as licitacoes do municipio",
         "desc": "Lista completa das licitacoes realizadas pela prefeitura, com valor, tipo e quantos fornecedores participaram.",
+        "explainer": (
+            "Licitacao e o processo que a lei exige para o governo comprar — ela traz concorrencia, que reduz o preco. "
+            "Olhe com mais atencao para as modalidades 'Dispensa' e 'Inexigibilidade' (compras sem concorrencia) e para licitacoes com so 1 participante. "
+            "Se a maioria dos contratos de um orgao foi feita sem disputa, ha risco elevado de direcionamento."
+        ),
     },
     "Q71": {
         "title": "Fornecedores que compartilham o mesmo endereco",
         "desc": "Empresas diferentes registradas no mesmo endereco que receberam da prefeitura. Pode ser coincidencia — ou indicio de empresas 'fantasmas' ligadas entre si.",
+        "explainer": (
+            "Varias empresas com o mesmo endereco (CEP + logradouro + numero) podem ser coincidencia (um predio comercial, um shopping) — ou indicio de empresas criadas pelo mesmo grupo para simular concorrencia em licitacoes. "
+            "O padrao de fraude e: 3 empresas do mesmo dono se inscrevem no mesmo pregao, dao propostas combinadas, e a 'escolhida' vence com preco artificialmente alto. "
+            "Cruze com socios em comum e com datas de abertura proximas para confirmar."
+        ),
     },
     "Q77": {
         "title": "Compras fatiadas (fracionamento de despesa)",
         "desc": "Varios contratos pequenos com o mesmo fornecedor logo em sequencia. Pode ser pratica para evitar licitacao — cada compra fica abaixo do limite legal.",
+        "explainer": (
+            "A lei obriga licitacao acima de certos valores (hoje, cerca de R$ 59 mil para compras em geral). "
+            "Dividir uma compra grande em varias pequenas do mesmo fornecedor, em curto intervalo de tempo, para ficar abaixo desse limite e contratar por Dispensa, e crime de fraude a licitacao (art. 337-I, CP). "
+            "Sinais: mesmo fornecedor, mesmo objeto, valores logo abaixo do limite, contratos muito proximos no tempo."
+        ),
     },
     "Q61": {
         "title": "Diferenca entre o que foi prometido e o que foi pago",
         "desc": "Contratos em que a prefeitura reservou (empenhou) muito mais do que efetivamente pagou. Investigar se ha entrega, atraso ou cancelamento.",
+        "explainer": (
+            "Empenho e a reserva do dinheiro no orcamento; pago e o que realmente saiu do cofre. Empenhar muito e pagar pouco pode ter causa legitima (cancelamento, reducao de escopo, atraso). "
+            "Mas tambem pode indicar servico ou obra nao entregue, contrato superestimado, ou cancelamento sem devolucao do recurso. "
+            "Grandes divergencias em contratos de obras costumam ser sinal de problema na execucao."
+        ),
     },
 }
 
@@ -69,6 +105,7 @@ def _reg(qid, title, desc, cat, sql_full, timeout=30, sql_dated=None, title_lay=
         timeout_sec=timeout,
         title_lay=title_lay or lay.get("title", ""),
         description_lay=desc_lay or lay.get("desc", ""),
+        explainer_lay=lay.get("explainer", ""),
     )
 
 
