@@ -17,9 +17,12 @@
     <meta property="og:title" content="{% block og_title %}TransparenciaPB{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
+    <meta property="og:url" content="{{ request.url if request else '' }}">
     {% block og_image %}{% endblock %}
     <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
-    <link rel="stylesheet" href="/static/style.css?v=33">
+    <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
+    <link rel="stylesheet" href="/static/style.css?v=34">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -38,6 +41,7 @@
     {% block head_extra %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
+    <a href="#main-content" class="skip-link">Pular para o conteudo principal</a>
     <nav class="topnav">
         <a href="/" class="logo">
             <svg class="logo-mark" width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
@@ -69,7 +73,7 @@
             <span class="mode-label mode-label-auditor">Modo auditor</span>
         </button>
     </nav>
-    <main class="container">
+    <main id="main-content" class="container" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
     <footer class="site-footer" role="contentinfo">

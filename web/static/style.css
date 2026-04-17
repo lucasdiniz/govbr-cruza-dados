@@ -29,6 +29,20 @@ body {
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 8px;
+    z-index: 1000;
+    background: #1e293b;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: top 0.15s;
+}
+.skip-link:focus { top: 8px; outline: 2px solid #60a5fa; outline-offset: 2px; }
+
 .topnav {
     background: rgba(15, 23, 42, 0.95);
     color: #fff;
