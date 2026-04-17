@@ -202,6 +202,9 @@
             zoomControl: true,
             attributionControl: false,
             scrollWheelZoom: false,
+            tap: true,
+            touchZoom: true,
+            dragging: true,
         }).setView([-7.25, -36.8], 8);
         state.map = map;
 

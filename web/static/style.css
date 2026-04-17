@@ -1183,7 +1183,7 @@ tr:hover { background: #fbfdff; }
     border: 1px dashed #3b5680;
 }
 @media (max-width: 700px) {
-    #mapa-pb { height: 440px; }
+    #mapa-pb { min-height: 300px; }
     .mapa-header h1 { font-size: 1.4rem; }
 }
 
@@ -1423,3 +1423,272 @@ body.dark-page .date-field span { color: var(--muted); }
 
 /* Section head eyebrow stays blue */
 body.dark-page .eyebrow { color: #60a5fa; }
+
+/* ============================================================
+   MOBILE RESPONSIVENESS (<=640px)
+   Safe-area insets, touch targets >=44px, tipografia e layouts
+   adequados a telefones e potencial webview.
+   ============================================================ */
+
+/* iOS prevents zoom-on-focus se input tiver >= 16px */
+input[type="text"],
+input[type="search"],
+input[type="date"],
+input[type="email"],
+input[type="number"],
+select,
+textarea {
+    font-size: 16px;
+}
+
+/* Safe-area (notches/dynamic island) */
+body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+.topnav {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+    padding-top: max(0.8rem, env(safe-area-inset-top));
+}
+
+/* Momentum scroll para tabelas em iOS */
+.tbl-wrap,
+.heatmap-wrap,
+.dialog-body {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Indicador visual de overflow horizontal em tabelas */
+.tbl-wrap {
+    background:
+        linear-gradient(90deg, rgba(6,10,20,0) 0%, rgba(6,10,20,0) 100%) 0 0 / 100% 100% no-repeat,
+        linear-gradient(90deg, rgba(15,23,42,0.6), rgba(15,23,42,0)) 0 0 / 24px 100% no-repeat,
+        linear-gradient(90deg, rgba(15,23,42,0), rgba(15,23,42,0.6)) 100% 0 / 24px 100% no-repeat;
+    background-attachment: local, scroll, scroll;
+}
+
+@media (max-width: 640px) {
+    html { font-size: 16px; }
+
+    /* Container padding reduzido */
+    .container { padding: 0.9rem; }
+    body.mapa-page .container,
+    body.dark-page.mapa-page .container {
+        padding: 0.6rem 0.8rem;
+    }
+
+    /* Topnav: subtitulo embaixo, logo compacto */
+    .topnav {
+        flex-wrap: wrap;
+        padding: 0.7rem 1rem;
+        gap: 0.3rem 0.8rem;
+    }
+    .nav-desc {
+        flex-basis: 100%;
+        margin-left: 0;
+        font-size: 0.72rem;
+        line-height: 1.3;
+        opacity: 0.8;
+    }
+    .logo { font-size: 1rem; }
+    .logo-mark { width: 22px; height: 22px; }
+
+    /* Home hero */
+    .search-hero.hero-compact {
+        padding: 1rem 0.5rem 0.6rem;
+    }
+    .search-hero.hero-compact h1 {
+        font-size: 1.4rem;
+        line-height: 1.15;
+    }
+    .search-hero.hero-compact .eyebrow {
+        font-size: 0.62rem;
+        letter-spacing: 0.14em;
+    }
+    .search-hero.hero-compact .hero-copy {
+        font-size: 0.82rem;
+        line-height: 1.45;
+        max-width: 100%;
+    }
+
+    /* Mapa controls: tap targets maiores, fonte legivel */
+    .mapa-toggle { gap: 0.35rem; }
+    .mt-btn {
+        padding: 0.5rem 0.85rem;
+        font-size: 0.82rem;
+        min-height: 36px;
+    }
+    .mapa-metric-desc { font-size: 0.78rem; max-width: 100%; }
+    .mapa-cutoff-note { font-size: 0.7rem; }
+
+    /* Mapa: permite pedacinho maior em portrait, evita que ocupe tela toda */
+    #mapa-pb {
+        aspect-ratio: auto;
+        min-height: 340px;
+        height: 55vh;
+        max-height: 70vh;
+    }
+
+    /* Legenda horizontal scroll em vez de wrap com quebras feias */
+    .legend-inline {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+        gap: 0.4rem 0.7rem;
+        scrollbar-width: thin;
+    }
+    .legend-inline .legend-item { flex-shrink: 0; }
+
+    /* City hero (pagina detalhes) */
+    .city-title { font-size: 1.55rem; }
+    .city-subtitle { font-size: 0.88rem; }
+    .city-hero { gap: 0.8rem; padding: 1rem; }
+    .hero-stats { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .hero-stat { padding: 0.65rem 0.5rem; text-align: center; }
+    .hero-stat-value { font-size: 1rem; }
+    .hero-stat-label { font-size: 0.7rem; line-height: 1.2; }
+
+    /* Cards gerais */
+    .card { padding: 0.95rem; border-radius: 14px; }
+    .card-title { font-size: 1.05rem; }
+    .section-head .card-title,
+    .report-section > .section-head .card-title { font-size: 1.08rem; }
+
+    /* Insight grid fica 1 coluna naturalmente por auto-fit, mas
+       forcamos gap menor e padding das cartas */
+    .insight-grid { gap: 0.75rem; }
+    .insight-card { padding: 0.85rem; }
+    .insight-value { font-size: 1.2rem; margin: 0.7rem 0 0.25rem; }
+
+    /* Date filter bar: empilha com inputs full-width */
+    .date-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.6rem;
+    }
+    .date-filter-fields {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .date-field {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: 0;
+    }
+    .date-field input[type="date"] {
+        width: 100%;
+        padding: 0.6rem 0.5rem;
+        min-height: 40px;
+    }
+    .date-filter-fields .btn {
+        flex: 1 1 100%;
+        min-height: 42px;
+    }
+
+    /* Tabelas */
+    .table-shell { padding: 0.5rem; border-radius: 12px; }
+    .table-filter {
+        width: 100%;
+        padding: 0.6rem 0.8rem;
+        min-height: 42px;
+    }
+    table { font-size: 0.8rem; }
+    th, td { padding: 0.55rem 0.5rem; }
+    th {
+        font-size: 0.68rem;
+        letter-spacing: 0.02em;
+    }
+
+    /* Finding card */
+    .finding-card { padding: 0.85rem; }
+    .finding-title { font-size: 0.96rem; }
+    .finding-head {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.4rem;
+    }
+    .finding-summary {
+        justify-content: space-between;
+        text-align: left;
+    }
+
+    /* Autocomplete: itens com tap target maior */
+    .ac-list li {
+        padding: 0.85rem 0.8rem;
+        font-size: 0.95rem;
+    }
+    #ac-cidade {
+        min-height: 46px;
+        font-size: 16px;
+    }
+
+    /* Dialogs fullscreen (ja 100vw/vh) - reduz padding */
+    .dialog-header {
+        padding: 0.8rem 1rem;
+        padding-top: max(0.8rem, env(safe-area-inset-top));
+    }
+    .dialog-title { font-size: 0.98rem; }
+    .dialog-close,
+    .dialog-back {
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 1.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .dialog-body {
+        padding: 1rem;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        max-height: calc(100vh - 56px);
+    }
+    .empresa-card { padding: 0.65rem; }
+    .empresa-header strong { font-size: 0.88rem; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .charts-grid { grid-template-columns: 1fr; }
+
+    /* Badges um pouco menores */
+    .badge {
+        font-size: 0.66rem;
+        padding: 0.16rem 0.46rem;
+    }
+
+    /* Heatmap: mantem scroll, rotulos menores */
+    .heatmap-grid { min-width: 520px; }
+    .hm-cell { height: 32px; font-size: 0.6rem; }
+    .hm-year-label { min-width: 36px; max-width: 36px; font-size: 0.72rem; }
+
+    /* Botoes gerais com tap target decente */
+    .btn,
+    .btn-primary,
+    .btn-outline {
+        min-height: 42px;
+        padding: 0.55rem 1rem;
+    }
+    .btn-sm { min-height: 36px; padding: 0.4rem 0.8rem; }
+
+    /* Result toolbar (acoes em tabela) empilha */
+    .result-toolbar,
+    .table-actions,
+    .table-pagination {
+        gap: 0.5rem;
+    }
+}
+
+/* Telas muito estreitas (<=380px) */
+@media (max-width: 380px) {
+    .hero-stats { grid-template-columns: 1fr 1fr; }
+    .hero-stats .hero-stat:nth-child(3) { grid-column: span 2; }
+    .search-hero.hero-compact h1 { font-size: 1.25rem; }
+    .mt-btn { padding: 0.45rem 0.7rem; font-size: 0.78rem; }
+    .city-title { font-size: 1.35rem; }
+    .mapa-toggle { gap: 0.3rem; }
+}
+
+/* Telas em landscape curto: evita que hero+mapa comam viewport inteiro */
+@media (max-height: 520px) and (orientation: landscape) {
+    .search-hero.hero-compact { padding: 0.6rem 1rem 0.3rem; }
+    .search-hero.hero-compact h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
+    .search-hero.hero-compact .hero-copy { display: none; }
+    #mapa-pb { height: 75vh; min-height: 0; }
+}
