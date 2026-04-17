@@ -1282,14 +1282,14 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
         const elRaw = e.elemento_despesa || '-';
         const elCitizen = _stripCodePrefix(elRaw) || elRaw;
         return `<tr class="${rowClass}" data-empenho-id="${e.id}">
-            <td>${dt}${sancaoTag}</td>
-            <td><span class="citizen-only">${_esc(elCitizen)}</span><span class="auditor-only">${_esc(elRaw)}</span></td>
-            <td class="text-right">${_shortBrl(e.valor_empenhado)}</td>
-            <td class="text-right">${_shortBrl(e.valor_pago)}</td>
-            <td>${modCell}</td>
+            <td data-label="Data" class="stack-meta">${dt}${sancaoTag}</td>
+            <td data-label="Tipo de gasto" class="stack-title"><span class="citizen-only">${_esc(elCitizen)}</span><span class="auditor-only">${_esc(elRaw)}</span></td>
+            <td data-label="Reservado" class="text-right num">${_shortBrl(e.valor_empenhado)}</td>
+            <td data-label="Pago" class="text-right num">${_shortBrl(e.valor_pago)}</td>
+            <td data-label="Licitacao" class="stack-meta">${modCell}</td>
         </tr>`;
     }).join('');
-    return `<div class="tbl-wrap"><table class="dialog-table">
+    return `<div class="tbl-wrap"><table class="dialog-table stack-mobile">
         <thead><tr>
             <th>Data</th>
             <th><span class="citizen-only">Tipo de gasto</span><span class="auditor-only">Elemento</span></th>
