@@ -890,10 +890,11 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
             modCell = `<a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(licLabel)}</a>`;
         }
         const empDate = e.data_empenho ? new Date(e.data_empenho) : null;
-        const matchedSancao = empDate && sancaoRanges.find(r =>
+        const overlapping = empDate ? sancaoRanges.filter(r =>
             empDate >= r.inicio && (!r.fim || empDate <= r.fim)
-        );
-        const afeta = matchedSancao && matchedSancao.grave;
+        ) : [];
+        const matchedSancao = overlapping.find(r => r.grave) || overlapping[0];
+        const afeta = !!(matchedSancao && matchedSancao.grave);
         const rowClass = afeta ? 'clickable-row row-sancao' : 'clickable-row';
         let sancaoTag = '';
         if (afeta) {
