@@ -592,12 +592,13 @@ CREATE UNIQUE INDEX idx_mv_srv_cpf_nome ON mv_servidor_pb_risco(cpf_digitos_6, n
 CREATE INDEX idx_mv_srv_conflito ON mv_servidor_pb_risco(cpf_digitos_6) WHERE flag_conflito_interesses;
 CREATE INDEX idx_mv_srv_risco ON mv_servidor_pb_risco(risco_score DESC) WHERE risco_score > 0;
 
--- Cleanup tabelas intermediárias (DROP pode falhar se MV tem dependência de metadata — OK)
-DROP TABLE IF EXISTS _tmp_socio_empresas;
-DROP TABLE IF EXISTS _tmp_fornecedor_gov;
-DROP TABLE IF EXISTS _tmp_conflito;
-DROP TABLE IF EXISTS _tmp_bf;
-DROP TABLE IF EXISTS _tmp_duplo;
+-- Nota: _tmp_socio_empresas, _tmp_fornecedor_gov, _tmp_conflito, _tmp_bf, _tmp_duplo
+-- não podem ser dropadas aqui. O PostgreSQL registra dependência de metadata entre
+-- mv_servidor_pb_risco e essas tabelas (porque a MV foi criada via SELECT sobre elas),
+-- e recusa o DROP com "cannot drop table X because other objects depend on it".
+-- Elas ficam como backing storage da MV. Mesmo padrão aplicado a _tmp_rede_* abaixo.
+-- Na próxima execução, o CASCADE no DROP MATERIALIZED VIEW libera as _tmp tables,
+-- que são então dropadas pelos DROPs no início da seção "Fase 1" (linhas 469, 487...).
 
 
 -- =============================================================================
