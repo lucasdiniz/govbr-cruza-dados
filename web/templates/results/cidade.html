@@ -25,6 +25,15 @@
     <div class="city-hero-copy">
         <p class="eyebrow">Panorama do municipio</p>
         <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
+        {% if ranking %}
+        <a href="/mapa" class="rank-badge rank-{{ ranking.severity }}" title="Posicao no ranking de {{ ranking.total }} municipios da Paraiba por nota de atencao">
+            <span class="rank-badge-icon" aria-hidden="true">&#127941;</span>
+            <span class="rank-badge-text">
+                <span class="citizen-only">Posi&ccedil;&atilde;o <strong>{{ ranking.posicao }}</strong> de {{ ranking.total }} &mdash; {{ ranking.severity_label }}</span>
+                <span class="auditor-only">Rank {{ ranking.posicao }}/{{ ranking.total }} &middot; risco_score {{ ranking.risco_score }}</span>
+            </span>
+        </a>
+        {% endif %}
         <p class="city-subtitle">
             <span class="citizen-only">Veja como a prefeitura de {{ perfil.municipio }} usa o dinheiro p&uacute;blico — com quem gasta, se h&aacute; sinais de irregularidade, e onde v&atilde;o os maiores valores.</span>
             <span class="auditor-only">Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.</span>

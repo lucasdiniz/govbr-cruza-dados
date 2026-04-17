@@ -2641,3 +2641,78 @@ body.dark-page .explainer-btn.is-open {
         font-size: 0.9rem;
     }
 }
+
+/* ============================================================
+   Fase 6 - Ranking PB badge na hero
+   ============================================================ */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    margin: .35rem 0 .2rem 0;
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    border: 1px solid;
+    font-size: 0.92rem;
+    line-height: 1.3;
+    text-decoration: none;
+    transition: transform 0.15s, box-shadow 0.15s;
+    max-width: 100%;
+}
+.rank-badge:hover,
+.rank-badge:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    outline: none;
+}
+.rank-badge-icon { font-size: 1.1em; }
+.rank-badge-text strong { font-weight: 700; }
+
+.rank-red {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+.rank-orange {
+    background: #fff7ed;
+    border-color: #fed7aa;
+    color: #9a3412;
+}
+.rank-gray {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #475569;
+}
+.rank-green {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+
+body.dark-page .rank-red {
+    background: rgba(220, 38, 38, 0.15);
+    border-color: rgba(252, 165, 165, 0.4);
+    color: #fecaca;
+}
+body.dark-page .rank-orange {
+    background: rgba(234, 88, 12, 0.15);
+    border-color: rgba(253, 186, 116, 0.4);
+    color: #fed7aa;
+}
+body.dark-page .rank-gray {
+    background: rgba(100, 116, 139, 0.15);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #cbd5e1;
+}
+body.dark-page .rank-green {
+    background: rgba(22, 163, 74, 0.15);
+    border-color: rgba(134, 239, 172, 0.4);
+    color: #bbf7d0;
+}
+
+@media (max-width: 640px) {
+    .rank-badge {
+        font-size: 0.88rem;
+        padding: .3rem .65rem;
+    }
+}

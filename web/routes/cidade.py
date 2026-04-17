@@ -207,6 +207,78 @@ def _get_query_def(query_id: str):
 _PB_MEDIAS_CACHE: dict = {"value": None, "expires_at": 0.0}
 _PB_MEDIAS_TTL_SECONDS = 6 * 60 * 60
 
+# --- Ranking PB por risco (cache em memoria, TTL 6h) --------------------
+_PB_RANKING_CACHE: dict = {"value": None, "expires_at": 0.0}
+
+
+PB_RANKING_SQL = """
+SELECT municipio,
+       risco_score,
+       RANK() OVER (ORDER BY risco_score DESC NULLS LAST) AS posicao,
+       COUNT(*) OVER () AS total
+FROM mv_municipio_pb_risco
+"""
+
+
+def _load_pb_ranking() -> dict:
+    """Carrega ranking de todos os municipios PB por risco_score.
+    Retorna dict keyed por municipio_casefold -> {posicao, total, risco_score}."""
+    now = time.time()
+    cached = _PB_RANKING_CACHE.get("value")
+    if cached is not None and now < _PB_RANKING_CACHE["expires_at"]:
+        return cached
+    result: dict = {}
+    try:
+        cols, rows = execute_query(PB_RANKING_SQL, {}, timeout_sec=TIMEOUT_PROFILE)
+        for r in rows:
+            d = _row_to_dict(cols, r)
+            mun = str(d.get("municipio") or "")
+            if not mun:
+                continue
+            result[mun.casefold()] = {
+                "municipio": mun,
+                "posicao": int(d.get("posicao") or 0),
+                "total": int(d.get("total") or 0),
+                "risco_score": int(d.get("risco_score") or 0),
+            }
+    except Exception:
+        result = {}
+    _PB_RANKING_CACHE["value"] = result
+    _PB_RANKING_CACHE["expires_at"] = now + _PB_MEDIAS_TTL_SECONDS
+    return result
+
+
+def get_pb_ranking(municipio: str) -> dict | None:
+    """Retorna dict com posicao, total, risco_score, severity, severity_label
+    para o municipio solicitado. Retorna None se nao encontrado."""
+    if not municipio:
+        return None
+    data = _load_pb_ranking().get(municipio.casefold())
+    if not data:
+        return None
+    posicao = data["posicao"]
+    total = data["total"] or 1
+    # Severity por percentil (pior = top da lista)
+    # posicao=1 e o pior (maior risco). Percentil (pior = 0%, melhor = 100%).
+    if posicao <= 10:
+        severity = "red"
+        severity_label = "alta prioridade para investigar"
+    elif posicao / total <= 0.25:
+        severity = "orange"
+        severity_label = "acima da media da Paraiba"
+    elif posicao / total >= 0.75:
+        severity = "green"
+        severity_label = "abaixo da media da Paraiba"
+    else:
+        severity = "gray"
+        severity_label = "proximo da media da Paraiba"
+    return {
+        **data,
+        "severity": severity,
+        "severity_label": severity_label,
+        "percentil_melhor": round(100.0 * (total - posicao + 1) / total),
+    }
+
 
 def get_pb_medias() -> dict:
     """Agregados dos 223 municipios da PB. Cached em memoria por 6h."""
@@ -631,6 +703,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
 
     narrative = build_narrative(perfil, get_pb_medias())
     destaques = pick_destaques(municipio)
+    ranking = get_pb_ranking(municipio)
 
     return templates.TemplateResponse(
         request,
@@ -645,6 +718,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "report_sections": _build_report_sections(),
             "narrative": narrative,
             "destaques": destaques,
+            "ranking": ranking,
         },
     )
 
