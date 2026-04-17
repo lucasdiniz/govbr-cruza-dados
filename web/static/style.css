@@ -15,7 +15,7 @@
     --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
 
-html { font-size: 17px; }
+html { font-size: 17px; scroll-padding-top: 80px; }
 body.dialog-open { overflow: hidden; }
 body {
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
