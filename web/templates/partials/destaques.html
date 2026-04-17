@@ -1,0 +1,32 @@
+{# Destaques 🚩 - Fase 3.
+   Renderizado apenas em modo cidadao. Auditor nao precisa: ja le os dados. #}
+{% if destaques and destaques|length > 0 %}
+<section class="destaques citizen-only" aria-label="Principais sinais de aten&ccedil;&atilde;o">
+    <div class="destaques-head">
+        <h2 class="destaques-title">Principais sinais de aten&ccedil;&atilde;o</h2>
+        <p class="destaques-sub text-muted">Os achados mais graves identificados no cruzamento de dados p&uacute;blicos. Toque em um card para ver detalhes.</p>
+    </div>
+    <div class="destaques-grid">
+        {% for d in destaques %}
+        <button type="button"
+                class="destaque-card destaque-{{ d.severity }}"
+                data-scroll-to="{{ d.section_slug }}"
+                data-query-id="{{ d.query_id }}"
+                aria-label="Ver detalhes">
+            <span class="destaque-icon" aria-hidden="true">{{ d.icon|safe }}</span>
+            <span class="destaque-text">{{ d.html|safe }}</span>
+            <span class="destaque-cta" aria-hidden="true">Ver detalhes &rarr;</span>
+        </button>
+        {% endfor %}
+    </div>
+</section>
+{% else %}
+<section class="destaques destaques-zero citizen-only" aria-label="Nenhum sinal relevante">
+    <div class="destaque-card destaque-green">
+        <span class="destaque-icon" aria-hidden="true">&#9989;</span>
+        <span class="destaque-text">
+            <strong>Nenhum sinal grave identificado</strong> no cruzamento de dados p&uacute;blicos desta cidade.
+        </span>
+    </div>
+</section>
+{% endif %}

@@ -2397,3 +2397,156 @@ html.audit-mode .city-narrative strong {
     }
 }
 
+/* ============================================================
+   DESTAQUES 🚩 (Fase 3)
+   Cards resumo acima das seções técnicas em modo cidadão.
+   ============================================================ */
+.destaques {
+    margin: 1rem 0 1.25rem;
+}
+.destaques-head {
+    margin-bottom: .6rem;
+}
+.destaques-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 .2rem;
+}
+.destaques-sub {
+    font-size: .85rem;
+    margin: 0;
+}
+.destaques-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .55rem;
+}
+.destaque-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .7rem;
+    padding: .8rem .9rem;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--muted);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease;
+    width: 100%;
+}
+.destaque-card:hover,
+.destaque-card:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, .08);
+    outline: none;
+}
+.destaque-card:focus-visible {
+    border-color: var(--blue);
+}
+.destaque-card:active {
+    transform: translateY(0);
+}
+.destaque-icon {
+    font-size: 1.45rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.destaque-text {
+    font-size: .95rem;
+    line-height: 1.35;
+    color: var(--text);
+}
+.destaque-text strong {
+    font-weight: 700;
+}
+.destaque-cta {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--blue);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.destaque-red {
+    border-left-color: var(--red);
+    background: linear-gradient(90deg, rgba(185, 28, 28, .06), var(--surface) 40%);
+}
+.destaque-orange {
+    border-left-color: #c2410c;
+    background: linear-gradient(90deg, rgba(194, 65, 12, .05), var(--surface) 40%);
+}
+.destaque-yellow {
+    border-left-color: var(--yellow);
+    background: linear-gradient(90deg, rgba(180, 83, 9, .04), var(--surface) 40%);
+}
+.destaque-green {
+    border-left-color: var(--green);
+    background: linear-gradient(90deg, rgba(21, 128, 61, .05), var(--surface) 40%);
+}
+/* Dark page overrides */
+body.dark-page .destaque-card {
+    background: rgba(255, 255, 255, .04);
+    border-color: rgba(255, 255, 255, .08);
+    color: #e2e8f0;
+}
+body.dark-page .destaque-text {
+    color: #e2e8f0;
+}
+body.dark-page .destaque-text strong {
+    color: #fff;
+}
+body.dark-page .destaque-cta {
+    color: #93c5fd;
+}
+body.dark-page .destaque-red {
+    background: linear-gradient(90deg, rgba(185, 28, 28, .18), rgba(255, 255, 255, .04) 40%);
+}
+body.dark-page .destaque-orange {
+    background: linear-gradient(90deg, rgba(194, 65, 12, .18), rgba(255, 255, 255, .04) 40%);
+}
+body.dark-page .destaque-yellow {
+    background: linear-gradient(90deg, rgba(180, 83, 9, .16), rgba(255, 255, 255, .04) 40%);
+}
+body.dark-page .destaque-green {
+    background: linear-gradient(90deg, rgba(21, 128, 61, .18), rgba(255, 255, 255, .04) 40%);
+}
+/* Flash amarelo ao scrollar para a seção */
+@keyframes destaque-flash {
+    0%   { box-shadow: 0 0 0 3px rgba(251, 191, 36, .0); }
+    15%  { box-shadow: 0 0 0 3px rgba(251, 191, 36, .7); }
+    100% { box-shadow: 0 0 0 3px rgba(251, 191, 36, .0); }
+}
+.destaque-flash {
+    animation: destaque-flash 1.8s ease-out;
+}
+/* Desktop: grade de 2 colunas para aproveitar largura */
+@media (min-width: 768px) {
+    .destaques-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .7rem;
+    }
+}
+/* Mobile: CTA some para dar espaço ao texto */
+@media (max-width: 640px) {
+    .destaque-card {
+        grid-template-columns: auto 1fr;
+        padding: .7rem .8rem;
+        gap: .6rem;
+    }
+    .destaque-cta {
+        grid-column: 1 / -1;
+        text-align: right;
+        margin-top: .15rem;
+    }
+    .destaque-text {
+        font-size: .92rem;
+    }
+    .destaque-icon {
+        font-size: 1.3rem;
+    }
+}

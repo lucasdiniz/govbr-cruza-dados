@@ -113,6 +113,33 @@ function initNarrativeAnchors() {
 }
 
 
+function initDestaques() {
+    // Scroll + flash para cards de destaque (Fase 3).
+    const cards = document.querySelectorAll('.destaque-card[data-scroll-to]');
+    if (!cards.length) return;
+    cards.forEach(card => {
+        card.addEventListener('click', () => {
+            const slug = card.dataset.scrollTo;
+            const qid = card.dataset.queryId;
+            // Prefere scroll para o finding-card especifico (mais proximo ao achado);
+            // fallback para a secao do tema.
+            let target = qid ? document.querySelector(`.finding-card[data-query="${qid}"]`) : null;
+            if (!target && slug) target = document.getElementById(slug);
+            if (!target) return;
+            // Se finding-card, garante que esta expandido
+            if (target.classList.contains('finding-card')) {
+                target.classList.remove('collapsed');
+            }
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            target.classList.remove('destaque-flash', 'anchor-flash');
+            void target.offsetWidth;
+            target.classList.add('destaque-flash');
+            setTimeout(() => target.classList.remove('destaque-flash'), 1900);
+        });
+    });
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -2482,6 +2509,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initModeToggle();
     initTermTooltips();
     initNarrativeAnchors();
+    initDestaques();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {

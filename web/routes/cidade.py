@@ -349,6 +349,167 @@ def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
     return {"citizen": citizen_html, "auditor": auditor_html}
 
 
+# ── Destaques (Fase 3) ──────────────────────────────────────────
+# Achados traduzidos em uma frase, renderizados acima das seções técnicas
+# em modo cidadão. Cada entrada descreve como agregar uma query cacheada
+# em um card com ícone + número + frase + link "Ver detalhes".
+#
+# Campos:
+#   - query_id: id da query no registry (usa web_cache)
+#   - icon: emoji
+#   - severity: "red" | "orange" | "yellow" (cor da borda/ícone)
+#   - template: frase (suporta {brl}, {qtd}, {plural})
+#   - section_slug: âncora de scroll (slug da SECTION_META)
+#   - value_col: coluna a somar para {brl} (vazio = não mostra valor)
+#   - count_col: coluna a contar distinct para {qtd}; None = conta linhas
+#   - min_value: limiar mínimo do total somado para mostrar o card
+#   - min_count: limiar mínimo da contagem para mostrar o card
+DESTAQUES_SPEC = [
+    {
+        "query_id": "Q65",
+        "icon": "&#128681;",  # 🚩
+        "severity": "red",
+        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} punida{plural} por fraude",
+        "section_slug": "fornecedores-irregulares",
+        "value_col": "total_pago",
+        "count_col": "cpf_cnpj_sancionado",
+        "min_value": 10_000,
+        "min_count": 1,
+    },
+    {
+        "query_id": "Q67",
+        "icon": "&#128181;",  # 💵
+        "severity": "orange",
+        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} devendo impostos federais",
+        "section_slug": "fornecedores-irregulares",
+        "value_col": "total_pago",
+        "count_col": "cnpj_basico",
+        "min_value": 50_000,
+        "min_count": 1,
+    },
+    {
+        "query_id": "Q70",
+        "icon": "&#9888;&#65039;",  # ⚠️
+        "severity": "orange",
+        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} com cadastro irregular na Receita",
+        "section_slug": "fornecedores-irregulares",
+        "value_col": "total_pago",
+        "count_col": "cpf_cnpj",
+        "min_value": 50_000,
+        "min_count": 1,
+    },
+    {
+        "query_id": "Q77",
+        "icon": "&#129513;",  # 🧩
+        "severity": "yellow",
+        "template": "<strong>{qtd}</strong> caso{plural} de compras fatiadas (indicio de fracionamento)",
+        "section_slug": "licitacoes",
+        "value_col": "",
+        "count_col": None,  # conta linhas
+        "min_value": 0,
+        "min_count": 2,
+    },
+    {
+        "query_id": "Q71",
+        "icon": "&#127968;",  # 🏠
+        "severity": "yellow",
+        "template": "<strong>{qtd}</strong> empresa{plural} registrada{plural} no mesmo endere&ccedil;o receberam pagamento",
+        "section_slug": "licitacoes",
+        "value_col": "",
+        "count_col": "cnpj_basico",
+        "min_value": 0,
+        "min_count": 2,
+    },
+    {
+        "query_id": "Q61",
+        "icon": "&#128202;",  # 📊
+        "severity": "yellow",
+        "template": "<strong>{qtd}</strong> fornecedor{plural_es} com diferen&ccedil;a atipica entre empenhado e pago",
+        "section_slug": "orcamento",
+        "value_col": "",
+        "count_col": None,
+        "min_value": 0,
+        "min_count": 5,
+    },
+]
+
+
+def _fmt_int_br(n: int) -> str:
+    return f"{int(n):,}".replace(",", ".")
+
+
+def _destaque_plural(n: int, form: str = "s") -> str:
+    """Retorna '' para n<=1, sufixo plural caso contrário."""
+    return form if n > 1 else ""
+
+
+def _aggregate_destaque(spec: dict, cols: list[str], rows: list[tuple]) -> tuple[float, int]:
+    """Soma value_col e conta count_col (ou linhas) a partir dos rows do cache."""
+    if not rows:
+        return 0.0, 0
+    val_idx = cols.index(spec["value_col"]) if spec.get("value_col") and spec["value_col"] in cols else -1
+    total = 0.0
+    if val_idx >= 0:
+        for r in rows:
+            try:
+                total += float(r[val_idx] or 0)
+            except (TypeError, ValueError):
+                pass
+    count_col = spec.get("count_col")
+    if count_col is None:
+        qtd = len(rows)
+    else:
+        cnt_idx = cols.index(count_col) if count_col in cols else -1
+        if cnt_idx < 0:
+            qtd = len(rows)
+        else:
+            qtd = len({r[cnt_idx] for r in rows if r[cnt_idx] is not None})
+    return total, qtd
+
+
+def pick_destaques(municipio: str, max_cards: int = 5) -> list[dict]:
+    """Monta lista de destaques para o modo cidadão a partir do web_cache.
+
+    Retorna uma lista de dicts prontos para o template `partials/destaques.html`:
+        {icon, severity, html, section_slug, query_id, total, qtd}
+    Vazia se nenhum achado passa dos limiares (template pode mostrar zero-state).
+    """
+    cards: list[dict] = []
+    for spec in DESTAQUES_SPEC:
+        cached = read_web_cache(spec["query_id"], municipio)
+        if not cached:
+            continue
+        cols, rows = cached
+        total, qtd = _aggregate_destaque(spec, cols, rows)
+        if qtd < spec.get("min_count", 1):
+            continue
+        if spec.get("value_col") and total < spec.get("min_value", 0):
+            continue
+        brl = _fmt_brl_narrative(total) if spec.get("value_col") else ""
+        plural = _destaque_plural(qtd, "s")
+        plural_es = _destaque_plural(qtd, "es")
+        html = spec["template"].format(
+            brl=brl,
+            qtd=_fmt_int_br(qtd),
+            plural=plural,
+            plural_es=plural_es,
+        )
+        cards.append({
+            "icon": spec["icon"],
+            "severity": spec["severity"],
+            "html": html,
+            "section_slug": spec["section_slug"],
+            "query_id": spec["query_id"],
+            "total": total,
+            "qtd": qtd,
+            "_sort_key": (qtd * total) if spec.get("value_col") else qtd * 1000,
+        })
+    # Ordena por gravidade (red > orange > yellow) e depois por impacto (_sort_key)
+    sev_order = {"red": 0, "orange": 1, "yellow": 2}
+    cards.sort(key=lambda c: (sev_order.get(c["severity"], 9), -c["_sort_key"]))
+    return cards[:max_cards]
+
+
 def _build_report_sections(pb_only: bool = True):
     sections = []
     for category, queries in get_categories():
@@ -469,6 +630,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     }
 
     narrative = build_narrative(perfil, get_pb_medias())
+    destaques = pick_destaques(municipio)
 
     return templates.TemplateResponse(
         request,
@@ -482,6 +644,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "servidores": [],
             "report_sections": _build_report_sections(),
             "narrative": narrative,
+            "destaques": destaques,
         },
     )
 
