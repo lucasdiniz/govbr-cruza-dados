@@ -1,5 +1,6 @@
 """FastAPI app — govbr-cruza-dados frontend."""
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -178,6 +179,21 @@ def column_is_auditor_only(col: str) -> bool:
 templates.env.globals["COLUMN_META"] = COLUMN_META
 templates.env.globals["column_label"] = column_label
 templates.env.globals["column_is_auditor_only"] = column_is_auditor_only
+
+# Data de refresh dos dados (Fase 8 - badge de credibilidade).
+# Lida de env DATA_REFRESH_DATE (formato YYYY-MM-DD); se ausente, usa mes/ano atuais.
+_data_refresh = os.environ.get("DATA_REFRESH_DATE", "").strip()
+if not _data_refresh:
+    from datetime import date as _d
+    _data_refresh = _d.today().strftime("%Y-%m-%d")
+# Formato amigavel pt-BR (DD/MM/YYYY). Entrada pode ser YYYY-MM-DD ou ja formatada.
+try:
+    from datetime import datetime as _dt
+    _data_refresh_br = _dt.strptime(_data_refresh, "%Y-%m-%d").strftime("%d/%m/%Y")
+except Exception:
+    _data_refresh_br = _data_refresh
+templates.env.globals["DATA_REFRESH_DATE"] = _data_refresh_br
+templates.env.globals["DATA_REFRESH_DATE_ISO"] = _data_refresh
 
 
 app.include_router(cidade_router)

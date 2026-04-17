@@ -18,7 +18,7 @@
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
     <meta name="twitter:card" content="summary">
-    <link rel="stylesheet" href="/static/style.css?v=26">
+    <link rel="stylesheet" href="/static/style.css?v=27">
     <script>
         // Aplica modo (cidadao/auditor) ANTES do render para evitar flash
         (function(){
@@ -64,13 +64,46 @@
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+    <footer class="site-footer" role="contentinfo">
+        <div class="credibility">
+            <span class="credibility-text">
+                Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, PNCP, PGFN, IBGE, TSE.
+                Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.
+                <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
+            </span>
+        </div>
+    </footer>
+    <dialog id="credibility-dialog" class="credibility-dialog">
+        <div class="dialog-header">
+            <h3 class="dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</h3>
+            <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">&times;</button>
+        </div>
+        <div class="dialog-body">
+            <p>O <strong>TransparenciaPB</strong> cruza dados p&uacute;blicos de fontes oficiais para mostrar como cada prefeitura da Para&iacute;ba usa o dinheiro p&uacute;blico.</p>
+            <h4>Fontes</h4>
+            <ul class="source-list">
+                <li><a href="https://portaldatransparencia.gov.br/" target="_blank" rel="noopener">Portal da Transpar&ecirc;ncia</a> &mdash; execu&ccedil;&atilde;o or&ccedil;ament&aacute;ria federal, Bolsa Fam&iacute;lia, servidores.</li>
+                <li><a href="https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj" target="_blank" rel="noopener">Receita Federal &mdash; CNPJ</a> &mdash; cadastro de empresas e s&oacute;cios.</li>
+                <li><a href="https://www.gov.br/cgu/pt-br/assuntos/transparencia-publica" target="_blank" rel="noopener">CGU</a> &mdash; CEIS, CNEP, CEAF (empresas e servidores sancionados).</li>
+                <li><a href="https://tce.pb.gov.br/" target="_blank" rel="noopener">TCE-PB</a> &mdash; despesas, licita&ccedil;&otilde;es e folha de pagamento dos munic&iacute;pios paraibanos.</li>
+                <li><a href="https://pncp.gov.br/" target="_blank" rel="noopener">PNCP</a> &mdash; Portal Nacional de Contrata&ccedil;&otilde;es P&uacute;blicas.</li>
+                <li><a href="https://www.gov.br/pgfn/pt-br" target="_blank" rel="noopener">PGFN</a> &mdash; d&iacute;vida ativa da Uni&atilde;o.</li>
+                <li><a href="https://www.ibge.gov.br/" target="_blank" rel="noopener">IBGE</a> &mdash; dados dos munic&iacute;pios.</li>
+                <li><a href="https://www.tse.jus.br/" target="_blank" rel="noopener">TSE</a> &mdash; candidatos e doa&ccedil;&otilde;es eleitorais.</li>
+            </ul>
+            <h4>Atualiza&ccedil;&atilde;o</h4>
+            <p>Os dados deste site s&atilde;o atualizados periodicamente a partir dos arquivos abertos publicados pelas fontes acima. A &uacute;ltima atualiza&ccedil;&atilde;o foi em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.</p>
+            <h4>Importante</h4>
+            <p class="text-sm text-muted">Os cruzamentos apontam <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o. N&atilde;o s&atilde;o conclus&otilde;es jur&iacute;dicas. Sempre consulte a fonte original e, se necess&aacute;rio, os &oacute;rg&atilde;os de controle (MP-PB, TCE-PB, CGU).</p>
+        </div>
+    </dialog>
     <button type="button" id="backToTop" class="back-to-top" aria-label="Voltar ao topo" hidden>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=20"></script>
+    <script src="/static/app.js?v=21"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

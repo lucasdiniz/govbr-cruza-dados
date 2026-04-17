@@ -172,6 +172,21 @@ function initExplainers() {
 }
 
 
+function initCredibilityDialog() {
+    // Fase 8: badge de credibilidade no footer abre modal com fontes.
+    const btn = document.getElementById('credibilityOpen');
+    const dialog = document.getElementById('credibility-dialog');
+    if (!btn || !dialog) return;
+    btn.addEventListener('click', () => {
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+    });
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.close();
+    });
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -2543,6 +2558,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNarrativeAnchors();
     initDestaques();
     initExplainers();
+    initCredibilityDialog();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
