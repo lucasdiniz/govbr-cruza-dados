@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import time
 from datetime import date
 
 from fastapi import APIRouter, Body, Query, Request
@@ -30,6 +31,7 @@ from web.queries.cidade import (
     HEATMAP_MES_FUNCOES,
     HEATMAP_MES_MODALIDADES,
     HEATMAP_MES_EMPENHOS,
+    PB_MEDIAS,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
     TOP_FORNECEDORES,
@@ -201,6 +203,152 @@ def _get_query_def(query_id: str):
     return query_def
 
 
+# --- Medias PB (cache em memoria, TTL 6h) -------------------------------
+_PB_MEDIAS_CACHE: dict = {"value": None, "expires_at": 0.0}
+_PB_MEDIAS_TTL_SECONDS = 6 * 60 * 60
+
+
+def get_pb_medias() -> dict:
+    """Agregados dos 223 municipios da PB. Cached em memoria por 6h."""
+    now = time.time()
+    if _PB_MEDIAS_CACHE["value"] and now < _PB_MEDIAS_CACHE["expires_at"]:
+        return _PB_MEDIAS_CACHE["value"]
+    try:
+        cols, rows = execute_query(PB_MEDIAS, {}, timeout_sec=TIMEOUT_PROFILE)
+        medias = _row_to_dict(cols, rows[0]) if rows else {}
+    except Exception:
+        medias = {}
+    _PB_MEDIAS_CACHE["value"] = medias
+    _PB_MEDIAS_CACHE["expires_at"] = now + _PB_MEDIAS_TTL_SECONDS
+    return medias
+
+
+def _fmt_brl_narrative(value) -> str:
+    """Formata valor em R$ para narrativa: 'R$ 187 mi', 'R$ 3,2 mi', 'R$ 450 mil'."""
+    try:
+        n = float(value or 0)
+    except (TypeError, ValueError):
+        return "R$ 0"
+    if n >= 1_000_000_000:
+        return f"R$ {n / 1_000_000_000:.1f} bi".replace(".", ",")
+    if n >= 1_000_000:
+        val = n / 1_000_000
+        if val >= 10:
+            return f"R$ {val:.0f} mi"
+        return f"R$ {val:.1f} mi".replace(".", ",")
+    if n >= 1_000:
+        return f"R$ {n / 1_000:.0f} mil"
+    return f"R$ {n:,.0f}".replace(",", ".")
+
+
+def _fmt_pct(value, decimals: int = 1) -> str:
+    try:
+        n = float(value or 0)
+    except (TypeError, ValueError):
+        return "0%"
+    if decimals == 0 or n >= 10:
+        return f"{n:.0f}%"
+    return f"{n:.1f}%".replace(".", ",")
+
+
+def _compare_vs_mediana(valor, mediana, higher_is_worse: bool = True) -> str:
+    """Retorna texto curto: 'acima da m&eacute;dia PB', 'pr&oacute;ximo da m&eacute;dia', 'abaixo da m&eacute;dia'."""
+    try:
+        v = float(valor or 0)
+        m = float(mediana or 0)
+    except (TypeError, ValueError):
+        return ""
+    if m <= 0:
+        return ""
+    delta = (v - m) / m
+    if abs(delta) < 0.10:
+        return "pr&oacute;ximo da m&eacute;dia da Para&iacute;ba"
+    if delta > 0:
+        return "acima da m&eacute;dia da Para&iacute;ba" if higher_is_worse else "acima da m&eacute;dia da Para&iacute;ba"
+    return "abaixo da m&eacute;dia da Para&iacute;ba" if higher_is_worse else "abaixo da m&eacute;dia da Para&iacute;ba"
+
+
+def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
+    """Monta narrativa humana a partir do perfil + agregados PB.
+
+    Retorna dict com chaves `citizen` (HTML para modo cidadao) e `auditor`
+    (HTML para modo auditor) — ambas prontas para |safe no template.
+    """
+    medias = medias or {}
+    municipio = (perfil.get("municipio") or "Este munic&iacute;pio").title()
+    total_empenhado = perfil.get("total_empenhado") or 0
+    total_pago = perfil.get("total_pago") or 0
+    qtd_fornecedores = int(perfil.get("qtd_fornecedores") or 0)
+    pct_sem_licitacao = perfil.get("pct_sem_licitacao") or 0
+    risco_score = perfil.get("risco_score")
+    pct_folha = perfil.get("pct_folha_receita") or 0
+
+    pct_pago = 0.0
+    try:
+        if float(total_empenhado or 0) > 0:
+            pct_pago = 100.0 * float(total_pago) / float(total_empenhado)
+    except (TypeError, ValueError):
+        pct_pago = 0.0
+
+    mediana_risco = medias.get("mediana_risco")
+    mediana_pct_sem_licitacao = medias.get("mediana_pct_sem_licitacao")
+
+    # ----- Cidadao -----
+    qtd_forn_fmt = f"{qtd_fornecedores:,}".replace(",", ".")
+    frag_citizen = [f"A prefeitura de <strong>{municipio}</strong> j&aacute; pagou "
+                    f"<a href=\"#fornecedores\"><strong>{_fmt_brl_narrative(total_pago)}</strong></a> "
+                    f"a <a href=\"#fornecedores\"><strong>{qtd_forn_fmt}</strong> empresas</a>."]
+
+    if pct_sem_licitacao:
+        cmp_sl = _compare_vs_mediana(pct_sem_licitacao, mediana_pct_sem_licitacao, higher_is_worse=True)
+        sl_txt = (
+            f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_sem_licitacao)}</strong> "
+            f"saiu em compras sem concorr&ecirc;ncia</a>"
+        )
+        if cmp_sl and mediana_pct_sem_licitacao:
+            sl_txt += f" — {cmp_sl} (mediana: {_fmt_pct(mediana_pct_sem_licitacao)})"
+        sl_txt += "."
+        frag_citizen.append(sl_txt)
+
+    if risco_score is not None:
+        cmp_nota = _compare_vs_mediana(risco_score, mediana_risco, higher_is_worse=True)
+        nota_txt = (
+            f" A <a href=\"#relatorio\"><strong>nota de aten&ccedil;&atilde;o</strong></a> desta cidade "
+            f"&eacute; <strong>{float(risco_score):.0f}/100</strong>"
+        )
+        if cmp_nota and mediana_risco is not None:
+            nota_txt += f" — {cmp_nota} (mediana PB: {float(mediana_risco):.0f})"
+        nota_txt += "."
+        frag_citizen.append(nota_txt)
+
+    citizen_html = "".join(frag_citizen)
+
+    # ----- Auditor -----
+    frag_auditor = [
+        f"<strong>{municipio}</strong>: "
+        f"{_fmt_brl_narrative(total_empenhado)} empenhado / "
+        f"<a href=\"#fornecedores\">{_fmt_brl_narrative(total_pago)} pago</a> "
+        f"({_fmt_pct(pct_pago, decimals=1)})."
+    ]
+    if pct_sem_licitacao:
+        frag_auditor.append(
+            f" <a href=\"#licitacoes\">Dispensa/inexigibilidade: {_fmt_pct(pct_sem_licitacao)}</a>"
+            + (f" (p50 PB: {_fmt_pct(mediana_pct_sem_licitacao)})" if mediana_pct_sem_licitacao else "")
+            + "."
+        )
+    if pct_folha:
+        frag_auditor.append(f" Folha/receita: {_fmt_pct(pct_folha)}.")
+    if risco_score is not None:
+        frag_auditor.append(
+            f" <a href=\"#relatorio\">Risco composto: {float(risco_score):.0f}/100</a>"
+            + (f" (p50 PB: {float(mediana_risco):.0f})" if mediana_risco is not None else "")
+            + "."
+        )
+    auditor_html = "".join(frag_auditor)
+
+    return {"citizen": citizen_html, "auditor": auditor_html}
+
+
 def _build_report_sections(pb_only: bool = True):
     sections = []
     for category, queries in get_categories():
@@ -320,6 +468,8 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
         "default_data_fim": today.isoformat(),
     }
 
+    narrative = build_narrative(perfil, get_pb_medias())
+
     return templates.TemplateResponse(
         request,
         "results/cidade.html",
@@ -331,6 +481,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "fornecedores": [],
             "servidores": [],
             "report_sections": _build_report_sections(),
+            "narrative": narrative,
         },
     )
 

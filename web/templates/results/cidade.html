@@ -29,6 +29,12 @@
             <span class="citizen-only">Veja como a prefeitura de {{ perfil.municipio }} usa o dinheiro p&uacute;blico — com quem gasta, se h&aacute; sinais de irregularidade, e onde v&atilde;o os maiores valores.</span>
             <span class="auditor-only">Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.</span>
         </p>
+        {% if narrative %}
+        <p class="city-narrative">
+            <span class="citizen-only">{{ narrative.citizen|safe }}</span>
+            <span class="auditor-only">{{ narrative.auditor|safe }}</span>
+        </p>
+        {% endif %}
         <button
             type="button"
             class="share-btn"
@@ -176,11 +182,7 @@
 </section>
 
 <div class="two-col">
-    <section class="card" style="grid-column: 1 / -1">
-        <div class="section-head">
-            <div>
-                <p class="eyebrow">
-                    <span class="citizen-only">Quem mais recebe dinheiro da prefeitura</span>
+    <section class="card" id="fornecedores" style="grid-column: 1 / -1">
                     <span class="auditor-only">Quem mais recebeu</span>
                 </p>
                 <h2 class="card-title">
@@ -226,10 +228,11 @@
     </section>
 </div>
 
-<section class="report-sections">
+<section class="report-sections" id="relatorio">
     {% for section in report_sections %}
     <article
         class="card report-section"
+        id="{{ section.slug }}"
         data-section-slug="{{ section.slug }}"
         data-section-title="{{ section.title }}"
     >

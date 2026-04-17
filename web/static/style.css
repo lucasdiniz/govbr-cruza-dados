@@ -2145,3 +2145,58 @@ html.audit-mode .mode-toggle {
         transform: translateX(0);
     }
 }
+
+/* ========== Fase 2: narrativa hero ========== */
+.city-narrative {
+    margin: 1rem 0 0.5rem;
+    padding: 0.875rem 1rem;
+    background: var(--surface-alt, #f7fafc);
+    border-left: 3px solid var(--primary, #2563eb);
+    border-radius: 0 10px 10px 0;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    color: var(--text, #1a202c);
+}
+.city-narrative a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    transition: color 0.15s ease;
+}
+.city-narrative a:hover,
+.city-narrative a:focus-visible {
+    color: var(--primary, #2563eb);
+    text-decoration-style: solid;
+}
+.city-narrative strong {
+    font-weight: 700;
+    color: var(--primary, #2563eb);
+}
+html.audit-mode .city-narrative {
+    font-size: 0.9375rem;
+    background: var(--surface-2, #1a202c);
+    color: var(--text-muted, #a0aec0);
+    border-left-color: var(--accent-muted, #4a5568);
+}
+html.audit-mode .city-narrative strong {
+    color: var(--text, #e2e8f0);
+}
+
+/* Anchor highlight quando entra em foco via link da narrativa */
+.anchor-flash {
+    animation: anchorFlash 1.6s ease-out;
+}
+@keyframes anchorFlash {
+    0% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.9); }
+    100% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0); }
+}
+
+@media (max-width: 640px) {
+    .city-narrative {
+        font-size: 1rem;
+        padding: 0.75rem 0.875rem;
+        line-height: 1.5;
+    }
+}
+

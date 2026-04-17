@@ -59,6 +59,28 @@ function initTermTooltips() {
     });
 }
 
+function initNarrativeAnchors() {
+    // Smooth scroll + flash highlight para links da narrativa da hero
+    const narr = document.querySelector('.city-narrative');
+    if (!narr) return;
+    narr.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href^="#"]');
+        if (!link) return;
+        const targetId = link.getAttribute('href').slice(1);
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.classList.remove('anchor-flash');
+        // Force reflow para reiniciar animacao
+        void target.offsetWidth;
+        target.classList.add('anchor-flash');
+        setTimeout(() => target.classList.remove('anchor-flash'), 1800);
+        // Atualiza hash sem jumping
+        history.replaceState(null, '', '#' + targetId);
+    });
+}
+
 
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
@@ -2403,6 +2425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initShareButtons();
     initModeToggle();
     initTermTooltips();
+    initNarrativeAnchors();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {

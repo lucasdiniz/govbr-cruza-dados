@@ -61,6 +61,21 @@ WHERE UPPER(unaccent(TRIM(municipio))) = UPPER(unaccent(TRIM(%(municipio)s)))
 LIMIT 1
 """
 
+# Agregados da Paraiba inteira — usados para contexto comparativo na narrativa.
+# Cached em memoria por 6h (ver get_pb_medias em web/routes/cidade.py).
+PB_MEDIAS = """
+SELECT
+    COUNT(*)::int                                        AS n_municipios,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY risco_score)         AS mediana_risco,
+    AVG(risco_score)                                     AS media_risco,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_sem_licitacao)   AS mediana_pct_sem_licitacao,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_folha_receita)   AS mediana_pct_folha,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_proponente_unico) AS mediana_pct_proponente_unico,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_pago)          AS mediana_total_pago
+FROM mv_municipio_pb_risco
+WHERE risco_score IS NOT NULL
+"""
+
 PERFIL_MUNICIPIO_LIVE = """
 SELECT %(municipio)s AS municipio,
        COUNT(*) AS qtd_empenhos,
