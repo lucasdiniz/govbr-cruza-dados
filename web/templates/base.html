@@ -18,7 +18,7 @@
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
     <meta name="twitter:card" content="summary">
-    <link rel="stylesheet" href="/static/style.css?v=29">
+    <link rel="stylesheet" href="/static/style.css?v=30">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -50,6 +50,7 @@
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>
+        <button type="button" id="tourRestart" class="icon-btn" aria-label="Reiniciar tour" title="Como usar o site" style="display:none">?</button>
         <button type="button" id="fontSizeToggle" class="font-toggle" aria-label="Ajustar tamanho da fonte" title="Tamanho da fonte">
             <span class="font-toggle-label">A<span class="font-plus">+</span></span>
         </button>
@@ -109,7 +110,7 @@
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=22"></script>
+    <script src="/static/app.js?v=23"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

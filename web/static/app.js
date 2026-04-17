@@ -227,6 +227,135 @@ function initFontSizeToggle() {
 }
 
 
+function initTour() {
+    // Fase 5: tour de 3 passos na primeira visita a pagina de cidade.
+    const isCityPage = !!document.querySelector('.city-hero');
+    const restartBtn = document.getElementById('tourRestart');
+    if (!isCityPage && !restartBtn) return;
+
+    const STEPS = [
+        {
+            selector: '.city-narrative',
+            title: 'Resumo em 30 segundos',
+            text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
+        },
+        {
+            selector: '.destaques, .findings-list',
+            title: 'Os pontos que merecem aten&ccedil;&atilde;o',
+            text: 'Aqui ficam os destaques: onde h&aacute; ind&iacute;cios de irregularidade ou risco. Cada cart&atilde;o mostra o que foi encontrado e quanto dinheiro est&aacute; envolvido.',
+        },
+        {
+            selector: '#modeToggle',
+            title: '&Eacute; jornalista, auditor ou MP?',
+            text: 'Ative o <strong>Modo Auditor</strong> aqui para ver todos os dados t&eacute;cnicos (CNPJs, modalidades, scores brutos, colunas extras).',
+        },
+    ];
+
+    let current = 0;
+    let overlay = null;
+    let tooltip = null;
+
+    function firstMatch(sel) {
+        return document.querySelector(sel.split(',').map(s => s.trim()).find(s => document.querySelector(s)) || sel.split(',')[0].trim());
+    }
+
+    function build() {
+        overlay = document.createElement('div');
+        overlay.className = 'tour-overlay';
+        overlay.innerHTML = '<div class="tour-spotlight"></div>';
+        tooltip = document.createElement('div');
+        tooltip.className = 'tour-tooltip';
+        tooltip.setAttribute('role', 'dialog');
+        tooltip.setAttribute('aria-modal', 'true');
+        document.body.appendChild(overlay);
+        document.body.appendChild(tooltip);
+    }
+
+    function render() {
+        const step = STEPS[current];
+        const target = firstMatch(step.selector);
+        if (!target) { next(); return; }
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => {
+            const rect = target.getBoundingClientRect();
+            const pad = 8;
+            const spot = overlay.querySelector('.tour-spotlight');
+            spot.style.top = (rect.top - pad) + 'px';
+            spot.style.left = (rect.left - pad) + 'px';
+            spot.style.width = (rect.width + pad * 2) + 'px';
+            spot.style.height = (rect.height + pad * 2) + 'px';
+
+            const isLast = current === STEPS.length - 1;
+            tooltip.innerHTML = `
+                <div class="tour-step">Passo ${current + 1} de ${STEPS.length}</div>
+                <h3 class="tour-title">${step.title}</h3>
+                <p class="tour-text">${step.text}</p>
+                <div class="tour-actions">
+                    <button type="button" class="tour-skip">Pular</button>
+                    <div class="tour-nav">
+                        ${current > 0 ? '<button type="button" class="tour-prev">Voltar</button>' : ''}
+                        <button type="button" class="tour-next">${isLast ? 'Entendi' : 'Pr&oacute;ximo'}</button>
+                    </div>
+                </div>
+            `;
+            // Posicionar tooltip abaixo (ou acima se nao couber)
+            const tt = tooltip;
+            tt.style.visibility = 'hidden';
+            tt.style.display = 'block';
+            const ttRect = tt.getBoundingClientRect();
+            let top = rect.bottom + 14;
+            if (top + ttRect.height > window.innerHeight - 12) {
+                top = Math.max(12, rect.top - ttRect.height - 14);
+            }
+            let left = Math.max(12, Math.min(rect.left, window.innerWidth - ttRect.width - 12));
+            tt.style.top = top + 'px';
+            tt.style.left = left + 'px';
+            tt.style.visibility = 'visible';
+
+            tt.querySelector('.tour-skip').onclick = finish;
+            tt.querySelector('.tour-next').onclick = next;
+            const prev = tt.querySelector('.tour-prev');
+            if (prev) prev.onclick = () => { current = Math.max(0, current - 1); render(); };
+        }, 350);
+    }
+
+    function next() {
+        current++;
+        if (current >= STEPS.length) { finish(); return; }
+        render();
+    }
+
+    function finish() {
+        try { localStorage.setItem('tour-v1', 'done'); } catch (_) {}
+        if (overlay) overlay.remove();
+        if (tooltip) tooltip.remove();
+        overlay = null; tooltip = null; current = 0;
+    }
+
+    function start() {
+        if (overlay) return;
+        build();
+        render();
+    }
+
+    // Mostra botao "?" sempre que o tour ja rodou (para reiniciar)
+    if (restartBtn) {
+        restartBtn.style.display = 'inline-flex';
+        restartBtn.addEventListener('click', () => { current = 0; start(); });
+    }
+
+    // Auto-start apenas na pagina de cidade, na primeira visita
+    if (isCityPage) {
+        let done = null;
+        try { done = localStorage.getItem('tour-v1'); } catch (_) {}
+        if (!done) {
+            // Espera um pouco para layout estabilizar
+            setTimeout(start, 800);
+        }
+    }
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -2600,6 +2729,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initExplainers();
     initCredibilityDialog();
     initFontSizeToggle();
+    initTour();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
