@@ -134,9 +134,10 @@ body.dark-page.mapa-page .container {
 
 .search-hero {
     position: relative;
+    z-index: 10;
     text-align: center;
     padding: 3.5rem 1.5rem 2.5rem;
-    overflow: hidden;
+    overflow: visible;
     min-height: 540px;
     background: transparent;
 }
@@ -318,7 +319,7 @@ body.dark-page.mapa-page .container {
     margin-bottom: 0.6rem;
 }
 
-.autocomplete-wrap { position: relative; }
+.autocomplete-wrap { position: relative; z-index: 50; }
 .autocomplete-wrap input {
     width: 100%;
     padding: 1rem 1.05rem;
@@ -1690,6 +1691,24 @@ body {
     .heatmap-grid { min-width: 520px; }
     .hm-cell { height: 32px; font-size: 0.6rem; }
     .hm-year-label { min-width: 36px; max-width: 36px; font-size: 0.72rem; }
+
+    /* Tabelas do dialog (empresa, servidor, etc): forcar scroll horizontal
+       em vez de espremer 8-10 colunas no viewport */
+    #empresa-dialog .tbl-wrap table,
+    .dialog-table {
+        min-width: 620px;
+    }
+    #empresa-dialog .tbl-wrap table th,
+    #empresa-dialog .tbl-wrap table td,
+    .dialog-table th,
+    .dialog-table td {
+        white-space: nowrap;
+    }
+    #empresa-dialog .tbl-wrap table td.col-wrap,
+    .dialog-table td.col-wrap {
+        white-space: normal;
+        max-width: 220px;
+    }
 
     /* Botoes gerais com tap target decente */
     .btn,
