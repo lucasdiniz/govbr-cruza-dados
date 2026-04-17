@@ -18,13 +18,16 @@
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
     <meta name="twitter:card" content="summary">
-    <link rel="stylesheet" href="/static/style.css?v=28">
+    <link rel="stylesheet" href="/static/style.css?v=29">
     <script>
-        // Aplica modo (cidadao/auditor) ANTES do render para evitar flash
+        // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
             try {
                 var m = localStorage.getItem('mode');
                 if (m === 'auditor') document.documentElement.classList.add('audit-mode');
+                var fs = localStorage.getItem('font-size');
+                if (fs === 'lg') document.documentElement.classList.add('font-lg');
+                else if (fs === 'xl') document.documentElement.classList.add('font-xl');
             } catch(e) {}
         })();
     </script>
@@ -47,6 +50,9 @@
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>
+        <button type="button" id="fontSizeToggle" class="font-toggle" aria-label="Ajustar tamanho da fonte" title="Tamanho da fonte">
+            <span class="font-toggle-label">A<span class="font-plus">+</span></span>
+        </button>
         <button type="button" id="modeToggle" class="mode-toggle" aria-pressed="false" aria-label="Alternar modo">
             <svg class="mode-icon mode-icon-citizen" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
@@ -103,7 +109,7 @@
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=21"></script>
+    <script src="/static/app.js?v=22"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
