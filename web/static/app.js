@@ -432,7 +432,9 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 initDataTables(body);
                 initClickableRows(body);
             } catch {
-                countEl.textContent = 'Erro';
+                countEl.textContent = '—';
+                const countLabel = countEl.nextElementSibling;
+                if (countLabel) countLabel.style.display = 'none';
                 body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
                 card.classList.remove('loading');
                 card.classList.add('is-timeout');
@@ -2287,12 +2289,15 @@ function updateSectionSummaries() {
 
         const summary = section.querySelector('[data-section-total]');
         if (!summary) return;
+        const summaryLabel = summary.nextElementSibling;
 
         if (!findings) {
             summary.textContent = 'Nenhum achado carregado';
+            if (summaryLabel) summaryLabel.style.display = 'none';
             return;
         }
 
+        if (summaryLabel) summaryLabel.style.display = '';
         summary.textContent = `${total} registros em ${findings} blocos`;
     });
 }

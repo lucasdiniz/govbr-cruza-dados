@@ -1748,12 +1748,45 @@ body {
         margin-top: 0.35rem;
     }
 
-    /* Tabelas do dialog (empresa, servidor, etc): forcar scroll horizontal
-       em vez de espremer 8-10 colunas no viewport */
-    #empresa-dialog .tbl-wrap table,
+    /* Primeira coluna (nome da empresa/elemento) fica fixa ao scroll
+       horizontal em modo auditor (quando sobra min-width e o usuario
+       precisa rolar). Em modo cidadao com poucas colunas a tabela cabe
+       sem scroll e o sticky fica inerte. */
+    #empresa-dialog .tbl-wrap table th:first-child,
+    #empresa-dialog .tbl-wrap table td:first-child,
+    .dialog-table th:first-child,
+    .dialog-table td:first-child,
+    .data-table th:first-child,
+    .data-table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--surface, #fff);
+    }
+    #empresa-dialog .tbl-wrap table th:first-child,
+    .dialog-table th:first-child,
+    .data-table th:first-child {
+        z-index: 3;
+        background: #f8fafc;
+    }
+    body.dark-page #empresa-dialog .tbl-wrap table td:first-child,
+    body.dark-page .dialog-table td:first-child,
+    body.dark-page .data-table td:first-child,
+    body.dark-page #empresa-dialog .tbl-wrap table th:first-child,
+    body.dark-page .dialog-table th:first-child,
+    body.dark-page .data-table th:first-child {
+        background: #0b1220;
+    }
+
+    /* Tabelas do dialog (empresa, servidor, etc): em mobile a primeira coluna
+       (nome) quebra em ate 2-3 linhas para caber junto com os valores sem
+       exigir scroll horizontal em modo cidadao. Em modo auditor com mais
+       colunas (CPF/CNPJ, empenhos) o conteudo extrapola e o .tbl-wrap
+       habilita scroll horizontal naturalmente. */
     .dialog-table,
     .data-table {
-        min-width: 620px;
+        width: 100%;
+        table-layout: auto;
     }
     #empresa-dialog .tbl-wrap table th,
     #empresa-dialog .tbl-wrap table td,
@@ -1763,11 +1796,30 @@ body {
     .data-table td {
         white-space: nowrap;
     }
+    #empresa-dialog .tbl-wrap table th:first-child,
+    #empresa-dialog .tbl-wrap table td:first-child,
+    .dialog-table th:first-child,
+    .dialog-table td:first-child,
+    .data-table th:first-child,
+    .data-table td:first-child {
+        white-space: normal;
+        word-break: break-word;
+        max-width: 45vw;
+        min-width: 120px;
+    }
     #empresa-dialog .tbl-wrap table td.col-wrap,
     .dialog-table td.col-wrap,
     .data-table td.col-wrap {
         white-space: normal;
         max-width: 220px;
+    }
+
+    /* Dica visual de que a tabela rola horizontalmente (so aparece quando
+       ha overflow real) */
+    .tbl-wrap {
+        background:
+            linear-gradient(to right, transparent 85%, rgba(15, 23, 42, 0.08) 100%) right / 18px 100% no-repeat local,
+            transparent;
     }
 
     /* Botoes gerais com tap target decente */
