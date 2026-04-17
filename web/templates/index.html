@@ -96,15 +96,31 @@
     if (!btn || !navigator.geolocation) { if (btn) btn.style.display = 'none'; return; }
 
     function setStatus(msg, kind) {
-        status.textContent = msg || '';
+        status.innerHTML = msg || '';
         status.className = 'geo-status' + (kind ? ' geo-' + kind : '');
     }
 
-    btn.addEventListener('click', () => {
-        setStatus('Detectando sua localiza\u00e7\u00e3o...', 'loading');
+    // Browsers podem bloquear geolocation em contextos http (exceto localhost).
+    // Nesse caso, o navegador ou nao chama callback de erro ou retorna code=1.
+    // Tratamos abaixo via safety timeout + mensagem amigavel.
+
+    async function requestPosition() {
+        setStatus('Detectando sua localizacao... Se aparecer um pedido de permissao, clique em <strong>Permitir</strong>.', 'loading');
         btn.disabled = true;
+
+        // Safety timeout: mesmo que o browser bloqueie silenciosamente o prompt,
+        // damos um retorno ao usuario em 12s.
+        let done = false;
+        const safety = setTimeout(() => {
+            if (done) return;
+            done = true;
+            btn.disabled = false;
+            setStatus('Nao recebemos sua localizacao. Verifique se o navegador pediu permissao, ou use a busca acima.', 'warn');
+        }, 12000);
+
         navigator.geolocation.getCurrentPosition(
             async pos => {
+                if (done) return; done = true; clearTimeout(safety);
                 const { latitude, longitude } = pos.coords;
                 try {
                     const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1&accept-language=pt-BR`, {
@@ -116,12 +132,12 @@
                     const state = addr.state || '';
                     const city = addr.city || addr.town || addr.municipality || addr.village || '';
                     if (!/para\u00edba|paraiba/i.test(state)) {
-                        setStatus('Voc\u00ea est\u00e1 fora da Para\u00edba. Por enquanto s\u00f3 cobrimos os munic\u00edpios paraibanos.', 'warn');
+                        setStatus('Voce esta fora da Paraiba. Por enquanto so cobrimos os municipios paraibanos.', 'warn');
                         btn.disabled = false;
                         return;
                     }
                     if (!city) {
-                        setStatus('N\u00e3o conseguimos identificar seu munic\u00edpio. Use a busca acima.', 'warn');
+                        setStatus('Nao conseguimos identificar seu municipio. Use a busca acima.', 'warn');
                         btn.disabled = false;
                         return;
                     }
@@ -129,20 +145,42 @@
                     setStatus(`Identificado: ${city}. Abrindo...`, 'ok');
                     window.location.href = '/search/cidade?q=' + encodeURIComponent(city);
                 } catch (err) {
-                    setStatus('N\u00e3o conseguimos identificar o munic\u00edpio. Tente pela busca.', 'warn');
+                    setStatus('Nao conseguimos identificar o municipio. Tente pela busca.', 'warn');
                     btn.disabled = false;
                 }
             },
             err => {
-                let msg = 'N\u00e3o conseguimos obter sua localiza\u00e7\u00e3o.';
-                if (err.code === 1) msg = 'Permiss\u00e3o de localiza\u00e7\u00e3o negada. Voc\u00ea pode buscar pelo nome da cidade acima.';
+                if (done) return; done = true; clearTimeout(safety);
+                let msg = 'Nao conseguimos obter sua localizacao.';
+                if (err.code === 1) {
+                    msg = 'Voce nao permitiu acesso a localizacao. Voce pode liberar nas configuracoes do navegador, ou usar a busca acima.';
+                } else if (err.code === 2) {
+                    msg = 'Sua localizacao esta indisponivel no momento. Use a busca acima.';
+                } else if (err.code === 3) {
+                    msg = 'A localizacao demorou demais para responder. Tente novamente ou use a busca acima.';
+                }
                 setStatus(msg, 'warn');
                 btn.disabled = false;
             },
             { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
         );
+    }
+
+    btn.addEventListener('click', async () => {
+        // Pre-check: se o usuario ja negou, evita spinner em vao e mostra instrucao
+        if (navigator.permissions && navigator.permissions.query) {
+            try {
+                const perm = await navigator.permissions.query({ name: 'geolocation' });
+                if (perm.state === 'denied') {
+                    setStatus('Sua permissao de localizacao esta bloqueada para este site. Voce pode liberar nas configuracoes do navegador, ou usar a busca acima.', 'warn');
+                    return;
+                }
+            } catch(_) { /* alguns browsers nao suportam */ }
+        }
+        requestPosition();
     });
 })();
+</script>
 </script>
 {% endblock %}
 
