@@ -7,6 +7,87 @@ document.querySelectorAll('.tab:not(:disabled)').forEach((tab) => {
     });
 });
 
+// ───────── Helpers UI globais: toast, back-to-top, Web Share ─────────
+
+let _toastTimer = null;
+function showToast(message, durationMs = 2200) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = false;
+    // Next frame para animar entrada
+    requestAnimationFrame(() => el.classList.add('visible'));
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => { el.hidden = true; }, 200);
+    }, durationMs);
+}
+
+function initBackToTop() {
+    const btn = document.getElementById('backToTop');
+    if (!btn) return;
+    const threshold = 400;
+    let shown = false;
+
+    const update = () => {
+        const y = window.scrollY || document.documentElement.scrollTop;
+        const shouldShow = y > threshold;
+        if (shouldShow === shown) return;
+        shown = shouldShow;
+        if (shouldShow) {
+            btn.hidden = false;
+            requestAnimationFrame(() => btn.classList.add('visible'));
+        } else {
+            btn.classList.remove('visible');
+            setTimeout(() => { if (!shown) btn.hidden = true; }, 220);
+        }
+    };
+
+    window.addEventListener('scroll', update, { passive: true });
+    btn.addEventListener('click', () => {
+        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: 0, behavior: prefersReduced ? 'auto' : 'smooth' });
+    });
+    update();
+}
+
+async function triggerShare(data) {
+    const url = data.url || window.location.href;
+    const title = data.title || document.title;
+    const text = data.text || '';
+    if (navigator.share) {
+        try {
+            await navigator.share({ title, text, url });
+            return;
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            // segue pra fallback
+        }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(url);
+            showToast('Link copiado para a area de transferencia');
+            return;
+        } catch { /* noop */ }
+    }
+    showToast('Nao foi possivel compartilhar');
+}
+
+function initShareButtons() {
+    document.querySelectorAll('[data-share]').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            triggerShare({
+                title: btn.dataset.shareTitle || document.title,
+                text: btn.dataset.shareText || '',
+                url: btn.dataset.shareUrl || window.location.href,
+            });
+        });
+    });
+}
+
 function setupAutocomplete(inputId, listId, endpoint, onSelect) {
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
@@ -2070,6 +2151,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initInteractiveToggles(document);
     initClickableRows(document);
+    initBackToTop();
+    initShareButtons();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {

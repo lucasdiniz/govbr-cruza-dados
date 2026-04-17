@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ municipio }}{% endblock %}
+{% block meta_description %}Panorama de transparencia de {{ municipio }} - PB: despesas, fornecedores irregulares, servidores com conflito e contratos sem licitacao.{% endblock %}
+{% block og_title %}{{ municipio }} - PB | TransparenciaPB{% endblock %}
+{% block og_description %}Panorama de transparencia de {{ municipio }} - PB.{% endblock %}
 {% block body_class %}dark-page{% endblock %}
 {% block content %}
 
@@ -26,6 +29,19 @@
             Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio
             e organiza os achados por tema para facilitar a investigacao.
         </p>
+        <button
+            type="button"
+            class="share-btn"
+            data-share
+            data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
+            data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
+            aria-label="Compartilhar este municipio"
+        >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Compartilhar
+        </button>
     </div>
     <div class="hero-stats">
         <div class="hero-stat">
@@ -118,6 +134,7 @@
             <div class="skeleton-line short"></div>
         </div>
         <div class="heatmap-legend" id="heatmapLegend"></div>
+        <span class="heatmap-mobile-hint">Toque em uma celula para ver os maiores empenhos do mes.</span>
     </div>
 </section>
 

@@ -19,3 +19,7 @@ build/
 .playwright-mcp/
 *-mobile.png
 *-mobile-*.png
+audit-*.png
+heatmap-*.png
+cidade-*.png
+home-*.png

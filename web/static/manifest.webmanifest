@@ -1,0 +1,27 @@
+{
+  "name": "TransparenciaPB",
+  "short_name": "TranspPB",
+  "description": "Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#060a14",
+  "theme_color": "#060a14",
+  "lang": "pt-BR",
+  "categories": ["government", "news", "utilities"],
+  "icons": [
+    {
+      "src": "/static/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
