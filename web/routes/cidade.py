@@ -45,32 +45,44 @@ SECTION_META = {
     "Conflito de Interesses": {
         "slug": "conflitos",
         "title": "Possiveis conflitos de interesse",
+        "title_lay": "Gente que tem dois lados da mesa",
         "description": "Situacoes em que servidores, empresas contratadas e pagamentos publicos podem estar relacionados de forma inadequada.",
+        "description_lay": "Quando a pessoa que decide o gasto e a pessoa que recebe acabam sendo a mesma — ou tem alguma liga&ccedil;&atilde;o que deveria impedir a contrata&ccedil;&atilde;o.",
     },
     "Licitacao e Concorrencia": {
         "slug": "licitacoes",
         "title": "Sinais em compras e licitacoes",
+        "title_lay": "Como a prefeitura compra — sinais de alerta",
         "description": "Padroes que podem indicar baixa concorrencia, direcionamento ou concentracao anormal de contratos.",
+        "description_lay": "A lei manda licitar para o governo gastar menos. Aqui mostramos compras sem disputa, uma s&oacute; empresa ganhando tudo, ou contratos fatiados para escapar da regra.",
     },
     "Fornecedores Irregulares": {
         "slug": "fornecedores-irregulares",
         "title": "Fornecedores com sinais de irregularidade",
+        "title_lay": "Empresas que n&atilde;o deveriam estar recebendo",
         "description": "Empresas com sancoes, dividas ou situacao cadastral irregular que aparecem recebendo recursos do municipio.",
+        "description_lay": "Empresas punidas por fraude, devendo impostos federais, ou com situa&ccedil;&atilde;o irregular na Receita — e mesmo assim a prefeitura contratou e pagou.",
     },
     "Orcamento e Financeiro": {
         "slug": "orcamento",
         "title": "Execucao orcamentaria e financeira",
+        "title_lay": "Como o dinheiro da prefeitura est&aacute; saindo",
         "description": "Desvios entre o que foi empenhado, contratado e efetivamente pago, alem de concentracoes atipicas de despesas.",
+        "description_lay": "Quando o que foi prometido e o que foi pago n&atilde;o batem, ou quando um m&ecirc;s concentra muito mais gasto do que os outros.",
     },
     "Politico-Eleitoral": {
         "slug": "politico-eleitoral",
         "title": "Relacoes politico-eleitorais",
+        "title_lay": "Pol&iacute;tica e dinheiro p&uacute;blico se misturando",
         "description": "Cruzes entre doacoes de campanha, beneficios sociais e pagamentos publicos que merecem verificacao.",
+        "description_lay": "Doadores de campanha que depois viraram fornecedores, pagamentos em per&iacute;odo eleitoral ou outros cruzamentos entre pol&iacute;tica e contratos.",
     },
     "Cruzamento Estado x Municipio": {
         "slug": "estado-municipio",
         "title": "Relacoes entre estado e municipio",
+        "title_lay": "Liga&ccedil;&otilde;es entre governo do estado e prefeitura",
         "description": "Achados que conectam contratos estaduais e despesas municipais com os mesmos atores ou periodos.",
+        "description_lay": "Mesmas empresas ou pessoas aparecendo em contratos do Estado e do munic&iacute;pio ao mesmo tempo.",
     },
 }
 
@@ -197,7 +209,9 @@ def _build_report_sections(pb_only: bool = True):
             {
                 "slug": meta["slug"],
                 "title": meta["title"],
+                "title_lay": meta.get("title_lay", ""),
                 "description": meta["description"],
+                "description_lay": meta.get("description_lay", ""),
                 "queries": queries,
             }
         )

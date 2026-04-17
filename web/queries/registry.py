@@ -13,6 +13,8 @@ class QueryDef:
     sql_full: str
     sql_full_dated: str = ""
     timeout_sec: int = 30
+    title_lay: str = ""
+    description_lay: str = ""
 
 
 # ── Queries modo cidade ──────────────────────────────────────────
@@ -23,13 +25,50 @@ class QueryDef:
 CIDADE_QUERIES: dict[str, QueryDef] = {}
 
 
-def _reg(qid, title, desc, cat, sql_full, timeout=30, sql_dated=None):
+# ── Traducoes leigas das queries ─────────────────────────────────
+# Versoes para o Modo Cidadao. Quando vazio, mostra o titulo tecnico.
+_LAY_TEXT: dict[str, dict[str, str]] = {
+    "Q65": {
+        "title": "Empresas punidas por fraude que receberam da prefeitura",
+        "desc": "Empresas que o governo federal proibiu de contratar — por fraude, propina ou descumprimento grave. Esta cidade pagou a elas mesmo assim.",
+    },
+    "Q67": {
+        "title": "Empresas devendo impostos federais que receberam da prefeitura",
+        "desc": "Empresas com divida ativa na Uniao (inscritas na PGFN) recebendo dinheiro publico municipal.",
+    },
+    "Q70": {
+        "title": "Empresas fechadas ou inaptas que continuaram recebendo",
+        "desc": "Empresas com situacao irregular na Receita Federal (suspensas, inaptas ou baixadas) que mesmo assim receberam pagamentos da prefeitura.",
+    },
+    "Q69": {
+        "title": "Todas as licitacoes do municipio",
+        "desc": "Lista completa das licitacoes realizadas pela prefeitura, com valor, tipo e quantos fornecedores participaram.",
+    },
+    "Q71": {
+        "title": "Fornecedores que compartilham o mesmo endereco",
+        "desc": "Empresas diferentes registradas no mesmo endereco que receberam da prefeitura. Pode ser coincidencia — ou indicio de empresas 'fantasmas' ligadas entre si.",
+    },
+    "Q77": {
+        "title": "Compras fatiadas (fracionamento de despesa)",
+        "desc": "Varios contratos pequenos com o mesmo fornecedor logo em sequencia. Pode ser pratica para evitar licitacao — cada compra fica abaixo do limite legal.",
+    },
+    "Q61": {
+        "title": "Diferenca entre o que foi prometido e o que foi pago",
+        "desc": "Contratos em que a prefeitura reservou (empenhou) muito mais do que efetivamente pagou. Investigar se ha entrega, atraso ou cancelamento.",
+    },
+}
+
+
+def _reg(qid, title, desc, cat, sql_full, timeout=30, sql_dated=None, title_lay="", desc_lay=""):
     sql_count = f"SELECT COUNT(*) FROM ({sql_full}) _q"
+    lay = _LAY_TEXT.get(qid, {})
     CIDADE_QUERIES[qid] = QueryDef(
         id=qid, title=title, description=desc, category=cat,
         sql_count=sql_count, sql_full=sql_full,
         sql_full_dated=sql_dated or "",
         timeout_sec=timeout,
+        title_lay=title_lay or lay.get("title", ""),
+        description_lay=desc_lay or lay.get("desc", ""),
     )
 
 

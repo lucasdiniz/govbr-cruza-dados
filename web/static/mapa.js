@@ -161,7 +161,11 @@
         const el = document.getElementById('mapa-metric-desc');
         if (!el) return;
         const btn = document.querySelector(`.mt-btn[data-metric="${state.metric}"]`);
-        el.textContent = btn ? (btn.dataset.desc || '') : '';
+        const isCitizen = !document.documentElement.classList.contains('audit-mode');
+        const desc = btn
+            ? (isCitizen ? (btn.dataset.descLay || btn.dataset.desc || '') : (btn.dataset.desc || ''))
+            : '';
+        el.textContent = desc;
         // reset colapso ao trocar de metrica
         el.classList.remove('expanded');
         el.setAttribute('aria-expanded', 'false');
@@ -242,4 +246,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', init);
+    // Re-render metric desc when citizen/auditor mode changes
+    document.addEventListener('modechange', () => {
+        try { renderMetricDesc(); } catch(e) {}
+    });
 })();

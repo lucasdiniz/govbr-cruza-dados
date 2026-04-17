@@ -9,6 +9,57 @@ document.querySelectorAll('.tab:not(:disabled)').forEach((tab) => {
 
 // ───────── Helpers UI globais: toast, back-to-top, Web Share ─────────
 
+// ───────── Modo Cidadao / Auditor ─────────
+function getMode() {
+    try { return localStorage.getItem('mode') === 'auditor' ? 'auditor' : 'citizen'; }
+    catch(e) { return 'citizen'; }
+}
+function setMode(mode) {
+    const m = mode === 'auditor' ? 'auditor' : 'citizen';
+    try { localStorage.setItem('mode', m); } catch(e) {}
+    document.documentElement.classList.toggle('audit-mode', m === 'auditor');
+    const btn = document.getElementById('modeToggle');
+    if (btn) {
+        btn.setAttribute('aria-pressed', m === 'auditor' ? 'true' : 'false');
+        btn.setAttribute('aria-label', m === 'auditor' ? 'Desligar modo auditor' : 'Ligar modo auditor');
+    }
+    document.dispatchEvent(new CustomEvent('modechange', { detail: { mode: m } }));
+}
+function initModeToggle() {
+    // Garante consistencia entre html.audit-mode (setado no head) e localStorage
+    setMode(getMode());
+    const btn = document.getElementById('modeToggle');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        const next = getMode() === 'auditor' ? 'citizen' : 'auditor';
+        setMode(next);
+        if (navigator.vibrate) { try { navigator.vibrate(10); } catch(e) {} }
+        const msg = next === 'auditor'
+            ? 'Modo auditor ligado — termos técnicos e dados completos'
+            : 'Modo cidadão — linguagem simples';
+        if (typeof showToast === 'function') showToast(msg, 2000);
+    });
+}
+
+// Tooltip em .term[data-tip] para mobile (tap alterna .tip-open)
+function initTermTooltips() {
+    document.addEventListener('click', (e) => {
+        const term = e.target.closest('.term[data-tip]');
+        // Fecha abertos em outro clique
+        document.querySelectorAll('.term.tip-open').forEach(el => {
+            if (el !== term) el.classList.remove('tip-open');
+        });
+        if (term) {
+            // Em touch devices, tap alterna
+            if (matchMedia('(hover: none)').matches) {
+                e.preventDefault();
+                term.classList.toggle('tip-open');
+            }
+        }
+    });
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -620,7 +671,14 @@ function buildFornecedoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table>
-                <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="text-right">Total Pago</th><th class="text-right">Empenhos</th><th>Situacao</th><th>Sinais de Atencao</th></tr></thead>
+                <thead><tr>
+                    <th><span class="citizen-only">Empresa</span><span class="auditor-only">Fornecedor</span></th>
+                    <th class="auditor-only">CNPJ</th>
+                    <th class="text-right"><span class="citizen-only">Recebido</span><span class="auditor-only">Total Pago</span></th>
+                    <th class="text-right auditor-only">Empenhos</th>
+                    <th><span class="citizen-only">Cadastro</span><span class="auditor-only">Situacao</span></th>
+                    <th><span class="citizen-only">Problemas</span><span class="auditor-only">Sinais de Atencao</span></th>
+                </tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
@@ -688,9 +746,13 @@ function _updateInsightCards(perfil) {
     const pctPago = totalEmpenhado ? (totalPago / totalEmpenhado * 100) : 0;
     const gap = totalEmpenhado - totalPago;
 
-    if (el('insightPctPago')) el('insightPctPago').textContent = `${pctPago.toFixed(1)}% do valor empenhado foi pago`;
+    if (el('insightPctPago')) el('insightPctPago').innerHTML =
+        `<span class="citizen-only">${pctPago.toFixed(1)}% do planejado foi pago</span>`
+        + `<span class="auditor-only">${pctPago.toFixed(1)}% do valor empenhado foi pago</span>`;
     if (el('progressPctPago')) el('progressPctPago').style.width = `${pctPago.toFixed(1)}%`;
-    if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = `Diferenca entre empenhado e pago: ${_shortBrl(gap)}`;
+    if (el('insightGapFinanceiro')) el('insightGapFinanceiro').innerHTML =
+        `<span class="citizen-only">Ainda n&atilde;o pago: ${_shortBrl(gap)}</span>`
+        + `<span class="auditor-only">Diferenca entre empenhado e pago: ${_shortBrl(gap)}</span>`;
 
     const pctSemLicit = perfil.pct_sem_licitacao;
     if (el('insightPctSemLicit')) el('insightPctSemLicit').textContent = pctSemLicit != null ? `${parseFloat(pctSemLicit).toFixed(1)}%` : 'N/D';
@@ -1172,7 +1234,13 @@ function _buildEmpenhoTable(empenhos, sancaoRanges) {
         </tr>`;
     }).join('');
     return `<div class="tbl-wrap"><table class="dialog-table">
-        <thead><tr><th>Data</th><th>Elemento</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th><th>Modalidade</th></tr></thead>
+        <thead><tr>
+            <th>Data</th>
+            <th><span class="citizen-only">Tipo de gasto</span><span class="auditor-only">Elemento</span></th>
+            <th class="text-right"><span class="citizen-only">Reservado</span><span class="auditor-only">Empenhado</span></th>
+            <th class="text-right">Pago</th>
+            <th><span class="citizen-only">Tipo de licita&ccedil;&atilde;o</span><span class="auditor-only">Modalidade</span></th>
+        </tr></thead>
         <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -2333,6 +2401,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initClickableRows(document);
     initBackToTop();
     initShareButtons();
+    initModeToggle();
+    initTermTooltips();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
