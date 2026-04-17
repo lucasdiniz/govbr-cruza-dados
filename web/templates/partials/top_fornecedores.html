@@ -47,8 +47,7 @@
                         <th class="auditor-only">CNPJ</th>
                         <th class="text-right"><span class="citizen-only">Recebido</span><span class="auditor-only">Total Pago</span></th>
                         <th class="text-right auditor-only">Empenhos</th>
-                        <th><span class="citizen-only">Cadastro</span><span class="auditor-only">Situacao</span></th>
-                        <th><span class="citizen-only">Problemas</span><span class="auditor-only">Sinais de Atencao</span></th>
+                        <th><span class="citizen-only">Sinais</span><span class="auditor-only">Sinais de Atencao</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -65,7 +64,6 @@
                         <td class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
                         <td class="text-right">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
                         <td class="text-right auditor-only">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
-                        <td>{{ f.desc_situacao|default('-') }}</td>
                         <td>
                             {% set scope_suffix = '' %}
                             {% if f.abrangencia_sancao_info %}

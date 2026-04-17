@@ -547,6 +547,34 @@ tr:hover { background: #fbfdff; }
 .badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 .badge-blue { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
 
+/* Evita badges estourarem coluna "Sinais" em mobile: uma badge por linha,
+   com truncamento por ellipsis e texto completo disponivel via title/data-tip. */
+.js-data-table td .badge {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: top;
+}
+@media (max-width: 640px) {
+    .js-data-table td .badge {
+        display: block;
+        max-width: 180px;
+    }
+}
+
+/* Valores monetarios nao devem quebrar em varias linhas */
+.stat-value,
+.hero-stat-value,
+td.text-right,
+td.num {
+    white-space: nowrap;
+}
+
+/* Narrativa alinhada a esquerda mesmo dentro de parents centralizados */
+.city-narrative { text-align: left; }
+
 .color-legend {
     display: flex;
     flex-wrap: wrap;
@@ -1723,17 +1751,21 @@ body {
     /* Tabelas do dialog (empresa, servidor, etc): forcar scroll horizontal
        em vez de espremer 8-10 colunas no viewport */
     #empresa-dialog .tbl-wrap table,
-    .dialog-table {
+    .dialog-table,
+    .data-table {
         min-width: 620px;
     }
     #empresa-dialog .tbl-wrap table th,
     #empresa-dialog .tbl-wrap table td,
     .dialog-table th,
-    .dialog-table td {
+    .dialog-table td,
+    .data-table th,
+    .data-table td {
         white-space: nowrap;
     }
     #empresa-dialog .tbl-wrap table td.col-wrap,
-    .dialog-table td.col-wrap {
+    .dialog-table td.col-wrap,
+    .data-table td.col-wrap {
         white-space: normal;
         max-width: 220px;
     }
