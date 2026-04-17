@@ -356,6 +356,20 @@ function initTour() {
 }
 
 
+function initDenunciaDialog() {
+    const btn = document.getElementById('denunciaOpen');
+    const dialog = document.getElementById('denuncia-dialog');
+    if (!btn || !dialog) return;
+    btn.addEventListener('click', () => {
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+    });
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.close();
+    });
+}
+
+
 let _toastTimer = null;
 function showToast(message, durationMs = 2200) {
     const el = document.getElementById('toast');
@@ -2730,6 +2744,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCredibilityDialog();
     initFontSizeToggle();
     initTour();
+    initDenunciaDialog();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
