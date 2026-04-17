@@ -18,7 +18,7 @@
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
     <meta name="twitter:card" content="summary">
-    <link rel="stylesheet" href="/static/style.css?v=31">
+    <link rel="stylesheet" href="/static/style.css?v=32">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -77,6 +77,7 @@
                 Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, PNCP, PGFN, IBGE, TSE.
                 Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
+                &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
             </span>
         </div>
     </footer>

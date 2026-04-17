@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Gloss&aacute;rio{% endblock %}
+{% block content %}
+<section class="glossario-page">
+  <header class="glossario-head">
+    <h1>Gloss&aacute;rio</h1>
+    <p class="text-muted">Termos t&eacute;cnicos traduzidos para linguagem cidad&atilde;. Cada termo tem seu nome oficial, uma vers&atilde;o simples e o que significa.</p>
+    <input type="search" id="glossarioSearch" class="glossario-search" placeholder="Buscar termo (ex: CEIS, empenho, dispensa)" autocomplete="off" inputmode="search" enterkeyhint="search">
+  </header>
+  <div id="glossarioList" class="glossario-list" aria-live="polite"></div>
+  <p id="glossarioEmpty" class="text-muted" style="display:none">Nenhum termo encontrado.</p>
+</section>
+
+<script>
+(function(){
+    const listEl = document.getElementById('glossarioList');
+    const emptyEl = document.getElementById('glossarioEmpty');
+    const searchEl = document.getElementById('glossarioSearch');
+    let terms = [];
+
+    function norm(s) {
+        return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    function render(filter) {
+        const q = norm(filter || '');
+        const filtered = q
+            ? terms.filter(t => norm(t.term).includes(q) || norm(t.citizen).includes(q) || norm(t.definition).includes(q))
+            : terms;
+        listEl.innerHTML = filtered.map(t => `
+            <article class="glossario-item">
+                <h3 class="glossario-term">${escapeHtml(t.term)}</h3>
+                <p class="glossario-citizen"><strong>Em linguagem simples:</strong> ${escapeHtml(t.citizen)}</p>
+                <p class="glossario-def">${escapeHtml(t.definition)}</p>
+            </article>
+        `).join('');
+        emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
+    }
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    fetch('/static/terms.json')
+        .then(r => r.json())
+        .then(data => {
+            terms = data.sort((a,b) => a.term.localeCompare(b.term, 'pt-BR'));
+            render('');
+        })
+        .catch(() => { listEl.innerHTML = '<p class="text-muted">Erro ao carregar glossario.</p>'; });
+    searchEl.addEventListener('input', e => render(e.target.value));
+})();
+</script>
+{% endblock %}

@@ -240,3 +240,8 @@ async def _handle_unexpected(request: Request, exc: Exception):
 @app.get("/")
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+
+@app.get("/glossario")
+async def glossario(request: Request):
+    return templates.TemplateResponse(request, "glossario.html")

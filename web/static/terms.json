@@ -1,0 +1,102 @@
+[
+  {
+    "term": "Risco composto",
+    "citizen": "Nota de aten\u00e7\u00e3o",
+    "definition": "Nota de 0 a 100 que combina v\u00e1rios ind\u00edcios (empresas sancionadas, compras sem licita\u00e7\u00e3o, d\u00edvida ativa, etc) para indicar quanto uma cidade ou um fornecedor merece aten\u00e7\u00e3o. Nota mais alta n\u00e3o prova irregularidade \u2014 prova que h\u00e1 mais ind\u00edcios a verificar."
+  },
+  {
+    "term": "CEIS",
+    "citizen": "Lista de empresas proibidas de contratar com o governo",
+    "definition": "Cadastro Nacional de Empresas Inid\u00f4neas e Suspensas. Empresas nessa lista foram sancionadas por fraude, descumprimento grave de contrato ou ato de improbidade, e ficam proibidas de contratar com o poder p\u00fablico por um per\u00edodo definido."
+  },
+  {
+    "term": "CNEP",
+    "citizen": "Empresas punidas pela Lei Anticorrup\u00e7\u00e3o",
+    "definition": "Cadastro Nacional de Empresas Punidas. Empresas condenadas por corrup\u00e7\u00e3o, suborno ou fraude em licita\u00e7\u00f5es nos termos da Lei 12.846/2013."
+  },
+  {
+    "term": "Inidoneidade",
+    "citizen": "Proibi\u00e7\u00e3o nacional de contratar com o governo",
+    "definition": "San\u00e7\u00e3o mais grave da Lei 14.133/2021. Empresa declarada inid\u00f4nea fica proibida de contratar com qualquer \u00f3rg\u00e3o p\u00fablico (federal, estadual e municipal) em todo o Brasil, por at\u00e9 seis anos."
+  },
+  {
+    "term": "Dispensa",
+    "citizen": "Compra sem concorr\u00eancia (autorizada por lei)",
+    "definition": "Modalidade em que o gestor pode contratar diretamente, sem licita\u00e7\u00e3o, nos casos previstos em lei (emerg\u00eancia, pequenos valores, etc). \u00c9 legal, mas precisa ser justificada \u2014 excessos e fracionamento indevido s\u00e3o ind\u00edcios de risco."
+  },
+  {
+    "term": "Inexigibilidade",
+    "citizen": "Compra direta por exclusividade",
+    "definition": "Quando n\u00e3o h\u00e1 como competir (fornecedor \u00fanico, servi\u00e7o t\u00e9cnico singular, artista consagrado). \u00c9 legal, mas fornecedor \u00fanico recorrente pode ser manipula\u00e7\u00e3o de especifica\u00e7\u00e3o."
+  },
+  {
+    "term": "Empenho",
+    "citizen": "Gasto previsto (reserva or\u00e7ament\u00e1ria)",
+    "definition": "Primeiro passo de um gasto p\u00fablico: a prefeitura reserva um valor do or\u00e7amento para pagar determinado fornecedor/servi\u00e7o. Ainda n\u00e3o significa que o dinheiro saiu."
+  },
+  {
+    "term": "Liquida\u00e7\u00e3o",
+    "citizen": "Servi\u00e7o ou produto conferido",
+    "definition": "Segunda etapa: a prefeitura atesta que o servi\u00e7o foi prestado ou o produto foi entregue \u2014 a d\u00edvida passa a ser devida."
+  },
+  {
+    "term": "Pagamento",
+    "citizen": "Dinheiro j\u00e1 saiu do cofre",
+    "definition": "Etapa final: o valor efetivamente deixou a conta do munic\u00edpio e foi para o fornecedor."
+  },
+  {
+    "term": "Modalidade",
+    "citizen": "Tipo de licita\u00e7\u00e3o",
+    "definition": "Como a compra foi feita: preg\u00e3o, concorr\u00eancia, tomada de pre\u00e7os, dispensa, inexigibilidade, etc. Cada modalidade tem regras e limites pr\u00f3prios."
+  },
+  {
+    "term": "Servidor acumulando cargos",
+    "citizen": "Servidor com dois empregos p\u00fablicos",
+    "definition": "A Constitui\u00e7\u00e3o permite acumular apenas em casos espec\u00edficos (dois cargos de professor; professor + t\u00e9cnico; dois na sa\u00fade). Outras combina\u00e7\u00f5es s\u00e3o irregulares."
+  },
+  {
+    "term": "CPF mascarado",
+    "citizen": "CPF parcial (LGPD)",
+    "definition": "Por lei de prote\u00e7\u00e3o de dados, a maioria das fontes p\u00fablicas mostra apenas parte do CPF (ex: ***.123.456-**). O cruzamento entre bases \u00e9 feito por outros identificadores."
+  },
+  {
+    "term": "D\u00edvida ativa",
+    "citizen": "Devendo impostos/tributos federais",
+    "definition": "Valor que a empresa ou pessoa deve \u00e0 Uni\u00e3o (tributos, multas, contribui\u00e7\u00f5es) j\u00e1 cobrado judicialmente. Contratar com devedores da Uni\u00e3o \u00e9 vedado sem certid\u00e3o de regularidade fiscal."
+  },
+  {
+    "term": "Irregular na RFB",
+    "citizen": "Empresa com problema cadastral na Receita",
+    "definition": "Empresa cujo CNPJ est\u00e1 suspenso, inapto ou baixado na Receita Federal. Em tese, n\u00e3o deveria estar recebendo pagamentos do poder p\u00fablico."
+  },
+  {
+    "term": "Abrang\u00eancia da san\u00e7\u00e3o",
+    "citizen": "At\u00e9 onde a puni\u00e7\u00e3o vale",
+    "definition": "Uma san\u00e7\u00e3o pode valer s\u00f3 no \u00f3rg\u00e3o que aplicou, no munic\u00edpio/estado/Uni\u00e3o que aplicou, ou em todo o Brasil. Inidoneidade \u00e9 sempre nacional; impedimento de licitar (Lei 14.133 art. 156 III) vale s\u00f3 no ente sancionador."
+  },
+  {
+    "term": "PNCP",
+    "citizen": "Portal Nacional de Contrata\u00e7\u00f5es P\u00fablicas",
+    "definition": "Sistema oficial onde todas as contrata\u00e7\u00f5es p\u00fablicas brasileiras devem ser publicadas desde a vig\u00eancia plena da Lei 14.133/2021."
+  },
+  {
+    "term": "TCE-PB",
+    "citizen": "Tribunal de Contas da Para\u00edba",
+    "definition": "\u00d3rg\u00e3o de controle externo que fiscaliza a aplica\u00e7\u00e3o do dinheiro p\u00fablico pelos 223 munic\u00edpios paraibanos e pelo governo estadual."
+  },
+  {
+    "term": "CGU",
+    "citizen": "Controladoria-Geral da Uni\u00e3o",
+    "definition": "\u00d3rg\u00e3o federal que fiscaliza o uso dos recursos da Uni\u00e3o, mant\u00e9m cadastros (CEIS, CNEP) e processa denuncias pelo Fala.BR."
+  },
+  {
+    "term": "MP-PB",
+    "citizen": "Minist\u00e9rio P\u00fablico da Para\u00edba",
+    "definition": "Institui\u00e7\u00e3o independente respons\u00e1vel por investigar e processar crimes contra a administra\u00e7\u00e3o p\u00fablica e atos de improbidade no estado."
+  },
+  {
+    "term": "Percentil",
+    "citizen": "Posi\u00e7\u00e3o comparada \u00e0 m\u00e9dia",
+    "definition": "Indica a posi\u00e7\u00e3o relativa entre os 223 munic\u00edpios da PB. Estar no top 10% pior significa que s\u00f3 10% das cidades est\u00e3o em situa\u00e7\u00e3o pior nesse indicador."
+  }
+]
