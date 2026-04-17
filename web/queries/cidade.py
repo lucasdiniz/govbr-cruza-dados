@@ -226,17 +226,7 @@ ORDER BY valor_empenhado DESC
 LIMIT 50
 """
 
-PERFIL_MUNICIPIO_PNCP = """
-SELECT
-    %(municipio)s AS municipio,
-    COUNT(*) AS qtd_contratos,
-    SUM(valor_global) AS total_contratado,
-    COUNT(DISTINCT cnpj_basico_fornecedor) AS qtd_fornecedores,
-    MIN(dt_assinatura) AS contrato_mais_antigo,
-    MAX(dt_assinatura) AS contrato_mais_recente
-FROM pncp_contrato
-WHERE municipio_nome = %(municipio)s AND uf = %(uf)s
-"""
+PERFIL_MUNICIPIO_PNCP = None  # deprecated: non-PB removed from frontend
 
 TOP_FORNECEDORES = """
 WITH top_forn AS (
@@ -627,100 +617,7 @@ LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
 
-TOP_FORNECEDORES_PNCP = """
-SELECT * FROM (
-    SELECT pc.cnpj_basico_fornecedor AS cnpj_basico,
-       pc.nome_fornecedor AS nome_credor,
-       e.razao_social,
-       est.cnpj_completo,
-       SUM(pc.valor_global) AS total_contratado,
-       COUNT(*) AS qtd_contratos,
-       EXISTS(
-           SELECT 1 FROM ceis_sancao cs
-           WHERE LEFT(cs.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
-             AND LENGTH(cs.cpf_cnpj_sancionado) = 14
-             AND (cs.dt_final_sancao IS NULL OR cs.dt_final_sancao >= CURRENT_DATE)
-       ) AS flag_ceis,
-       EXISTS(
-           SELECT 1 FROM cnep_sancao cn
-           WHERE LEFT(cn.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
-             AND LENGTH(cn.cpf_cnpj_sancionado) = 14
-             AND (cn.dt_final_sancao IS NULL OR cn.dt_final_sancao >= CURRENT_DATE)
-       ) AS flag_cnep,
-       EXISTS(
-           SELECT 1 FROM ceis_sancao cs2
-           WHERE LEFT(cs2.cpf_cnpj_sancionado, 8) = pc.cnpj_basico_fornecedor
-             AND LENGTH(cs2.cpf_cnpj_sancionado) = 14
-             AND (cs2.dt_final_sancao IS NULL OR cs2.dt_final_sancao >= CURRENT_DATE)
-             AND cs2.categoria_sancao ILIKE '%%inidone%%'
-       ) AS flag_inidoneidade,
-       EXISTS(
-           SELECT 1 FROM pgfn_divida pg
-           WHERE LEFT(pg.cpf_cnpj_norm, 8) = pc.cnpj_basico_fornecedor
-             AND LENGTH(pg.cpf_cnpj_norm) = 14
-       ) AS flag_pgfn,
-       COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
-       EXISTS(
-           SELECT 1 FROM acordo_leniencia al
-           WHERE LEFT(al.cnpj_norm, 8) = pc.cnpj_basico_fornecedor
-             AND al.situacao_acordo NOT IN ('Cumprido', 'Encerrado')
-       ) AS flag_acordo_leniencia,
-       (
-           SELECT CASE
-               WHEN san.categoria_sancao ILIKE '%%inidone%%'
-                   THEN '!Nacional (Inidoneidade)'
-               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
-                   THEN '!' || san.abrangencia_sancao
-               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL'
-                    AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%'
-                   THEN '!' || COALESCE(san.abrangencia_sancao, 'Sem Informação')
-                        || ' (' || san.orgao_sancionador || ')'
-               ELSE COALESCE(san.abrangencia_sancao, 'Sem Informação')
-                    || ' (' || COALESCE(san.orgao_sancionador, '?')
-                    || COALESCE(' - ' || san.uf_orgao_sancionador, '') || ')'
-           END
-           FROM (
-               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                      categoria_sancao, abrangencia_sancao,
-                      orgao_sancionador, uf_orgao_sancionador,
-                      esfera_orgao_sancionador
-               FROM ceis_sancao
-               WHERE LENGTH(cpf_cnpj_sancionado) = 14
-               UNION ALL
-               SELECT LEFT(cpf_cnpj_sancionado, 8),
-                      categoria_sancao, abrangencia_sancao,
-                      orgao_sancionador, uf_orgao_sancionador,
-                      esfera_orgao_sancionador
-               FROM cnep_sancao
-               WHERE LENGTH(cpf_cnpj_sancionado) = 14
-           ) san
-           WHERE san.cb = pc.cnpj_basico_fornecedor
-           ORDER BY CASE
-               WHEN san.categoria_sancao ILIKE '%%inidone%%' THEN 1
-               WHEN san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes' THEN 2
-               WHEN san.esfera_orgao_sancionador = 'MUNICIPAL' THEN 3
-               ELSE 4
-           END
-           LIMIT 1
-       ) AS abrangencia_sancao_info,
-       CASE est.situacao_cadastral::text
-           WHEN '1' THEN 'Nula' WHEN '2' THEN 'Ativa' WHEN '3' THEN 'Suspensa'
-           WHEN '4' THEN 'Inapta' WHEN '8' THEN 'Baixada'
-           ELSE COALESCE('Sit. ' || est.situacao_cadastral::text, '-')
-       END AS desc_situacao
-FROM pncp_contrato pc
-LEFT JOIN empresa e ON e.cnpj_basico = pc.cnpj_basico_fornecedor
-LEFT JOIN estabelecimento est
-    ON est.cnpj_basico = pc.cnpj_basico_fornecedor
-   AND est.cnpj_ordem = '0001'
-WHERE pc.municipio_nome = %(municipio)s AND pc.uf = %(uf)s
-  AND pc.cnpj_basico_fornecedor IS NOT NULL
-GROUP BY pc.cnpj_basico_fornecedor, pc.nome_fornecedor,
-         e.razao_social, est.cnpj_completo, est.situacao_cadastral
-) q
-ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_contratado DESC
-LIMIT 200
-"""
+TOP_FORNECEDORES_PNCP = None  # deprecated: non-PB removed from frontend
 
 TOP_SERVIDORES_RISCO = """
 WITH cnpjs_sancionados AS (
@@ -811,36 +708,15 @@ TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
 WHERE %(municipio)s = ANY(municipios)"""
 )
 
-AUTOCOMPLETE_MUNICIPIO_FALLBACK = """
-SELECT municipio_nome AS nome, uf, 0 AS rank_val
-FROM pncp_municipio
-WHERE unaccent(municipio_nome) ILIKE unaccent(%(q)s) || '%%'
-ORDER BY nome
-LIMIT %(limit)s
-"""
-
 AUTOCOMPLETE_MUNICIPIO = """
-(
-    SELECT municipio AS nome, 'PB' AS uf, risco_score AS rank_val
-    FROM mv_municipio_pb_risco
-    WHERE unaccent(municipio) ILIKE unaccent(%(q)s) || '%%'
-)
-UNION
-(
-    SELECT municipio_nome AS nome, uf, 0 AS rank_val
-    FROM pncp_municipio
-    WHERE unaccent(municipio_nome) ILIKE unaccent(%(q)s) || '%%'
-      AND NOT EXISTS (
-          SELECT 1 FROM mv_municipio_pb_risco m
-          WHERE m.municipio = pncp_municipio.municipio_nome AND pncp_municipio.uf = 'PB'
-      )
-    LIMIT 50
-)
-ORDER BY rank_val DESC, nome
+SELECT municipio AS nome, 'PB' AS uf, risco_score AS rank_val
+FROM mv_municipio_pb_risco
+WHERE unaccent(municipio) ILIKE unaccent(%(q)s) || '%%'
+ORDER BY rank_val DESC NULLS LAST, nome
 LIMIT %(limit)s
 """
 
-# Injeta flags 'recebeu durante sancao' nas queries PB (nao afeta TOP_FORNECEDORES_PNCP).
+# Injeta flags 'recebeu durante sancao' nas queries PB.
 _PB_ANCHOR = ') AS flag_inidoneidade'
 _PB_REPLACEMENT = ') AS flag_inidoneidade' + _FLAGS_SANCAO_DURANTE_PB
 TOP_FORNECEDORES = TOP_FORNECEDORES.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)

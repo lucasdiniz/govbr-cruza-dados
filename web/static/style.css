@@ -103,13 +103,17 @@ body.dark-page.mapa-page .container {
 }
 .search-hero.hero-compact {
     min-height: unset;
-    padding: 1.5rem 1.5rem 1.5rem;
+    padding: 2rem 1.5rem 1.75rem;
     text-align: center;
     border-radius: 24px;
-    background: radial-gradient(ellipse at top, rgba(37, 99, 235, 0.10), transparent 65%),
-                linear-gradient(180deg, rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.8));
-    border: 1px solid rgba(96, 165, 250, 0.08);
-    margin: 0 0 1rem;
+    background:
+        radial-gradient(1200px 400px at 50% -10%, rgba(37, 99, 235, 0.22), transparent 60%),
+        radial-gradient(800px 300px at 10% 120%, rgba(14, 165, 233, 0.10), transparent 70%),
+        radial-gradient(800px 300px at 95% 120%, rgba(59, 130, 246, 0.10), transparent 70%),
+        linear-gradient(180deg, #0a1222 0%, #070d1b 100%);
+    border: 1px solid rgba(96, 165, 250, 0.10);
+    margin: 0 0 1.1rem;
+    overflow: hidden;
 }
 .search-hero.hero-compact h1 {
     font-size: 2.1rem;
@@ -144,17 +148,53 @@ body.dark-page.mapa-page .container {
     max-width: 540px;
     margin: 0 auto;
 }
+.search-hint {
+    font-size: 0.8rem;
+    color: #7f8da4;
+    margin: 0 0 0.55rem;
+    letter-spacing: 0.01em;
+}
 
-.hero-backdrop {
+/* Aurora gradient blob — sits behind content, animated */
+.hero-aurora {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
+    inset: -20% -10% auto -10%;
+    height: 140%;
+    background:
+        radial-gradient(closest-side, rgba(59, 130, 246, 0.35), transparent 70%) 20% 30%/45% 55% no-repeat,
+        radial-gradient(closest-side, rgba(16, 185, 129, 0.18), transparent 70%) 80% 70%/40% 50% no-repeat,
+        radial-gradient(closest-side, rgba(147, 197, 253, 0.22), transparent 70%) 55% 20%/50% 45% no-repeat;
+    filter: blur(40px);
+    opacity: 0.55;
     pointer-events: none;
     z-index: 0;
-    opacity: 0.6;
-    border-radius: inherit;
+    animation: auroraShift 18s ease-in-out infinite alternate;
+}
+@keyframes auroraShift {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(-2%, 1%, 0) scale(1.04); }
+    100% { transform: translate3d(2%, -1%, 0) scale(1.02); }
+}
+
+/* Floating dot field — CSS-only, layered radial gradients */
+.hero-dots {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        radial-gradient(circle, rgba(147, 197, 253, 0.55) 1px, transparent 1.5px),
+        radial-gradient(circle, rgba(96, 165, 250, 0.35) 1px, transparent 1.5px);
+    background-size: 44px 44px, 72px 72px;
+    background-position: 0 0, 22px 22px;
+    opacity: 0.35;
+    animation: dotsDrift 28s linear infinite;
+    mask-image: radial-gradient(ellipse at center, #000 45%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 45%, transparent 85%);
+}
+@keyframes dotsDrift {
+    from { background-position: 0 0, 22px 22px; }
+    to   { background-position: 44px 44px, 66px 66px; }
 }
 
 .hero-content {
@@ -981,24 +1021,14 @@ tr:hover { background: #fbfdff; }
 }
 
 /* ── Mapa coropletico PB ─────────────────────────────────────── */
-.mapa-page main.container {
-    max-width: 1400px;
-    padding-top: 1.2rem;
-}
 .mapa-hero {
-    padding: 1rem 0 2rem;
+    padding: 0.5rem 0 2rem;
     position: relative;
     z-index: 1;
 }
 .mapa-header {
     text-align: left;
-    margin-bottom: 1rem;
-}
-.mapa-header h2 {
-    font-size: 1.4rem;
-    color: #e5edf7;
-    margin: 0 0 .2rem 0;
-    font-weight: 700;
+    margin-bottom: 0.5rem;
 }
 .mapa-header h1 {
     font-size: 1.9rem;

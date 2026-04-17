@@ -5,7 +5,8 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
 <section class="search-hero hero-compact">
-    <canvas id="graph-canvas" class="hero-backdrop"></canvas>
+    <div class="hero-aurora" aria-hidden="true"></div>
+    <div class="hero-dots" aria-hidden="true"></div>
     <div class="hero-content">
         <p class="eyebrow">Paraiba &middot; dados abertos</p>
         <h1>Descubra como sua prefeitura gasta o dinheiro publico</h1>
@@ -15,6 +16,7 @@
         </p>
 
         <div class="search-card-inline">
+            <p class="search-hint">Busque pelo nome ou escolha um municipio no mapa abaixo.</p>
             <div class="autocomplete-wrap">
                 <input
                     type="text"
@@ -32,10 +34,6 @@
 
 <section class="mapa-hero">
     <div class="mapa-header">
-        <h2>Paraiba - Panorama municipal</h2>
-        <p class="mapa-sub">
-            223 municipios pintados por indicador. Clique em um municipio para abrir o detalhe.
-        </p>
         <div class="mapa-toggle" role="tablist">
             <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais">Risco composto</button>
             <button class="mt-btn" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos">% Irregulares</button>
@@ -67,7 +65,6 @@
     </div>
 </section>
 
-<script src="/static/graph-animation.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/mapa.js"></script>
 {% endblock %}

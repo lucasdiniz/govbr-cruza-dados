@@ -2,13 +2,8 @@
 
 Uso:
     python -m web.warm_cache                      # processa PB uma vez
-    python -m web.warm_cache --pb                  # processa apenas PB (explicito)
-    python -m web.warm_cache --pncp               # processa PNCP (nao-PB) uma vez
-    python -m web.warm_cache --all                # processa PB + PNCP uma vez
     python -m web.warm_cache --daemon --loop      # loop continuo PB
-    python -m web.warm_cache --all --daemon --loop  # loop continuo PB + PNCP
     python -m web.warm_cache --mun "João Pessoa"  # processa 1 municipio PB
-    python -m web.warm_cache --pncp --mun "Recife"  # processa 1 municipio PNCP
 """
 
 from __future__ import annotations
@@ -26,10 +21,8 @@ from web.queries.cidade import (
     HEATMAP_MENSAL,
     PERFIL_MUNICIPIO,
     PERFIL_MUNICIPIO_LIVE,
-    PERFIL_MUNICIPIO_PNCP,
     TOP_FORNECEDORES,
     TOP_FORNECEDORES_DATED,
-    TOP_FORNECEDORES_PNCP,
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
 )
@@ -63,23 +56,6 @@ def _get_municipios_pb(conn, only: str | None = None) -> list[str]:
         else:
             cur.execute("SELECT municipio FROM mv_municipio_pb_risco ORDER BY municipio")
         return [r[0] for r in cur.fetchall()]
-
-
-def _get_municipios_pncp(conn, only: str | None = None) -> list[tuple[str, str]]:
-    """Retorna lista de (municipio_nome, uf) de municípios PNCP excluindo PB."""
-    with conn.cursor() as cur:
-        if only:
-            cur.execute(
-                "SELECT municipio_nome, uf FROM pncp_municipio "
-                "WHERE unaccent(municipio_nome) ILIKE unaccent(%s) AND uf != 'PB' LIMIT 1",
-                (only,),
-            )
-        else:
-            cur.execute(
-                "SELECT municipio_nome, uf FROM pncp_municipio "
-                "WHERE uf != 'PB' ORDER BY uf, municipio_nome"
-            )
-        return [(r[0], r[1]) for r in cur.fetchall()]
 
 
 def _execute(conn, sql: str, params: dict, timeout_sec: int):
@@ -268,108 +244,35 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
     return cycle_ok, cycle_fail
 
 
-def _run_and_cache_pncp(conn, query_id: str, sql: str, mun: str, uf: str, timeout_sec: int, verbose: bool):
-    """Executa query com params (municipio, uf) e salva no cache."""
-    try:
-        cols, rows = _execute(conn, sql, {"municipio": mun, "uf": uf}, timeout_sec)
-        conn.commit()
-        with conn.cursor() as cur:
-            _upsert(cur, query_id, mun, cols, rows)
-        conn.commit()
-        return True
-    except Exception as e:
-        conn.rollback()
-        msg = str(e).split("\n")[0]
-        if verbose and "statement_timeout" not in msg:
-            print(f"  {query_id}: {msg}")
-        return False
 
-
-def warm_cycle_pncp(municipios: list[tuple[str, str]], verbose: bool = True):
-    """Processa um ciclo de municipios PNCP (não-PB)."""
-    conn = psycopg2.connect(DSN)
-    conn.autocommit = False
-    _ensure_cache_table(conn)
-
-    total = len(municipios)
-    cycle_ok, cycle_fail = 0, 0
-
-    for i, (mun, uf) in enumerate(municipios, 1):
-        t0 = time.time()
-        ok, fail = 0, 0
-
-        # Profile PNCP
-        if _run_and_cache_pncp(conn, "PERFIL", PERFIL_MUNICIPIO_PNCP, mun, uf, 10, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Top fornecedores PNCP (heavier query with JOIN on ceis/pgfn)
-        if _run_and_cache_pncp(conn, "TOP_FORNECEDORES", TOP_FORNECEDORES_PNCP, mun, uf, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        cycle_ok += ok
-        cycle_fail += fail
-        elapsed = time.time() - t0
-        if verbose:
-            print(f"[{i}/{total}] {mun} - {uf}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
-
-    conn.close()
-    return cycle_ok, cycle_fail
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Pre-processa queries para cache do frontend")
+    parser = argparse.ArgumentParser(description="Pre-processa queries para cache do frontend (PB)")
     parser.add_argument("--mun", type=str, default=None, help="Processar apenas um municipio")
     parser.add_argument("--daemon", action="store_true", help="Processa todos os municipios (use com --loop para repetir)")
     parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista")
-    parser.add_argument("--pncp", action="store_true", help="Processar municipios PNCP (nao-PB)")
-    parser.add_argument("--pb", action="store_true", help="Processar apenas municipios PB (explicito, mesmo que o padrao)")
-    parser.add_argument("--all", action="store_true", dest="all_mun", help="Processar PB + PNCP")
+    parser.add_argument("--pb", action="store_true", help="(compat) Processar PB - default")
     args = parser.parse_args()
 
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
 
-    run_pb = args.pb or args.all_mun or not args.pncp
-    run_pncp = args.pncp or args.all_mun
-
-    municipios_pb = _get_municipios_pb(conn, args.mun) if run_pb else []
-    municipios_pncp = _get_municipios_pncp(conn, args.mun) if run_pncp else []
+    municipios_pb = _get_municipios_pb(conn, args.mun)
     conn.close()
 
-    if not municipios_pb and not municipios_pncp:
+    if not municipios_pb:
         print("Nenhum municipio encontrado.")
         sys.exit(1)
 
     def run_one_cycle(cycle_num: int | None = None):
-        total_ok, total_fail = 0, 0
         if cycle_num:
             print(f"\n=== Ciclo {cycle_num} iniciado em {datetime.now().strftime('%H:%M:%S')} ===")
-
-        if municipios_pb:
-            print(f"--- PB: {len(municipios_pb)} municipios ---")
-            ok, fail = warm_cycle_pb(municipios_pb)
-            total_ok += ok
-            total_fail += fail
-
-        if municipios_pncp:
-            print(f"--- PNCP: {len(municipios_pncp)} municipios ---")
-            ok, fail = warm_cycle_pncp(municipios_pncp)
-            total_ok += ok
-            total_fail += fail
-
-        return total_ok, total_fail
+        print(f"--- PB: {len(municipios_pb)} municipios ---")
+        return warm_cycle_pb(municipios_pb)
 
     if args.daemon:
-        label_parts = []
-        if municipios_pb:
-            label_parts.append(f"{len(municipios_pb)} PB")
-        if municipios_pncp:
-            label_parts.append(f"{len(municipios_pncp)} PNCP")
-        print(f"Daemon mode: {' + '.join(label_parts)} municipios.")
+        print(f"Daemon mode: {len(municipios_pb)} PB municipios.")
         cycle = 0
         while True:
             cycle += 1
@@ -383,12 +286,7 @@ def main():
             print(f"Proximo ciclo em {PAUSE_BETWEEN_CYCLES}s...")
             time.sleep(PAUSE_BETWEEN_CYCLES)
     else:
-        label_parts = []
-        if municipios_pb:
-            label_parts.append(f"{len(municipios_pb)} PB")
-        if municipios_pncp:
-            label_parts.append(f"{len(municipios_pncp)} PNCP")
-        print(f"Processando {' + '.join(label_parts)} municipios...")
+        print(f"Processando {len(municipios_pb)} PB municipios...")
         ok, fail = run_one_cycle()
         print(f"Completo: {ok} ok, {fail} fail")
 
