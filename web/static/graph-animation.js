@@ -22,7 +22,10 @@
     let centralGlow = 0;
 
     function resize() {
-        const rect = { width: window.innerWidth, height: window.innerHeight };
+        const parent = canvas.parentElement;
+        const rect = parent
+            ? { width: parent.clientWidth, height: parent.clientHeight }
+            : { width: window.innerWidth, height: window.innerHeight };
         dpr = Math.min(window.devicePixelRatio || 1, 2);
         W = rect.width;
         H = rect.height;
