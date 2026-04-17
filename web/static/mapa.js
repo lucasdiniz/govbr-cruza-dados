@@ -145,15 +145,23 @@
     function renderLegend() {
         const el = document.getElementById('mapa-legend');
         const cfg = METRICS[state.metric];
-        const items = [`<div class="legend-title">${cfg.label}</div><div class="legend-row">`];
-        items.push(`<div class="legend-step" style="background:${cfg.ramp[0]}"><span>&lt; ${cfg.format(cfg.breaks[0])}</span></div>`);
+        const items = ['<div class="legend-inline">'];
+        items.push(`<span class="legend-label">${cfg.label}:</span>`);
+        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[0]}"></span>&lt; ${cfg.format(cfg.breaks[0])}</span>`);
         for (let i = 1; i < cfg.breaks.length; i++) {
-            items.push(`<div class="legend-step" style="background:${cfg.ramp[i]}"><span>${cfg.format(cfg.breaks[i - 1])} – ${cfg.format(cfg.breaks[i])}</span></div>`);
+            items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[i]}"></span>${cfg.format(cfg.breaks[i - 1])} – ${cfg.format(cfg.breaks[i])}</span>`);
         }
-        items.push(`<div class="legend-step" style="background:${cfg.ramp[cfg.ramp.length - 1]}"><span>&gt; ${cfg.format(cfg.breaks[cfg.breaks.length - 1])}</span></div>`);
-        items.push(`<div class="legend-step legend-nodata" style="background:${FALLBACK_COLOR}"><span>sem dados / pequeno</span></div>`);
+        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[cfg.ramp.length - 1]}"></span>&gt; ${cfg.format(cfg.breaks[cfg.breaks.length - 1])}</span>`);
+        items.push(`<span class="legend-item legend-nodata"><span class="legend-swatch"></span>sem dados</span>`);
         items.push('</div>');
         el.innerHTML = items.join('');
+    }
+
+    function renderMetricDesc() {
+        const el = document.getElementById('mapa-metric-desc');
+        if (!el) return;
+        const btn = document.querySelector(`.mt-btn[data-metric="${state.metric}"]`);
+        el.textContent = btn ? (btn.dataset.desc || '') : '';
     }
 
     function updateLayer() {
@@ -161,6 +169,7 @@
         state.layer.setStyle(styleFeature);
         state.layer.eachLayer(l => l.setTooltipContent(tooltipHTML(l.feature)));
         renderLegend();
+        renderMetricDesc();
     }
 
     function wireToggle() {
@@ -209,6 +218,7 @@
         state.map.setMaxBounds(bounds.pad(0.1));
         wireToggle();
         renderLegend();
+        renderMetricDesc();
     }
 
     document.addEventListener('DOMContentLoaded', init);

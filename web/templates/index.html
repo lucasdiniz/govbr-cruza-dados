@@ -35,16 +35,17 @@
 <section class="mapa-hero">
     <div class="mapa-header">
         <div class="mapa-toggle" role="tablist">
-            <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais">Risco composto</button>
-            <button class="mt-btn" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos">% Irregulares</button>
-            <button class="mt-btn" data-metric="pct_sem_licitacao" title="% de empenhos feitos sem licitacao">Sem licitacao</button>
-            <button class="mt-btn" data-metric="pct_top5" title="% do pago concentrado nos top-5 fornecedores">Concentracao top-5</button>
-            <button class="mt-btn" data-metric="pago_per_capita" title="Total pago por habitante (IBGE 2022)">Per capita</button>
+            <button class="mt-btn active" data-metric="risco" data-desc="Score composto (0-100) que combina % de fornecedores irregulares, % sem licitacao, concentracao de contratos e outros sinais em um unico indicador por municipio.">Risco composto</button>
+            <button class="mt-btn" data-metric="pct_irregulares" data-desc="% do valor pago a fornecedores com sancao ativa (CEIS/CNEP), divida na PGFN ou situacao cadastral irregular (inativa/baixada/inapta).">% Irregulares</button>
+            <button class="mt-btn" data-metric="pct_sem_licitacao" data-desc="% dos empenhos realizados sem processo licitatorio formal (dispensa, inexigibilidade ou sem numero de licitacao).">Sem licitacao</button>
+            <button class="mt-btn" data-metric="pct_top5" data-desc="% do total pago que foi concentrado nos 5 maiores fornecedores do municipio - indicador de dependencia ou possivel direcionamento.">Concentracao top-5</button>
+            <button class="mt-btn" data-metric="pago_per_capita" data-desc="Total pago pelo municipio dividido pelo numero de habitantes (IBGE 2022) - util para comparar porte de gasto entre municipios diferentes.">Per capita</button>
         </div>
-        <div class="mapa-legend" id="mapa-legend"></div>
+        <p class="mapa-metric-desc" id="mapa-metric-desc"></p>
         <p class="mapa-cutoff-note" id="mapa-cutoff-note">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</p>
     </div>
     <div id="mapa-pb"></div>
+    <div class="mapa-legend" id="mapa-legend"></div>
 </section>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
