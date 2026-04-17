@@ -200,6 +200,43 @@ app.include_router(cidade_router)
 app.include_router(mapa_router)
 
 
+# Fase 12 - erros amigaveis em vez de stack traces
+from fastapi.exceptions import HTTPException as _HTTPException
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from fastapi.responses import HTMLResponse as _HTMLResponse
+import logging as _logging
+import uuid as _uuid
+
+_err_log = _logging.getLogger("transparencia.web")
+
+
+@app.exception_handler(404)
+@app.exception_handler(_StarletteHTTPException)
+async def _handle_http_exception(request: Request, exc):
+    status_code = getattr(exc, "status_code", 500)
+    if status_code == 404:
+        return templates.TemplateResponse(
+            request, "errors/404.html",
+            {"path": str(request.url.path)},
+            status_code=404,
+        )
+    # outros HTTPException mantem resposta padrao (usado por APIs)
+    if isinstance(exc, _HTTPException):
+        raise exc
+    raise exc
+
+
+@app.exception_handler(Exception)
+async def _handle_unexpected(request: Request, exc: Exception):
+    error_id = _uuid.uuid4().hex[:8]
+    _err_log.exception("Unhandled error [%s] on %s", error_id, request.url.path)
+    return templates.TemplateResponse(
+        request, "errors/500.html",
+        {"error_id": error_id},
+        status_code=500,
+    )
+
+
 @app.get("/")
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")

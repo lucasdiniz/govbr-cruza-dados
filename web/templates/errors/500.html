@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Erro interno{% endblock %}
+{% block content %}
+<section class="error-page">
+  <div class="error-hero">
+    <div class="error-icon" aria-hidden="true">⚠️</div>
+    <h1 class="error-title">Algo deu errado aqui</h1>
+    <p class="error-lead">Tivemos um problema ao carregar esta p&aacute;gina. J&aacute; registramos o erro e vamos investigar.</p>
+    <p class="error-lead">Enquanto isso, voc&ecirc; pode tentar novamente em alguns instantes ou voltar para o in&iacute;cio.</p>
+    {% if error_id %}<p class="error-path"><code>refer&ecirc;ncia: {{ error_id }}</code></p>{% endif %}
+    <p class="error-actions">
+      <a href="/" class="btn-link">&larr; Voltar ao in&iacute;cio</a>
+      <span class="sep">&bull;</span>
+      <a href="javascript:history.back()" class="btn-link">Tentar p&aacute;gina anterior</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

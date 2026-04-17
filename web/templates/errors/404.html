@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Pagina nao encontrada{% endblock %}
+{% block content %}
+<section class="error-page">
+  <div class="error-hero">
+    <div class="error-icon" aria-hidden="true">🔍</div>
+    <h1 class="error-title">N&atilde;o encontramos essa p&aacute;gina</h1>
+    <p class="error-lead">O endere&ccedil;o que voc&ecirc; acessou n&atilde;o existe ou o nome da cidade pode estar escrito de forma diferente do que temos no banco.</p>
+    {% if path %}<p class="error-path"><code>{{ path }}</code></p>{% endif %}
+    <form action="/search/cidade" method="get" class="error-search" role="search">
+      <label for="err-q" class="visually-hidden">Buscar cidade</label>
+      <input type="search" id="err-q" name="q" placeholder="Buscar cidade (ex: Jo&atilde;o Pessoa)" autocomplete="off" inputmode="search" enterkeyhint="search" required>
+      <button type="submit" class="btn-primary">Buscar</button>
+    </form>
+    <p class="error-actions">
+      <a href="/" class="btn-link">&larr; Voltar ao in&iacute;cio</a>
+      <span class="sep">&bull;</span>
+      <a href="/mapa" class="btn-link">Ver mapa da PB</a>
+    </p>
+  </div>
+</section>
+{% endblock %}
