@@ -1560,13 +1560,13 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             const semLic = !numLic || numLic === '000000000' || (mod && mod.toLowerCase().includes('sem licit'));
             const modCell = semLic ? '<span class="badge badge-yellow">Sem licitacao</span>' : _esc(`${mod} (${numLic})`);
             return `<tr class="clickable-row" data-empenho-id="${e.id}">
-                <td>${_fmtDate(e.data_empenho)}</td>
-                <td>${_esc(e.elemento_despesa || '-')}</td>
-                <td class="text-right">${_shortBrl(e.valor_pago)}</td>
-                <td>${modCell}</td>
+                <td data-label="Data" class="stack-meta">${_fmtDate(e.data_empenho)}</td>
+                <td data-label="Elemento" class="stack-title">${_esc(e.elemento_despesa || '-')}</td>
+                <td data-label="Pago" class="text-right num">${_shortBrl(e.valor_pago)}</td>
+                <td data-label="Modalidade" class="stack-meta">${modCell}</td>
             </tr>`;
         }).join('');
-        html += `<div class="tbl-wrap"><table class="dialog-table">
+        html += `<div class="tbl-wrap"><table class="dialog-table stack-mobile">
             <thead><tr><th>Data</th><th>Elemento</th><th class="text-right">Pago</th><th>Modalidade</th></tr></thead>
             <tbody>${empRows}</tbody>
         </table></div>`;
@@ -2168,13 +2168,13 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${_esc(p.nome_proponente || '')}">${nome}</a>`
                 : nome;
             return `<tr>
-                <td>${nomeLink}</td>
-                <td class="auditor-only"><code class="text-sm">${_esc(p.cpf_cnpj_proponente || '-')}</code></td>
-                <td class="text-right">${_shortBrl(p.valor_ofertado)}</td>
-                <td>${_esc(p.situacao_proposta || '-')}</td>
+                <td data-label="Empresa" class="stack-title">${nomeLink}</td>
+                <td data-label="CNPJ/CPF" class="auditor-only"><code class="text-sm">${_esc(p.cpf_cnpj_proponente || '-')}</code></td>
+                <td data-label="Valor" class="text-right num">${_shortBrl(p.valor_ofertado)}</td>
+                <td data-label="Resultado" class="stack-meta">${_esc(p.situacao_proposta || '-')}</td>
             </tr>`;
         }).join('');
-        html += `<div class="tbl-wrap"><table class="dialog-table">
+        html += `<div class="tbl-wrap"><table class="dialog-table stack-mobile">
             <thead><tr><th>${dualLabel('Empresa','Proponente')}</th><th class="auditor-only">CNPJ/CPF</th><th class="text-right">${dualLabel('Valor proposto','Valor ofertado')}</th><th>${dualLabel('Resultado','Situacao')}</th></tr></thead>
             <tbody>${propRows}</tbody>
         </table></div>`;
@@ -2193,14 +2193,14 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
                 ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}">${nome}</a>`
                 : nome;
             return `<tr class="clickable-row" data-empenho-id="${d.id}">
-                <td>${nomeCell}</td>
-                <td>${_fmtDate(d.data_empenho)}</td>
-                <td>${_esc(d.elemento_despesa || '-')}</td>
-                <td class="text-right">${_shortBrl(d.valor_empenhado)}</td>
-                <td class="text-right">${_shortBrl(d.valor_pago)}</td>
+                <td data-label="Credor" class="stack-title">${nomeCell}</td>
+                <td data-label="Data" class="stack-meta">${_fmtDate(d.data_empenho)}</td>
+                <td data-label="Tipo de gasto" class="stack-meta">${_esc(d.elemento_despesa || '-')}</td>
+                <td data-label="Reservado" class="text-right num">${_shortBrl(d.valor_empenhado)}</td>
+                <td data-label="Pago" class="text-right num">${_shortBrl(d.valor_pago)}</td>
             </tr>`;
         }).join('');
-        html += `<div class="tbl-wrap"><table class="dialog-table">
+        html += `<div class="tbl-wrap"><table class="dialog-table stack-mobile">
             <thead><tr><th>${dualLabel('Empresa','Credor')}</th><th>Data</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="text-right">${dualLabel('Reservado','Empenhado')}</th><th class="text-right">Pago</th></tr></thead>
             <tbody>${despRows}</tbody>
         </table></div>`;
