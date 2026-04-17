@@ -2322,17 +2322,18 @@ html.audit-mode .city-narrative strong {
         border-left: 3px solid var(--red, #dc2626);
     }
     table.stack-mobile tbody td {
-        display: flex;
+        display: flex !important;
         justify-content: space-between;
         align-items: baseline;
         gap: 0.6rem;
         padding: 0.15rem 0;
         border: none;
         min-width: 0;
-        white-space: normal;
+        white-space: normal !important;
         word-break: break-word;
+        overflow-wrap: anywhere;
         text-align: left;
-        max-width: none;
+        max-width: none !important;
     }
     table.stack-mobile tbody td::before {
         content: attr(data-label);
@@ -2345,24 +2346,30 @@ html.audit-mode .city-narrative strong {
     }
     /* Celulas de destaque: sem label acima, fonte maior, ocupa linha cheia */
     table.stack-mobile tbody td.stack-title {
-        display: block;
+        display: block !important;
         font-size: 1rem;
         font-weight: 600;
         padding: 0.05rem 0 0.25rem;
-        white-space: normal;
+        white-space: normal !important;
         word-break: break-word;
         overflow-wrap: anywhere;
-        max-width: 100%;
+        max-width: 100% !important;
     }
     table.stack-mobile tbody td.stack-title::before {
         display: none;
     }
     table.stack-mobile tbody td.stack-meta {
+        display: block !important;
         font-size: 0.82rem;
         color: var(--text-muted, #64748b);
-        white-space: normal;
+        white-space: normal !important;
         word-break: break-word;
         overflow-wrap: anywhere;
+        padding: 0.1rem 0 0.25rem;
+    }
+    table.stack-mobile tbody td.stack-meta::before {
+        display: inline;
+        margin-right: 0.4rem;
     }
     /* Valores alinham a direita com label a esquerda */
     table.stack-mobile tbody td.num {
