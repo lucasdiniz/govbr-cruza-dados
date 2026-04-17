@@ -63,7 +63,7 @@ SECTION_META = {
         "title": "Fornecedores com sinais de irregularidade",
         "title_lay": "Empresas que n&atilde;o deveriam estar recebendo",
         "description": "Empresas com sancoes, dividas ou situacao cadastral irregular que aparecem recebendo recursos do municipio.",
-        "description_lay": "Empresas punidas por fraude, devendo impostos federais, ou com situa&ccedil;&atilde;o irregular na Receita — e mesmo assim a prefeitura contratou e pagou.",
+        "description_lay": "Empresas com san&ccedil;&atilde;o ativa do governo federal, devendo impostos federais, ou com situa&ccedil;&atilde;o irregular na Receita — e mesmo assim a prefeitura contratou e pagou.",
     },
     "Orcamento e Financeiro": {
         "slug": "orcamento",
@@ -441,7 +441,7 @@ DESTAQUES_SPEC = [
         "query_id": "Q65",
         "icon": "&#128681;",  # 🚩
         "severity": "red",
-        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} punida{plural} por fraude",
+        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} sancionada{plural} pelo governo federal",
         "section_slug": "fornecedores-irregulares",
         "value_col": "total_pago",
         "count_col": "cpf_cnpj_sancionado",

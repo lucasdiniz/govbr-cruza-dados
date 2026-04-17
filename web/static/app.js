@@ -228,12 +228,13 @@ function initFontSizeToggle() {
 
 
 function initTour() {
-    // Fase 5: tour de 3 passos na primeira visita a pagina de cidade.
+    // Fase 5: tour de 3 passos na primeira visita.
     const isCityPage = !!document.querySelector('.city-hero');
+    const isHomePage = !!document.querySelector('.search-hero') && !isCityPage;
     const restartBtn = document.getElementById('tourRestart');
-    if (!isCityPage && !restartBtn) return;
+    if (!isCityPage && !isHomePage && !restartBtn) return;
 
-    const STEPS = [
+    const STEPS_CIDADE = [
         {
             selector: '.city-narrative',
             title: 'Resumo em 30 segundos',
@@ -250,6 +251,26 @@ function initTour() {
             text: 'Ative o <strong>Modo Auditor</strong> aqui para ver todos os dados t&eacute;cnicos (CNPJs, modalidades, scores brutos, colunas extras).',
         },
     ];
+
+    const STEPS_HOME = [
+        {
+            selector: '.search-card-inline',
+            title: 'Comece escolhendo um munic&iacute;pio',
+            text: 'Digite o nome da cidade ou use o bot&atilde;o <strong>&#128205;</strong> para detectar sua localiza&ccedil;&atilde;o (funciona em toda a Para&iacute;ba).',
+        },
+        {
+            selector: '.mapa-hero',
+            title: 'Mapa da Para&iacute;ba',
+            text: 'Cada munic&iacute;pio est&aacute; colorido pelo indicador selecionado (risco, % de dinheiro com fornecedores irregulares, etc). Toque num munic&iacute;pio para abrir os detalhes.',
+        },
+        {
+            selector: '#modeToggle',
+            title: '&Eacute; jornalista, auditor ou MP?',
+            text: 'Ative o <strong>Modo Auditor</strong> aqui para ver todos os dados t&eacute;cnicos (CNPJs, modalidades, scores brutos, colunas extras).',
+        },
+    ];
+
+    const STEPS = isCityPage ? STEPS_CIDADE : STEPS_HOME;
 
     let current = 0;
     let overlay = null;
@@ -344,13 +365,13 @@ function initTour() {
         restartBtn.addEventListener('click', () => { current = 0; start(); });
     }
 
-    // Auto-start apenas na pagina de cidade, na primeira visita
-    if (isCityPage) {
+    // Auto-start na primeira visita (tanto homepage quanto cidade)
+    if (isCityPage || isHomePage) {
         let done = null;
         try { done = localStorage.getItem('tour-v1'); } catch (_) {}
         if (!done) {
-            // Espera um pouco para layout estabilizar
-            setTimeout(start, 800);
+            // Espera um pouco para layout estabilizar (e mapa carregar na home)
+            setTimeout(start, isHomePage ? 1500 : 800);
         }
     }
 }

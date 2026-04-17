@@ -75,7 +75,7 @@
     <footer class="site-footer" role="contentinfo">
         <div class="credibility">
             <span class="credibility-text">
-                Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, PNCP, PGFN, IBGE, TSE.
+                Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, dados.pb.gov.br, PNCP, PGFN, IBGE, TSE.
                 Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
                 &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
@@ -95,6 +95,7 @@
                 <li><a href="https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj" target="_blank" rel="noopener">Receita Federal &mdash; CNPJ</a> &mdash; cadastro de empresas e s&oacute;cios.</li>
                 <li><a href="https://www.gov.br/cgu/pt-br/assuntos/transparencia-publica" target="_blank" rel="noopener">CGU</a> &mdash; CEIS, CNEP, CEAF (empresas e servidores sancionados).</li>
                 <li><a href="https://tce.pb.gov.br/" target="_blank" rel="noopener">TCE-PB</a> &mdash; despesas, licita&ccedil;&otilde;es e folha de pagamento dos munic&iacute;pios paraibanos.</li>
+                <li><a href="https://dados.pb.gov.br/" target="_blank" rel="noopener">dados.pb.gov.br</a> &mdash; portal de dados abertos do Governo do Estado da Para&iacute;ba (pagamentos, empenhos, contratos, conv&ecirc;nios, sa&uacute;de).</li>
                 <li><a href="https://pncp.gov.br/" target="_blank" rel="noopener">PNCP</a> &mdash; Portal Nacional de Contrata&ccedil;&otilde;es P&uacute;blicas.</li>
                 <li><a href="https://www.gov.br/pgfn/pt-br" target="_blank" rel="noopener">PGFN</a> &mdash; d&iacute;vida ativa da Uni&atilde;o.</li>
                 <li><a href="https://www.ibge.gov.br/" target="_blank" rel="noopener">IBGE</a> &mdash; dados dos munic&iacute;pios.</li>
@@ -112,7 +113,7 @@
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=24"></script>
+    <script src="/static/app.js?v=25"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

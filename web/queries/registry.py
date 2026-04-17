@@ -30,12 +30,12 @@ CIDADE_QUERIES: dict[str, QueryDef] = {}
 # Versoes para o Modo Cidadao. Quando vazio, mostra o titulo tecnico.
 _LAY_TEXT: dict[str, dict[str, str]] = {
     "Q65": {
-        "title": "Empresas punidas por fraude que receberam da prefeitura",
-        "desc": "Empresas que o governo federal proibiu de contratar — por fraude, propina ou descumprimento grave. Esta cidade pagou a elas mesmo assim.",
+        "title": "Empresas proibidas de contratar que receberam da prefeitura",
+        "desc": "Empresas com sancao ativa do governo federal (CEIS, CNEP ou Inidoneidade) — por fraude, descumprimento contratual, documentacao irregular ou corrupcao. Esta cidade pagou a elas mesmo assim.",
         "explainer": (
-            "CEIS, CNEP e Inidoneidade sao listas oficiais de empresas que a Uniao proibiu de contratar com o poder publico — por fraude, propina, corrupcao ou descumprimento grave de contrato. "
-            "Quando a prefeitura paga uma empresa nessa lista durante a vigencia da punicao, e um indicio forte de falha de controle (ou, em casos extremos, conluio). "
-            "Ao investigar, compare as datas: pagamentos feitos depois do inicio da sancao sao os mais graves."
+            "CEIS, CNEP e Inidoneidade sao listas oficiais de empresas com sancoes ativas. Os motivos variam: fraude em licitacao, descumprimento de contrato, nao apresentar documentos, corrupcao (CNEP), entre outros — nem toda sancao e por fraude. "
+            "Quando a prefeitura paga uma empresa dessas durante a vigencia da punicao, e um indicio de falha de controle (ou, em casos extremos, conluio). "
+            "Ao investigar, compare as datas: pagamentos feitos depois do inicio da sancao sao os mais graves. Inidoneidade tem bloqueio nacional; Impedimento CEIS costuma ser restrito ao ente sancionador."
         ),
     },
     "Q67": {
@@ -70,7 +70,7 @@ _LAY_TEXT: dict[str, dict[str, str]] = {
         "desc": "Empresas diferentes registradas no mesmo endereco que receberam da prefeitura. Pode ser coincidencia — ou indicio de empresas 'fantasmas' ligadas entre si.",
         "explainer": (
             "Varias empresas com o mesmo endereco (CEP + logradouro + numero) podem ser coincidencia (um predio comercial, um shopping) — ou indicio de empresas criadas pelo mesmo grupo para simular concorrencia em licitacoes. "
-            "O padrao de fraude e: 3 empresas do mesmo dono se inscrevem no mesmo pregao, dao propostas combinadas, e a 'escolhida' vence com preco artificialmente alto. "
+            "O padrao suspeito e: 3 empresas do mesmo dono se inscrevem no mesmo pregao, dao propostas combinadas, e a 'escolhida' vence com preco artificialmente alto — o que caracteriza fraude a licitacao. "
             "Cruze com socios em comum e com datas de abertura proximas para confirmar."
         ),
     },

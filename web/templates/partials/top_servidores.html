@@ -17,7 +17,7 @@
             {% if has_red_serv or has_yellow_serv %}
             <div class="color-legend">
                 {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Expulso do servi&ccedil;o federal, s&oacute;cio de empresa proibida de contratar, ou empresa recebeu pagamentos durante o v&iacute;nculo</span><span class="auditor-only">Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span></span>{% endif %}
-                {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa punida, ou recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span></span>{% endif %}
+                {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa sancionada, ou recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span></span>{% endif %}
             </div>
             {% endif %}
         </div>
@@ -77,7 +77,7 @@
                             {% if s.flag_bolsa_familia %}<span class="badge badge-yellow"><span class="citizen-only">Recebe Bolsa Fam&iacute;lia sendo servidor</span><span class="auditor-only">Bolsa Familia durante vinculo</span></span>{% endif %}
                             {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow"><span class="citizen-only">Sal&aacute;rio alto + s&oacute;cio de empresa</span><span class="auditor-only">Salario alto + vinculo societario</span></span>{% endif %}
                             {% if s.flag_socio_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">S&oacute;cio de empresa proibida de contratar com o governo</span><span class="auditor-only">Socio de empresa com Inidoneidade (CEIS)</span></span>
-                            {% elif s.flag_socio_sancionado %}<span class="badge badge-orange"><span class="citizen-only">S&oacute;cio de empresa punida por fraude</span><span class="auditor-only">Socio de empresa sancionada (CEIS/CNEP)</span></span>{% endif %}
+                            {% elif s.flag_socio_sancionado %}<span class="badge badge-orange"><span class="citizen-only">S&oacute;cio de empresa sancionada pelo governo</span><span class="auditor-only">Socio de empresa sancionada (CEIS/CNEP)</span></span>{% endif %}
                             {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio and not s.flag_socio_sancionado %}
                                 <span class="text-sm text-muted"><span class="citizen-only">V&aacute;rios indicadores elevados</span><span class="auditor-only">Combinacao de indicadores elevada</span></span>
                             {% endif %}
