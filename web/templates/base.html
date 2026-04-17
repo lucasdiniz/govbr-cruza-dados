@@ -3,13 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Cruza Dados{% endblock %} — govbr</title>
+    <title>{% block title %}TransparenciaPB{% endblock %} — TransparenciaPB</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 </head>
 <body class="{% block body_class %}{% endblock %}">
     <nav class="topnav">
-        <a href="/" class="logo">Cruza Dados</a>
-        <span class="nav-desc">Cruzamento de dados abertos do governo</span>
+        <a href="/" class="logo">
+            <svg class="logo-mark" width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <rect x="3" y="4" width="16" height="20" rx="3" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-width="2"/>
+                <line x1="7" y1="10" x2="15" y2="10" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="7" y1="14" x2="13" y2="14" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="7" y1="18" x2="15" y2="18" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
+                <circle cx="22" cy="22" r="5.5" stroke="#60a5fa" stroke-width="2" fill="#060a14"/>
+                <line x1="26" y1="26" x2="29.5" y2="29.5" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round"/>
+            </svg>
+            <span class="logo-text">Transparencia<strong>PB</strong></span>
+        </a>
+        <span class="nav-desc">Cruzamento de dados abertos do governo da Paraiba</span>
     </nav>
     <main class="container">
         {% block content %}{% endblock %}
