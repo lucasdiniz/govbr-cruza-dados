@@ -3123,3 +3123,35 @@ html.audit-mode .denuncia-cta { display: none; }
     .glossario-head h1 { font-size: 24px; }
     .glossario-item { padding: 14px 16px; }
 }
+
+/* Fase 7 - Botao de geolocalizacao */
+.geo-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    min-height: 48px;
+    width: 100%;
+    padding: 0 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    background: rgba(59, 130, 246, 0.08);
+    color: #93c5fd;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.geo-btn:hover:not(:disabled) { background: rgba(59, 130, 246, 0.18); }
+.geo-btn:disabled { opacity: 0.6; cursor: wait; }
+.geo-btn svg { stroke: currentColor; }
+.geo-status { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--text-muted, #9ca3af); text-align: center; }
+.geo-status.geo-ok { color: #86efac; }
+.geo-status.geo-warn { color: #fbbf24; }
+.geo-status.geo-loading { color: #93c5fd; }
+
+@media (min-width: 768px) {
+    .geo-btn { width: auto; min-width: 240px; }
+}
