@@ -26,16 +26,30 @@ def _execute_indices_sql(conn, filename: str):
     statements = [s.strip() for s in content.split(";") if _has_executable_sql(s)]
     skipped = 0
 
-    for stmt in statements:
-        match = re.search(r"\bON\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", stmt, flags=re.IGNORECASE)
-        table_name = match.group(1) if match else None
-        if table_name and not _table_exists(conn, table_name):
-            print(f"    AVISO: tabela {table_name} nao existe ainda, pulando indice.")
-            skipped += 1
-            continue
-        with conn.cursor() as cur:
-            cur.execute(stmt)
-        conn.commit()
+    # CREATE INDEX CONCURRENTLY exige que NAO esteja em transacao.
+    # Setamos autocommit=True quando o arquivo usa CONCURRENTLY (ex: 19_indices_queries.sql).
+    # Fora de transacao, cada CREATE INDEX faz commit implicito.
+    uses_concurrently = "CONCURRENTLY" in content.upper()
+    prev_autocommit = conn.autocommit
+    if uses_concurrently:
+        conn.commit()  # encerra qualquer txn pendente
+        conn.autocommit = True
+
+    try:
+        for stmt in statements:
+            match = re.search(r"\bON\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", stmt, flags=re.IGNORECASE)
+            table_name = match.group(1) if match else None
+            if table_name and not _table_exists(conn, table_name):
+                print(f"    AVISO: tabela {table_name} nao existe ainda, pulando indice.")
+                skipped += 1
+                continue
+            with conn.cursor() as cur:
+                cur.execute(stmt)
+            if not conn.autocommit:
+                conn.commit()
+    finally:
+        if uses_concurrently:
+            conn.autocommit = prev_autocommit
 
     if skipped:
         print(f"  Indices: {skipped} statement(s) pulados por tabela ausente.")
@@ -44,9 +58,12 @@ def _execute_indices_sql(conn, filename: str):
 def run():
     conn = get_conn()
     try:
-        print("  Criando indices (pode demorar ~30-45 min)...")
+        print("  Criando indices base (11_indices.sql, pode demorar ~30-45 min)...")
         _execute_indices_sql(conn, "11_indices.sql")
-        print("  Indices criados com sucesso.")
+        print("  Indices base criados.")
+        print("  Criando indices das queries de fraude (19_indices_queries.sql, CONCURRENTLY)...")
+        _execute_indices_sql(conn, "19_indices_queries.sql")
+        print("  Indices das queries criados com sucesso.")
     finally:
         conn.close()
 
