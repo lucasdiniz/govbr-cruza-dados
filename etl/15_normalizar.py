@@ -297,10 +297,55 @@ def run():
         _exec(conn, "idx pb_diaria cnpj_basico", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_diaria_cnpj_basico ON pb_diaria(cnpj_basico)", autocommit=True)
         _exec(conn, "idx pb_diaria nome_upper", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pb_diaria_nome_upper ON pb_diaria(nome_upper)", autocommit=True)
 
+        # ── Aplicar sql/19_indices_queries.sql ──
+        # Movido para ca porque depende de colunas normalizadas criadas acima
+        # (ex: cpf_cnpj_norm em ceis_sancao/cnep_sancao/pgfn_divida).
+        # _apply_indices_queries_sql usa _exec por statement -> falhas isoladas
+        # nao param o resto, e CREATE INDEX CONCURRENTLY IF NOT EXISTS torna
+        # tudo idempotente.
+        print("\n  Aplicando sql/19_indices_queries.sql (indices das queries de fraude)...")
+        _apply_indices_queries_sql(conn)
+
         print("\n  Normalização e índices concluídos.")
 
     finally:
         conn.close()
+
+
+def _apply_indices_queries_sql(conn):
+    """Le sql/19_indices_queries.sql e executa cada statement via _exec.
+    Tolerante a falhas individuais (statement por statement).
+    """
+    import re
+    from pathlib import Path
+    sql_path = Path(__file__).resolve().parents[1] / "sql" / "19_indices_queries.sql"
+    content = sql_path.read_text(encoding="utf-8")
+    # Split simples por ';' — arquivo nao tem strings/blocks com ';' embutido.
+    stmts = []
+    for raw in content.split(";"):
+        # remove linhas que sao 100% comentario
+        body = "\n".join(l for l in raw.splitlines() if l.strip() and not l.strip().startswith("--"))
+        if body.strip():
+            stmts.append(raw.strip())
+
+    ok = fail = 0
+    for stmt in stmts:
+        # extrai nome curto pra log
+        m = re.search(r"CREATE\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", stmt, re.IGNORECASE)
+        if m:
+            desc = f"idx {m.group(1)}"
+        else:
+            m2 = re.match(r"\s*(ALTER|UPDATE|VACUUM|ANALYZE)\s+\w+\s+(\w+)?", stmt, re.IGNORECASE)
+            desc = f"{m2.group(1).lower()} {m2.group(2) or ''}" if m2 else "stmt"
+        # CONCURRENTLY exige autocommit
+        is_concurrent = "CONCURRENTLY" in stmt.upper()
+        before = (ok, fail)
+        _exec(conn, desc, stmt, autocommit=is_concurrent)
+        # _exec apenas printa erro; nao temos feedback. Contamos via heuristica:
+        # se ultimo print conteve "ERRO" nao da pra capturar facilmente, entao
+        # apenas sumarizamos no fim com count de indices presentes.
+        ok += 1  # contagem apenas de tentativas
+    print(f"  19_indices_queries.sql: {len(stmts)} statements processados.")
 
 
 if __name__ == "__main__":

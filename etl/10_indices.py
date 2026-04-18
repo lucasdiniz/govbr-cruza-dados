@@ -60,10 +60,10 @@ def run():
     try:
         print("  Criando indices base (11_indices.sql, pode demorar ~30-45 min)...")
         _execute_indices_sql(conn, "11_indices.sql")
-        print("  Indices base criados.")
-        print("  Criando indices das queries de fraude (19_indices_queries.sql, CONCURRENTLY)...")
-        _execute_indices_sql(conn, "19_indices_queries.sql")
-        print("  Indices das queries criados com sucesso.")
+        print("  Indices base criados com sucesso.")
+        # NOTA: 19_indices_queries.sql NAO eh aplicado aqui — ele depende de
+        # colunas (ex: cpf_cnpj_norm) criadas por etl.15_normalizar, que roda
+        # em fase posterior. A aplicacao ocorre no final de 15_normalizar.py.
     finally:
         conn.close()
 
