@@ -6,7 +6,8 @@ TABLES = [
     "empresa", "estabelecimento", "socio", "simples",
     "pncp_contratacao", "pncp_contrato", "pncp_item",
     "tce_pb_despesa", "tce_pb_servidor", "tce_pb_licitacao", "tce_pb_receita",
-    "emenda_parlamentar", "cpgf_transacao", "pgfn_divida",
+    "emenda_tesouro", "emenda_convenio", "emenda_favorecido",
+    "cpgf_transacao", "pgfn_divida",
     "bndes_contrato",
     "bolsa_familia", "siape_cadastro", "viagem",
     "ceis_sancao", "cnep_sancao", "ceaf_expulsao",
@@ -23,8 +24,9 @@ def run():
             n = table_count(conn, t)
             total += n
             print(f"  {t}: {n:,}")
-        except Exception:
-            print(f"  {t}: (not found)")
+        except Exception as e:
+            conn.rollback()
+            print(f"  {t}: (not found) [{type(e).__name__}]")
     print(f"  --- TOTAL: {total:,} ---")
     conn.close()
 

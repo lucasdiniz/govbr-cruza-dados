@@ -167,8 +167,9 @@ jobs:
             exit 1
           fi
 
-      # ── Test download connectivity ──
+      # ── Test download connectivity (only when actually downloading) ──
       - name: Test download sources
+        if: (inputs.etl_phase == 'all' && inputs.skip_download != 'true') || inputs.etl_phase == '1'
         continue-on-error: true
         run: |
           set -e
