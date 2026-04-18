@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import psycopg2
@@ -43,6 +45,32 @@ CREATE TABLE IF NOT EXISTS {CACHE_TABLE} (
 """
 
 PAUSE_BETWEEN_CYCLES = 60  # seconds between full cycles in daemon mode
+
+# Numero de municipios processados em paralelo. Cada worker abre 1 conexao PG
+# propria. Mantemos baixo (2) para nao competir com os 3 workers do uvicorn
+# nem saturar I/O de tabelas grandes (tce_pb_despesa, etc).
+PARALLEL_WORKERS = 2
+
+# Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
+# porque rodamos em background e queremos popular o cache mesmo para queries
+# pesadas. Falhar aqui significa cache miss eterno no usuario final.
+TIMEOUT_PERFIL_LIVE = 600     # PERFIL_MUNICIPIO_LIVE escaneia tce_pb_despesa
+TIMEOUT_TOP_FORN = 900        # TOP_FORNECEDORES com sancoes/CEIS/CNEP
+TIMEOUT_TOP_SERV = 600
+TIMEOUT_HEATMAP = 300
+TIMEOUT_REGISTRY_DEFAULT = 600  # piso para CIDADE_QUERIES no warmer
+
+_thread_local = threading.local()
+
+
+def _thread_conn():
+    """Conexao psycopg2 por thread (lazy)."""
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None or conn.closed:
+        conn = psycopg2.connect(DSN)
+        conn.autocommit = False
+        _thread_local.conn = conn
+    return conn
 
 
 def _get_municipios_pb(conn, only: str | None = None) -> list[str]:
@@ -107,17 +135,20 @@ def _run_and_cache(conn, query_id: str, sql: str, mun: str, timeout_sec: int, ve
     except Exception as e:
         conn.rollback()
         msg = str(e).split("\n")[0]
-        if verbose and "statement_timeout" not in msg:
-            print(f"  {query_id}: {msg}")
+        # Sempre loga (timeout incluso) para podermos identificar queries que
+        # nunca completam dentro do tempo configurado.
+        if verbose:
+            tag = "TIMEOUT" if "statement_timeout" in msg else "ERR"
+            print(f"  [{tag}] {query_id} mun={mun}: {msg}", flush=True)
         return False
 
 
 def _run_and_cache_dated(conn, query_id: str, sql: str, params: dict, timeout_sec: int, verbose: bool):
     """Executa query com params de data e salva no cache. Retorna True se ok."""
+    mun = params["municipio"]
     try:
         cols, rows = _execute(conn, sql, params, timeout_sec)
         conn.commit()
-        mun = params["municipio"]
         with conn.cursor() as cur:
             _upsert(cur, query_id, mun, cols, rows)
         conn.commit()
@@ -125,8 +156,9 @@ def _run_and_cache_dated(conn, query_id: str, sql: str, params: dict, timeout_se
     except Exception as e:
         conn.rollback()
         msg = str(e).split("\n")[0]
-        if verbose and "statement_timeout" not in msg:
-            print(f"  {query_id}: {msg}")
+        if verbose:
+            tag = "TIMEOUT" if "statement_timeout" in msg else "ERR"
+            print(f"  [{tag}] {query_id} mun={mun}: {msg}", flush=True)
         return False
 
 
@@ -136,15 +168,113 @@ def _ensure_cache_table(conn):
     conn.commit()
 
 
-def warm_cycle_pb(municipios: list[str], verbose: bool = True):
-    """Processa um ciclo completo de todos os municipios PB."""
-    conn = psycopg2.connect(DSN)
-    conn.autocommit = False
-    _ensure_cache_table(conn)
+def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, all_queries: list, verbose: bool):
+    """Processa todas as variantes ANO para um municipio. Usa conn por thread."""
+    conn = _thread_conn()
+    t0 = time.time()
+    ok, fail = 0, 0
+    params = {"municipio": mun, **ano_params_base}
 
+    if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, TIMEOUT_PERFIL_LIVE, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    for qdef in all_queries:
+        if qdef.sql_full_dated:
+            cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
+            if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
+                ok += 1
+            else:
+                fail += 1
+
+    elapsed = time.time() - t0
+    if verbose:
+        print(f"[{idx}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
+    return ok, fail
+
+
+def _warm_municipio_alltime(mun: str, idx: int, total: int, all_queries: list, verbose: bool):
+    """Processa todas as variantes all-time para um municipio. Usa conn por thread."""
+    conn = _thread_conn()
+    t0 = time.time()
+    ok, fail = 0, 0
+
+    if _run_and_cache(conn, "PERFIL", PERFIL_MUNICIPIO, mun, TIMEOUT_PERFIL_LIVE, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    if _run_and_cache(conn, "TOP_FORNECEDORES", TOP_FORNECEDORES, mun, TIMEOUT_TOP_FORN, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, TIMEOUT_TOP_SERV, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    if _run_and_cache(conn, "HEATMAP", HEATMAP_MENSAL, mun, TIMEOUT_HEATMAP, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    for qdef in all_queries:
+        cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
+        if _run_and_cache(conn, qdef.id, qdef.sql_full, mun, cache_timeout, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+    elapsed = time.time() - t0
+    if verbose:
+        print(f"[{idx}/{total}] {mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
+    return ok, fail
+
+
+def _run_parallel(label: str, municipios: list[str], task_fn, verbose: bool, **kwargs):
+    """Executa task_fn(mun, idx, total, ...) em paralelo entre municipios."""
     total = len(municipios)
-    all_queries = list(CIDADE_QUERIES.values())
+    if verbose:
+        print(f"--- {label}: {total} municipios (workers={PARALLEL_WORKERS}) ---", flush=True)
     cycle_ok, cycle_fail = 0, 0
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+        futs = [
+            ex.submit(task_fn, mun, i, total, verbose=verbose, **kwargs)
+            for i, mun in enumerate(municipios, 1)
+        ]
+        for f in as_completed(futs):
+            try:
+                ok, fail = f.result()
+                cycle_ok += ok
+                cycle_fail += fail
+            except Exception as e:
+                cycle_fail += 1
+                if verbose:
+                    print(f"  [WORKER ERR] {e}", flush=True)
+    return cycle_ok, cycle_fail
+
+
+def warm_cycle_pb(municipios: list[str], verbose: bool = True):
+    """Processa um ciclo completo de todos os municipios PB (ANO primeiro, all-time depois)."""
+    # Garante schema da tabela de cache em conexao dedicada (curta).
+    bootstrap = psycopg2.connect(DSN)
+    bootstrap.autocommit = False
+    _ensure_cache_table(bootstrap)
+    bootstrap.close()
+
+    all_queries = list(CIDADE_QUERIES.values())
 
     # 1o loop: variantes ANO (ano atual) — prioritario porque o frontend
     # usa "ano atual" como filtro padrao, gerando mais cache hits.
@@ -158,95 +288,19 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         "ano_mes_inicio": f"{today.year}-01",
         "ano_mes_fim": f"{today.year}-12",
     }
-    if verbose:
-        print(f"--- ANO {today.year}: {total} municipios ---")
 
-    for i, mun in enumerate(municipios, 1):
-        t0 = time.time()
-        ok, fail = 0, 0
-        params = {"municipio": mun, **ano_params_base}
-
-        # PERFIL ANO
-        if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, 15, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # TOP_FORNECEDORES ANO
-        if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # TOP_SERVIDORES ANO
-        if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Registry queries ANO
-        for qdef in all_queries:
-            if qdef.sql_full_dated:
-                cache_timeout = max(qdef.timeout_sec, 60)
-                if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
-                    ok += 1
-                else:
-                    fail += 1
-
-        cycle_ok += ok
-        cycle_fail += fail
-        elapsed = time.time() - t0
-        if verbose:
-            print(f"[{i}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
+    ano_ok, ano_fail = _run_parallel(
+        f"ANO {today.year}", municipios, _warm_municipio_ano, verbose,
+        ano_params_base=ano_params_base, all_queries=all_queries,
+    )
 
     # 2o loop: variantes all-time (sem prefixo)
-    if verbose:
-        print(f"\n--- ALL-TIME: {total} municipios ---")
+    all_ok, all_fail = _run_parallel(
+        "ALL-TIME", municipios, _warm_municipio_alltime, verbose,
+        all_queries=all_queries,
+    )
 
-    for i, mun in enumerate(municipios, 1):
-        t0 = time.time()
-        ok, fail = 0, 0
-
-        # Profile
-        if _run_and_cache(conn, "PERFIL", PERFIL_MUNICIPIO, mun, 10, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Top fornecedores
-        if _run_and_cache(conn, "TOP_FORNECEDORES", TOP_FORNECEDORES, mun, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Top servidores
-        if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, 30, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Heatmap mensal (empenhos por ano/mes)
-        if _run_and_cache(conn, "HEATMAP", HEATMAP_MENSAL, mun, 30, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Registry queries (use higher timeout for cache warming)
-        for qdef in all_queries:
-            cache_timeout = max(qdef.timeout_sec, 60)
-            if _run_and_cache(conn, qdef.id, qdef.sql_full, mun, cache_timeout, verbose):
-                ok += 1
-            else:
-                fail += 1
-
-        cycle_ok += ok
-        cycle_fail += fail
-        elapsed = time.time() - t0
-        if verbose:
-            print(f"[{i}/{total}] {mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
-
-    conn.close()
-    return cycle_ok, cycle_fail
+    return ano_ok + all_ok, ano_fail + all_fail
 
 
 

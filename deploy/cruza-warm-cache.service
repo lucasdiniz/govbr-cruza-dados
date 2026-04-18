@@ -8,7 +8,7 @@ Type=simple
 User=govbr
 WorkingDirectory=/home/govbr/govbr-project
 EnvironmentFile=/home/govbr/govbr-project/.env
-ExecStart=/home/govbr/govbr-project/venv/bin/python -m web.warm_cache --daemon --loop
+ExecStart=/home/govbr/govbr-project/venv/bin/python -u -m web.warm_cache --daemon --loop
 Restart=always
 RestartSec=30
 
