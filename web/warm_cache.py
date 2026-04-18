@@ -146,6 +146,63 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
     all_queries = list(CIDADE_QUERIES.values())
     cycle_ok, cycle_fail = 0, 0
 
+    # 1o loop: variantes ANO (ano atual) — prioritario porque o frontend
+    # usa "ano atual" como filtro padrao, gerando mais cache hits.
+    from datetime import date as _date
+    today = _date.today()
+    ano_params_base = {
+        "data_inicio": f"{today.year}-01-01",
+        "data_fim": f"{today.year}-12-31",
+        "ano_inicio": today.year,
+        "ano_fim": today.year,
+        "ano_mes_inicio": f"{today.year}-01",
+        "ano_mes_fim": f"{today.year}-12",
+    }
+    if verbose:
+        print(f"--- ANO {today.year}: {total} municipios ---")
+
+    for i, mun in enumerate(municipios, 1):
+        t0 = time.time()
+        ok, fail = 0, 0
+        params = {"municipio": mun, **ano_params_base}
+
+        # PERFIL ANO
+        if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, 15, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # TOP_FORNECEDORES ANO
+        if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, 90, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # TOP_SERVIDORES ANO
+        if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, 90, verbose):
+            ok += 1
+        else:
+            fail += 1
+
+        # Registry queries ANO
+        for qdef in all_queries:
+            if qdef.sql_full_dated:
+                cache_timeout = max(qdef.timeout_sec, 60)
+                if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
+                    ok += 1
+                else:
+                    fail += 1
+
+        cycle_ok += ok
+        cycle_fail += fail
+        elapsed = time.time() - t0
+        if verbose:
+            print(f"[{i}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
+
+    # 2o loop: variantes all-time (sem prefixo)
+    if verbose:
+        print(f"\n--- ALL-TIME: {total} municipios ---")
+
     for i, mun in enumerate(municipios, 1):
         t0 = time.time()
         ok, fail = 0, 0
@@ -187,58 +244,6 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         elapsed = time.time() - t0
         if verbose:
             print(f"[{i}/{total}] {mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
-
-    # 2o loop: variantes ANO (ano atual)
-    from datetime import date as _date
-    today = _date.today()
-    ano_params_base = {
-        "data_inicio": f"{today.year}-01-01",
-        "data_fim": f"{today.year}-12-31",
-        "ano_inicio": today.year,
-        "ano_fim": today.year,
-        "ano_mes_inicio": f"{today.year}-01",
-        "ano_mes_fim": f"{today.year}-12",
-    }
-    if verbose:
-        print(f"\n--- ANO {today.year}: {total} municipios ---")
-
-    for i, mun in enumerate(municipios, 1):
-        t0 = time.time()
-        ok, fail = 0, 0
-        params = {"municipio": mun, **ano_params_base}
-
-        # PERFIL ANO
-        if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, 15, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # TOP_FORNECEDORES ANO
-        if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # TOP_SERVIDORES ANO
-        if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, 90, verbose):
-            ok += 1
-        else:
-            fail += 1
-
-        # Registry queries ANO
-        for qdef in all_queries:
-            if qdef.sql_full_dated:
-                cache_timeout = max(qdef.timeout_sec, 60)
-                if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
-                    ok += 1
-                else:
-                    fail += 1
-
-        cycle_ok += ok
-        cycle_fail += fail
-        elapsed = time.time() - t0
-        if verbose:
-            print(f"[{i}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)")
 
     conn.close()
     return cycle_ok, cycle_fail
