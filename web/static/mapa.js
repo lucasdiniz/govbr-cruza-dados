@@ -124,7 +124,7 @@
         }
         lines.push(`<span class="tt-k">Valor:</span> <span class="tt-v">${formatMetric(v, state.metric)}</span>`);
         lines.push('<hr>');
-        lines.push(`<span class="tt-k">Risco:</span> ${formatMetric(entry.risco, 'risco')}`);
+        lines.push(`<span class="tt-k">Nota:</span> ${formatMetric(entry.risco, 'risco')}`);
         lines.push(`<span class="tt-k">Irregulares:</span> ${formatMetric(entry.pct_irregulares, 'pct_irregulares')}`);
         lines.push(`<span class="tt-k">Sem licitacao:</span> ${formatMetric(entry.pct_sem_licitacao, 'pct_sem_licitacao')}`);
         lines.push(`<span class="tt-k">Top-5:</span> ${formatMetric(entry.pct_top5, 'pct_top5')}`);
