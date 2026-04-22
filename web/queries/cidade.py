@@ -48,16 +48,25 @@ _FLAGS_SANCAO_DURANTE_PB = """,
        ) AS flag_recebeu_durante_sancao_aplicavel"""
 
 PERFIL_MUNICIPIO = """
-SELECT municipio,
-       qtd_empenhos, total_empenhado, total_pago, qtd_fornecedores,
-       qtd_sem_licitacao, pct_sem_licitacao,
-       qtd_dezembro, pct_dezembro,
-       qtd_licitacoes, qtd_proponente_unico, pct_proponente_unico,
-       pct_nao_executado,
-       receita_arrecadada, total_folha, pct_folha_receita,
-       risco_score
-FROM mv_municipio_pb_risco
-WHERE UPPER(unaccent(TRIM(municipio))) = UPPER(unaccent(TRIM(%(municipio)s)))
+SELECT r.municipio,
+       r.qtd_empenhos, r.total_empenhado, r.total_pago, r.qtd_fornecedores,
+       r.qtd_sem_licitacao, r.pct_sem_licitacao,
+       r.qtd_dezembro, r.pct_dezembro,
+       r.qtd_licitacoes, r.qtd_proponente_unico, r.pct_proponente_unico,
+       r.pct_nao_executado,
+       r.receita_arrecadada, r.total_folha, r.pct_folha_receita,
+       -- risco_score agora vem do score unificado (8 KPIs investigativos);
+       -- fallback para o score TCE-PB legado se a MV nova ainda nao foi criada.
+       COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,
+       r.risco_score AS risco_score_tce,
+       k.risco_score_unificado,
+       -- Valores brutos dos 8 KPIs (para o registry Python montar breakdown/severity)
+       k.qtd_sancao_municipio, k.qtd_sancao_qualquer, k.qtd_inativas_recebendo,
+       k.qtd_ceaf_expulsos, k.qtd_socio_recebendo, k.total_pago_socios,
+       k.pct_pago_socios, k.qtd_bf_alto_salario, k.pct_top5
+FROM mv_municipio_pb_risco r
+LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+WHERE UPPER(unaccent(TRIM(r.municipio))) = UPPER(unaccent(TRIM(%(municipio)s)))
 LIMIT 1
 """
 
@@ -65,16 +74,17 @@ LIMIT 1
 # Cached em memoria por 6h (ver get_pb_medias em web/routes/cidade.py).
 PB_MEDIAS = """
 SELECT
-    COUNT(*)::int                                        AS n_municipios,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY risco_score)         AS mediana_risco,
-    AVG(risco_score)                                     AS media_risco,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_sem_licitacao)   AS mediana_pct_sem_licitacao,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_folha_receita)   AS mediana_pct_folha,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_proponente_unico) AS mediana_pct_proponente_unico,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_pago)          AS mediana_total_pago
-FROM mv_municipio_pb_risco
-WHERE municipio IS NOT NULL
-  AND risco_score IS NOT NULL
+    COUNT(*)::int                                                   AS n_municipios,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE(k.risco_score_unificado, r.risco_score))         AS mediana_risco,
+    AVG(COALESCE(k.risco_score_unificado, r.risco_score))           AS media_risco,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_sem_licitacao)   AS mediana_pct_sem_licitacao,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_folha_receita)   AS mediana_pct_folha,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_proponente_unico) AS mediana_pct_proponente_unico,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.total_pago)          AS mediana_total_pago
+FROM mv_municipio_pb_risco r
+LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+WHERE r.municipio IS NOT NULL
+  AND COALESCE(k.risco_score_unificado, r.risco_score) IS NOT NULL
 """
 
 PERFIL_MUNICIPIO_LIVE = """
@@ -725,9 +735,12 @@ WHERE %(municipio)s = ANY(municipios)"""
 )
 
 AUTOCOMPLETE_MUNICIPIO = """
-SELECT municipio AS nome, 'PB' AS uf, risco_score AS rank_val
-FROM mv_municipio_pb_risco
-WHERE unaccent(municipio) ILIKE unaccent(%(q)s) || '%%'
+SELECT r.municipio AS nome,
+       'PB' AS uf,
+       COALESCE(k.risco_score_unificado, r.risco_score) AS rank_val
+FROM mv_municipio_pb_risco r
+LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+WHERE unaccent(r.municipio) ILIKE unaccent(%(q)s) || '%%'
 ORDER BY rank_val DESC NULLS LAST, nome
 LIMIT %(limit)s
 """

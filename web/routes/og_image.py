@@ -52,9 +52,13 @@ def _font(size: int):
 
 def _fetch_perfil(municipio: str) -> dict | None:
     sql = """
-        SELECT municipio, risco_score, total_pago, pct_sem_licitacao
-        FROM mv_municipio_pb_risco
-        WHERE unaccent(lower(municipio)) = unaccent(lower(%(mun)s))
+        SELECT r.municipio,
+               COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,
+               r.total_pago,
+               r.pct_sem_licitacao
+        FROM mv_municipio_pb_risco r
+        LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+        WHERE unaccent(lower(r.municipio)) = unaccent(lower(%(mun)s))
         LIMIT 1
     """
     try:

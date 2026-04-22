@@ -214,13 +214,19 @@ _PB_RANKING_CACHE: dict = {"value": None, "expires_at": 0.0}
 
 
 PB_RANKING_SQL = """
+WITH score AS (
+    SELECT r.municipio,
+           COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score
+    FROM mv_municipio_pb_risco r
+    LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+    WHERE r.municipio IS NOT NULL
+)
 SELECT municipio,
        risco_score,
        RANK() OVER (ORDER BY risco_score DESC NULLS LAST) AS posicao,
        COUNT(*) OVER () AS total
-FROM mv_municipio_pb_risco
-WHERE municipio IS NOT NULL
-  AND risco_score IS NOT NULL
+FROM score
+WHERE risco_score IS NOT NULL
 """
 
 
