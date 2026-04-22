@@ -30,12 +30,11 @@
 
 <div class="date-filter-bar" id="dateFilterBar" role="group" aria-label="Filtro de periodo">
     <div class="date-filter-inputs">
-        <span class="date-filter-label" id="dateFilterCurrent">Periodo: ano atual</span>
         <label class="date-field"><span>De</span>
-            <input type="date" id="dateInicio" value="{{ default_data_inicio }}">
+            <input type="text" id="dateInicio" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_inicio }}">
         </label>
         <label class="date-field"><span>Ate</span>
-            <input type="date" id="dateFim" value="{{ default_data_fim }}">
+            <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
         </label>
         <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
     </div>

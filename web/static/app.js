@@ -1121,11 +1121,51 @@ function _formatDatePt(iso) {
     return `${d}/${m}/${y}`;
 }
 
+function _brToIso(br) {
+    if (!br) return '';
+    const m = String(br).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return '';
+    const [, dd, mm, yyyy] = m;
+    const day = parseInt(dd, 10), mon = parseInt(mm, 10), year = parseInt(yyyy, 10);
+    if (mon < 1 || mon > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function _isoToBr(iso) { return _formatDatePt(iso); }
+
+function _readDateInputIso(el) {
+    if (!el) return '';
+    return _brToIso(el.value);
+}
+
+function _maskBrDate(input) {
+    if (!input || input.dataset.brMaskBound === '1') return;
+    input.dataset.brMaskBound = '1';
+    const apply = () => {
+        const digits = input.value.replace(/\D/g, '').slice(0, 8);
+        let out = digits;
+        if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+        else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        if (out !== input.value) input.value = out;
+    };
+    input.addEventListener('input', apply);
+    input.addEventListener('blur', apply);
+}
+
+function _initDateInputsBr() {
+    ['dateInicio', 'dateFim'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.dataset.isoValue && !el.value) el.value = _isoToBr(el.dataset.isoValue);
+        _maskBrDate(el);
+    });
+}
+
 function _setDateInputs(inicio, fim) {
     const diEl = document.getElementById('dateInicio');
     const dfEl = document.getElementById('dateFim');
-    if (diEl) diEl.value = inicio || '';
-    if (dfEl) dfEl.value = fim || '';
+    if (diEl) diEl.value = inicio ? _isoToBr(inicio) : '';
+    if (dfEl) dfEl.value = fim ? _isoToBr(fim) : '';
 }
 
 function _getDateFilterCopy() {
@@ -1144,10 +1184,8 @@ function _getDateFilterCopy() {
 }
 
 function _syncDateFilterUI() {
-    const current = document.getElementById('dateFilterCurrent');
     const btnLimpar = document.getElementById('btnLimparData');
     const copy = _getDateFilterCopy();
-    if (current) current.textContent = copy.headline;
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
@@ -3030,9 +3068,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Date filter handlers
+    _initDateInputsBr();
     document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
-        const inicio = document.getElementById('dateInicio')?.value;
-        const fim = document.getElementById('dateFim')?.value;
+        const inicio = _readDateInputIso(document.getElementById('dateInicio'));
+        const fim = _readDateInputIso(document.getElementById('dateFim'));
         if (!inicio || !fim) return;
         _setDateInputs(inicio, fim);
         _resetCityPanelsLoading();

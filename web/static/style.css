@@ -1248,7 +1248,8 @@ td.num {
     color: var(--muted);
     font-weight: 600;
 }
-.date-field input[type="date"] {
+.date-field input[type="date"],
+.date-field input[type="text"] {
     padding: 0.25rem 0.45rem;
     border: 1px solid var(--line);
     border-radius: 7px;
@@ -1256,6 +1257,9 @@ td.num {
     background: var(--surface);
     color: var(--text);
     min-height: 30px;
+    width: 6.6rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
 }
 .date-filter-bar .btn-primary {
     min-height: 30px;
@@ -1974,7 +1978,8 @@ body {
         flex: 1 1 calc(50% - 0.2rem);
         min-width: 0;
     }
-    .date-field input[type="date"] {
+    .date-field input[type="date"],
+    .date-field input[type="text"] {
         width: 100%;
         min-height: 36px;
     }
