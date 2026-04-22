@@ -5,9 +5,12 @@
     // Breaks calibrados aos percentis p20/p40/p60/p80/p95 da distribuicao real na PB
     const METRICS = {
         risco: {
-            label: 'Risco composto (0-100)',
+            label: 'Nota de atenção (0-100)',
             unit: '',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
+            // Breaks calibrados ao score TCE legado (p20/p40/p60/p80/p95).
+            // Score unificado (8 KPIs) tem distribuicao diferente — recalibrar
+            // apos coletar primeira amostra em producao.
             breaks: [62, 65, 69, 73, 77],
             format: (v) => `${v}`,
         },

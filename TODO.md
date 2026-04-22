@@ -2,6 +2,16 @@
 
 ## Pendente
 
+### Score unificado de risco (PR #31 — fixes do review gpt-5.4)
+- [ ] **BUG: CEAF JOIN quebrado** (`sql/12_views.sql:993`) — `ce.cpf_cnpj_norm` (11 dig) comparado com `srv.cpf_digitos_6` (6 dig); JOIN nunca casa, `qtd_ceaf_expulsos` sempre 0 (KPI peso 15 zerado). Trocar por `ce.cpf_digitos_6 = srv.cpf_digitos_6 AND nome_upper`. _IN PROGRESS_
+- [ ] **BUG: KPIs sancao sem janela temporal + esfera MUNICIPAL ausente** (`sql/12_views.sql:929-980`) — conta empresa com sancao ativa hoje + qualquer pagamento desde 2022, sem exigir empenho dentro da vigencia da sancao. Tambem ignora `esfera_orgao_sancionador=MUNICIPAL` com match de nome. Refatorar como JOIN com `tce_pb_despesa` filtrando por `data_empenho` na vigencia
+- [ ] **BUG: pct_pago_socios conta pagamento N vezes** (`sql/12_views.sql:1004-1025`) — se 2 servidores socios da mesma empresa, mesmo pagamento entra 2x em `total_pago_socios`. Refatorar com `DISTINCT (municipio, cnpj_basico)` antes do `SUM`
+- [ ] **BUG: COALESCE nao eh fallback real se MV nao existir** (`web/queries/cidade.py`, `web/routes/cidade.py`, `web/routes/og_image.py`) — comentarios dizem "fallback" mas `COALESCE` so trata `NULL`; sem a MV, query quebra com `UndefinedTable`. Remover comentarios enganosos e documentar requisito de deploy
+- [ ] **BUG: Drift Python ↔ SQL no componente pct_pago_socios** (`web/kpis/municipio_pb.py` vs `sql/12_views.sql:1045-1059`) — SQL usa razao bruta, Python usa coluna ja arredondada. Ex.: `pct=0.193%` da 1 ponto no SQL, 0 no Python. Alinhar SQL para usar `pct_pago_socios` arredondada
+- [ ] **Atualizar labels/legendas do mapa** (`web/static/mapa.js:6-13`) — label "Risco composto (0-100)" → "Nota de atencao (0-100)" alinhando com `/search/cidade`. Recalibrar breaks (62/65/69/73/77 calibrados ao TCE legado) apos deploy. Atualizar descricao do filtro no popover `?` mencionando os 8 KPIs componentes
+- [ ] **PERF: socio_por_municipio reagrega tce_pb_despesa desnecessariamente** (`sql/12_views.sql:1004-1018`) — apesar de `_tmp_conflito` materializar relacao similar. Refresh fica mais caro. Opcional
+- [ ] **Deploy MV unificada em prod (PR #31)** — disparar `deploy.yml` com `etl_phase=18` quando Azure estiver OK. Recria todas MVs (drop CASCADE no topo do `sql/12_views.sql`) — vai criar `mv_municipio_pb_kpi_score` e atualizar `mv_municipio_pb_mapa`. Sem isso, consumidores caem no fallback `COALESCE → r.risco_score` (legado TCE)
+
 ### Pivot PB-first — novas visualizacoes e cruzamentos
 - [x] **Mapa coropletico PB** — 223 municipios pintados por metrica, 5 camadas (risco, % irregulares, % sem licitacao, top-5, per capita). Toggle, legenda, click navega para detalhe. Breaks calibrados aos percentis reais. Aliases TCE→IBGE para municipios renomeados
 - [ ] **Rotatividade de credores pos-eleicao** — top 20 fornecedores antes vs depois de cada eleicao municipal. Substituicoes abruptas sinalizam troca de grupo contratado. Visual: tabela com `delta_pago`, icone de "novo" para quem nao existia no mandato anterior

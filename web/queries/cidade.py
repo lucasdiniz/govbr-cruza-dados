@@ -55,8 +55,11 @@ SELECT r.municipio,
        r.qtd_licitacoes, r.qtd_proponente_unico, r.pct_proponente_unico,
        r.pct_nao_executado,
        r.receita_arrecadada, r.total_folha, r.pct_folha_receita,
-       -- risco_score agora vem do score unificado (8 KPIs investigativos);
-       -- fallback para o score TCE-PB legado se a MV nova ainda nao foi criada.
+       -- risco_score = score unificado dos 8 KPIs investigativos (kpi MV).
+       -- COALESCE protege contra municipio sem linha em mv_municipio_pb_kpi_score
+       -- (ex: novo municipio ainda nao processado). REQUER que a MV exista —
+       -- se nao existir, esta query lanca UndefinedTable. Garantir deploy
+       -- de phase 18 antes de subir a versao do app que consome este SELECT.
        COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,
        r.risco_score AS risco_score_tce,
        k.risco_score_unificado,

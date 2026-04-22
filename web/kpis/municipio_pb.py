@@ -201,6 +201,11 @@ def sql_score_expression() -> str:
     Usa as colunas brutas da mv_municipio_pb_kpi_score. Mantem-se em sincronia
     com compute_score_unificado() acima. Para curva concava (counts) usamos
     `LEAST(1, value/saturate)^0.6`; para linear (percentuais) `LEAST(1, value/saturate)`.
+
+    NOTA: o componente `kpi-pago-socios` consome a coluna `pct_pago_socios`
+    (ja arredondada a 2 casas na MV) — exatamente o mesmo valor que o Python
+    recebe via PERFIL_MUNICIPIO. Isso evita o drift que apareceria se o SQL
+    usasse a razao bruta total_pago_socios/total_pago_municipio.
     """
     parts = []
     for k in KPI_MUNICIPIO_PB:
