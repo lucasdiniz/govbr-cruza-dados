@@ -73,7 +73,8 @@ SELECT
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pct_proponente_unico) AS mediana_pct_proponente_unico,
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_pago)          AS mediana_total_pago
 FROM mv_municipio_pb_risco
-WHERE risco_score IS NOT NULL
+WHERE municipio IS NOT NULL
+  AND risco_score IS NOT NULL
 """
 
 PERFIL_MUNICIPIO_LIVE = """

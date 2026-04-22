@@ -40,7 +40,7 @@
             <p class="table-meta text-sm text-muted" data-table-meta></p>
         </div>
         <div class="tbl-wrap">
-            <table>
+            <table class="stack-mobile">
                 <thead>
                     <tr>
                         <th>Servidor</th>
@@ -57,17 +57,17 @@
                     {% set nome_up = s.nome_upper|default('')|string %}
                     {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
                     {% if cpf6 and nome_up %}
-                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_durante_vinculo and s.total_pago_durante_vinculo > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_durante_vinculo|default(0)|float > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
                     {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
-                        <td>{{ s.nome_servidor|clean_text }}</td>
-                        <td class="auditor-only"><code class="text-sm">***.{{ cpf6[:3] }}.{{ cpf6[3:] }}-**</code></td>
-                        <td>{{ cargo }}</td>
-                        <td class="text-right">{{ s.maior_salario|default(0)|short_brl }}</td>
-                        <td>
+                        <td data-label="Servidor" class="stack-title">{{ s.nome_servidor|clean_text }}</td>
+                        <td data-label="CPF" class="auditor-only"><code class="text-sm">***.{{ cpf6[:3] }}.{{ cpf6[3:] }}-**</code></td>
+                        <td data-label="Cargo">{{ cargo }}</td>
+                        <td data-label="Maior salario" class="text-right num">{{ s.maior_salario|default(0)|short_brl }}</td>
+                        <td data-label="Sinais" class="stack-badges">
                             {% if s.flag_ceaf_expulso %}<span class="badge badge-red"><span class="citizen-only">Expulso do servi&ccedil;o p&uacute;blico federal</span><span class="auditor-only">Expulso da Adm. Federal (CEAF)</span></span>{% endif %}
-                            {% if s.total_pago_durante_vinculo and s.total_pago_durante_vinculo > 0 %}
+                            {% if s.total_pago_durante_vinculo|default(0)|float > 0 %}
                                 <span class="badge badge-red"><span class="citizen-only">Empresa ligada a ele recebeu {{ s.total_pago_durante_vinculo|short_brl }} enquanto era servidor</span><span class="auditor-only">Empresa recebeu {{ s.total_pago_durante_vinculo|short_brl }} durante vinculo</span></span>
                             {% endif %}
                             {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red"><span class="citizen-only">Recebe sal&aacute;rio em dois governos ao mesmo tempo</span><span class="auditor-only">Tambem recebe pagamentos do governo estadual</span></span>{% endif %}

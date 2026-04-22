@@ -17,12 +17,15 @@
             <span class="auditor-only">Descubra como sua prefeitura gasta o dinheiro publico</span>
         </h1>
         <p class="hero-copy">
-            <span class="citizen-only">Para cada um dos 223 munic&iacute;pios da Para&iacute;ba: quem recebe mais, quais empresas t&ecirc;m problema, se houve compra sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores. &Eacute; a regra por lei.">licita&ccedil;&atilde;o</span> e onde a prefeitura concentra gastos. Busque abaixo pela sua cidade.</span>
+            <span class="citizen-only">Para cada um dos {{ municipio_total_pb | default(223, true) }} munic&iacute;pios da Para&iacute;ba: quem recebe mais, quais empresas t&ecirc;m problema, se houve compra sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores. &Eacute; a regra por lei.">licita&ccedil;&atilde;o</span> e onde a prefeitura concentra gastos. Busque abaixo pela sua cidade.</span>
             <span class="auditor-only">Indicadores automaticos de risco, fornecedores sancionados, concentracao de
-            contratos e servidores com conflito de interesse &mdash; para os 223 municipios da Paraiba.
+            contratos e servidores com conflito de interesse &mdash; para os {{ municipio_total_pb | default(223, true) }} municipios da Paraiba.
             Busque pelo nome ou escolha um municipio no mapa abaixo.</span>
         </p>
-
+        <p class="hero-mobile-summary">
+            <span class="citizen-only">Busque sua cidade ou explore o mapa para ver {{ municipio_total_pb | default(223, true) }} prefeituras, 5 sinais de aten&ccedil;&atilde;o e os maiores gastos.</span>
+            <span class="auditor-only">Mapa interativo + busca direta para {{ municipio_total_pb | default(223, true) }} municipios, com 5 metricas e drill-down para a pagina da cidade.</span>
+        </p>
         <div class="search-card-inline">
             <div class="autocomplete-wrap">
                 <input
@@ -183,4 +186,3 @@
 </script>
 </script>
 {% endblock %}
-

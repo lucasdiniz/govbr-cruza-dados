@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -232,6 +233,21 @@ async def _handle_http_exception(request: Request, exc):
 async def _handle_unexpected(request: Request, exc: Exception):
     error_id = _uuid.uuid4().hex[:8]
     _err_log.exception("Unhandled error [%s] on %s", error_id, request.url.path)
+    # Para chamadas XHR/fetch (HTMX, fetch API, JSON), devolve fragmento minimo
+    # em vez da pagina HTML completa — evita injetar header duplicado em paineis async.
+    accept = (request.headers.get("accept") or "").lower()
+    is_xhr = (
+        request.headers.get("hx-request") == "true"
+        or request.headers.get("x-requested-with")
+        or "application/json" in accept
+        or request.url.path.startswith("/api/")
+    )
+    if is_xhr:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            f'<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora. (ref: {error_id})</p>',
+            status_code=500,
+        )
     return templates.TemplateResponse(
         request, "errors/500.html",
         {"error_id": error_id},
@@ -241,7 +257,21 @@ async def _handle_unexpected(request: Request, exc: Exception):
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+    from web.routes.cidade import get_pb_medias
+    try:
+        municipio_total_pb = int(get_pb_medias().get("n_municipios") or 223)
+    except Exception:
+        municipio_total_pb = 223
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"municipio_total_pb": municipio_total_pb},
+    )
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(_dir / "static" / "sw.js", media_type="application/javascript")
 
 
 @app.get("/glossario")

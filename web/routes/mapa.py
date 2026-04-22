@@ -26,16 +26,32 @@ MUNICIPIO_ALIASES = {
 }
 
 
+def _municipio_total_pb() -> int:
+    try:
+        from web.routes.cidade import get_pb_medias
+        return int(get_pb_medias().get("n_municipios") or 223)
+    except Exception:
+        return 223
+
+
 @router.get("/mapa")
 async def mapa_pb(request: Request):
     from web.main import templates
-    return templates.TemplateResponse(request, "mapa.html")
+    return templates.TemplateResponse(
+        request,
+        "mapa.html",
+        {"municipio_total_pb": _municipio_total_pb()},
+    )
 
 
 @router.get("/mapa/")
 async def mapa_pb_trailing(request: Request):
     from web.main import templates
-    return templates.TemplateResponse(request, "mapa.html")
+    return templates.TemplateResponse(
+        request,
+        "mapa.html",
+        {"municipio_total_pb": _municipio_total_pb()},
+    )
 
 
 @router.get("/api/mapa/pb")

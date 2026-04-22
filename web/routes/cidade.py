@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 from psycopg2.errors import QueryCanceled, UndefinedTable, UndefinedColumn
 
+from etl.utils import normalize_name
 from web.config import (
     LIMIT_AUTOCOMPLETE,
     TIMEOUT_AUTOCOMPLETE,
@@ -217,7 +218,14 @@ SELECT municipio,
        RANK() OVER (ORDER BY risco_score DESC NULLS LAST) AS posicao,
        COUNT(*) OVER () AS total
 FROM mv_municipio_pb_risco
+WHERE municipio IS NOT NULL
+  AND risco_score IS NOT NULL
 """
+
+
+def _ranking_key(municipio: str | None) -> str | None:
+    normalized = normalize_name(municipio)
+    return normalized.casefold() if normalized else None
 
 
 def _load_pb_ranking() -> dict:
@@ -233,9 +241,10 @@ def _load_pb_ranking() -> dict:
         for r in rows:
             d = _row_to_dict(cols, r)
             mun = str(d.get("municipio") or "")
-            if not mun:
+            key = _ranking_key(mun)
+            if not key:
                 continue
-            result[mun.casefold()] = {
+            result[key] = {
                 "municipio": mun,
                 "posicao": int(d.get("posicao") or 0),
                 "total": int(d.get("total") or 0),
@@ -253,7 +262,7 @@ def get_pb_ranking(municipio: str) -> dict | None:
     para o municipio solicitado. Retorna None se nao encontrado."""
     if not municipio:
         return None
-    data = _load_pb_ranking().get(municipio.casefold())
+    data = _load_pb_ranking().get(_ranking_key(municipio))
     if not data:
         return None
     posicao = data["posicao"]
@@ -601,14 +610,21 @@ def _build_report_sections(pb_only: bool = True):
 
 def _servidor_severity_key(s: dict) -> tuple:
     """Sort key: red severity (0), yellow (1), rest (2), then by -maior_salario."""
+    def _num(v):
+        if v is None or v == '':
+            return 0.0
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
     is_red = bool(
         s.get('flag_ceaf_expulso')
-        or (s.get('total_pago_durante_vinculo') and s['total_pago_durante_vinculo'] > 0)
+        or _num(s.get('total_pago_durante_vinculo')) > 0
         or s.get('flag_socio_inidoneidade')
     )
     is_yellow = bool(s.get('flag_socio_sancionado') or s.get('flag_bolsa_familia'))
     severity = 0 if is_red else (1 if is_yellow else 2)
-    salary = -(s.get('maior_salario') or 0)
+    salary = -_num(s.get('maior_salario'))
     return (severity, salary)
 
 
@@ -695,10 +711,10 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             },
         )
 
-    today = date.today()
+    _today = date.today()
     date_ctx = {
-        "default_data_inicio": f"{today.year}-01-01",
-        "default_data_fim": today.isoformat(),
+        "default_data_inicio": f"{_today.year}-01-01",
+        "default_data_fim": _today.isoformat(),
     }
 
     narrative = build_narrative(perfil, get_pb_medias())

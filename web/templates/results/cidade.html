@@ -32,38 +32,42 @@
     <div class="city-hero-copy">
         <p class="eyebrow">Panorama do municipio</p>
         <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
-        {% if ranking %}
-        <a href="/mapa" class="rank-badge rank-{{ ranking.severity }}" title="Posicao no ranking de {{ ranking.total }} municipios da Paraiba por nota de atencao">
-            <span class="rank-badge-icon" aria-hidden="true">&#127941;</span>
-            <span class="rank-badge-text">
-                <span class="citizen-only">Posi&ccedil;&atilde;o <strong>{{ ranking.posicao }}</strong> de {{ ranking.total }} &mdash; {{ ranking.severity_label }}</span>
-                <span class="auditor-only">Rank {{ ranking.posicao }}/{{ ranking.total }} &middot; risco_score {{ ranking.risco_score }}</span>
-            </span>
-        </a>
-        {% endif %}
+        <div class="city-hero-actions">
+            {% if ranking %}
+            <a href="/mapa" class="rank-badge rank-{{ ranking.severity }}" title="Posicao no ranking de {{ ranking.total }} municipios da Paraiba por nota de atencao">
+                <span class="rank-badge-icon" aria-hidden="true">&#127941;</span>
+                <span class="rank-badge-text">
+                    <span class="citizen-only">Posi&ccedil;&atilde;o <strong>{{ ranking.posicao }}</strong> de {{ ranking.total }} &mdash; {{ ranking.severity_label }}</span>
+                    <span class="auditor-only">Rank {{ ranking.posicao }}/{{ ranking.total }} &middot; risco_score {{ ranking.risco_score }}</span>
+                </span>
+            </a>
+            {% endif %}
+            <button
+                type="button"
+                class="share-btn share-btn-inline"
+                data-share
+                data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
+                data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
+                aria-label="Compartilhar este municipio"
+            >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Compartilhar
+            </button>
+        </div>
         <p class="city-subtitle">
             <span class="citizen-only">Veja como a prefeitura de {{ perfil.municipio }} usa o dinheiro p&uacute;blico — com quem gasta, se h&aacute; sinais de irregularidade, e onde v&atilde;o os maiores valores.</span>
             <span class="auditor-only">Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.</span>
         </p>
         {% if narrative %}
-        <p class="city-narrative">
-            <span class="citizen-only">{{ narrative.citizen|safe }}</span>
-            <span class="auditor-only">{{ narrative.auditor|safe }}</span>
-        </p>
+        <div class="city-narrative-block" id="cityNarrativeBlock">
+            <p class="city-narrative" id="cityNarrative">
+                <span class="citizen-only">{{ narrative.citizen|safe }}</span>
+                <span class="auditor-only">{{ narrative.auditor|safe }}</span>
+            </p>
+        </div>
         {% endif %}
-        <button
-            type="button"
-            class="share-btn"
-            data-share
-            data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
-            data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
-            aria-label="Compartilhar este municipio"
-        >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Compartilhar
-        </button>
     </div>
     <div class="hero-stats">
         <div class="hero-stat">
@@ -91,6 +95,17 @@
 </section>
 
 <div class="date-filter-bar card" id="dateFilterBar">
+    <div class="date-filter-head">
+        <div class="date-filter-copy">
+            <strong class="date-filter-current" id="dateFilterCurrent">Exibindo: ano atual</strong>
+            <span class="text-sm text-muted" id="dateFilterStatus">Use os atalhos abaixo para trocar o periodo ou escolher datas especificas.</span>
+        </div>
+        <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+            <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Todo historico</button>
+            <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
+            <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
+        </div>
+    </div>
     <div class="date-filter-fields">
         <label class="date-field">
             <span>De</span>
@@ -103,7 +118,6 @@
         <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
         <button class="btn btn-outline btn-sm" id="btnLimparData" style="display:none">Todos os periodos</button>
     </div>
-    <span class="text-sm text-muted" id="dateFilterStatus"></span>
 </div>
 
 <section class="insight-grid">
@@ -169,6 +183,35 @@
 </section>
 
 {% include "partials/destaques.html" %}
+
+<section class="card report-overview" id="reportOverview">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Onde investigar primeiro</span>
+                <span class="auditor-only">Indice de investigacao</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">Navegue pelos temas desta cidade</span>
+                <span class="auditor-only">Temas e blocos do relatorio</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Escolha um tema para abrir so os achados daquela area e evitar rolagem longa.</span>
+                <span class="auditor-only">Use o indice abaixo para expandir apenas a area desejada e escanear o relatorio com menos scroll.</span>
+            </p>
+        </div>
+    </div>
+    <div class="report-index">
+        {% for section in report_sections %}
+        <a href="#{{ section.slug }}" class="report-index-link" data-report-link="{{ section.slug }}">
+            <span class="report-index-title">
+                {% if section.title_lay %}<span class="citizen-only">{{ section.title_lay|safe }}</span><span class="auditor-only">{{ section.title }}</span>{% else %}{{ section.title }}{% endif %}
+            </span>
+            <span class="report-index-meta text-sm text-muted" data-report-count>Carregando...</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
 
 <section class="denuncia-cta citizen-only" aria-label="Como denunciar">
     <div class="denuncia-cta-inner">
@@ -299,7 +342,7 @@
 <section class="report-sections" id="relatorio">
     {% for section in report_sections %}
     <article
-        class="card report-section"
+        class="card report-section{% if not loop.first %} report-collapsed{% endif %}"
         id="{{ section.slug }}"
         data-section-slug="{{ section.slug }}"
         data-section-title="{{ section.title }}"
@@ -323,11 +366,15 @@
                     <span class="citizen-only">sinais encontrados</span>
                     <span class="auditor-only">achados nesta area</span>
                 </span>
+                <button type="button" class="section-collapse-toggle" data-section-toggle aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                    <span class="section-toggle-closed">Abrir</span>
+                    <span class="section-toggle-open">Ocultar</span>
+                </button>
             </div>
         </div>
         <div class="finding-list">
             {% for query in section.queries %}
-            <section class="finding-card loading" data-query="{{ query.id }}">
+            <section class="finding-card loading collapsed" data-query="{{ query.id }}">
                 <div class="finding-head">
                     <div>
                         <h3 class="finding-title">
@@ -379,7 +426,13 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+    const _di = document.getElementById('dateInicio')?.value || '';
+    const _df = document.getElementById('dateFim')?.value || '';
+    if (_di && _df) {
+        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }}, _di, _df);
+    } else {
+        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+    }
 });
 // Close dialog on backdrop click
 document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
