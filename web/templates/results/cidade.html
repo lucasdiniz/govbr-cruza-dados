@@ -33,15 +33,6 @@
         <p class="eyebrow">Panorama do municipio</p>
         <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
         <div class="city-hero-actions">
-            {% if ranking %}
-            <a href="/mapa" class="rank-badge rank-{{ ranking.severity }}" title="Posicao no ranking de {{ ranking.total }} municipios da Paraiba por nota de atencao">
-                <span class="rank-badge-icon" aria-hidden="true">&#127941;</span>
-                <span class="rank-badge-text">
-                    <span class="citizen-only">Posi&ccedil;&atilde;o <strong>{{ ranking.posicao }}</strong> de {{ ranking.total }} &mdash; {{ ranking.severity_label }}</span>
-                    <span class="auditor-only">Rank {{ ranking.posicao }}/{{ ranking.total }} &middot; risco_score {{ ranking.risco_score }}</span>
-                </span>
-            </a>
-            {% endif %}
             <button
                 type="button"
                 class="share-btn share-btn-inline"
@@ -93,6 +84,85 @@
         </div>
     </div>
 </section>
+
+{# ── KPI strip investigativa ── #}
+{% if kpis %}
+<section class="city-kpi-strip" aria-label="Sinais investigativos prioritarios">
+    <header class="city-kpi-head">
+        <h2 class="city-kpi-title">
+            <span class="citizen-only">Sinais que merecem aten&ccedil;&atilde;o</span>
+            <span class="auditor-only">Indicadores investigativos cruzados</span>
+        </h2>
+        <p class="city-kpi-sub text-sm text-muted">
+            <span class="citizen-only">Toque em um card para ver o detalhamento abaixo.</span>
+            <span class="auditor-only">Clique para ancorar na sec&ccedil;&atilde;o correspondente do relatorio.</span>
+        </p>
+    </header>
+    <div class="city-kpi-grid">
+        {% for k in kpis %}
+        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link>
+            <span class="kpi-card-label">
+                <span class="citizen-only">{{ k.label_citizen }}</span>
+                <span class="auditor-only">{{ k.label_auditor }}</span>
+            </span>
+            <span class="kpi-card-value">
+                {% if k.is_money %}{{ k.value|short_brl }}{% else %}{{ k.value|short_number }}{% endif %}
+            </span>
+            {% if k.value_extra %}
+            <span class="kpi-card-extra">{{ k.value_extra }}</span>
+            {% endif %}
+            <span class="kpi-card-tip" data-tip="{{ k.tooltip }}" tabindex="0" aria-label="Saiba mais">?</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{# ── Card: Concentracao de fornecedores (barras horizontais) ── #}
+{% if top_concentracao %}
+<section class="card city-concentracao{% if concentracao_red %} concentracao-alerta{% endif %}" id="concentracao-fornecedores" aria-label="Concentracao de fornecedores">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Quem ganha mais dinheiro aqui</span>
+                <span class="auditor-only">Concentracao do volume pago</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">As 5 empresas que mais receberam</span>
+                <span class="auditor-only">Top 5 fornecedores por valor pago</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Quando uma s&oacute; empresa fica com muito do dinheiro, vale verificar se houve concorr&ecirc;ncia de verdade. Acima de 20% para uma empresa &eacute; sinal de aten&ccedil;&atilde;o.</span>
+                <span class="auditor-only">Concentra&ccedil;&atilde;o anormal pode indicar direcionamento de licita&ccedil;&otilde;es. Top 1 &gt; 20% ou Top 5 &gt; 60% sao limiares de alerta usuais.</span>
+            </p>
+        </div>
+        <div class="section-summary">
+            <p class="text-sm text-muted">Top 5</p>
+            <p class="insight-value{% if pct_top5 > 60 %} text-red{% endif %}">{{ "%.0f"|format(pct_top5) }}%</p>
+            <p class="text-sm text-muted">do dinheiro pago</p>
+        </div>
+    </div>
+    <div class="chart-bars chart-bars-concentracao">
+        {% for c in top_concentracao %}
+        <div class="chart-bar-row">
+            <span class="chart-bar-label" title="{{ c.nome }}">
+                <strong>#{{ c.rank }}</strong> {{ c.nome|truncate(40, True) }}
+            </span>
+            <div class="chart-bar-track">
+                <div class="chart-bar-fill {% if c.is_red %}fill-red{% else %}fill-blue{% endif %}" style="width: {{ c.pct }}%"></div>
+            </div>
+            <span class="chart-bar-meta">
+                <strong>{{ "%.1f"|format(c.pct) }}%</strong>
+                <span class="text-sm text-muted">{{ c.total_pago|short_brl }}</span>
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="text-sm text-muted city-concentracao-cta">
+        <a href="#fornecedores-irregulares">Ver lista completa de fornecedores &rarr;</a>
+    </p>
+</section>
+{% endif %}
 
 <div class="date-filter-bar card" id="dateFilterBar">
     <div class="date-filter-head">
