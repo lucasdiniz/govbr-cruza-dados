@@ -159,29 +159,35 @@
 
     function renderMetricDesc() {
         const el = document.getElementById('mapa-metric-desc');
-        if (!el) return;
         const btn = document.querySelector(`.mt-btn[data-metric="${state.metric}"]`);
         const isCitizen = !document.documentElement.classList.contains('audit-mode');
         const desc = btn
             ? (isCitizen ? (btn.dataset.descLay || btn.dataset.desc || '') : (btn.dataset.desc || ''))
             : '';
-        el.textContent = desc;
-        // reset colapso ao trocar de metrica
-        el.classList.remove('expanded');
-        el.setAttribute('aria-expanded', 'false');
+        if (el) el.textContent = desc;
+        // popover comeca fechado a cada troca de metrica
+        if (el) el.hidden = true;
+        const infoBtn = document.getElementById('mapaInfoBtn');
+        if (infoBtn) infoBtn.setAttribute('aria-expanded', 'false');
     }
 
     function wireMetricDescToggle() {
         const el = document.getElementById('mapa-metric-desc');
-        if (!el) return;
-        const toggle = () => {
-            const expanded = el.classList.toggle('expanded');
-            el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        };
-        el.addEventListener('click', toggle);
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        const btn = document.getElementById('mapaInfoBtn');
+        if (!el || !btn) return;
+        const close = () => { el.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+        btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const open = el.hidden;
+            el.hidden = !open;
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         });
+        document.addEventListener('click', (ev) => {
+            if (el.hidden) return;
+            if (ev.target === btn || el.contains(ev.target)) return;
+            close();
+        });
+        document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     }
 
     function updateLayer() {

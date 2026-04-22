@@ -1332,6 +1332,49 @@ td.num {
     border-color: #3b5cce;
     color: #fff;
 }
+.mapa-toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin-bottom: 0.35rem;
+}
+.mapa-toggle-row .mapa-toggle { flex: 1 1 auto; margin-bottom: 0; }
+.mapa-info-btn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    margin-top: 4px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    background: rgba(59, 92, 206, 0.16);
+    color: #cfe1ff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.mapa-info-btn:hover,
+.mapa-info-btn[aria-expanded="true"] {
+    background: rgba(59, 92, 206, 0.32);
+    border-color: rgba(96, 165, 250, 0.7);
+    color: #fff;
+}
+.mapa-metric-desc-popover {
+    margin: 0.35rem 0 0.6rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    color: #cbd5e1;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    max-width: 920px;
+}
+.mapa-metric-desc-popover[hidden] { display: none; }
 .mapa-metric-desc {
     color: #94a3b8;
     font-size: 0.8rem;
@@ -1861,55 +1904,11 @@ body {
         flex: 0 0 auto;
     }
 
-    /* Descricao colapsavel com label explicito "Ver mais"/"Ver menos" */
-    .mapa-metric-desc {
-        font-size: 0.82rem;
-        line-height: 1.45;
-        max-width: 100%;
-        margin: 0.2rem 0 0.5rem;
-        cursor: pointer;
-        position: relative;
-        max-height: 4.5em;
-        overflow: hidden;
-        padding: 0.65rem 0.85rem 1.85rem 0.85rem;
-        border-radius: 12px;
-        background: rgba(15, 23, 42, 0.55);
-        border: 1px solid rgba(96, 165, 250, 0.14);
-        transition: max-height 0.2s ease;
-    }
-    .mapa-metric-desc::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 1.6rem;
-        height: 1.4em;
-        background: linear-gradient(180deg, rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.92));
-        pointer-events: none;
-    }
-    .mapa-metric-desc::after {
-        content: "Ver mais ▾";
-        position: absolute;
-        right: 0.55rem;
-        bottom: 0.4rem;
-        color: #93c5fd;
-        font-size: 0.74rem;
-        font-weight: 600;
-        line-height: 1.2;
-        padding: 0.18rem 0.55rem;
-        border-radius: 999px;
-        background: rgba(59, 92, 206, 0.22);
-        border: 1px solid rgba(96, 165, 250, 0.32);
-        pointer-events: none;
-        letter-spacing: 0.02em;
-    }
-    .mapa-metric-desc.expanded {
-        max-height: 40em;
-        padding-bottom: 1.85rem;
-    }
-    .mapa-metric-desc.expanded::before { display: none; }
-    .mapa-metric-desc.expanded::after {
-        content: "Ver menos ▴";
+    /* Popover compacto em mobile */
+    .mapa-metric-desc-popover {
+        font-size: 0.78rem;
+        padding: 0.55rem 0.7rem;
+        margin: 0.3rem 0 0.4rem;
     }
 
     .mapa-cutoff-note { font-size: 0.68rem; margin: 0 0 0.35rem; }
@@ -3268,7 +3267,7 @@ html.font-xl { font-size: 19px; }
     .tour-tooltip .tour-text { font-size: 14px; }
 }
 
-html.audit-mode .tour-overlay { display: none; }
+/* tour-overlay sempre visivel; o tour so abre via click no botao "?" */
 
 /* Fase 9 - Botao "Como denunciar" + dialog */
 .denuncia-cta {

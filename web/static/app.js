@@ -471,7 +471,8 @@ async function triggerShare(data) {
     const url = data.url || window.location.href;
     const title = data.title || document.title;
     const text = data.text || '';
-    if (navigator.share) {
+    const isTouch = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(hover: none)').matches;
+    if (isTouch && navigator.share) {
         try {
             await navigator.share({ title, text, url });
             return;
@@ -480,14 +481,26 @@ async function triggerShare(data) {
             // segue pra fallback
         }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
         try {
             await navigator.clipboard.writeText(url);
             showToast('Link copiado para a area de transferencia');
             return;
         } catch { /* noop */ }
     }
-    showToast('Nao foi possivel compartilhar');
+    // Fallback final: textarea + execCommand (funciona mesmo sem secure context)
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { showToast('Link copiado'); return; }
+    } catch { /* noop */ }
+    showToast('Nao foi possivel compartilhar. Copie a URL da barra de enderecos.');
 }
 
 function initShareButtons() {
