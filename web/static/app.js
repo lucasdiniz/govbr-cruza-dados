@@ -1130,41 +1130,24 @@ function _setDateInputs(inicio, fim) {
 
 function _getDateFilterCopy() {
     const preset = _getDatePreset();
+    const range = `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`;
     if (preset === 'all') {
-        return {
-            headline: 'Exibindo: todo o historico',
-            detail: 'Sem recorte de data. Use os atalhos abaixo para comparar periodos recentes.',
-            clear: false,
-        };
+        return { headline: 'Periodo: todo o historico', clear: false };
     }
     if (preset === 'current-year') {
-        return {
-            headline: 'Exibindo: ano atual',
-            detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-            clear: true,
-        };
+        return { headline: `Ano atual: ${range}`, clear: true };
     }
     if (preset === 'last-12m') {
-        return {
-            headline: 'Exibindo: ultimos 12 meses',
-            detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-            clear: true,
-        };
+        return { headline: `Ultimos 12 meses: ${range}`, clear: true };
     }
-    return {
-        headline: 'Exibindo: periodo personalizado',
-        detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-        clear: true,
-    };
+    return { headline: `Periodo: ${range}`, clear: true };
 }
 
 function _syncDateFilterUI() {
     const current = document.getElementById('dateFilterCurrent');
-    const status = document.getElementById('dateFilterStatus');
     const btnLimpar = document.getElementById('btnLimparData');
     const copy = _getDateFilterCopy();
     if (current) current.textContent = copy.headline;
-    if (status) status.textContent = copy.detail;
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());

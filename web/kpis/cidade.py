@@ -285,7 +285,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-ceaf",
         label_citizen="Servidores ja expulsos da Adm. Federal",
         label_auditor="Servidores em CEAF (expulsoes federais)",
-        href="#conflitos",
+        href="#servidores",
         tooltip=(
             "Pessoas com registro de demissao por improbidade ou falta grave em "
             "orgaos federais e que aparecem na folha do municipio."
@@ -296,7 +296,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-socio-recebendo",
         label_citizen="Servidores que sao donos de empresas que recebem aqui",
         label_auditor="Servidores socios de fornecedores municipais",
-        href="#conflitos",
+        href="#servidores",
         tooltip=(
             "A Lei 8.112/90 (federal) e o art. 9 da Lei 8.666/93 vedam essa "
             "pratica. No municipio, depende do estatuto local, mas o cruzamento "
@@ -308,7 +308,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-pago-socios",
         label_citizen="Total pago a empresas dos servidores",
         label_auditor="Pago a empresas de servidores durante vinculo",
-        href="#conflitos",
+        href="#servidores",
         tooltip=(
             "Soma dos pagamentos do municipio para empresas onde o(a) servidor(a) "
             "era socio(a) NO MESMO PERIODO em que estava na folha. Forte indicio "
@@ -320,7 +320,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-bolsa-familia",
         label_citizen="Servidores com salario alto + Bolsa Familia",
         label_auditor=f"Servidores BF + salario > R${BF_SALARIO_SUSPEITO/1000:.0f}k",
-        href="#conflitos",
+        href="#servidores",
         tooltip=(
             "A Regra de Protecao do BF (Lei 14.601/2023) mantem o beneficio para "
             "renda per capita ate R$706. Servidor com salario alto dificilmente "

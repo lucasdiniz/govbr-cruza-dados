@@ -28,6 +28,25 @@
 {% set pct_pago = (total_pago / total_empenhado * 100) if total_empenhado else 0 %}
 {% set gap_financeiro = total_empenhado - total_pago %}
 
+<div class="date-filter-bar" id="dateFilterBar" role="group" aria-label="Filtro de periodo">
+    <div class="date-filter-inputs">
+        <span class="date-filter-label" id="dateFilterCurrent">Periodo: ano atual</span>
+        <label class="date-field"><span>De</span>
+            <input type="date" id="dateInicio" value="{{ default_data_inicio }}">
+        </label>
+        <label class="date-field"><span>Ate</span>
+            <input type="date" id="dateFim" value="{{ default_data_fim }}">
+        </label>
+        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+    </div>
+    <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+        <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
+        <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
+        <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
+        <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
+    </div>
+</div>
+
 <section class="city-hero card">
     <div class="city-hero-copy">
         <p class="eyebrow">Panorama do municipio</p>
@@ -143,10 +162,14 @@
         </div>
     </div>
     <div class="chart-bars chart-bars-concentracao">
+        {% set medals = {1: '&#129351;', 2: '&#129352;', 3: '&#129353;'} %}
         {% for c in top_concentracao %}
         <div class="chart-bar-row">
             <span class="chart-bar-label" title="{{ c.nome }}">
-                <strong>#{{ c.rank }}</strong> {{ c.nome|truncate(40, True) }}
+                <span class="chart-bar-rank{% if c.rank <= 3 %} chart-bar-rank-medal{% endif %}" aria-label="Posicao {{ c.rank }}">
+                    {% if c.rank in medals %}{{ medals[c.rank]|safe }}{% else %}<span class="chart-bar-rank-num">{{ c.rank }}</span>{% endif %}
+                </span>
+                {{ c.nome|truncate(40, True) }}
             </span>
             <div class="chart-bar-track">
                 <div class="chart-bar-fill {% if c.is_red %}fill-red{% else %}fill-blue{% endif %}" style="width: {{ c.pct }}%"></div>
@@ -164,31 +187,7 @@
 </section>
 {% endif %}
 
-<div class="date-filter-bar card" id="dateFilterBar">
-    <div class="date-filter-head">
-        <div class="date-filter-copy">
-            <strong class="date-filter-current" id="dateFilterCurrent">Exibindo: ano atual</strong>
-            <span class="text-sm text-muted" id="dateFilterStatus">Use os atalhos abaixo para trocar o periodo ou escolher datas especificas.</span>
-        </div>
-        <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Todo historico</button>
-            <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
-        </div>
-    </div>
-    <div class="date-filter-fields">
-        <label class="date-field">
-            <span>De</span>
-            <input type="date" id="dateInicio" value="{{ default_data_inicio }}">
-        </label>
-        <label class="date-field">
-            <span>Ate</span>
-            <input type="date" id="dateFim" value="{{ default_data_fim }}">
-        </label>
-        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
-        <button class="btn btn-outline btn-sm" id="btnLimparData" style="display:none">Todos os periodos</button>
-    </div>
-</div>
+
 
 <section class="insight-grid">
     <article class="insight-card">
@@ -383,7 +382,7 @@
         </div>
     </section>
 
-    <section class="card" style="grid-column: 1 / -1">
+    <section class="card" id="servidores" style="grid-column: 1 / -1">
         <div class="section-head">
             <div>
                 <p class="eyebrow">
