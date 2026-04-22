@@ -248,13 +248,15 @@ CIDADE_KPIS: list[KPIDef] = [
     ),
     KPIDef(
         id="kpi-sancao-municipio",
-        label_citizen="Empresas sancionadas que atingem este municipio",
-        label_auditor="Sancionadas com abrangencia no municipio",
+        label_citizen="Empresas com sancao que afeta este municipio",
+        label_auditor="Sancionadas com efeito sobre o municipio",
         href="#fornecedores-irregulares",
         tooltip=(
-            "Empresas com sancao de inidoneidade (nacional, Lei 14.133 art. 156 IV) "
-            "ou de abrangencia que inclui este municipio. Por lei, a prefeitura nao "
-            "deveria contratar."
+            "Empresas que receberam dinheiro da prefeitura no periodo selecionado "
+            "e que tinham sancao com efeito legal sobre este municipio: inidoneidade "
+            "(Lei 14.133/2021 art. 156 IV — nacional), acordo de leniencia, ou "
+            "sancao municipal aplicada pela propria prefeitura. Por lei, contratacao "
+            "deveria ter sido vedada."
         ),
         compute=_compute_sancao_municipio,
     ),
@@ -346,6 +348,8 @@ def compute_cidade_kpis(
       - kpis: list[dict] (um por card da hero strip)
       - top_concentracao: list[dict] (linhas do card de barras horizontais)
       - pct_top1, pct_top5, concentracao_red
+      - score_unificado: int 0-100 calculado pelos 8 KPIs (web/kpis/municipio_pb.py)
+      - score_breakdown: list[dict] com a contribuicao (pts) de cada KPI
     """
     ctx = _build_context(perfil, fornecedores, servidores)
 
@@ -361,6 +365,27 @@ def compute_cidade_kpis(
             **result,
         })
 
+    # Score unificado live (mesma formula da MV mv_municipio_pb_kpi_score,
+    # mas calculado a partir dos dados ja filtrados por periodo). Quando o
+    # usuario aplica filtro temporal, este score reflete apenas os dados do
+    # periodo — ao contrario da coluna risco_score_unificado da MV, que eh
+    # all-time.
+    from web.kpis.municipio_pb import compute_score_unificado
+    pct_pago_socios = 0.0
+    if ctx["total_pago"] > 0:
+        pct_pago_socios = round(100.0 * ctx["total_pago_socios"] / ctx["total_pago"], 2)
+    raw_for_score = {
+        "qtd_sancao_municipio": ctx["sancao_municipio"],
+        "qtd_ceaf_expulsos": ctx["ceaf_expulsos"],
+        "qtd_socio_recebendo": ctx["socio_recebendo"],
+        "pct_pago_socios": pct_pago_socios,
+        "pct_top5": ctx["pct_top5"],
+        "qtd_inativas_recebendo": ctx["inativas_recebendo"],
+        "qtd_bf_alto_salario": ctx["bf_alto_salario"],
+        "qtd_sancao_qualquer": ctx["sancao_qualquer"],
+    }
+    score_info = compute_score_unificado(raw_for_score)
+
     return {
         "kpis": rendered,
         "top_concentracao": ctx["top_concentracao"],
@@ -370,4 +395,6 @@ def compute_cidade_kpis(
             ctx["pct_top1"] > CONCENTRACAO_TOP1_RED
             or ctx["pct_top5"] > CONCENTRACAO_TOP5_RED
         ),
+        "score_unificado": score_info["score"],
+        "score_breakdown": score_info["breakdown"],
     }

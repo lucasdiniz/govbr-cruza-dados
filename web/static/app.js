@@ -109,6 +109,21 @@ function expandReportContext(target) {
     if (target.classList.contains('finding-card')) {
         target.classList.remove('collapsed');
     }
+    // Quando o alvo eh uma report-section inteira (ex: clique em KPI hero
+    // -> #fornecedores-irregulares), expande TODOS os finding-cards filhos
+    // para que o usuario veja a tabela maximizada e nao precise dar mais
+    // um clique. Sem isso o usuario chega na section e ve cards colapsados.
+    if (target.classList.contains('report-section')) {
+        target.querySelectorAll('.finding-card.collapsed').forEach(c => {
+            c.classList.remove('collapsed');
+        });
+    }
+    // Tambem desfaz o estado collapsed em qualquer descendente direto que
+    // o usuario possa querer ver (ex: target id="servidores" cobre o panel
+    // top-servidores que tambem usa .collapsed).
+    target.querySelectorAll(':scope > .collapsed, :scope .async-collapsed').forEach(el => {
+        el.classList.remove('collapsed', 'async-collapsed');
+    });
 }
 
 function initNarrativeAnchors() {
@@ -671,7 +686,14 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
         // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
         await _refreshPerfilLive(municipio, uf);
+        // KPIs hero, concentracao top-5 e nota de atencao tambem precisam respeitar
+        // o filtro temporal — re-renderiza a partir do endpoint /api/kpis (que usa
+        // cache pre-computado por warm_cache.py quando possivel).
+        await _refreshKpisLive(municipio, uf);
     }
+    // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
+    // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
+    _wireConcentracaoClicks();
 
     // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
     const fornPanel = document.querySelector('[data-async-panel="fornecedores"]');
@@ -1257,6 +1279,144 @@ function _updateInsightCards(perfil) {
     if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
     if (el('barPago')) el('barPago').textContent = _shortBrl(totalPago);
     if (el('barFillPago')) el('barFillPago').style.width = `${pctPago.toFixed(1)}%`;
+}
+
+// ── KPI hero strip live refresh ─────────────────────────────────
+// Quando o filtro temporal muda, busca KPIs recalculados do servidor
+// e re-renderiza a hero strip + card de concentracao top-5 + nota de
+// atencao na narrativa. Mantem a UI consistente com o filtro aplicado.
+function _shortBrlLocal(v) {
+    return typeof _shortBrl === 'function' ? _shortBrl(v) : `R$ ${v}`;
+}
+
+function _shortNumLocal(v) {
+    return typeof _shortNum === 'function' ? _shortNum(v) : String(v);
+}
+
+function _renderKpiCardValue(kpi) {
+    let valHtml = '';
+    if (kpi.is_money) {
+        valHtml = _shortBrlLocal(kpi.value);
+    } else {
+        valHtml = _shortNumLocal(kpi.value);
+    }
+    if (kpi.value_suffix) {
+        valHtml += `<span class="kpi-card-suffix">${kpi.value_suffix}</span>`;
+    }
+    return valHtml;
+}
+
+function _updateKpiHeroStrip(kpis) {
+    if (!Array.isArray(kpis)) return;
+    kpis.forEach(kpi => {
+        const card = document.getElementById(kpi.id);
+        if (!card) return;
+        // severity class
+        card.classList.remove('severity-red', 'severity-yellow', 'severity-neutral');
+        card.classList.add(`severity-${kpi.severity || 'neutral'}`);
+        // value
+        const valEl = card.querySelector('.kpi-card-value');
+        if (valEl) valEl.innerHTML = _renderKpiCardValue(kpi);
+        // extra
+        let extraEl = card.querySelector('.kpi-card-extra');
+        if (kpi.value_extra) {
+            if (!extraEl) {
+                extraEl = document.createElement('span');
+                extraEl.className = 'kpi-card-extra';
+                const tip = card.querySelector('.kpi-card-tip');
+                card.insertBefore(extraEl, tip);
+            }
+            extraEl.textContent = kpi.value_extra;
+        } else if (extraEl) {
+            extraEl.remove();
+        }
+    });
+}
+
+function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
+    const card = document.querySelector('.city-concentracao');
+    if (!card) return;
+    if (concentracaoRed) {
+        card.classList.add('concentracao-alerta');
+    } else {
+        card.classList.remove('concentracao-alerta');
+    }
+    const summary = card.querySelector('.section-summary .insight-value');
+    if (summary) {
+        summary.textContent = `${Math.round(pctTop5 || 0)}%`;
+        summary.classList.toggle('text-red', (pctTop5 || 0) > 60);
+    }
+    const bars = card.querySelector('.chart-bars-concentracao');
+    if (!bars || !Array.isArray(topConcentracao)) return;
+    const medals = { 1: '\u{1F947}', 2: '\u{1F948}', 3: '\u{1F949}' };
+    bars.innerHTML = topConcentracao.map(c => {
+        const rankHtml = medals[c.rank]
+            ? medals[c.rank]
+            : `<span class="chart-bar-rank-num">${c.rank}</span>`;
+        const fillClass = c.is_red ? 'fill-red' : 'fill-blue';
+        const safeName = String(c.nome || '').replace(/[<>&"]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[m]));
+        const pct = (c.pct || 0).toFixed(1);
+        const val = _shortBrlLocal(c.total_pago || 0);
+        return `<div class="chart-bar-row" data-cnpj-completo="${c.cnpj_completo || ''}" data-cnpj-basico="${c.cnpj_basico || ''}" data-nome="${safeName}">
+            <span class="chart-bar-label" title="${safeName}">
+                <span class="chart-bar-rank${c.rank <= 3 ? ' chart-bar-rank-medal' : ''}" aria-label="Posicao ${c.rank}">${rankHtml}</span>
+                ${safeName.length > 40 ? safeName.slice(0, 37) + '...' : safeName}
+            </span>
+            <div class="chart-bar-track">
+                <div class="chart-bar-fill ${fillClass}" style="width: ${c.pct || 0}%"></div>
+            </div>
+            <span class="chart-bar-meta">
+                <strong>${pct}%</strong>
+                <span class="text-sm text-muted">${val}</span>
+            </span>
+        </div>`;
+    }).join('');
+    _wireConcentracaoClicks(bars);
+}
+
+function _wireConcentracaoClicks(scope) {
+    const root = scope || document.querySelector('.chart-bars-concentracao');
+    if (!root || root._wired) return;
+    root._wired = true;
+    root.style.cursor = 'pointer';
+    root.addEventListener('click', (e) => {
+        const row = e.target.closest('.chart-bar-row');
+        if (!row) return;
+        const cnpjBasico = row.dataset.cnpjBasico || '';
+        const cnpjCompleto = row.dataset.cnpjCompleto || '';
+        const nome = row.dataset.nome || '';
+        if (!cnpjBasico) return;
+        if (typeof openFornecedorDialog === 'function') {
+            openFornecedorDialog(cnpjBasico, nome, null, false, nome, cnpjCompleto);
+        }
+    });
+}
+
+async function _refreshKpisLive(municipio, uf) {
+    try {
+        const res = await fetch(`/api/kpis/${encodeURIComponent(municipio)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_buildBody(municipio, uf || 'PB')),
+        });
+        if (!res.ok) {
+            console.warn('kpis endpoint returned', res.status);
+            return;
+        }
+        const data = await res.json();
+        if (data && data.kpis) _updateKpiHeroStrip(data.kpis);
+        if (data && data.top_concentracao) {
+            _updateConcentracaoCard(data.top_concentracao, data.pct_top5, data.concentracao_red);
+        }
+        // Atualiza a nota de atencao na narrativa, se houver elemento expondo o score.
+        if (data && data.score_unificado != null) {
+            document.querySelectorAll('[data-score-unificado]').forEach(el => {
+                el.textContent = data.score_unificado;
+            });
+        }
+    } catch (e) {
+        console.warn('kpis fetch failed', e);
+    }
 }
 
 async function _loadHeatmap(municipio) {

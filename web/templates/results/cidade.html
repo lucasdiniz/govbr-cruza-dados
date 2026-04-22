@@ -163,7 +163,7 @@
     <div class="chart-bars chart-bars-concentracao">
         {% set medals = {1: '&#129351;', 2: '&#129352;', 3: '&#129353;'} %}
         {% for c in top_concentracao %}
-        <div class="chart-bar-row">
+        <div class="chart-bar-row" data-cnpj-completo="{{ c.cnpj_completo or '' }}" data-cnpj-basico="{{ c.cnpj_basico or '' }}" data-nome="{{ c.nome }}">
             <span class="chart-bar-label" title="{{ c.nome }}">
                 <span class="chart-bar-rank{% if c.rank <= 3 %} chart-bar-rank-medal{% endif %}" aria-label="Posicao {{ c.rank }}">
                     {% if c.rank in medals %}{{ medals[c.rank]|safe }}{% else %}<span class="chart-bar-rank-num">{{ c.rank }}</span>{% endif %}
