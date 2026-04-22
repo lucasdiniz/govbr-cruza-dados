@@ -3630,6 +3630,7 @@ html.audit-mode .denuncia-cta { display: none; }
     font-size: .72rem;
     color: var(--text-muted, #94a3b8);
 }
+.kpi-card-suffix { font-size: 1rem; font-weight: 600; opacity: .8; margin-left: 2px; }
 
 .kpi-card-tip {
     position: absolute;

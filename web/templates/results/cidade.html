@@ -106,7 +106,7 @@
                 <span class="auditor-only">{{ k.label_auditor }}</span>
             </span>
             <span class="kpi-card-value">
-                {% if k.is_money %}{{ k.value|short_brl }}{% else %}{{ k.value|short_number }}{% endif %}
+                {% if k.is_money %}{{ k.value|short_brl }}{% else %}{{ k.value|short_number }}{% endif %}{% if k.value_suffix %}<span class="kpi-card-suffix">{{ k.value_suffix }}</span>{% endif %}
             </span>
             {% if k.value_extra %}
             <span class="kpi-card-extra">{{ k.value_extra }}</span>

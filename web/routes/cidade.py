@@ -41,6 +41,7 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO_DATED,
 )
 from web.queries.registry import CIDADE_QUERIES, get_categories
+from web.kpis.cidade import compute_cidade_kpis
 
 router = APIRouter()
 
@@ -608,185 +609,6 @@ def _build_report_sections(pb_only: bool = True):
     return sections
 
 
-def _to_float(v) -> float:
-    if v is None or v == '':
-        return 0.0
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-# Salario mensal acima do qual receber Bolsa Familia eh suspeito.
-# A Regra de Protecao do BF (Lei 14.601/2023) mantem o beneficio para quem
-# tem renda per capita ate R$706. Servidor com salario > R$5.000 dificilmente
-# se enquadra nessa regra mesmo com familia grande.
-_BF_SALARIO_SUSPEITO = 5000.0
-
-
-def _compute_cidade_kpis(perfil: dict, fornecedores: list[dict], servidores: list[dict]) -> dict:
-    """Agrega KPIs investigativas a partir dos resultados ja cacheados.
-
-    Retorna dict com:
-      - kpis: list[dict] para a hero strip (cada um vira um card clicavel)
-      - top_concentracao: list[dict] para o card de barras horizontais
-      - concentracao_top1, concentracao_top5: percentuais agregados
-    """
-    total_pago = _to_float(perfil.get('total_pago')) if perfil else 0.0
-
-    # ---- Fornecedores ----------------------------------------------------
-    sancao_qualquer = 0
-    sancao_municipio = 0
-    inativas_recebendo = 0
-    for f in fornecedores:
-        # Sancao "afeta este municipio": flag_inidoneidade OU abrangencia_sancao_info
-        # comeca com "!" (pattern usado no SQL para destacar).
-        info = str(f.get('abrangencia_sancao_info') or '')
-        is_municipio = info.startswith('!')
-        # Qualquer sancao: flag_ceis OR flag_pgfn(?) NAO. Apenas CEIS/CNEP/inidoneidade.
-        has_ceis = bool(f.get('flag_ceis'))
-        has_cnep = bool(f.get('flag_cnep'))
-        has_idn = bool(f.get('flag_inidoneidade'))
-        has_acordo = bool(f.get('flag_acordo_leniencia'))
-        if has_ceis or has_cnep or has_idn or has_acordo:
-            sancao_qualquer += 1
-        if is_municipio or has_idn or has_acordo:
-            sancao_municipio += 1
-        if f.get('flag_inativa'):
-            inativas_recebendo += 1
-
-    # ---- Concentracao top fornecedores ----------------------------------
-    # Ordena por total_pago desc (defensivo: o SQL pode reordenar por sancao).
-    forn_sorted = sorted(
-        fornecedores,
-        key=lambda r: _to_float(r.get('total_pago')),
-        reverse=True,
-    )
-    top5_forn = forn_sorted[:5]
-    top_concentracao = []
-    for rank, f in enumerate(top5_forn, 1):
-        valor = _to_float(f.get('total_pago'))
-        pct = (valor / total_pago * 100.0) if total_pago > 0 else 0.0
-        nome = (f.get('razao_social') or f.get('nome_credor') or '').strip()
-        top_concentracao.append({
-            'rank': rank,
-            'nome': nome,
-            'cnpj_completo': f.get('cnpj_completo'),
-            'cnpj_basico': f.get('cnpj_basico'),
-            'total_pago': valor,
-            'pct': pct,
-            'is_red': pct > 20.0,
-        })
-    pct_top1 = top_concentracao[0]['pct'] if top_concentracao else 0.0
-    pct_top5 = sum(x['pct'] for x in top_concentracao)
-
-    # ---- Servidores -----------------------------------------------------
-    bf_alto_salario = 0
-    bf_total = 0
-    ceaf_expulsos = 0
-    socio_recebendo = 0
-    total_pago_socios = 0.0
-    for s in servidores:
-        if s.get('flag_bolsa_familia'):
-            bf_total += 1
-            if _to_float(s.get('maior_salario')) > _BF_SALARIO_SUSPEITO:
-                bf_alto_salario += 1
-        if s.get('flag_ceaf_expulso'):
-            ceaf_expulsos += 1
-        # "socio recebendo" = qtd_empresas_socio > 0 E total_pago_empresas > 0
-        # (a flag flag_conflito_interesses cobre subset mais estrito; preferimos
-        #  o sinal mais amplo aqui)
-        if (s.get('qtd_empresas_socio') or 0) and _to_float(s.get('total_pago_empresas')) > 0:
-            socio_recebendo += 1
-        total_pago_socios += _to_float(s.get('total_pago_durante_vinculo'))
-
-    # ---- Monta cards (ordem = prioridade visual) ------------------------
-    # Cada card tem: id, label (citizen + auditor), value, suffix, severity,
-    # link (#anchor), tooltip
-    def _sev_count(n: int, red_at: int = 1, yellow_at: int = 0) -> str:
-        if n >= red_at:
-            return 'red'
-        if n > yellow_at:
-            return 'yellow'
-        return 'neutral'
-
-    kpis = [
-        {
-            'id': 'kpi-sancao-municipio',
-            'label_citizen': 'Empresas sancionadas que atingem este municipio',
-            'label_auditor': 'Sancionadas com abrangencia no municipio',
-            'value': sancao_municipio,
-            'severity': _sev_count(sancao_municipio, red_at=1),
-            'href': '#fornecedores-irregulares',
-            'tooltip': 'Empresas com sancao de inidoneidade (nacional, Lei 14.133 art. 156 IV) ou de abrangencia que inclui este municipio. Por lei, a prefeitura nao deveria contratar.',
-        },
-        {
-            'id': 'kpi-sancao-qualquer',
-            'label_citizen': 'Empresas com sancao ativa fornecendo a prefeitura',
-            'label_auditor': 'Fornecedores em CEIS/CNEP (qualquer abrangencia)',
-            'value': sancao_qualquer,
-            'severity': _sev_count(sancao_qualquer, red_at=3, yellow_at=0),
-            'href': '#fornecedores-irregulares',
-            'tooltip': 'Inclui sancoes federais, estaduais e de outros municipios. Pode nao impedir contratacao aqui, mas merece verificacao.',
-        },
-        {
-            'id': 'kpi-inativas',
-            'label_citizen': 'Empresas inativas / baixadas recebendo dinheiro',
-            'label_auditor': 'Fornecedores com situacao cadastral irregular',
-            'value': inativas_recebendo,
-            'severity': _sev_count(inativas_recebendo, red_at=1),
-            'href': '#fornecedores-irregulares',
-            'tooltip': 'Empresas que nao constam como ativas na Receita Federal mas mesmo assim aparecem recebendo da prefeitura. Pode indicar fraude ou erro cadastral grave.',
-        },
-        {
-            'id': 'kpi-ceaf',
-            'label_citizen': 'Servidores ja expulsos da Adm. Federal',
-            'label_auditor': 'Servidores em CEAF (expulsoes federais)',
-            'value': ceaf_expulsos,
-            'severity': _sev_count(ceaf_expulsos, red_at=1),
-            'href': '#conflitos',
-            'tooltip': 'Pessoas com registro de demissao por improbidade ou falta grave em orgaos federais e que aparecem na folha do municipio.',
-        },
-        {
-            'id': 'kpi-socio-recebendo',
-            'label_citizen': 'Servidores que sao donos de empresas que recebem aqui',
-            'label_auditor': 'Servidores socios de fornecedores municipais',
-            'value': socio_recebendo,
-            'severity': _sev_count(socio_recebendo, red_at=3, yellow_at=0),
-            'href': '#conflitos',
-            'tooltip': 'A Lei 8.112/90 (federal) e o art. 9 da Lei 8.666/93 vedam essa pratica. No municipio, depende do estatuto local, mas o cruzamento sempre exige verificacao.',
-        },
-        {
-            'id': 'kpi-pago-socios',
-            'label_citizen': 'Total pago a empresas dos servidores',
-            'label_auditor': 'Pago a empresas de servidores durante vinculo',
-            'value': total_pago_socios,
-            'is_money': True,
-            'severity': 'red' if total_pago_socios > 0 else 'neutral',
-            'href': '#conflitos',
-            'tooltip': 'Soma dos pagamentos do municipio para empresas onde o(a) servidor(a) era socio(a) NO MESMO PERIODO em que estava na folha. Forte indicio de conflito de interesses.',
-        },
-        {
-            'id': 'kpi-bolsa-familia',
-            'label_citizen': 'Servidores com salario alto + Bolsa Familia',
-            'label_auditor': 'Servidores BF + salario > R$ 5k',
-            'value': bf_alto_salario,
-            'value_extra': f"de {bf_total} no BF" if bf_total > bf_alto_salario else None,
-            'severity': _sev_count(bf_alto_salario, red_at=1),
-            'href': '#conflitos',
-            'tooltip': 'A Regra de Protecao do BF (Lei 14.601/2023) mantem o beneficio para renda per capita ate R$706. Servidor com salario alto dificilmente se enquadra mesmo com familia grande.',
-        },
-    ]
-
-    return {
-        'kpis': kpis,
-        'top_concentracao': top_concentracao,
-        'pct_top1': pct_top1,
-        'pct_top5': pct_top5,
-        'concentracao_red': pct_top1 > 20.0 or pct_top5 > 60.0,
-    }
-
-
 def _servidor_severity_key(s: dict) -> tuple:
     """Sort key: red severity (0), yellow (1), rest (2), then by -maior_salario."""
     def _num(v):
@@ -920,7 +742,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             servidores_dicts = [_row_to_dict(scols, r) for r in srows]
     except Exception:
         pass
-    kpi_ctx = _compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
+    kpi_ctx = compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
 
     return templates.TemplateResponse(
         request,
