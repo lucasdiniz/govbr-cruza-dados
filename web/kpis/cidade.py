@@ -188,7 +188,6 @@ def _compute_concentracao(ctx: dict) -> dict:
     return {
         "value": round(pct5),
         "value_suffix": "%",
-        "value_extra": f"Top 1 = {pct1:.1f}%" if pct1 > 0 else None,
         "severity": sev,
     }
 

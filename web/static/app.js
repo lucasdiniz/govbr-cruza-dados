@@ -137,27 +137,46 @@ function initNarrativeAnchors() {
 function initCityNarrativeToggle() { /* removido: resumo sempre visivel completo */ }
 
 
-function initDestaques() {
-    // Scroll + flash para cards de destaque (Fase 3).
-    const cards = document.querySelectorAll('.destaque-card[data-scroll-to]');
-    if (!cards.length) return;
-    cards.forEach(card => {
-        card.addEventListener('click', () => {
-            const slug = card.dataset.scrollTo;
-            const qid = card.dataset.queryId;
-            // Prefere scroll para o finding-card especifico (mais proximo ao achado);
-            // fallback para a secao do tema.
-            let target = qid ? document.querySelector(`.finding-card[data-query="${qid}"]`) : null;
-            if (!target && slug) target = document.getElementById(slug);
-            if (!target) return;
-            expandReportContext(target);
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            target.classList.remove('destaque-flash', 'anchor-flash');
-            void target.offsetWidth;
-            target.classList.add('destaque-flash');
-            setTimeout(() => target.classList.remove('destaque-flash'), 1900);
-        });
+function initDestaques() { /* removido: substituido por initAnchorAutoExpand */ }
+
+
+function _scrollAndFlash(target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.remove('anchor-flash');
+    void target.offsetWidth;
+    target.classList.add('anchor-flash');
+    setTimeout(() => target.classList.remove('anchor-flash'), 1800);
+}
+
+function initAnchorAutoExpand() {
+    // Qualquer clique em <a href="#X"> dentro da pagina, OU navegacao por hashchange,
+    // expande o report-section/finding-card de destino antes de scrollar. Cobre
+    // KPI strip, narrativa, links inline e back/forward do navegador.
+    const handleHash = (hash, ev) => {
+        if (!hash || hash === '#') return;
+        const target = document.getElementById(hash.slice(1));
+        if (!target) return;
+        if (ev) ev.preventDefault();
+        expandReportContext(target);
+        _scrollAndFlash(target);
+        history.replaceState(null, '', hash);
+    };
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href^="#"]');
+        if (!link) return;
+        // Ignora links que sao apenas "#" ou estao dentro de modais que tratam navegacao propria
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        // Nao interceptar dropdowns/abas/etc que usam href="#" como hook
+        if (link.dataset.skipAnchorExpand === 'true') return;
+        handleHash(href, e);
     });
+    // Carga inicial com hash na URL
+    if (window.location.hash) {
+        // Dar um tick para o DOM estar pronto e finding-cards carregadas
+        setTimeout(() => handleHash(window.location.hash, null), 80);
+    }
+    window.addEventListener('hashchange', () => handleHash(window.location.hash, null));
 }
 
 
@@ -262,9 +281,9 @@ function initTour() {
             text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
         },
         {
-            selector: '.destaques, .findings-list',
+            selector: '.city-kpi-strip, .findings-list',
             title: 'Os pontos que merecem aten&ccedil;&atilde;o',
-            text: 'Aqui ficam os destaques: onde h&aacute; ind&iacute;cios de irregularidade ou risco. Cada cart&atilde;o mostra o que foi encontrado e quanto dinheiro est&aacute; envolvido.',
+            text: 'Aqui ficam os principais sinais investigativos: cada card mostra um cruzamento de dados que merece aten&ccedil;&atilde;o, e clicando voc&ecirc; vai direto para o detalhamento.',
         },
         {
             selector: '#modeToggle',
@@ -2995,7 +3014,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();
-    initDestaques();
+    initAnchorAutoExpand();
     initExplainers();
     initCredibilityDialog();
     initFontSizeToggle();
