@@ -1447,6 +1447,10 @@ td.num {
     font-weight: 500;
     letter-spacing: 0.02em;
 }
+.legend-inline .legend-scale-note {
+    color: #64748b;
+    font-style: italic;
+}
 .legend-inline .legend-item {
     display: inline-flex;
     align-items: center;

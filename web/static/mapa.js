@@ -2,44 +2,44 @@
 (function () {
     const CUTOFF_PAGO = 5_000_000; // R$5mi: abaixo disso, municipio fica cinza
 
-    // Breaks calibrados aos percentis p20/p40/p60/p80/p95 da distribuicao real na PB
+    // Percentis usados para distribuir as cores pela amostra atual da PB.
+    // Mantem o mapa incremental mesmo quando a formula dos indicadores muda.
+    const QUANTILE_LEVELS = [0.20, 0.40, 0.60, 0.80, 0.95];
+
     const METRICS = {
         risco: {
             label: 'Nota de atenção (0-100)',
             unit: '',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            // Breaks calibrados ao score TCE legado (p20/p40/p60/p80/p95).
-            // Score unificado (8 KPIs) tem distribuicao diferente — recalibrar
-            // apos coletar primeira amostra em producao.
-            breaks: [62, 65, 69, 73, 77],
+            fallbackBreaks: [42, 47, 52, 60, 69],
             format: (v) => `${v}`,
         },
         pct_irregulares: {
             label: '% pago a fornecedores irregulares',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [17, 28, 45, 60, 70],
+            fallbackBreaks: [17, 28, 45, 60, 70],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pct_sem_licitacao: {
             label: '% de empenhos sem licitacao',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [55, 65, 72, 80, 90],
+            fallbackBreaks: [55, 65, 72, 80, 90],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pct_top5: {
             label: '% pago concentrado nos top-5 fornecedores',
             unit: '%',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
-            breaks: [50, 58, 62, 66, 72],
+            fallbackBreaks: [50, 58, 62, 66, 72],
             format: (v) => `${v.toFixed(1)}%`,
         },
         pago_per_capita: {
             label: 'R$ pago por habitante',
             unit: 'R$',
             ramp: ['#0d2340', '#17416b', '#1e5e99', '#2a85c6', '#49a8e0', '#88d0f5'],
-            breaks: [6000, 9000, 12000, 17000, 24000],
+            fallbackBreaks: [6000, 9000, 12000, 17000, 24000],
             format: (v) => {
                 if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)} mil`;
                 return `R$ ${v.toFixed(0)}`;
@@ -52,7 +52,9 @@
     const state = {
         geojson: null,
         data: {},        // { "Municipio Nome": { risco, pct_* , total_pago } }
+        dataIdx: {},
         pop: {},         // { "2500106": 9335 }
+        metricBreaks: {},
         metric: 'risco',
         map: null,
         layer: null,
@@ -72,19 +74,106 @@
         return idx;
     }
 
-    function featureMetricValue(feat) {
+    function featureMetricValueFor(feat, metric) {
         const geoName = feat.properties.name;
         const codigo = feat.properties.id;
         const entry = state.dataIdx[normKey(geoName)];
         if (!entry) return { v: null, pago: 0, pop: state.pop[codigo] || null };
         const pop = state.pop[codigo] || null;
         let v;
-        if (state.metric === 'pago_per_capita') {
+        if (metric === 'pago_per_capita') {
             v = pop && pop > 0 ? entry.total_pago / pop : null;
         } else {
-            v = entry[state.metric];
+            v = entry[metric];
         }
         return { v, pago: entry.total_pago || 0, pop, entry };
+    }
+
+    function featureMetricValue(feat) {
+        return featureMetricValueFor(feat, state.metric);
+    }
+
+    function roundBreak(value, metric) {
+        if (metric === 'risco') return Math.round(value);
+        if (metric === 'pago_per_capita') {
+            if (value >= 10_000) return Math.round(value / 500) * 500;
+            if (value >= 1_000) return Math.round(value / 100) * 100;
+            return Math.round(value / 50) * 50;
+        }
+        return Math.round(value * 10) / 10;
+    }
+
+    function percentile(sortedValues, q) {
+        if (!sortedValues.length) return null;
+        const pos = (sortedValues.length - 1) * q;
+        const lower = Math.floor(pos);
+        const upper = Math.ceil(pos);
+        if (lower === upper) return sortedValues[lower];
+        const weight = pos - lower;
+        return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+    }
+
+    function uniqueIncreasingBreaks(values, metric) {
+        const breaks = [];
+        values.forEach(raw => {
+            if (raw === null || raw === undefined || isNaN(raw)) return;
+            const rounded = roundBreak(raw, metric);
+            if (!breaks.length || rounded > breaks[breaks.length - 1]) breaks.push(rounded);
+        });
+        return breaks;
+    }
+
+    function collectMetricValues(metric) {
+        const features = (state.geojson && state.geojson.features) || [];
+        return features
+            .map(feat => {
+                const { v, pago } = featureMetricValueFor(feat, metric);
+                if (v === null || v === undefined || isNaN(v)) return null;
+                if (metric !== 'pago_per_capita' && pago < CUTOFF_PAGO) return null;
+                return v;
+            })
+            .filter(v => v !== null)
+            .sort((a, b) => a - b);
+    }
+
+    function equalIntervalBreaks(sortedValues, metric, buckets) {
+        if (!sortedValues.length) return [];
+        const min = sortedValues[0];
+        const max = sortedValues[sortedValues.length - 1];
+        if (min === max) return [];
+        const step = (max - min) / buckets;
+        const values = [];
+        for (let i = 1; i < buckets; i++) values.push(min + step * i);
+        return uniqueIncreasingBreaks(values, metric);
+    }
+
+    function computeMetricBreaks(metric) {
+        const cfg = METRICS[metric];
+        const needed = cfg.ramp.length - 1;
+        const values = collectMetricValues(metric);
+        if (values.length < cfg.ramp.length) return cfg.fallbackBreaks;
+
+        const quantileBreaks = uniqueIncreasingBreaks(
+            QUANTILE_LEVELS.map(q => percentile(values, q)),
+            metric
+        );
+        if (quantileBreaks.length === needed) return quantileBreaks;
+
+        const intervalBreaks = equalIntervalBreaks(values, metric, cfg.ramp.length);
+        if (intervalBreaks.length === needed) return intervalBreaks;
+
+        return cfg.fallbackBreaks;
+    }
+
+    function computeAllMetricBreaks() {
+        state.metricBreaks = {};
+        Object.keys(METRICS).forEach(metric => {
+            state.metricBreaks[metric] = computeMetricBreaks(metric);
+        });
+    }
+
+    function breaksFor(metric) {
+        return state.metricBreaks[metric] || METRICS[metric].fallbackBreaks;
     }
 
     function colorFor(value, pago, metric) {
@@ -92,11 +181,11 @@
         if (value === null || value === undefined || isNaN(value)) return FALLBACK_COLOR;
         // Cutoff aplica so a metricas de %/risco, nao a per-capita
         if (metric !== 'pago_per_capita' && pago < CUTOFF_PAGO) return FALLBACK_COLOR;
-        const breaks = cfg.breaks;
+        const breaks = breaksFor(metric);
         for (let i = 0; i < breaks.length; i++) {
             if (value < breaks[i]) return cfg.ramp[i];
         }
-        return cfg.ramp[cfg.ramp.length - 1];
+        return cfg.ramp[Math.min(breaks.length, cfg.ramp.length - 1)];
     }
 
     function styleFeature(feat) {
@@ -148,13 +237,15 @@
     function renderLegend() {
         const el = document.getElementById('mapa-legend');
         const cfg = METRICS[state.metric];
+        const breaks = breaksFor(state.metric);
         const items = ['<div class="legend-inline">'];
         items.push(`<span class="legend-label">${cfg.label}:</span>`);
-        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[0]}"></span>&lt; ${cfg.format(cfg.breaks[0])}</span>`);
-        for (let i = 1; i < cfg.breaks.length; i++) {
-            items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[i]}"></span>${cfg.format(cfg.breaks[i - 1])} – ${cfg.format(cfg.breaks[i])}</span>`);
+        items.push('<span class="legend-scale-note">faixas por percentil PB</span>');
+        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[0]}"></span>&lt; ${cfg.format(breaks[0])}</span>`);
+        for (let i = 1; i < breaks.length; i++) {
+            items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[i]}"></span>${cfg.format(breaks[i - 1])} – ${cfg.format(breaks[i])}</span>`);
         }
-        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[cfg.ramp.length - 1]}"></span>&gt; ${cfg.format(cfg.breaks[cfg.breaks.length - 1])}</span>`);
+        items.push(`<span class="legend-item"><span class="legend-swatch" style="background:${cfg.ramp[Math.min(breaks.length, cfg.ramp.length - 1)]}"></span>&gt; ${cfg.format(breaks[breaks.length - 1])}</span>`);
         items.push(`<span class="legend-item legend-nodata"><span class="legend-swatch"></span>sem dados</span>`);
         items.push('</div>');
         el.innerHTML = items.join('');
@@ -226,6 +317,7 @@
         state.data = dataRes;
         state.dataIdx = buildDataIndex(dataRes);
         state.pop = popRes;
+        computeAllMetricBreaks();
 
         const map = L.map('mapa-pb', {
             zoomControl: true,
