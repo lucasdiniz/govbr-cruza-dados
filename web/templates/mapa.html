@@ -11,12 +11,12 @@
             <span class="citizen-only">{{ municipio_total_pb | default(223, true) }} municipios da Paraiba coloridos pelo indicador escolhido. Clique em um municipio para ver o detalhe.</span>
             <span class="auditor-only">{{ municipio_total_pb | default(223, true) }} municipios pintados por indicador. Clique em um municipio para abrir o detalhe.</span>
         </p>
-        <div class="mapa-toggle" role="tablist">
-            <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais"><span class="citizen-only">Risco</span><span class="auditor-only">Risco composto</span></button>
-            <button class="mt-btn" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos"><span class="citizen-only">% com sinais</span><span class="auditor-only">% Irregulares</span></button>
-            <button class="mt-btn" data-metric="pct_sem_licitacao" title="% de empenhos feitos sem licitacao"><span class="citizen-only">Sem licitacao</span><span class="auditor-only">Sem licitacao</span></button>
-            <button class="mt-btn" data-metric="pct_top5" title="% do pago concentrado nos top-5 fornecedores"><span class="citizen-only">Top 5 concentram</span><span class="auditor-only">Concentracao top-5</span></button>
-            <button class="mt-btn" data-metric="pago_per_capita" title="Total pago por habitante (IBGE 2022)"><span class="citizen-only">Por habitante</span><span class="auditor-only">Per capita</span></button>
+        <div class="mapa-toggle" aria-label="Escolher indicador do mapa">
+            <button type="button" class="mt-btn active" aria-pressed="true" data-metric="risco" title="Score composto (0-100) combinando varios sinais"><span class="citizen-only">Risco</span><span class="auditor-only">Risco composto</span></button>
+            <button type="button" class="mt-btn" aria-pressed="false" data-metric="pct_irregulares" title="% do pago a fornecedores sancionados, com divida PGFN ou inativos"><span class="citizen-only">% com sinais</span><span class="auditor-only">% Irregulares</span></button>
+            <button type="button" class="mt-btn" aria-pressed="false" data-metric="pct_sem_licitacao" title="% de empenhos feitos sem licitacao"><span class="citizen-only">Sem licitacao</span><span class="auditor-only">Sem licitacao</span></button>
+            <button type="button" class="mt-btn" aria-pressed="false" data-metric="pct_top5" title="% do pago concentrado nos top-5 fornecedores"><span class="citizen-only">Top 5 concentram</span><span class="auditor-only">Concentracao top-5</span></button>
+            <button type="button" class="mt-btn" aria-pressed="false" data-metric="pago_per_capita" title="Total pago por habitante (IBGE 2022)"><span class="citizen-only">Por habitante</span><span class="auditor-only">Per capita</span></button>
         </div>
         <p class="mapa-cutoff-note" id="mapa-cutoff-note">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</p>
     </div>

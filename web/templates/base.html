@@ -86,10 +86,10 @@
             </span>
         </div>
     </footer>
-    <dialog id="credibility-dialog" class="credibility-dialog">
+    <dialog id="credibility-dialog" class="credibility-dialog" aria-labelledby="credibility-dialog-title">
         <div class="dialog-header">
-            <h3 class="dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</h3>
-            <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">&times;</button>
+            <h3 class="dialog-title" id="credibility-dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</h3>
+            <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
         </div>
         <div class="dialog-body">
             <p>O <strong>TransparenciaPB</strong> cruza dados p&uacute;blicos de fontes oficiais para mostrar como cada prefeitura da Para&iacute;ba usa o dinheiro p&uacute;blico.</p>
@@ -117,7 +117,7 @@
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=37"></script>
+    <script src="/static/app.js?v=38"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

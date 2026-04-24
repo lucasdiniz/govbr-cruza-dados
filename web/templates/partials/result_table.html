@@ -47,7 +47,7 @@
             <p class="table-meta text-sm text-muted" data-table-meta></p>
         </div>
         <div class="tbl-wrap">
-            <table>
+            <table class="stack-mobile">
                 <thead>
                     <tr>
                         {% for col in columns %}
@@ -96,7 +96,11 @@
                         {% for col in columns %}
                         {% set value = row[col] %}
                         {% set cell_auditor_only = COLUMN_META.get(col, {}).get('auditor_only') %}
-                        <td{% if cell_auditor_only %} class="auditor-only"{% endif %}>
+                        {% set meta = COLUMN_META.get(col, {}) %}
+                        {% set citizen_label = meta.get('citizen') %}
+                        {% set auditor_label = meta.get('auditor') or (col|replace('_', ' ')|title) %}
+                        {% set data_label = citizen_label or auditor_label %}
+                        <td data-label="{{ data_label|clean_text }}" class="{% if cell_auditor_only %}auditor-only {% endif %}{% if loop.first %}stack-title{% else %}stack-meta{% endif %}">
                             {% if value is sameas true %}
                                 <span class="badge badge-red">Sim</span>
                             {% elif value is sameas false %}

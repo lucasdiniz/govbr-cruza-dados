@@ -118,7 +118,7 @@
     </header>
     <div class="city-kpi-grid">
         {% for k in kpis %}
-        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link>
+        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link data-kpi-severity="{{ k.severity }}">
             <span class="kpi-card-label">
                 <span class="citizen-only">{{ k.label_citizen }}</span>
                 <span class="auditor-only">{{ k.label_auditor }}</span>
@@ -135,6 +135,76 @@
     </div>
 </section>
 {% endif %}
+
+<section class="card priority-guide" aria-label="Por onde comecar">
+    <p class="eyebrow">
+        <span class="citizen-only">Comece por aqui</span>
+        <span class="auditor-only">Triagem rapida</span>
+    </p>
+    <h2 class="card-title">
+        <span class="citizen-only">Veja primeiro os achados que pedem atencao</span>
+        <span class="auditor-only">Principais alvos antes do relatorio completo</span>
+    </h2>
+    <p class="text-muted">
+        <span class="citizen-only">Para uma leitura rapida, comece pelas empresas e servidores abaixo. Depois use o mapa mensal, os graficos e o relatorio completo se quiser investigar mais.</span>
+        <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
+    </p>
+    <div class="priority-links">
+        <a href="#fornecedores" class="btn btn-primary btn-sm">Ver empresas primeiro</a>
+        <a href="#servidores" class="btn btn-outline btn-sm">Ver servidores com sinais</a>
+    </div>
+</section>
+
+<div class="two-col priority-panels">
+    <section class="card" id="fornecedores" style="grid-column: 1 / -1">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">
+                    <span class="citizen-only">Quem mais recebe dinheiro da prefeitura</span>
+                    <span class="auditor-only">Quem mais recebeu</span>
+                </p>
+                <h2 class="card-title">
+                    <span class="citizen-only">Principais empresas contratadas</span>
+                    <span class="auditor-only">Fornecedores que mais aparecem no municipio</span>
+                </h2>
+            </div>
+        </div>
+        <p class="text-muted mb-1">
+            <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
+            <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
+            Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
+        </p>
+        <div class="async-card" data-async-panel="fornecedores">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+    </section>
+
+    <section class="card" id="servidores" style="grid-column: 1 / -1">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">
+                    <span class="citizen-only">Servidores com sinais de aten&ccedil;&atilde;o</span>
+                    <span class="auditor-only">Pessoas para revisar</span>
+                </p>
+                <h2 class="card-title">
+                    <span class="citizen-only">Servidores que merecem uma segunda olhada</span>
+                    <span class="auditor-only">Servidores que merecem verifica&ccedil;&atilde;o adicional</span>
+                </h2>
+            </div>
+        </div>
+        <p class="text-muted mb-1">
+            <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
+            <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
+            pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
+            Clique em um servidor para ver detalhes.</span>
+        </p>
+        <div class="async-card" data-async-panel="servidores">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+    </section>
+</div>
 
 {# ── Card: Concentracao de fornecedores (barras horizontais) ── #}
 {% if top_concentracao %}
@@ -292,10 +362,10 @@
     </div>
 </section>
 
-<dialog id="denuncia-dialog" class="denuncia-dialog">
+<dialog id="denuncia-dialog" class="denuncia-dialog" aria-labelledby="denuncia-dialog-title">
     <div class="dialog-header">
-        <h3 class="dialog-title">Como denunciar irregularidades</h3>
-        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">&times;</button>
+        <h3 class="dialog-title" id="denuncia-dialog-title">Como denunciar irregularidades</h3>
+        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
     </div>
     <div class="dialog-body">
         <p class="text-sm text-muted">Escolha o canal mais adequado ao tipo de irregularidade. Em caso de d&uacute;vida, o MP-PB &eacute; um bom ponto de partida.</p>
@@ -358,57 +428,6 @@
         </span>
     </div>
 </section>
-
-<div class="two-col">
-    <section class="card" id="fornecedores" style="grid-column: 1 / -1">
-        <div class="section-head">
-            <div>
-                <p class="eyebrow">
-                    <span class="citizen-only">Quem mais recebe dinheiro da prefeitura</span>
-                    <span class="auditor-only">Quem mais recebeu</span>
-                </p>
-                <h2 class="card-title">
-                    <span class="citizen-only">Principais empresas contratadas</span>
-                    <span class="auditor-only">Fornecedores que mais aparecem no municipio</span>
-                </h2>
-            </div>
-        </div>
-        <p class="text-muted mb-1">
-            <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
-            <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
-            Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
-        </p>
-        <div class="async-card" data-async-panel="fornecedores">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line short"></div>
-        </div>
-    </section>
-
-    <section class="card" id="servidores" style="grid-column: 1 / -1">
-        <div class="section-head">
-            <div>
-                <p class="eyebrow">
-                    <span class="citizen-only">Servidores com sinais de aten&ccedil;&atilde;o</span>
-                    <span class="auditor-only">Pessoas para revisar</span>
-                </p>
-                <h2 class="card-title">
-                    <span class="citizen-only">Servidores que merecem uma segunda olhada</span>
-                    <span class="auditor-only">Servidores que merecem verifica&ccedil;&atilde;o adicional</span>
-                </h2>
-            </div>
-        </div>
-        <p class="text-muted mb-1">
-            <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
-            <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
-            pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
-            Clique em um servidor para ver detalhes.</span>
-        </p>
-        <div class="async-card" data-async-panel="servidores">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line short"></div>
-        </div>
-    </section>
-</div>
 
 <section class="report-sections" id="relatorio">
     {% for section in report_sections %}
@@ -486,11 +505,11 @@
     {% endfor %}
 </section>
 
-<dialog id="empresa-dialog" class="empresa-dialog">
+<dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
     <div class="dialog-header">
-        <button type="button" class="dialog-back" style="visibility:hidden" title="Voltar">&#8592;</button>
-        <h3 class="dialog-title">Empresas vinculadas</h3>
-        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">&times;</button>
+        <button type="button" class="dialog-back" style="visibility:hidden" title="Voltar" aria-label="Voltar">&#8592;</button>
+        <h3 class="dialog-title" id="empresa-dialog-title">Empresas vinculadas</h3>
+        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
     </div>
     <div class="dialog-body"></div>
 </dialog>

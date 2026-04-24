@@ -239,6 +239,7 @@ function initCredibilityDialog() {
     dialog.addEventListener('click', (e) => {
         if (e.target === dialog) dialog.close();
     });
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close());
 }
 
 
@@ -436,6 +437,7 @@ function initDenunciaDialog() {
     dialog.addEventListener('click', (e) => {
         if (e.target === dialog) dialog.close();
     });
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close());
 }
 
 
@@ -536,6 +538,11 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
     const list = document.getElementById(listId);
     const status = document.getElementById('cidade-status');
     if (!input || !list) return;
+    input.setAttribute('role', input.getAttribute('role') || 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-controls', list.id || listId);
+    input.setAttribute('aria-expanded', 'false');
+    list.setAttribute('role', list.getAttribute('role') || 'listbox');
 
     let timer = null;
     let highlightedIndex = -1;
@@ -546,6 +553,8 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
         list.innerHTML = '';
         list.classList.remove('open');
         highlightedIndex = -1;
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
     };
 
     const renderSuggestions = () => {
@@ -558,16 +567,24 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
 
         suggestions.forEach((item, index) => {
             const li = document.createElement('li');
+            const optionId = `${listId}-option-${index}`;
+            li.id = optionId;
             li.textContent = item;
             li.className = 'ac-item';
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', index === highlightedIndex ? 'true' : 'false');
             li.addEventListener('mousedown', (event) => {
                 event.preventDefault();
                 commitSelection(item);
             });
-            if (index === highlightedIndex) li.classList.add('selected');
+            if (index === highlightedIndex) {
+                li.classList.add('selected');
+                input.setAttribute('aria-activedescendant', optionId);
+            }
             list.appendChild(li);
         });
         list.classList.add('open');
+        input.setAttribute('aria-expanded', 'true');
     };
 
     const commitSelection = (value) => {
@@ -620,6 +637,10 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
             if (!suggestions.length) return;
             highlightedIndex = Math.max(highlightedIndex - 1, 0);
             renderSuggestions();
+        }
+
+        if (event.key === 'Escape') {
+            clearList();
         }
     });
 
@@ -813,8 +834,9 @@ function renderFindingCard(card, queryId, data, municipio) {
 }
 
 function buildResultTable(queryId, columns, rows, municipio) {
-    const headerCells = columns.map(c =>
-        `<th>${c.replace(/_/g, ' ')}</th>`
+    const columnLabels = columns.map(c => String(c || '').replace(/_/g, ' '));
+    const headerCells = columnLabels.map(c =>
+        `<th>${_esc(c)}</th>`
     ).join('');
 
     // Auto-detect clickable columns for dialog reuse
@@ -856,25 +878,32 @@ function buildResultTable(queryId, columns, rows, municipio) {
 
     const bodyRows = rows.map(row => {
         const cells = row.map((val, ci) => {
-            if (val === null || val === undefined) return '<td>-</td>';
-            if (typeof val === 'boolean') return `<td>${val ? 'Sim' : 'Nao'}</td>`;
-            if (Array.isArray(val)) return `<td>${val.join(', ')}</td>`;
             const col = columns[ci] || '';
+            const label = _esc(columnLabels[ci] || col);
+            const classes = [ci === 0 ? 'stack-title' : 'stack-meta'];
+            const isNumericColumn = col.startsWith('valor') || col.startsWith('total') || col === 'capital_social' ||
+                col === 'maior_salario' || col === 'salario' || col.startsWith('pct') || col.startsWith('qtd') ||
+                col === 'empenhos';
+            if (isNumericColumn && ci !== 0) classes.push('num');
+            const td = (html) => `<td data-label="${label}" class="${classes.join(' ')}">${html}</td>`;
+            if (val === null || val === undefined) return td('-');
+            if (typeof val === 'boolean') return td(val ? 'Sim' : 'Nao');
+            if (Array.isArray(val)) return td(val.map(item => _esc(item)).join(', '));
             if (typeof val === 'number' || (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val))) {
                 const n = parseFloat(val);
                 if (!isNaN(n)) {
                     if (col.startsWith('valor') || col.startsWith('total') || col === 'capital_social' || col === 'maior_salario' || col === 'salario') {
-                        return `<td>${_shortBrl(n)}</td>`;
+                        return td(_shortBrl(n));
                     }
                     if (col.startsWith('pct')) {
-                        return `<td>${n.toFixed(1)}%</td>`;
+                        return td(`${n.toFixed(1)}%`);
                     }
                     if (col.startsWith('qtd') || col === 'empenhos') {
-                        return `<td>${_shortNum(n)}</td>`;
+                        return td(_shortNum(n));
                     }
                 }
             }
-            return `<td>${val}</td>`;
+            return td(_esc(val));
         }).join('');
 
         // Determine row highlight class for sanction severity
@@ -943,11 +972,11 @@ function buildResultTable(queryId, columns, rows, municipio) {
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
-                <input type="search" class="table-filter" placeholder="Filtrar nesta tabela">
+                <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar resultados" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search" enterkeyhint="search">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap">
-                <table>
+                <table class="stack-mobile">
                     <thead><tr>${headerCells}</tr></thead>
                     <tbody>${bodyRows}</tbody>
                 </table>
@@ -989,7 +1018,12 @@ function _shortNum(v) {
 
 function _esc(v) {
     if (v === null || v === undefined) return '-';
-    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(v)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
 }
 
 function _fmtDate(v) {
@@ -1301,19 +1335,21 @@ function _renderKpiCardValue(kpi) {
         valHtml = _shortNumLocal(kpi.value);
     }
     if (kpi.value_suffix) {
-        valHtml += `<span class="kpi-card-suffix">${kpi.value_suffix}</span>`;
+        valHtml += `<span class="kpi-card-suffix">${_esc(kpi.value_suffix)}</span>`;
     }
     return valHtml;
 }
 
 function _updateKpiHeroStrip(kpis) {
     if (!Array.isArray(kpis)) return;
+    const orderedCards = [];
     kpis.forEach(kpi => {
         const card = document.getElementById(kpi.id);
         if (!card) return;
         // severity class
         card.classList.remove('severity-red', 'severity-yellow', 'severity-neutral');
         card.classList.add(`severity-${kpi.severity || 'neutral'}`);
+        card.dataset.kpiSeverity = kpi.severity || 'neutral';
         // value
         const valEl = card.querySelector('.kpi-card-value');
         if (valEl) valEl.innerHTML = _renderKpiCardValue(kpi);
@@ -1330,7 +1366,10 @@ function _updateKpiHeroStrip(kpis) {
         } else if (extraEl) {
             extraEl.remove();
         }
+        orderedCards.push(card);
     });
+    const grid = document.querySelector('.city-kpi-grid');
+    if (grid) orderedCards.forEach(card => grid.appendChild(card));
 }
 
 function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
@@ -3254,6 +3293,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dialog.addEventListener('close', () => { _dialogOnClose(); });
         const backBtn = dialog.querySelector('.dialog-back');
         if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
+        dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close());
         _initDialogSwipeToClose();
     }
 
