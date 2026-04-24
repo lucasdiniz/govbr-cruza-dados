@@ -109,6 +109,21 @@ function expandReportContext(target) {
     if (target.classList.contains('finding-card')) {
         target.classList.remove('collapsed');
     }
+    // Quando o alvo eh uma report-section inteira (ex: clique em KPI hero
+    // -> #fornecedores-irregulares), expande TODOS os finding-cards filhos
+    // para que o usuario veja a tabela maximizada e nao precise dar mais
+    // um clique. Sem isso o usuario chega na section e ve cards colapsados.
+    if (target.classList.contains('report-section')) {
+        target.querySelectorAll('.finding-card.collapsed').forEach(c => {
+            c.classList.remove('collapsed');
+        });
+    }
+    // Tambem desfaz o estado collapsed em qualquer descendente direto que
+    // o usuario possa querer ver (ex: target id="servidores" cobre o panel
+    // top-servidores que tambem usa .collapsed).
+    target.querySelectorAll(':scope > .collapsed, :scope .async-collapsed').forEach(el => {
+        el.classList.remove('collapsed', 'async-collapsed');
+    });
 }
 
 function initNarrativeAnchors() {
@@ -137,27 +152,46 @@ function initNarrativeAnchors() {
 function initCityNarrativeToggle() { /* removido: resumo sempre visivel completo */ }
 
 
-function initDestaques() {
-    // Scroll + flash para cards de destaque (Fase 3).
-    const cards = document.querySelectorAll('.destaque-card[data-scroll-to]');
-    if (!cards.length) return;
-    cards.forEach(card => {
-        card.addEventListener('click', () => {
-            const slug = card.dataset.scrollTo;
-            const qid = card.dataset.queryId;
-            // Prefere scroll para o finding-card especifico (mais proximo ao achado);
-            // fallback para a secao do tema.
-            let target = qid ? document.querySelector(`.finding-card[data-query="${qid}"]`) : null;
-            if (!target && slug) target = document.getElementById(slug);
-            if (!target) return;
-            expandReportContext(target);
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            target.classList.remove('destaque-flash', 'anchor-flash');
-            void target.offsetWidth;
-            target.classList.add('destaque-flash');
-            setTimeout(() => target.classList.remove('destaque-flash'), 1900);
-        });
+function initDestaques() { /* removido: substituido por initAnchorAutoExpand */ }
+
+
+function _scrollAndFlash(target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.remove('anchor-flash');
+    void target.offsetWidth;
+    target.classList.add('anchor-flash');
+    setTimeout(() => target.classList.remove('anchor-flash'), 1800);
+}
+
+function initAnchorAutoExpand() {
+    // Qualquer clique em <a href="#X"> dentro da pagina, OU navegacao por hashchange,
+    // expande o report-section/finding-card de destino antes de scrollar. Cobre
+    // KPI strip, narrativa, links inline e back/forward do navegador.
+    const handleHash = (hash, ev) => {
+        if (!hash || hash === '#') return;
+        const target = document.getElementById(hash.slice(1));
+        if (!target) return;
+        if (ev) ev.preventDefault();
+        expandReportContext(target);
+        _scrollAndFlash(target);
+        history.replaceState(null, '', hash);
+    };
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href^="#"]');
+        if (!link) return;
+        // Ignora links que sao apenas "#" ou estao dentro de modais que tratam navegacao propria
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        // Nao interceptar dropdowns/abas/etc que usam href="#" como hook
+        if (link.dataset.skipAnchorExpand === 'true') return;
+        handleHash(href, e);
     });
+    // Carga inicial com hash na URL
+    if (window.location.hash) {
+        // Dar um tick para o DOM estar pronto e finding-cards carregadas
+        setTimeout(() => handleHash(window.location.hash, null), 80);
+    }
+    window.addEventListener('hashchange', () => handleHash(window.location.hash, null));
 }
 
 
@@ -262,9 +296,9 @@ function initTour() {
             text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
         },
         {
-            selector: '.destaques, .findings-list',
+            selector: '.city-kpi-strip, .findings-list',
             title: 'Os pontos que merecem aten&ccedil;&atilde;o',
-            text: 'Aqui ficam os destaques: onde h&aacute; ind&iacute;cios de irregularidade ou risco. Cada cart&atilde;o mostra o que foi encontrado e quanto dinheiro est&aacute; envolvido.',
+            text: 'Aqui ficam os principais sinais investigativos: cada card mostra um cruzamento de dados que merece aten&ccedil;&atilde;o, e clicando voc&ecirc; vai direto para o detalhamento.',
         },
         {
             selector: '#modeToggle',
@@ -452,7 +486,8 @@ async function triggerShare(data) {
     const url = data.url || window.location.href;
     const title = data.title || document.title;
     const text = data.text || '';
-    if (navigator.share) {
+    const isTouch = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(hover: none)').matches;
+    if (isTouch && navigator.share) {
         try {
             await navigator.share({ title, text, url });
             return;
@@ -461,14 +496,26 @@ async function triggerShare(data) {
             // segue pra fallback
         }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
         try {
             await navigator.clipboard.writeText(url);
             showToast('Link copiado para a area de transferencia');
             return;
         } catch { /* noop */ }
     }
-    showToast('Nao foi possivel compartilhar');
+    // Fallback final: textarea + execCommand (funciona mesmo sem secure context)
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { showToast('Link copiado'); return; }
+    } catch { /* noop */ }
+    showToast('Nao foi possivel compartilhar. Copie a URL da barra de enderecos.');
 }
 
 function initShareButtons() {
@@ -639,7 +686,14 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
         // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
         await _refreshPerfilLive(municipio, uf);
+        // KPIs hero, concentracao top-5 e nota de atencao tambem precisam respeitar
+        // o filtro temporal — re-renderiza a partir do endpoint /api/kpis (que usa
+        // cache pre-computado por warm_cache.py quando possivel).
+        await _refreshKpisLive(municipio, uf);
     }
+    // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
+    // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
+    _wireConcentracaoClicks();
 
     // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
     const fornPanel = document.querySelector('[data-async-panel="fornecedores"]');
@@ -1102,50 +1156,71 @@ function _formatDatePt(iso) {
     return `${d}/${m}/${y}`;
 }
 
+function _brToIso(br) {
+    if (!br) return '';
+    const m = String(br).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return '';
+    const [, dd, mm, yyyy] = m;
+    const day = parseInt(dd, 10), mon = parseInt(mm, 10), year = parseInt(yyyy, 10);
+    if (mon < 1 || mon > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function _isoToBr(iso) { return _formatDatePt(iso); }
+
+function _readDateInputIso(el) {
+    if (!el) return '';
+    return _brToIso(el.value);
+}
+
+function _maskBrDate(input) {
+    if (!input || input.dataset.brMaskBound === '1') return;
+    input.dataset.brMaskBound = '1';
+    const apply = () => {
+        const digits = input.value.replace(/\D/g, '').slice(0, 8);
+        let out = digits;
+        if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+        else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        if (out !== input.value) input.value = out;
+    };
+    input.addEventListener('input', apply);
+    input.addEventListener('blur', apply);
+}
+
+function _initDateInputsBr() {
+    ['dateInicio', 'dateFim'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.dataset.isoValue && !el.value) el.value = _isoToBr(el.dataset.isoValue);
+        _maskBrDate(el);
+    });
+}
+
 function _setDateInputs(inicio, fim) {
     const diEl = document.getElementById('dateInicio');
     const dfEl = document.getElementById('dateFim');
-    if (diEl) diEl.value = inicio || '';
-    if (dfEl) dfEl.value = fim || '';
+    if (diEl) diEl.value = inicio ? _isoToBr(inicio) : '';
+    if (dfEl) dfEl.value = fim ? _isoToBr(fim) : '';
 }
 
 function _getDateFilterCopy() {
     const preset = _getDatePreset();
+    const range = `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`;
     if (preset === 'all') {
-        return {
-            headline: 'Exibindo: todo o historico',
-            detail: 'Sem recorte de data. Use os atalhos abaixo para comparar periodos recentes.',
-            clear: false,
-        };
+        return { headline: 'Periodo: todo o historico', clear: false };
     }
     if (preset === 'current-year') {
-        return {
-            headline: 'Exibindo: ano atual',
-            detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-            clear: true,
-        };
+        return { headline: `Ano atual: ${range}`, clear: true };
     }
     if (preset === 'last-12m') {
-        return {
-            headline: 'Exibindo: ultimos 12 meses',
-            detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-            clear: true,
-        };
+        return { headline: `Ultimos 12 meses: ${range}`, clear: true };
     }
-    return {
-        headline: 'Exibindo: periodo personalizado',
-        detail: `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`,
-        clear: true,
-    };
+    return { headline: `Periodo: ${range}`, clear: true };
 }
 
 function _syncDateFilterUI() {
-    const current = document.getElementById('dateFilterCurrent');
-    const status = document.getElementById('dateFilterStatus');
     const btnLimpar = document.getElementById('btnLimparData');
     const copy = _getDateFilterCopy();
-    if (current) current.textContent = copy.headline;
-    if (status) status.textContent = copy.detail;
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
@@ -1204,6 +1279,144 @@ function _updateInsightCards(perfil) {
     if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
     if (el('barPago')) el('barPago').textContent = _shortBrl(totalPago);
     if (el('barFillPago')) el('barFillPago').style.width = `${pctPago.toFixed(1)}%`;
+}
+
+// ── KPI hero strip live refresh ─────────────────────────────────
+// Quando o filtro temporal muda, busca KPIs recalculados do servidor
+// e re-renderiza a hero strip + card de concentracao top-5 + nota de
+// atencao na narrativa. Mantem a UI consistente com o filtro aplicado.
+function _shortBrlLocal(v) {
+    return typeof _shortBrl === 'function' ? _shortBrl(v) : `R$ ${v}`;
+}
+
+function _shortNumLocal(v) {
+    return typeof _shortNum === 'function' ? _shortNum(v) : String(v);
+}
+
+function _renderKpiCardValue(kpi) {
+    let valHtml = '';
+    if (kpi.is_money) {
+        valHtml = _shortBrlLocal(kpi.value);
+    } else {
+        valHtml = _shortNumLocal(kpi.value);
+    }
+    if (kpi.value_suffix) {
+        valHtml += `<span class="kpi-card-suffix">${kpi.value_suffix}</span>`;
+    }
+    return valHtml;
+}
+
+function _updateKpiHeroStrip(kpis) {
+    if (!Array.isArray(kpis)) return;
+    kpis.forEach(kpi => {
+        const card = document.getElementById(kpi.id);
+        if (!card) return;
+        // severity class
+        card.classList.remove('severity-red', 'severity-yellow', 'severity-neutral');
+        card.classList.add(`severity-${kpi.severity || 'neutral'}`);
+        // value
+        const valEl = card.querySelector('.kpi-card-value');
+        if (valEl) valEl.innerHTML = _renderKpiCardValue(kpi);
+        // extra
+        let extraEl = card.querySelector('.kpi-card-extra');
+        if (kpi.value_extra) {
+            if (!extraEl) {
+                extraEl = document.createElement('span');
+                extraEl.className = 'kpi-card-extra';
+                const tip = card.querySelector('.kpi-card-tip');
+                card.insertBefore(extraEl, tip);
+            }
+            extraEl.textContent = kpi.value_extra;
+        } else if (extraEl) {
+            extraEl.remove();
+        }
+    });
+}
+
+function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
+    const card = document.querySelector('.city-concentracao');
+    if (!card) return;
+    if (concentracaoRed) {
+        card.classList.add('concentracao-alerta');
+    } else {
+        card.classList.remove('concentracao-alerta');
+    }
+    const summary = card.querySelector('.section-summary .insight-value');
+    if (summary) {
+        summary.textContent = `${Math.round(pctTop5 || 0)}%`;
+        summary.classList.toggle('text-red', (pctTop5 || 0) > 60);
+    }
+    const bars = card.querySelector('.chart-bars-concentracao');
+    if (!bars || !Array.isArray(topConcentracao)) return;
+    const medals = { 1: '\u{1F947}', 2: '\u{1F948}', 3: '\u{1F949}' };
+    bars.innerHTML = topConcentracao.map(c => {
+        const rankHtml = medals[c.rank]
+            ? medals[c.rank]
+            : `<span class="chart-bar-rank-num">${c.rank}</span>`;
+        const fillClass = c.is_red ? 'fill-red' : 'fill-blue';
+        const safeName = String(c.nome || '').replace(/[<>&"]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[m]));
+        const pct = (c.pct || 0).toFixed(1);
+        const val = _shortBrlLocal(c.total_pago || 0);
+        return `<div class="chart-bar-row" data-cnpj-completo="${c.cnpj_completo || ''}" data-cnpj-basico="${c.cnpj_basico || ''}" data-nome="${safeName}">
+            <span class="chart-bar-label" title="${safeName}">
+                <span class="chart-bar-rank${c.rank <= 3 ? ' chart-bar-rank-medal' : ''}" aria-label="Posicao ${c.rank}">${rankHtml}</span>
+                ${safeName.length > 40 ? safeName.slice(0, 37) + '...' : safeName}
+            </span>
+            <div class="chart-bar-track">
+                <div class="chart-bar-fill ${fillClass}" style="width: ${c.pct || 0}%"></div>
+            </div>
+            <span class="chart-bar-meta">
+                <strong>${pct}%</strong>
+                <span class="text-sm text-muted">${val}</span>
+            </span>
+        </div>`;
+    }).join('');
+    _wireConcentracaoClicks(bars);
+}
+
+function _wireConcentracaoClicks(scope) {
+    const root = scope || document.querySelector('.chart-bars-concentracao');
+    if (!root || root._wired) return;
+    root._wired = true;
+    root.style.cursor = 'pointer';
+    root.addEventListener('click', (e) => {
+        const row = e.target.closest('.chart-bar-row');
+        if (!row) return;
+        const cnpjBasico = row.dataset.cnpjBasico || '';
+        const cnpjCompleto = row.dataset.cnpjCompleto || '';
+        const nome = row.dataset.nome || '';
+        if (!cnpjBasico) return;
+        if (typeof openFornecedorDialog === 'function') {
+            openFornecedorDialog(cnpjBasico, nome, null, false, nome, cnpjCompleto);
+        }
+    });
+}
+
+async function _refreshKpisLive(municipio, uf) {
+    try {
+        const res = await fetch(`/api/kpis/${encodeURIComponent(municipio)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_buildBody(municipio, uf || 'PB')),
+        });
+        if (!res.ok) {
+            console.warn('kpis endpoint returned', res.status);
+            return;
+        }
+        const data = await res.json();
+        if (data && data.kpis) _updateKpiHeroStrip(data.kpis);
+        if (data && data.top_concentracao) {
+            _updateConcentracaoCard(data.top_concentracao, data.pct_top5, data.concentracao_red);
+        }
+        // Atualiza a nota de atencao na narrativa, se houver elemento expondo o score.
+        if (data && data.score_unificado != null) {
+            document.querySelectorAll('[data-score-unificado]').forEach(el => {
+                el.textContent = data.score_unificado;
+            });
+        }
+    } catch (e) {
+        console.warn('kpis fetch failed', e);
+    }
 }
 
 async function _loadHeatmap(municipio) {
@@ -2995,7 +3208,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();
-    initDestaques();
+    initAnchorAutoExpand();
     initExplainers();
     initCredibilityDialog();
     initFontSizeToggle();
@@ -3028,9 +3241,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Date filter handlers
+    _initDateInputsBr();
     document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
-        const inicio = document.getElementById('dateInicio')?.value;
-        const fim = document.getElementById('dateFim')?.value;
+        const inicio = _readDateInputIso(document.getElementById('dateInicio'));
+        const fim = _readDateInputIso(document.getElementById('dateFim'));
         if (!inicio || !fim) return;
         _setDateInputs(inicio, fim);
         _resetCityPanelsLoading();

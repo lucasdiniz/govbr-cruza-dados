@@ -5,9 +5,12 @@
     // Breaks calibrados aos percentis p20/p40/p60/p80/p95 da distribuicao real na PB
     const METRICS = {
         risco: {
-            label: 'Risco composto (0-100)',
+            label: 'Nota de atenção (0-100)',
             unit: '',
             ramp: ['#1a4d1a', '#4b6b20', '#8a7a1a', '#b85c1a', '#d13a1a', '#8a0505'],
+            // Breaks calibrados ao score TCE legado (p20/p40/p60/p80/p95).
+            // Score unificado (8 KPIs) tem distribuicao diferente — recalibrar
+            // apos coletar primeira amostra em producao.
             breaks: [62, 65, 69, 73, 77],
             format: (v) => `${v}`,
         },
@@ -121,7 +124,7 @@
         }
         lines.push(`<span class="tt-k">Valor:</span> <span class="tt-v">${formatMetric(v, state.metric)}</span>`);
         lines.push('<hr>');
-        lines.push(`<span class="tt-k">Risco:</span> ${formatMetric(entry.risco, 'risco')}`);
+        lines.push(`<span class="tt-k">Nota:</span> ${formatMetric(entry.risco, 'risco')}`);
         lines.push(`<span class="tt-k">Irregulares:</span> ${formatMetric(entry.pct_irregulares, 'pct_irregulares')}`);
         lines.push(`<span class="tt-k">Sem licitacao:</span> ${formatMetric(entry.pct_sem_licitacao, 'pct_sem_licitacao')}`);
         lines.push(`<span class="tt-k">Top-5:</span> ${formatMetric(entry.pct_top5, 'pct_top5')}`);
@@ -159,29 +162,35 @@
 
     function renderMetricDesc() {
         const el = document.getElementById('mapa-metric-desc');
-        if (!el) return;
         const btn = document.querySelector(`.mt-btn[data-metric="${state.metric}"]`);
         const isCitizen = !document.documentElement.classList.contains('audit-mode');
         const desc = btn
             ? (isCitizen ? (btn.dataset.descLay || btn.dataset.desc || '') : (btn.dataset.desc || ''))
             : '';
-        el.textContent = desc;
-        // reset colapso ao trocar de metrica
-        el.classList.remove('expanded');
-        el.setAttribute('aria-expanded', 'false');
+        if (el) el.textContent = desc;
+        // popover comeca fechado a cada troca de metrica
+        if (el) el.hidden = true;
+        const infoBtn = document.getElementById('mapaInfoBtn');
+        if (infoBtn) infoBtn.setAttribute('aria-expanded', 'false');
     }
 
     function wireMetricDescToggle() {
         const el = document.getElementById('mapa-metric-desc');
-        if (!el) return;
-        const toggle = () => {
-            const expanded = el.classList.toggle('expanded');
-            el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        };
-        el.addEventListener('click', toggle);
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        const btn = document.getElementById('mapaInfoBtn');
+        if (!el || !btn) return;
+        const close = () => { el.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+        btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const open = el.hidden;
+            el.hidden = !open;
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         });
+        document.addEventListener('click', (ev) => {
+            if (el.hidden) return;
+            if (ev.target === btn || el.contains(ev.target)) return;
+            close();
+        });
+        document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     }
 
     function updateLayer() {

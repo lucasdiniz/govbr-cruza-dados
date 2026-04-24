@@ -41,6 +41,7 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO_DATED,
 )
 from web.queries.registry import CIDADE_QUERIES, get_categories
+from web.kpis.cidade import compute_cidade_kpis
 
 router = APIRouter()
 
@@ -213,13 +214,22 @@ _PB_RANKING_CACHE: dict = {"value": None, "expires_at": 0.0}
 
 
 PB_RANKING_SQL = """
+-- Requer mv_municipio_pb_kpi_score (criada em phase 18). O COALESCE so cobre
+-- linhas faltantes na MV — se a propria MV nao existir, a query falha com
+-- UndefinedTable. Garantir deploy do schema antes de subir o app.
+WITH score AS (
+    SELECT r.municipio,
+           COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score
+    FROM mv_municipio_pb_risco r
+    LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio
+    WHERE r.municipio IS NOT NULL
+)
 SELECT municipio,
        risco_score,
        RANK() OVER (ORDER BY risco_score DESC NULLS LAST) AS posicao,
        COUNT(*) OVER () AS total
-FROM mv_municipio_pb_risco
-WHERE municipio IS NOT NULL
-  AND risco_score IS NOT NULL
+FROM score
+WHERE risco_score IS NOT NULL
 """
 
 
@@ -430,167 +440,6 @@ def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
     return {"citizen": citizen_html, "auditor": auditor_html}
 
 
-# ── Destaques (Fase 3) ──────────────────────────────────────────
-# Achados traduzidos em uma frase, renderizados acima das seções técnicas
-# em modo cidadão. Cada entrada descreve como agregar uma query cacheada
-# em um card com ícone + número + frase + link "Ver detalhes".
-#
-# Campos:
-#   - query_id: id da query no registry (usa web_cache)
-#   - icon: emoji
-#   - severity: "red" | "orange" | "yellow" (cor da borda/ícone)
-#   - template: frase (suporta {brl}, {qtd}, {plural})
-#   - section_slug: âncora de scroll (slug da SECTION_META)
-#   - value_col: coluna a somar para {brl} (vazio = não mostra valor)
-#   - count_col: coluna a contar distinct para {qtd}; None = conta linhas
-#   - min_value: limiar mínimo do total somado para mostrar o card
-#   - min_count: limiar mínimo da contagem para mostrar o card
-DESTAQUES_SPEC = [
-    {
-        "query_id": "Q65",
-        "icon": "&#128681;",  # 🚩
-        "severity": "red",
-        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} sancionada{plural} pelo governo federal",
-        "section_slug": "fornecedores-irregulares",
-        "value_col": "total_pago",
-        "count_col": "cpf_cnpj_sancionado",
-        "min_value": 10_000,
-        "min_count": 1,
-    },
-    {
-        "query_id": "Q67",
-        "icon": "&#128181;",  # 💵
-        "severity": "orange",
-        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} devendo impostos federais",
-        "section_slug": "fornecedores-irregulares",
-        "value_col": "total_pago",
-        "count_col": "cnpj_basico",
-        "min_value": 50_000,
-        "min_count": 1,
-    },
-    {
-        "query_id": "Q70",
-        "icon": "&#9888;&#65039;",  # ⚠️
-        "severity": "orange",
-        "template": "<strong>{brl}</strong> pagos a <strong>{qtd}</strong> empresa{plural} com cadastro irregular na Receita",
-        "section_slug": "fornecedores-irregulares",
-        "value_col": "total_pago",
-        "count_col": "cpf_cnpj",
-        "min_value": 50_000,
-        "min_count": 1,
-    },
-    {
-        "query_id": "Q77",
-        "icon": "&#129513;",  # 🧩
-        "severity": "yellow",
-        "template": "<strong>{qtd}</strong> caso{plural} de compras fatiadas (indicio de fracionamento)",
-        "section_slug": "licitacoes",
-        "value_col": "",
-        "count_col": None,  # conta linhas
-        "min_value": 0,
-        "min_count": 2,
-    },
-    {
-        "query_id": "Q71",
-        "icon": "&#127968;",  # 🏠
-        "severity": "yellow",
-        "template": "<strong>{qtd}</strong> empresa{plural} registrada{plural} no mesmo endere&ccedil;o receberam pagamento",
-        "section_slug": "licitacoes",
-        "value_col": "",
-        "count_col": "cnpj_basico",
-        "min_value": 0,
-        "min_count": 2,
-    },
-    {
-        "query_id": "Q61",
-        "icon": "&#128202;",  # 📊
-        "severity": "yellow",
-        "template": "<strong>{qtd}</strong> fornecedor{plural_es} com diferen&ccedil;a atipica entre empenhado e pago",
-        "section_slug": "orcamento",
-        "value_col": "",
-        "count_col": None,
-        "min_value": 0,
-        "min_count": 5,
-    },
-]
-
-
-def _fmt_int_br(n: int) -> str:
-    return f"{int(n):,}".replace(",", ".")
-
-
-def _destaque_plural(n: int, form: str = "s") -> str:
-    """Retorna '' para n<=1, sufixo plural caso contrário."""
-    return form if n > 1 else ""
-
-
-def _aggregate_destaque(spec: dict, cols: list[str], rows: list[tuple]) -> tuple[float, int]:
-    """Soma value_col e conta count_col (ou linhas) a partir dos rows do cache."""
-    if not rows:
-        return 0.0, 0
-    val_idx = cols.index(spec["value_col"]) if spec.get("value_col") and spec["value_col"] in cols else -1
-    total = 0.0
-    if val_idx >= 0:
-        for r in rows:
-            try:
-                total += float(r[val_idx] or 0)
-            except (TypeError, ValueError):
-                pass
-    count_col = spec.get("count_col")
-    if count_col is None:
-        qtd = len(rows)
-    else:
-        cnt_idx = cols.index(count_col) if count_col in cols else -1
-        if cnt_idx < 0:
-            qtd = len(rows)
-        else:
-            qtd = len({r[cnt_idx] for r in rows if r[cnt_idx] is not None})
-    return total, qtd
-
-
-def pick_destaques(municipio: str, max_cards: int = 5) -> list[dict]:
-    """Monta lista de destaques para o modo cidadão a partir do web_cache.
-
-    Retorna uma lista de dicts prontos para o template `partials/destaques.html`:
-        {icon, severity, html, section_slug, query_id, total, qtd}
-    Vazia se nenhum achado passa dos limiares (template pode mostrar zero-state).
-    """
-    cards: list[dict] = []
-    for spec in DESTAQUES_SPEC:
-        cached = read_web_cache(spec["query_id"], municipio)
-        if not cached:
-            continue
-        cols, rows = cached
-        total, qtd = _aggregate_destaque(spec, cols, rows)
-        if qtd < spec.get("min_count", 1):
-            continue
-        if spec.get("value_col") and total < spec.get("min_value", 0):
-            continue
-        brl = _fmt_brl_narrative(total) if spec.get("value_col") else ""
-        plural = _destaque_plural(qtd, "s")
-        plural_es = _destaque_plural(qtd, "es")
-        html = spec["template"].format(
-            brl=brl,
-            qtd=_fmt_int_br(qtd),
-            plural=plural,
-            plural_es=plural_es,
-        )
-        cards.append({
-            "icon": spec["icon"],
-            "severity": spec["severity"],
-            "html": html,
-            "section_slug": spec["section_slug"],
-            "query_id": spec["query_id"],
-            "total": total,
-            "qtd": qtd,
-            "_sort_key": (qtd * total) if spec.get("value_col") else qtd * 1000,
-        })
-    # Ordena por gravidade (red > orange > yellow) e depois por impacto (_sort_key)
-    sev_order = {"red": 0, "orange": 1, "yellow": 2}
-    cards.sort(key=lambda c: (sev_order.get(c["severity"], 9), -c["_sort_key"]))
-    return cards[:max_cards]
-
-
 def _build_report_sections(pb_only: bool = True):
     sections = []
     for category, queries in get_categories():
@@ -718,8 +567,46 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     }
 
     narrative = build_narrative(perfil, get_pb_medias())
-    destaques = pick_destaques(municipio)
-    ranking = get_pb_ranking(municipio)
+
+    # Carrega fornecedorese servidores do cache (sem fallback live: a hero
+    # KPI strip eh "best effort", se nao houver cache os cards mostram 0).
+    # IMPORTANTE: usar perfil['municipio'] (nome canonico com acento) ao inves
+    # do `municipio` do URL — o cache eh keyed pelo nome canonico.
+    canonical_mun = str(perfil.get("municipio") or municipio)
+    # Tenta cache KPI_SUMMARY pre-computado (warm_cache.py). Se nao houver,
+    # carrega listas e roda compute_cidade_kpis em runtime.
+    kpi_ctx: dict | None = None
+    try:
+        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
+        if cached_summary:
+            scols, srows = cached_summary
+            if srows and srows[0]:
+                blob = srows[0][0]
+                if isinstance(blob, str):
+                    import json as _json
+                    kpi_ctx = _json.loads(blob)
+                elif isinstance(blob, dict):
+                    kpi_ctx = blob
+    except Exception:
+        kpi_ctx = None
+    if kpi_ctx is None:
+        fornecedores_dicts: list[dict] = []
+        servidores_dicts: list[dict] = []
+        try:
+            forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
+            if forn_cached:
+                fcols, frows = forn_cached
+                fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
+        except Exception:
+            pass
+        try:
+            serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
+            if serv_cached:
+                scols, srows = serv_cached
+                servidores_dicts = [_row_to_dict(scols, r) for r in srows]
+        except Exception:
+            pass
+        kpi_ctx = compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
 
     return templates.TemplateResponse(
         request,
@@ -733,8 +620,13 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             "servidores": [],
             "report_sections": _build_report_sections(),
             "narrative": narrative,
-            "destaques": destaques,
-            "ranking": ranking,
+            "kpis": kpi_ctx.get("kpis", []),
+            "top_concentracao": kpi_ctx.get("top_concentracao", []),
+            "pct_top1": kpi_ctx.get("pct_top1", 0),
+            "pct_top5": kpi_ctx.get("pct_top5", 0),
+            "concentracao_red": kpi_ctx.get("concentracao_red", False),
+            "score_unificado": kpi_ctx.get("score_unificado"),
+            "score_breakdown": kpi_ctx.get("score_breakdown", []),
         },
     )
 
@@ -919,24 +811,19 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
     return JSONResponse(result)
 
 
-@router.post("/api/perfil")
-async def get_perfil(payload: MunicipioPayload):
-    """Retorna perfil do municipio como JSON, com filtro temporal opcional."""
-    municipio = _normalize_municipio(payload.municipio)
-    periodo = _get_periodo(payload)
-
+def _load_perfil_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> dict | None:
+    """Carrega perfil respeitando filtro temporal. Tenta cache (PERFIL/ANO:PERFIL) e cai para live."""
     if periodo != "CUSTOM":
         cached = read_web_cache("PERFIL", municipio, periodo=periodo)
         if cached:
             cols, rows = cached
             if rows:
-                return JSONResponse(_row_to_json_dict(cols, rows[0]))
-
+                return _row_to_json_dict(cols, rows[0])
     if _has_date_filter(payload):
         try:
             cols, rows = execute_query(PERFIL_MUNICIPIO_LIVE, _date_params(payload), timeout_sec=15)
         except QueryCanceled:
-            return JSONResponse({})
+            return None
     else:
         try:
             cols, rows = cached_query(
@@ -946,11 +833,116 @@ async def get_perfil(payload: MunicipioPayload):
                 timeout_sec=TIMEOUT_PROFILE,
             )
         except (QueryCanceled, Exception):
-            return JSONResponse({})
-
+            return None
     if rows:
-        return JSONResponse(_row_to_json_dict(cols, rows[0]))
-    return JSONResponse({})
+        return _row_to_json_dict(cols, rows[0])
+    return None
+
+
+def _load_fornecedores_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> list[dict]:
+    """Carrega fornecedores respeitando filtro temporal."""
+    cols: list[str] = []
+    rows: list = []
+    if _has_date_filter(payload):
+        if periodo == "ANO":
+            cached = read_web_cache("TOP_FORNECEDORES", municipio, periodo=periodo)
+            if cached:
+                cols, rows = cached
+        if not rows:
+            try:
+                cols, rows = _load_top_fornecedores_dated(_date_params(payload))
+            except Exception:
+                pass
+    else:
+        cached = read_web_cache("TOP_FORNECEDORES", municipio)
+        if cached:
+            cols, rows = cached
+        else:
+            try:
+                cols, rows = _load_top_fornecedores(municipio)
+            except Exception:
+                pass
+    return [_row_to_json_dict(cols, r) for r in rows]
+
+
+def _load_servidores_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> list[dict]:
+    """Carrega servidores respeitando filtro temporal."""
+    cols: list[str] = []
+    rows: list = []
+    if _has_date_filter(payload):
+        if periodo == "ANO":
+            cached = read_web_cache("TOP_SERVIDORES", municipio, periodo=periodo)
+            if cached:
+                cols, rows = cached
+        if not rows:
+            try:
+                cols, rows = _load_top_servidores(municipio, _date_params(payload))
+            except Exception:
+                pass
+    else:
+        cached = read_web_cache("TOP_SERVIDORES", municipio)
+        if cached:
+            cols, rows = cached
+        else:
+            try:
+                cols, rows = _load_top_servidores(municipio)
+            except Exception:
+                pass
+    return [_row_to_json_dict(cols, r) for r in rows]
+
+
+def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
+    """Computa o KPI summary completo para um municipio respeitando filtro temporal.
+
+    Tenta usar o cache pre-computado (KPI_SUMMARY ou ANO:KPI_SUMMARY) primeiro;
+    se nao houver cache, recarrega perfil/fornecedores/servidores e roda
+    compute_cidade_kpis em runtime. Em CUSTOM range, sempre recomputa live.
+    """
+    periodo = _get_periodo(payload)
+    if periodo in ("", "ANO"):
+        cached = read_web_cache("KPI_SUMMARY", municipio, periodo=periodo)
+        if cached:
+            cols, rows = cached
+            if rows and rows[0]:
+                blob = rows[0][0]
+                if isinstance(blob, str):
+                    import json as _json
+                    return _json.loads(blob)
+                if isinstance(blob, dict):
+                    return blob
+    perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+    canonical_mun = str(perfil.get("municipio") or municipio)
+    fornecedores = _load_fornecedores_for_kpis(canonical_mun, payload, periodo)
+    servidores = _load_servidores_for_kpis(canonical_mun, payload, periodo)
+    return compute_cidade_kpis(perfil, fornecedores, servidores)
+
+
+@router.post("/api/kpis/{municipio_path}")
+async def get_kpis(municipio_path: str, payload: MunicipioPayload):
+    """Retorna KPI summary respeitando filtro temporal.
+
+    Estrutura: {kpis: [...], top_concentracao: [...], pct_top1, pct_top5,
+    concentracao_red, score_unificado, score_breakdown}.
+
+    Usado pelo frontend para re-renderizar a hero strip + nota + card top-5
+    sempre que o usuario muda o filtro de data.
+    """
+    municipio = _normalize_municipio(municipio_path)
+    payload.municipio = municipio
+    try:
+        summary = _kpi_summary_payload(municipio, payload)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse(summary)
+
+
+@router.post("/api/perfil")
+async def get_perfil(payload: MunicipioPayload):
+    """Retorna perfil do municipio como JSON, com filtro temporal opcional."""
+    municipio = _normalize_municipio(payload.municipio)
+    periodo = _get_periodo(payload)
+    perfil = _load_perfil_for_kpis(municipio, payload, periodo)
+    return JSONResponse(perfil or {})
 
 
 @router.get("/api/heatmap/{municipio_path}")

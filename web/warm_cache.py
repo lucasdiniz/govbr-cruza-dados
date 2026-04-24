@@ -28,6 +28,7 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
 )
+from web.kpis.cidade import compute_cidade_kpis
 from web.queries.registry import CIDADE_QUERIES
 
 CACHE_TABLE = "web_cache"
@@ -123,6 +124,73 @@ def _upsert(cur, query_id: str, municipio: str, cols: list, rows: list):
     )
 
 
+def _row_to_dict(cols, row):
+    """Converte row do DB para dict, normalizando Decimal/date para JSON."""
+    d = {}
+    for c, v in zip(cols, row):
+        if hasattr(v, "as_tuple"):  # Decimal
+            d[c] = float(v)
+        elif hasattr(v, "isoformat"):  # date/datetime
+            d[c] = v.isoformat()
+        else:
+            d[c] = v
+    return d
+
+
+def _read_cache(conn, query_id: str, mun: str):
+    """Le do web_cache. Retorna (cols, rows) ou None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT columns, rows FROM {CACHE_TABLE} WHERE query_id=%s AND municipio=%s",
+            (query_id, mun),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    cols, rows = row
+    if isinstance(cols, str):
+        cols = json.loads(cols)
+    if isinstance(rows, str):
+        rows = json.loads(rows)
+    return cols, rows
+
+
+def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
+    """Computa o KPI_SUMMARY a partir das listas ja cacheadas (PERFIL/TOP_FORN/TOP_SERV)
+    e salva como JSON em uma unica linha {payload: {...}}.
+
+    periodo='' -> all-time (chaves PERFIL, TOP_FORNECEDORES, TOP_SERVIDORES);
+    periodo='ANO' -> ANO:* equivalentes.
+    """
+    prefix = f"{periodo}:" if periodo else ""
+    qid = f"{prefix}KPI_SUMMARY"
+    try:
+        perfil_cache = _read_cache(conn, f"{prefix}PERFIL", mun)
+        forn_cache = _read_cache(conn, f"{prefix}TOP_FORNECEDORES", mun)
+        serv_cache = _read_cache(conn, f"{prefix}TOP_SERVIDORES", mun)
+        perfil = {}
+        if perfil_cache and perfil_cache[1]:
+            perfil = _row_to_dict(perfil_cache[0], perfil_cache[1][0])
+        fornecedores = []
+        if forn_cache:
+            fcols, frows = forn_cache
+            fornecedores = [_row_to_dict(fcols, r) for r in frows]
+        servidores = []
+        if serv_cache:
+            scols, srows = serv_cache
+            servidores = [_row_to_dict(scols, r) for r in srows]
+        summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+        with conn.cursor() as cur:
+            _upsert(cur, qid, mun, ["payload"], [[json.dumps(summary, default=str)]])
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        if verbose:
+            print(f"  [ERR] {qid} mun={mun}: {str(e).split(chr(10))[0]}", flush=True)
+        return False
+
+
 def _run_and_cache(conn, query_id: str, sql: str, mun: str, timeout_sec: int, verbose: bool):
     """Executa uma query e salva no cache. Retorna True se ok."""
     try:
@@ -190,6 +258,12 @@ def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, a
     else:
         fail += 1
 
+    # KPI_SUMMARY ANO depende de PERFIL/TOP_FORN/TOP_SERV ANO ja cacheados acima
+    if _compute_and_cache_kpi_summary(conn, mun, "ANO", verbose):
+        ok += 1
+    else:
+        fail += 1
+
     for qdef in all_queries:
         if qdef.sql_full_dated:
             cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
@@ -221,6 +295,12 @@ def _warm_municipio_alltime(mun: str, idx: int, total: int, all_queries: list, v
         fail += 1
 
     if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, TIMEOUT_TOP_SERV, verbose):
+        ok += 1
+    else:
+        fail += 1
+
+    # KPI_SUMMARY all-time depende de PERFIL/TOP_FORN/TOP_SERV ja cacheados acima
+    if _compute_and_cache_kpi_summary(conn, mun, "", verbose):
         ok += 1
     else:
         fail += 1
