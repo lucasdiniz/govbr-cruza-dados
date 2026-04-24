@@ -655,24 +655,39 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     except Exception:
         kpi_ctx = None
     if kpi_ctx is None:
+        # Replica a estrategia de _kpi_summary_payload (usado por /api/kpis)
+        # para que SSR e API produzam o mesmo resultado mesmo quando apenas
+        # ANO:PERFIL esta no cache mas ANO:TOP_* faltam: la, _load_*_for_kpis
+        # cai para uma query live datada. Fazer o mesmo aqui evita primeiro
+        # paint com KPIs zerados/subestimados que depois sao corrigidos pela
+        # chamada subsequente a /api/kpis.
         fornecedores_dicts: list[dict] = []
         servidores_dicts: list[dict] = []
+        ano_payload: MunicipioPayload | None = None
+        if perfil_periodo == "ANO":
+            ano_payload = MunicipioPayload(
+                municipio=canonical_mun,
+                data_inicio=date_ctx["default_data_inicio"],
+                data_fim=date_ctx["default_data_fim"],
+            )
         try:
-            forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun, periodo="ANO")
-            if not forn_cached and not perfil_periodo:
+            if ano_payload is not None:
+                fornecedores_dicts = _load_fornecedores_for_kpis(canonical_mun, ano_payload, "ANO")
+            else:
                 forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
-            if forn_cached:
-                fcols, frows = forn_cached
-                fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
+                if forn_cached:
+                    fcols, frows = forn_cached
+                    fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
         except Exception:
             pass
         try:
-            serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun, periodo="ANO")
-            if not serv_cached and not perfil_periodo:
+            if ano_payload is not None:
+                servidores_dicts = _load_servidores_for_kpis(canonical_mun, ano_payload, "ANO")
+            else:
                 serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
-            if serv_cached:
-                scols, srows = serv_cached
-                servidores_dicts = [_row_to_dict(scols, r) for r in srows]
+                if serv_cached:
+                    scols, srows = serv_cached
+                    servidores_dicts = [_row_to_dict(scols, r) for r in srows]
         except Exception:
             pass
         kpi_ctx = compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
@@ -1008,11 +1023,14 @@ async def get_kpis(municipio_path: str, payload: MunicipioPayload):
 
 @router.post("/api/perfil")
 async def get_perfil(payload: MunicipioPayload):
-    """Retorna perfil do municipio como JSON, com filtro temporal opcional."""
+    """Retorna perfil do municipio + narrativa, com filtro temporal opcional."""
     municipio = _normalize_municipio(payload.municipio)
     periodo = _get_periodo(payload)
-    perfil = _load_perfil_for_kpis(municipio, payload, periodo)
-    return JSONResponse(perfil or {})
+    perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+    # Narrativa date-aware: o cliente substitui o HTML em #cityNarrative
+    # quando o filtro muda, evitando que o texto fique desalinhado dos KPIs.
+    narrative = build_narrative(perfil, get_pb_medias(), periodo=periodo) if perfil else None
+    return JSONResponse({"perfil": perfil, "narrative": narrative})
 
 
 @router.get("/api/heatmap/{municipio_path}")
