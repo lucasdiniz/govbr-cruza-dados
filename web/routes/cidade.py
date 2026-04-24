@@ -178,8 +178,19 @@ def _load_top_fornecedores_dated(params: dict):
 
 
 def _load_top_servidores(municipio: str, params: dict | None = None):
-    query = TOP_SERVIDORES_RISCO_DATED if params and "ano_mes_inicio" in params else TOP_SERVIDORES_RISCO
+    is_dated = bool(params and "ano_mes_inicio" in params)
+    query = TOP_SERVIDORES_RISCO_DATED if is_dated else TOP_SERVIDORES_RISCO
     qparams = params if params else {"municipio": municipio}
+    # IMPORTANTE: cache key DEVE incluir o range datado, caso contrario uma
+    # chamada all-time anterior poluia chamadas dated subsequentes (e
+    # vice-versa) — a cached_query bate so pela key. cached_query so cobre
+    # all-time; dated cai para execute_query direto (igual a
+    # _load_top_fornecedores_dated). Ver review gpt-5.5 PR #32.
+    if is_dated:
+        try:
+            return execute_query(query, qparams, timeout_sec=TIMEOUT_QUERY_HEAVY)
+        except (UndefinedTable, UndefinedColumn, QueryCanceled):
+            return _empty_top_servidores()
     try:
         return cached_query(
             f"serv:{municipio.casefold()}",
@@ -188,14 +199,18 @@ def _load_top_servidores(municipio: str, params: dict | None = None):
             timeout_sec=TIMEOUT_QUERY_HEAVY,
         )
     except QueryCanceled:
-        return [
-            "cpf_digitos_6", "nome_upper", "nome_servidor",
-            "municipios", "maior_salario", "cargo",
-            "qtd_empresas_socio", "cnpjs_socio",
-            "flag_conflito_interesses", "flag_multi_empresa",
-            "flag_bolsa_familia", "flag_duplo_vinculo_estado",
-            "flag_alto_salario_socio", "risco_score",
-        ], []
+        return _empty_top_servidores()
+
+
+def _empty_top_servidores():
+    return [
+        "cpf_digitos_6", "nome_upper", "nome_servidor",
+        "municipios", "maior_salario", "cargo",
+        "qtd_empresas_socio", "cnpjs_socio",
+        "flag_conflito_interesses", "flag_multi_empresa",
+        "flag_bolsa_familia", "flag_duplo_vinculo_estado",
+        "flag_alto_salario_socio", "risco_score",
+    ], []
 
 
 def _get_query_def(query_id: str):
