@@ -294,9 +294,14 @@
 
     function wireToggle() {
         document.querySelectorAll('.mt-btn').forEach(btn => {
+            btn.setAttribute('aria-pressed', btn.classList.contains('active') ? 'true' : 'false');
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.mt-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.mt-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-pressed', 'false');
+                });
                 btn.classList.add('active');
+                btn.setAttribute('aria-pressed', 'true');
                 state.metric = btn.dataset.metric;
                 const note = document.getElementById('mapa-cutoff-note');
                 if (note) {
@@ -307,18 +312,44 @@
         });
     }
 
-    async function init() {
-        const [geojsonRes, dataRes, popRes] = await Promise.all([
-            fetch('/static/geo/pb-municipios.geojson').then(r => r.json()),
-            fetch('/api/mapa/pb').then(r => r.json()),
-            fetch('/static/geo/pb-populacao.json').then(r => r.json()),
-        ]);
-        state.geojson = geojsonRes;
-        state.data = dataRes;
-        state.dataIdx = buildDataIndex(dataRes);
-        state.pop = popRes;
-        computeAllMetricBreaks();
+    async function fetchJson(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${url} retornou ${res.status}`);
+        return res.json();
+    }
 
+    function renderMapError(message) {
+        const el = document.getElementById('mapa-pb');
+        if (el) {
+            el.innerHTML = `<div class="mapa-error" role="status">${message}</div>`;
+        }
+        const legend = document.getElementById('mapa-legend');
+        if (legend) legend.innerHTML = '';
+    }
+
+    async function init() {
+        let dataWarning = false;
+        try {
+            state.geojson = await fetchJson('/static/geo/pb-municipios.geojson');
+            const [dataRes, popRes] = await Promise.allSettled([
+                fetchJson('/api/mapa/pb'),
+                fetchJson('/static/geo/pb-populacao.json'),
+            ]);
+            if (dataRes.status === 'fulfilled') {
+                state.data = dataRes.value;
+                state.dataIdx = buildDataIndex(dataRes.value);
+            } else {
+                state.data = {};
+                state.dataIdx = {};
+                dataWarning = true;
+            }
+            state.pop = popRes.status === 'fulfilled' ? popRes.value : {};
+        } catch (err) {
+            console.warn('mapa init failed', err);
+            renderMapError('Nao foi possivel carregar o mapa agora. Tente novamente em instantes.');
+            return;
+        }
+        computeAllMetricBreaks();
         const map = L.map('mapa-pb', {
             zoomControl: true,
             attributionControl: false,
@@ -344,6 +375,10 @@
         wireMetricDescToggle();
         renderLegend();
         renderMetricDesc();
+        if (dataWarning) {
+            const note = document.getElementById('mapa-cutoff-note');
+            if (note) note.textContent = 'Mapa carregado, mas os indicadores municipais nao responderam agora.';
+        }
     }
 
     document.addEventListener('DOMContentLoaded', init);

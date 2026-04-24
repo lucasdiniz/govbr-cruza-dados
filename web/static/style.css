@@ -1398,6 +1398,17 @@ td.num {
     border: none;
     border-radius: 0;
 }
+.mapa-error {
+    display: grid;
+    place-items: center;
+    min-height: inherit;
+    padding: 1rem;
+    color: #cbd5e1;
+    text-align: center;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 12px;
+}
 .mapa-tooltip {
     background: #0b1220 !important;
     border: 1px solid #2a3a5a !important;
@@ -3457,6 +3468,23 @@ html.audit-mode .denuncia-cta { display: none; }
     gap: .65rem;
 }
 
+.priority-guide {
+    margin-top: 1rem;
+    border-left: 3px solid rgba(96, 165, 250, 0.7);
+}
+.priority-guide .card-title {
+    margin-bottom: .35rem;
+}
+.priority-links {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin-top: .8rem;
+}
+.priority-panels {
+    margin-top: 1rem;
+}
+
 .kpi-card {
     position: relative;
     display: flex;
@@ -3556,36 +3584,14 @@ body:not(.dark-page) .kpi-card.severity-neutral {
 body:not(.dark-page) .kpi-card.severity-neutral .kpi-card-value { color: #1e293b; }
 
 @media (max-width: 640px) {
-    .city-kpi-strip {
-        position: relative;
-    }
     .city-kpi-grid {
-        /* horizontal scroll-snap on mobile to avoid 7-card vertical pile */
-        display: flex;
+        grid-template-columns: 1fr;
         gap: .55rem;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        scrollbar-width: none;
-        padding-bottom: .35rem;
-        -webkit-overflow-scrolling: touch;
-    }
-    .city-kpi-grid::-webkit-scrollbar { display: none; }
-    /* Right-edge fade gives a clear hint that more cards exist off-screen */
-    .city-kpi-strip::after {
-        content: "";
-        position: absolute;
-        top: 2.5rem;
-        right: 0;
-        bottom: 0;
-        width: 32px;
-        pointer-events: none;
-        background: linear-gradient(90deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.85) 100%);
     }
     .kpi-card {
-        flex: 0 0 75%;
-        min-width: 220px;
-        scroll-snap-align: start;
+        min-height: auto;
     }
+    .priority-links { display: grid; }
 }
 
 /* Bar chart fill colors used by concentracao card */

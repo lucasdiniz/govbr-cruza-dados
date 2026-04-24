@@ -354,7 +354,8 @@ def compute_cidade_kpis(
     ctx = _build_context(perfil, fornecedores, servidores)
 
     rendered: list[dict] = []
-    for kdef in CIDADE_KPIS:
+    severity_rank = {"red": 0, "yellow": 1, "neutral": 2}
+    for idx, kdef in enumerate(CIDADE_KPIS):
         result = kdef.compute(ctx)
         rendered.append({
             "id": kdef.id,
@@ -362,8 +363,12 @@ def compute_cidade_kpis(
             "label_auditor": kdef.label_auditor,
             "href": kdef.href,
             "tooltip": kdef.tooltip,
+            "_order": idx,
             **result,
         })
+    rendered.sort(key=lambda k: (severity_rank.get(k.get("severity"), 2), k["_order"]))
+    for k in rendered:
+        k.pop("_order", None)
 
     # Score unificado live (mesma formula da MV mv_municipio_pb_kpi_score,
     # mas calculado a partir dos dados ja filtrados por periodo). Quando o
