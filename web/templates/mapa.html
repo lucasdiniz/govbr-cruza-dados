@@ -8,8 +8,8 @@
     <div class="mapa-header">
         <h1>Paraiba - Panorama municipal</h1>
         <p class="mapa-sub">
-            <span class="citizen-only">223 municipios da Paraiba coloridos pelo indicador escolhido. Clique em um municipio para ver o detalhe.</span>
-            <span class="auditor-only">223 municipios pintados por indicador. Clique em um municipio para abrir o detalhe.</span>
+            <span class="citizen-only">{{ municipio_total_pb | default(223, true) }} municipios da Paraiba coloridos pelo indicador escolhido. Clique em um municipio para ver o detalhe.</span>
+            <span class="auditor-only">{{ municipio_total_pb | default(223, true) }} municipios pintados por indicador. Clique em um municipio para abrir o detalhe.</span>
         </p>
         <div class="mapa-toggle" role="tablist">
             <button class="mt-btn active" data-metric="risco" title="Score composto (0-100) combinando varios sinais"><span class="citizen-only">Risco</span><span class="auditor-only">Risco composto</span></button>

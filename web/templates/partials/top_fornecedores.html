@@ -40,7 +40,7 @@
             <p class="table-meta text-sm text-muted" data-table-meta></p>
         </div>
         <div class="tbl-wrap">
-            <table>
+            <table class="stack-mobile">
                 <thead>
                     <tr>
                         <th><span class="citizen-only">Empresa</span><span class="auditor-only">Fornecedor</span></th>
@@ -60,11 +60,11 @@
                         data-fornecedor-cpf-cnpj="{{ f.cnpj_completo|default('', true) }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
                         data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}">
-                        <td>{{ f.nome_credor|clean_text }}</td>
-                        <td class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
-                        <td class="text-right">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
-                        <td class="text-right auditor-only">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
-                        <td>
+                        <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}</td>
+                        <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
+                        <td data-label="Recebido" class="text-right num">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
+                        <td data-label="Empenhos" class="text-right auditor-only num">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
+                        <td data-label="Sinais" class="stack-badges">
                             {% set scope_suffix = '' %}
                             {% if f.abrangencia_sancao_info %}
                                 {% set info_clean = f.abrangencia_sancao_info|replace('!', '') %}

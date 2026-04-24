@@ -12,6 +12,7 @@ DROP MATERIALIZED VIEW IF EXISTS mv_empresa_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_risco CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_base CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_mapa CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_kpi_score CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_risco CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_pessoa_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_empresa_governo CASCADE;
@@ -875,10 +876,254 @@ CREATE INDEX idx_mv_rede_entidade ON mv_rede_pb(entidade_id);
 
 
 -- -----------------------------------------------------------------------------
+-- 6b. mv_municipio_pb_kpi_score: Score unificado de atencao por municipio PB
+--     Calcula 8 KPIs investigativos por municipio + score 0-100 que alimenta
+--     tanto o mapa coropletico quanto a "Nota de atencao" da pagina /search/cidade.
+--
+--     Pesos e thresholds: ver web/kpis/municipio_pb.py (fonte de verdade).
+--     A SQL aqui PRECISA ficar em sincronia com sql_score_expression() naquele modulo.
+--
+--     Lado servidor: usa mv_servidor_pb_risco (UNNEST municipios) + ceaf_expulsao.
+--     Lado fornecedor: recomputa de tce_pb_despesa+estabelecimento+ceis/cnep/pgfn
+--     (mesmo padrao das CTEs cnpj_irregular / forn_mun em mv_municipio_pb_mapa,
+--      duplicacao aceitavel; otimizacao via _tmp tables compartilhadas pode vir depois).
+-- -----------------------------------------------------------------------------
+CREATE MATERIALIZED VIEW mv_municipio_pb_kpi_score AS
+WITH
+-- Universo de municipios PB com gasto > 0 a partir de 2022
+mun AS MATERIALIZED (
+    SELECT municipio,
+           SUM(valor_pago) AS total_pago_municipio
+    FROM tce_pb_despesa
+    WHERE municipio IS NOT NULL
+      AND ano >= 2022
+      AND valor_pago > 0
+    GROUP BY municipio
+),
+-- ---- Lado fornecedor ----
+forn_mun AS MATERIALIZED (
+    SELECT d.municipio, d.cnpj_basico,
+           SUM(d.valor_pago) AS pago
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico IS NOT NULL
+      AND d.ano >= 2022
+      AND d.valor_pago > 0
+    GROUP BY d.municipio, d.cnpj_basico
+),
+top5 AS (
+    SELECT municipio,
+           ROUND(
+             100.0 * SUM(pago) FILTER (WHERE rn <= 5) / NULLIF(SUM(pago), 0),
+             1
+           ) AS pct_top5
+    FROM (
+        SELECT municipio, pago,
+               ROW_NUMBER() OVER (PARTITION BY municipio ORDER BY pago DESC) AS rn
+        FROM forn_mun
+    ) x
+    GROUP BY municipio
+),
+-- Universo de sancoes vigentes nos ultimos 3 anos com escopo extraido.
+-- Usado pelos dois KPIs de sancao abaixo. Filtro temporal aplicado depois
+-- (na hora de joinar com data_empenho).
+sancoes_base AS MATERIALIZED (
+    SELECT cnpj_basico, dt_inicio_sancao, dt_final_sancao,
+           categoria_sancao, abrangencia_sancao,
+           esfera_orgao_sancionador, orgao_sancionador
+    FROM (
+        SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
+               dt_inicio_sancao, dt_final_sancao,
+               categoria_sancao, abrangencia_sancao,
+               esfera_orgao_sancionador, orgao_sancionador
+        FROM ceis_sancao
+        WHERE LENGTH(cpf_cnpj_sancionado) = 14
+          AND (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE - INTERVAL '3 years')
+        UNION ALL
+        SELECT LEFT(cpf_cnpj_sancionado, 8),
+               dt_inicio_sancao, dt_final_sancao,
+               categoria_sancao, abrangencia_sancao,
+               esfera_orgao_sancionador, orgao_sancionador
+        FROM cnep_sancao
+        WHERE LENGTH(cpf_cnpj_sancionado) = 14
+          AND (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE - INTERVAL '3 years')
+    ) u
+),
+-- Empenhos brutos por (municipio, cnpj_basico, data_empenho) usados nos joins
+-- temporais de sancao. Restringe ao recorte 2022+ (mesmo da CTE forn_mun).
+desp_eventos AS MATERIALIZED (
+    SELECT d.municipio, d.cnpj_basico, d.data_empenho, d.valor_pago
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico IS NOT NULL
+      AND d.ano >= 2022
+      AND d.valor_pago > 0
+      AND d.data_empenho IS NOT NULL
+),
+-- Fornecedor com sancao APLICAVEL ao municipio na data do empenho.
+-- Aplicavel = inidoneidade OU acordo de leniencia (CNEP) OU abrangencia nacional
+-- OU esfera MUNICIPAL com nome do orgao sancionador casando com o municipio.
+-- Mesma logica usada no drill-down individual em web/queries/cidade.py:6-48.
+sancao_municipio_count AS (
+    SELECT d.municipio, COUNT(DISTINCT d.cnpj_basico) AS qtd
+    FROM desp_eventos d
+    WHERE EXISTS (
+        SELECT 1 FROM sancoes_base san
+        WHERE san.cnpj_basico = d.cnpj_basico
+          AND d.data_empenho >= san.dt_inicio_sancao
+          AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+          AND (
+              san.categoria_sancao ILIKE '%inidone%'
+              OR san.categoria_sancao ILIKE '%leniencia%'
+              OR san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
+              OR (san.esfera_orgao_sancionador = 'MUNICIPAL'
+                  AND UPPER(unaccent(san.orgao_sancionador)) LIKE
+                      '%' || UPPER(unaccent(d.municipio)) || '%')
+          )
+    )
+    GROUP BY d.municipio
+),
+-- Fornecedor com QUALQUER sancao vigente no momento de algum empenho no
+-- municipio (nao filtra por aplicabilidade). Indica risco mesmo se sancao
+-- nao tiver alcance juridico no municipio especifico.
+sancao_qualquer_count AS (
+    SELECT d.municipio, COUNT(DISTINCT d.cnpj_basico) AS qtd
+    FROM desp_eventos d
+    WHERE EXISTS (
+        SELECT 1 FROM sancoes_base san
+        WHERE san.cnpj_basico = d.cnpj_basico
+          AND d.data_empenho >= san.dt_inicio_sancao
+          AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+    )
+    GROUP BY d.municipio
+),
+inativas_count AS (
+    SELECT f.municipio, COUNT(DISTINCT f.cnpj_basico) AS qtd
+    FROM forn_mun f
+    WHERE EXISTS (
+        SELECT 1 FROM estabelecimento e
+        WHERE e.cnpj_basico = f.cnpj_basico
+          AND e.cnpj_ordem = '0001'
+          AND e.situacao_cadastral != '2'
+    )
+    GROUP BY f.municipio
+),
+-- ---- Lado servidor ----
+-- CEAF: cruza mv_servidor_pb_base com ceaf_expulsao por (cpf_digitos_6, nome_upper).
+-- IMPORTANTE: ceaf_expulsao.cpf_cnpj_norm tem 11 digitos (CPF inteiro). O equivalente
+-- ao cpf_digitos_6 vem da coluna ceaf_expulsao.cpf_digitos_6 (populada por
+-- etl/15_normalizar.py). Sempre joinar tambem por nome para evitar colisao
+-- (6 digitos colidem entre pessoas distintas).
+ceaf_match AS MATERIALIZED (
+    SELECT srv.cpf_digitos_6, srv.nome_upper, srv.municipios
+    FROM mv_servidor_pb_base srv
+    JOIN ceaf_expulsao ce
+      ON ce.cpf_digitos_6 = srv.cpf_digitos_6
+     AND UPPER(unaccent(ce.nome_sancionado)) = srv.nome_upper
+    WHERE ce.cpf_digitos_6 IS NOT NULL
+),
+ceaf_por_municipio AS (
+    SELECT m AS municipio, COUNT(DISTINCT cpf_digitos_6) AS qtd
+    FROM ceaf_match c, unnest(c.municipios) AS m
+    GROUP BY m
+),
+-- Conflito de interesses por municipio (sócio servidor recebendo no mesmo municipio).
+-- Reusa _tmp_socio_empresas. Granularidade diferente de _tmp_conflito (que agrega
+-- total por servidor) — aqui precisamos da relacao (municipio, cnpj_basico,
+-- servidor_socio) para distinguir count de servidores X soma de pagamentos sem
+-- duplo-contagem.
+-- Sempre joinar por (cpf_digitos_6, nome_upper) para evitar colisao de 6 digitos.
+socio_cnpj_mun AS MATERIALIZED (
+    SELECT srv.cpf_digitos_6, srv.nome_upper,
+           m AS municipio, cnpj.cnpj_basico
+    FROM _tmp_socio_empresas se
+    JOIN mv_servidor_pb_base srv
+      ON srv.cpf_digitos_6 = se.cpf_digitos_6
+     AND srv.nome_upper    = se.nome_upper
+    CROSS JOIN LATERAL unnest(se.cnpjs)        AS cnpj(cnpj_basico)
+    CROSS JOIN LATERAL unnest(srv.municipios)  AS m
+),
+-- Quantidade de servidores socios distintos por municipio.
+socio_qtd AS (
+    SELECT municipio,
+           COUNT(DISTINCT (cpf_digitos_6, nome_upper)) AS qtd_socio
+    FROM socio_cnpj_mun
+    GROUP BY municipio
+),
+-- Total pago por municipio para empresas com socios servidores no mesmo
+-- municipio. DISTINCT (municipio, cnpj_basico) ANTES do SUM evita contar o
+-- mesmo pagamento N vezes quando a empresa tem N servidores socios.
+socio_pago AS (
+    SELECT s.municipio, SUM(fm.pago) AS total_pago_socios
+    FROM (SELECT DISTINCT municipio, cnpj_basico FROM socio_cnpj_mun) s
+    JOIN forn_mun fm
+      ON fm.municipio   = s.municipio
+     AND fm.cnpj_basico = s.cnpj_basico
+    GROUP BY s.municipio
+),
+bf_por_municipio AS (
+    SELECT m AS municipio,
+           COUNT(DISTINCT (srv.cpf_digitos_6, srv.nome_upper)) AS qtd
+    FROM mv_servidor_pb_risco srv, unnest(srv.municipios) AS m
+    WHERE srv.flag_bolsa_familia
+      AND srv.maior_salario > 5000
+    GROUP BY m
+)
+SELECT
+    mun.municipio,
+    mun.total_pago_municipio,
+    -- Valores brutos dos 8 KPIs (mesmas colunas que web/kpis/municipio_pb.py espera)
+    COALESCE(sm.qtd, 0)            AS qtd_sancao_municipio,
+    COALESCE(sq.qtd, 0)            AS qtd_sancao_qualquer,
+    COALESCE(inv.qtd, 0)           AS qtd_inativas_recebendo,
+    COALESCE(ce.qtd, 0)            AS qtd_ceaf_expulsos,
+    COALESCE(sqt.qtd_socio, 0)     AS qtd_socio_recebendo,
+    COALESCE(sp.total_pago_socios, 0) AS total_pago_socios,
+    -- Arredondado a 2 casas. ESTA coluna eh a que tanto Python (compute_score_unificado)
+    -- quanto a expressao SQL abaixo consomem para calcular o componente kpi-pago-socios
+    -- — manter as duas leituras identicas para evitar drift Python/SQL.
+    ROUND(
+      100.0 * COALESCE(sp.total_pago_socios, 0) / NULLIF(mun.total_pago_municipio, 0),
+      2
+    ) AS pct_pago_socios,
+    COALESCE(bf.qtd, 0)            AS qtd_bf_alto_salario,
+    COALESCE(t5.pct_top5, 0)       AS pct_top5,
+    -- Score unificado 0-100. DEVE permanecer identico a
+    -- web/kpis/municipio_pb.py:sql_score_expression() — qualquer mudanca aqui
+    -- precisa ser refletida no Python (e vice-versa). Pesos somam 100.
+    GREATEST(0, LEAST(100, ROUND(
+        15 * POWER(LEAST(1.0, COALESCE(sm.qtd, 0)::numeric / 3.0), 0.6)
+      + 15 * POWER(LEAST(1.0, COALESCE(ce.qtd, 0)::numeric / 5.0), 0.6)
+      + 14 * POWER(LEAST(1.0, COALESCE(sqt.qtd_socio, 0)::numeric / 5.0), 0.6)
+      -- pct_pago_socios JA arredondada a 2 casas (linha acima).
+      + 13 * LEAST(1.0,
+            ROUND(
+              100.0 * COALESCE(sp.total_pago_socios, 0) / NULLIF(mun.total_pago_municipio, 0),
+              2
+            ) / 5.0
+        )
+      + 15 * LEAST(1.0, COALESCE(t5.pct_top5, 0)::numeric / 70.0)
+      + 10 * POWER(LEAST(1.0, COALESCE(inv.qtd, 0)::numeric / 5.0), 0.6)
+      + 10 * POWER(LEAST(1.0, COALESCE(bf.qtd, 0)::numeric / 5.0), 0.6)
+      +  8 * POWER(LEAST(1.0, COALESCE(sq.qtd, 0)::numeric / 10.0), 0.6)
+    )))::SMALLINT AS risco_score_unificado
+FROM mun
+LEFT JOIN sancao_municipio_count sm ON sm.municipio = mun.municipio
+LEFT JOIN sancao_qualquer_count sq ON sq.municipio = mun.municipio
+LEFT JOIN inativas_count inv ON inv.municipio = mun.municipio
+LEFT JOIN ceaf_por_municipio ce ON ce.municipio = mun.municipio
+LEFT JOIN socio_qtd sqt ON sqt.municipio = mun.municipio
+LEFT JOIN socio_pago sp ON sp.municipio = mun.municipio
+LEFT JOIN bf_por_municipio bf ON bf.municipio = mun.municipio
+LEFT JOIN top5 t5 ON t5.municipio = mun.municipio;
+
+CREATE UNIQUE INDEX idx_mv_mun_kpi_municipio ON mv_municipio_pb_kpi_score(municipio);
+CREATE INDEX idx_mv_mun_kpi_score ON mv_municipio_pb_kpi_score(risco_score_unificado DESC);
+
+
+-- -----------------------------------------------------------------------------
 -- 7. mv_municipio_pb_mapa: Métricas agregadas para o mapa coroplético PB
---    5 camadas: risco composto, % irregulares, % sem licitação, HHI top-5, per capita
---    Depende de: mv_municipio_pb_risco, tce_pb_despesa, estabelecimento,
---                ceis_sancao, cnep_sancao, pgfn_divida
+--    5 camadas: risco unificado, % irregulares, % sem licitação, HHI top-5, per capita
+--    Depende de: mv_municipio_pb_risco (legado), mv_municipio_pb_kpi_score (score unificado),
+--                tce_pb_despesa, estabelecimento, ceis_sancao, cnep_sancao, pgfn_divida
 -- -----------------------------------------------------------------------------
 CREATE MATERIALIZED VIEW mv_municipio_pb_mapa AS
 WITH
@@ -936,7 +1181,14 @@ irreg AS (
 )
 SELECT
     r.municipio,
-    r.risco_score,
+    -- risco_score agora vem do score unificado (8 KPIs investigativos).
+    -- COALESCE protege apenas municipios sem linha em mv_municipio_pb_kpi_score
+    -- (ainda nao recalculados). Se a MV nao existir, esta view falha com
+    -- UndefinedTable — phase 18 (deploy.yml etl_phase=18) DEVE rodar antes do
+    -- merge entrar em producao para criar mv_municipio_pb_kpi_score.
+    COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,
+    r.risco_score AS risco_score_tce,
+    k.risco_score_unificado,
     r.pct_sem_licitacao,
     r.total_pago,
     COALESCE(h.pct_top5, 0) AS pct_top5,
@@ -948,7 +1200,8 @@ SELECT
     COALESCE(h.total_pago_pj, 0) AS total_pago_pj
 FROM mv_municipio_pb_risco r
 LEFT JOIN hhi h ON h.municipio = r.municipio
-LEFT JOIN irreg i ON i.municipio = r.municipio;
+LEFT JOIN irreg i ON i.municipio = r.municipio
+LEFT JOIN mv_municipio_pb_kpi_score k ON k.municipio = r.municipio;
 
 CREATE UNIQUE INDEX idx_mv_mun_mapa_municipio ON mv_municipio_pb_mapa(municipio);
 
@@ -1097,6 +1350,7 @@ GRANT SELECT ON pncp_municipio TO govbr;
 --
 -- Layer 2 (após Layer 1, ~20min):
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_pb
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_kpi_score
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_mapa
 --   Para mv_rede_pb: DROP + re-executar steps (abordagem stepwise)
 --

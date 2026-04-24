@@ -28,42 +28,55 @@
 {% set pct_pago = (total_pago / total_empenhado * 100) if total_empenhado else 0 %}
 {% set gap_financeiro = total_empenhado - total_pago %}
 
+<div class="date-filter-bar" id="dateFilterBar" role="group" aria-label="Filtro de periodo">
+    <div class="date-filter-inputs">
+        <label class="date-field"><span>De</span>
+            <input type="text" id="dateInicio" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_inicio }}">
+        </label>
+        <label class="date-field"><span>Ate</span>
+            <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
+        </label>
+        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+    </div>
+    <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+        <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
+        <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
+        <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
+        <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
+    </div>
+</div>
+
 <section class="city-hero card">
     <div class="city-hero-copy">
         <p class="eyebrow">Panorama do municipio</p>
         <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
-        {% if ranking %}
-        <a href="/mapa" class="rank-badge rank-{{ ranking.severity }}" title="Posicao no ranking de {{ ranking.total }} municipios da Paraiba por nota de atencao">
-            <span class="rank-badge-icon" aria-hidden="true">&#127941;</span>
-            <span class="rank-badge-text">
-                <span class="citizen-only">Posi&ccedil;&atilde;o <strong>{{ ranking.posicao }}</strong> de {{ ranking.total }} &mdash; {{ ranking.severity_label }}</span>
-                <span class="auditor-only">Rank {{ ranking.posicao }}/{{ ranking.total }} &middot; risco_score {{ ranking.risco_score }}</span>
-            </span>
-        </a>
-        {% endif %}
+        <div class="city-hero-actions">
+            <button
+                type="button"
+                class="share-btn share-btn-inline"
+                data-share
+                data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
+                data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
+                aria-label="Compartilhar este municipio"
+            >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Compartilhar
+            </button>
+        </div>
         <p class="city-subtitle">
             <span class="citizen-only">Veja como a prefeitura de {{ perfil.municipio }} usa o dinheiro p&uacute;blico — com quem gasta, se h&aacute; sinais de irregularidade, e onde v&atilde;o os maiores valores.</span>
             <span class="auditor-only">Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.</span>
         </p>
         {% if narrative %}
-        <p class="city-narrative">
-            <span class="citizen-only">{{ narrative.citizen|safe }}</span>
-            <span class="auditor-only">{{ narrative.auditor|safe }}</span>
-        </p>
+        <div class="city-narrative-block" id="cityNarrativeBlock">
+            <p class="city-narrative" id="cityNarrative">
+                <span class="citizen-only">{{ narrative.citizen|safe }}</span>
+                <span class="auditor-only">{{ narrative.auditor|safe }}</span>
+            </p>
+        </div>
         {% endif %}
-        <button
-            type="button"
-            class="share-btn"
-            data-share
-            data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
-            data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
-            aria-label="Compartilhar este municipio"
-        >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Compartilhar
-        </button>
     </div>
     <div class="hero-stats">
         <div class="hero-stat">
@@ -90,21 +103,90 @@
     </div>
 </section>
 
-<div class="date-filter-bar card" id="dateFilterBar">
-    <div class="date-filter-fields">
-        <label class="date-field">
-            <span>De</span>
-            <input type="date" id="dateInicio" value="{{ default_data_inicio }}">
-        </label>
-        <label class="date-field">
-            <span>Ate</span>
-            <input type="date" id="dateFim" value="{{ default_data_fim }}">
-        </label>
-        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
-        <button class="btn btn-outline btn-sm" id="btnLimparData" style="display:none">Todos os periodos</button>
+{# ── KPI strip investigativa ── #}
+{% if kpis %}
+<section class="city-kpi-strip" aria-label="Sinais investigativos prioritarios">
+    <header class="city-kpi-head">
+        <h2 class="city-kpi-title">
+            <span class="citizen-only">Sinais que merecem aten&ccedil;&atilde;o</span>
+            <span class="auditor-only">Indicadores investigativos cruzados</span>
+        </h2>
+        <p class="city-kpi-sub text-sm text-muted">
+            <span class="citizen-only">Toque em um card para ver o detalhamento abaixo.</span>
+            <span class="auditor-only">Clique para ancorar na sec&ccedil;&atilde;o correspondente do relatorio.</span>
+        </p>
+    </header>
+    <div class="city-kpi-grid">
+        {% for k in kpis %}
+        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link>
+            <span class="kpi-card-label">
+                <span class="citizen-only">{{ k.label_citizen }}</span>
+                <span class="auditor-only">{{ k.label_auditor }}</span>
+            </span>
+            <span class="kpi-card-value">
+                {% if k.is_money %}{{ k.value|short_brl }}{% else %}{{ k.value|short_number }}{% endif %}{% if k.value_suffix %}<span class="kpi-card-suffix">{{ k.value_suffix }}</span>{% endif %}
+            </span>
+            {% if k.value_extra %}
+            <span class="kpi-card-extra">{{ k.value_extra }}</span>
+            {% endif %}
+            <span class="kpi-card-tip" data-tip="{{ k.tooltip }}" tabindex="0" aria-label="Saiba mais">?</span>
+        </a>
+        {% endfor %}
     </div>
-    <span class="text-sm text-muted" id="dateFilterStatus"></span>
-</div>
+</section>
+{% endif %}
+
+{# ── Card: Concentracao de fornecedores (barras horizontais) ── #}
+{% if top_concentracao %}
+<section class="card city-concentracao{% if concentracao_red %} concentracao-alerta{% endif %}" id="concentracao-fornecedores" aria-label="Concentracao de fornecedores">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Quem ganha mais dinheiro aqui</span>
+                <span class="auditor-only">Concentracao do volume pago</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">As 5 empresas que mais receberam</span>
+                <span class="auditor-only">Top 5 fornecedores por valor pago</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Quando uma s&oacute; empresa fica com muito do dinheiro, vale verificar se houve concorr&ecirc;ncia de verdade. Acima de 20% para uma empresa &eacute; sinal de aten&ccedil;&atilde;o.</span>
+                <span class="auditor-only">Concentra&ccedil;&atilde;o anormal pode indicar direcionamento de licita&ccedil;&otilde;es. Top 1 &gt; 20% ou Top 5 &gt; 60% sao limiares de alerta usuais.</span>
+            </p>
+        </div>
+        <div class="section-summary">
+            <p class="text-sm text-muted">Top 5</p>
+            <p class="insight-value{% if pct_top5 > 60 %} text-red{% endif %}">{{ "%.0f"|format(pct_top5) }}%</p>
+            <p class="text-sm text-muted">do dinheiro pago</p>
+        </div>
+    </div>
+    <div class="chart-bars chart-bars-concentracao">
+        {% set medals = {1: '&#129351;', 2: '&#129352;', 3: '&#129353;'} %}
+        {% for c in top_concentracao %}
+        <div class="chart-bar-row" data-cnpj-completo="{{ c.cnpj_completo or '' }}" data-cnpj-basico="{{ c.cnpj_basico or '' }}" data-nome="{{ c.nome }}">
+            <span class="chart-bar-label" title="{{ c.nome }}">
+                <span class="chart-bar-rank{% if c.rank <= 3 %} chart-bar-rank-medal{% endif %}" aria-label="Posicao {{ c.rank }}">
+                    {% if c.rank in medals %}{{ medals[c.rank]|safe }}{% else %}<span class="chart-bar-rank-num">{{ c.rank }}</span>{% endif %}
+                </span>
+                {{ c.nome|truncate(40, True) }}
+            </span>
+            <div class="chart-bar-track">
+                <div class="chart-bar-fill {% if c.is_red %}fill-red{% else %}fill-blue{% endif %}" style="width: {{ c.pct }}%"></div>
+            </div>
+            <span class="chart-bar-meta">
+                <strong>{{ "%.1f"|format(c.pct) }}%</strong>
+                <span class="text-sm text-muted">{{ c.total_pago|short_brl }}</span>
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="text-sm text-muted city-concentracao-cta">
+        <a href="#fornecedores-irregulares">Ver lista completa de fornecedores &rarr;</a>
+    </p>
+</section>
+{% endif %}
+
+
 
 <section class="insight-grid">
     <article class="insight-card">
@@ -168,7 +250,36 @@
     </article>
 </section>
 
-{% include "partials/destaques.html" %}
+
+
+<section class="card report-overview" id="reportOverview">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Onde investigar primeiro</span>
+                <span class="auditor-only">Indice de investigacao</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">Navegue pelos temas desta cidade</span>
+                <span class="auditor-only">Temas e blocos do relatorio</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Escolha um tema para abrir so os achados daquela area e evitar rolagem longa.</span>
+                <span class="auditor-only">Use o indice abaixo para expandir apenas a area desejada e escanear o relatorio com menos scroll.</span>
+            </p>
+        </div>
+    </div>
+    <div class="report-index">
+        {% for section in report_sections %}
+        <a href="#{{ section.slug }}" class="report-index-link" data-report-link="{{ section.slug }}">
+            <span class="report-index-title">
+                {% if section.title_lay %}<span class="citizen-only">{{ section.title_lay|safe }}</span><span class="auditor-only">{{ section.title }}</span>{% else %}{{ section.title }}{% endif %}
+            </span>
+            <span class="report-index-meta text-sm text-muted" data-report-count>Carregando...</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
 
 <section class="denuncia-cta citizen-only" aria-label="Como denunciar">
     <div class="denuncia-cta-inner">
@@ -270,7 +381,7 @@
         </div>
     </section>
 
-    <section class="card" style="grid-column: 1 / -1">
+    <section class="card" id="servidores" style="grid-column: 1 / -1">
         <div class="section-head">
             <div>
                 <p class="eyebrow">
@@ -299,7 +410,7 @@
 <section class="report-sections" id="relatorio">
     {% for section in report_sections %}
     <article
-        class="card report-section"
+        class="card report-section{% if not loop.first %} report-collapsed{% endif %}"
         id="{{ section.slug }}"
         data-section-slug="{{ section.slug }}"
         data-section-title="{{ section.title }}"
@@ -323,11 +434,15 @@
                     <span class="citizen-only">sinais encontrados</span>
                     <span class="auditor-only">achados nesta area</span>
                 </span>
+                <button type="button" class="section-collapse-toggle" data-section-toggle aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                    <span class="section-toggle-closed">Abrir</span>
+                    <span class="section-toggle-open">Ocultar</span>
+                </button>
             </div>
         </div>
         <div class="finding-list">
             {% for query in section.queries %}
-            <section class="finding-card loading" data-query="{{ query.id }}">
+            <section class="finding-card loading collapsed" data-query="{{ query.id }}">
                 <div class="finding-head">
                     <div>
                         <h3 class="finding-title">
@@ -379,7 +494,13 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+    const _di = document.getElementById('dateInicio')?.value || '';
+    const _df = document.getElementById('dateFim')?.value || '';
+    if (_di && _df) {
+        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }}, _di, _df);
+    } else {
+        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
+    }
 });
 // Close dialog on backdrop click
 document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {

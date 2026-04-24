@@ -2,6 +2,18 @@
 
 ## Pendente
 
+### Score unificado de risco (PR #31 — fixes do review gpt-5.4)
+- [x] **BUG: CEAF JOIN quebrado** (`sql/12_views.sql`) — corrigido: agora `ce.cpf_digitos_6 = srv.cpf_digitos_6 AND nome_upper`
+- [x] **BUG: KPIs sancao sem janela temporal + esfera MUNICIPAL ausente** (`sql/12_views.sql`) — corrigido: `desp_eventos` com filtro `data_empenho` na vigencia + clausula `esfera_orgao_sancionador='MUNICIPAL'` com match de nome
+- [x] **BUG: pct_pago_socios conta pagamento N vezes** (`sql/12_views.sql`) — corrigido: `(SELECT DISTINCT municipio, cnpj_basico FROM socio_cnpj_mun)` antes do `SUM`
+- [x] **BUG: Drift Python ↔ SQL no componente pct_pago_socios** (`web/kpis/municipio_pb.py` vs `sql/12_views.sql`) — corrigido: SQL agora usa `ROUND(..., 2)` identico a coluna `pct_pago_socios`
+- [x] **Comentarios "fallback" enganosos** (`web/queries/cidade.py`, `web/routes/cidade.py`, `web/routes/og_image.py`, `sql/12_views.sql`) — corrigido: comentarios explicitam que `COALESCE` so cobre linhas faltantes na MV e que phase 18 deve rodar antes do deploy
+- [ ] **Atualizar labels/legendas do mapa** (`web/static/mapa.js:6-13`) — label "Risco composto (0-100)" → "Nota de atencao (0-100)" alinhando com `/search/cidade`. Recalibrar breaks (62/65/69/73/77 calibrados ao TCE legado) apos deploy. Atualizar descricao do filtro no popover `?` mencionando os 8 KPIs componentes
+- [ ] **PERF: socio_por_municipio reagrega tce_pb_despesa desnecessariamente** (`sql/12_views.sql`) — apesar de `_tmp_conflito` materializar relacao similar. Refresh fica mais caro. Opcional
+- [ ] **MAINT: MV duplica formula de sql_score_expression()** — a expressao inline em `sql/12_views.sql` deveria vir de `web/kpis/municipio_pb.py:sql_score_expression()` via placeholder no `etl/21_views.py` para garantir single source of truth. Hoje sao identicas, mas drift silencioso eh possivel
+- [ ] **`sancoes_base` filtra 3 anos vs `desp_eventos` 2022+** (`sql/12_views.sql`) — pode subcontar sancoes que estavam vigentes em 2022 mas terminaram em 2022. Considerar alargar filtro de sancoes para `>= '2022-01-01'`
+- [ ] **Deploy MV unificada em prod (PR #31)** — disparar `deploy.yml` com `etl_phase=18` quando Azure estiver OK. Recria todas MVs (drop CASCADE no topo do `sql/12_views.sql`) — vai criar `mv_municipio_pb_kpi_score` e atualizar `mv_municipio_pb_mapa`. **Obrigatorio antes de subir esta versao do app** — sem a MV, queries `PERFIL_MUNICIPIO`, `PB_MEDIAS`, `AUTOCOMPLETE_MUNICIPIO`, `PB_RANKING_SQL` e `og_image._fetch_perfil` falham com `UndefinedTable`
+
 ### Pivot PB-first — novas visualizacoes e cruzamentos
 - [x] **Mapa coropletico PB** — 223 municipios pintados por metrica, 5 camadas (risco, % irregulares, % sem licitacao, top-5, per capita). Toggle, legenda, click navega para detalhe. Breaks calibrados aos percentis reais. Aliases TCE→IBGE para municipios renomeados
 - [ ] **Rotatividade de credores pos-eleicao** — top 20 fornecedores antes vs depois de cada eleicao municipal. Substituicoes abruptas sinalizam troca de grupo contratado. Visual: tabela com `delta_pago`, icone de "novo" para quem nao existia no mandato anterior

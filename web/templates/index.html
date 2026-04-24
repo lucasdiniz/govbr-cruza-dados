@@ -17,12 +17,12 @@
             <span class="auditor-only">Descubra como sua prefeitura gasta o dinheiro publico</span>
         </h1>
         <p class="hero-copy">
-            <span class="citizen-only">Para cada um dos 223 munic&iacute;pios da Para&iacute;ba: quem recebe mais, quais empresas t&ecirc;m problema, se houve compra sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores. &Eacute; a regra por lei.">licita&ccedil;&atilde;o</span> e onde a prefeitura concentra gastos. Busque abaixo pela sua cidade.</span>
-            <span class="auditor-only">Indicadores automaticos de risco, fornecedores sancionados, concentracao de
-            contratos e servidores com conflito de interesse &mdash; para os 223 municipios da Paraiba.
-            Busque pelo nome ou escolha um municipio no mapa abaixo.</span>
+            <span class="citizen-only">Para cada um dos {{ municipio_total_pb | default(223, true) }} munic&iacute;pios da Para&iacute;ba: quem recebe mais, quais empresas t&ecirc;m problema, se houve compra sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores. &Eacute; a regra por lei.">licita&ccedil;&atilde;o</span> e onde a prefeitura concentra gastos. Busque abaixo pela sua cidade.</span>
         </p>
-
+        <p class="hero-mobile-summary">
+            <span class="citizen-only">Busque sua cidade ou explore o mapa para ver {{ municipio_total_pb | default(223, true) }} prefeituras, 5 sinais de aten&ccedil;&atilde;o e os maiores gastos.</span>
+            <span class="auditor-only">Mapa interativo + busca direta para {{ municipio_total_pb | default(223, true) }} municipios, com 5 metricas e drill-down para a pagina da cidade.</span>
+        </p>
         <div class="search-card-inline">
             <div class="autocomplete-wrap">
                 <input
@@ -54,29 +54,32 @@
 
 <section class="mapa-hero">
     <div class="mapa-header">
-        <div class="mapa-toggle" role="tablist">
-            <button class="mt-btn active" data-metric="risco" data-desc="Score composto (0 a 100 pontos) calculado a partir de 5 sinais do TCE-PB, cada um com peso proprio: compras sem licitacao (ate 30 pts, satura em 50% dos empenhos), licitacoes com proponente unico (ate 25 pts, satura em 40% das licitacoes), concentracao de empenhos em dezembro (ate 20 pts, satura em 20%; uniforme seria 8,3%), valor empenhado que nao virou pagamento (ate 15 pts, satura em 30% de diferenca) e peso da folha de pessoal sobre a receita arrecadada (ate 10 pts, satura em 70%). Quanto maior, maior o numero de sinais de atencao acumulados." data-desc-lay="Nota de 0 a 100 que resume 5 sinais de atencao: compras sem licitacao, uma s&oacute; empresa ganhando, gasto concentrado em dezembro, contratos sem pagamento correspondente, e folha de salarios pesada demais. Quanto maior, mais sinais de atencao a cidade acumulou.">
-                <span class="citizen-only">Nota de aten&ccedil;&atilde;o</span>
-                <span class="auditor-only">Risco composto</span>
-            </button>
-            <button class="mt-btn" data-metric="pct_irregulares" data-desc="% do valor pago pelo municipio a fornecedores com algum sinal de irregularidade: sancao ativa no CEIS/CNEP (ultimos 3 anos), divida ativa na PGFN ou situacao cadastral nao ativa na Receita Federal (inativa, baixada ou inapta)." data-desc-lay="% do dinheiro que a prefeitura pagou para empresas com problema: san&ccedil;&atilde;o ativa do governo federal, d&iacute;vida com impostos federais, ou situa&ccedil;&atilde;o irregular na Receita.">
-                <span class="citizen-only">% para empresas irregulares</span>
-                <span class="auditor-only">% Irregulares</span>
-            </button>
-            <button class="mt-btn" data-metric="pct_sem_licitacao" data-desc="% dos empenhos do municipio realizados sem processo licitatorio formal - dispensa, inexigibilidade, numero de licitacao vazio/zerado ou modalidade 'sem licitacao'." data-desc-lay="% das compras da prefeitura em que n&atilde;o houve disputa entre fornecedores (dispensa ou inexigibilidade). Licitar &eacute; a regra; exce&ccedil;&otilde;es precisam ser justificadas.">
-                <span class="citizen-only">Compras sem licita&ccedil;&atilde;o</span>
-                <span class="auditor-only">Sem licitacao</span>
-            </button>
-            <button class="mt-btn" data-metric="pct_top5" data-desc="% do total pago que ficou concentrado nos 5 maiores fornecedores do municipio. Indica dependencia de poucos fornecedores e pode sinalizar possivel direcionamento de contratacoes." data-desc-lay="% do total pago que ficou com apenas 5 empresas. Quando poucas empresas concentram muito dinheiro, pode indicar depend&ecirc;ncia ou favorecimento.">
-                <span class="citizen-only">Top 5 empresas concentram</span>
-                <span class="auditor-only">Concentracao top-5</span>
-            </button>
-            <button class="mt-btn" data-metric="pago_per_capita" data-desc="Total pago pelo municipio dividido pelo numero de habitantes (IBGE 2022). Util para comparar porte de gasto entre municipios de tamanhos diferentes." data-desc-lay="Total gasto pela prefeitura dividido pelo n&uacute;mero de moradores. Serve para comparar cidades de tamanhos diferentes.">
-                <span class="citizen-only">Gasto por morador</span>
-                <span class="auditor-only">Per capita</span>
-            </button>
+        <div class="mapa-toggle-row">
+            <div class="mapa-toggle" role="tablist">
+                <button class="mt-btn active" data-metric="risco" data-desc="Score composto 0-100 pontos que agrega 8 KPIs investigativos (pesos somam 100): empresas sancionadas que atingem o municipio (15 pts), servidores em CEAF/expulsoes federais (15 pts), concentracao top-5 fornecedores (15 pts), servidores socios de fornecedores municipais (14 pts), % do gasto pago para empresas de socios servidores (13 pts), fornecedores com situacao cadastral irregular (10 pts), servidores no Bolsa Familia com salario alto (10 pts) e fornecedores em CEIS/CNEP em qualquer abrangencia (8 pts). Cada KPI usa curva concava (1 caso ja eh sinal forte) ou linear (percentuais)." data-desc-lay="Nota de 0 a 100 que resume 8 sinais de atencao do municipio: empresas sancionadas recebendo, servidores expulsos da Adm Federal, dinheiro concentrado em poucas empresas, servidores donos de empresas que recebem da prefeitura, empresas inativas/baixadas recebendo, e servidores no Bolsa Familia com salario alto. Quanto maior, mais sinais acumulados.">
+                    <span class="citizen-only">Nota de aten&ccedil;&atilde;o</span>
+                    <span class="auditor-only">Score unificado</span>
+                </button>
+                <button class="mt-btn" data-metric="pct_irregulares" data-desc="% do valor pago pelo municipio a fornecedores com algum sinal de irregularidade: sancao ativa no CEIS/CNEP (ultimos 3 anos), divida ativa na PGFN ou situacao cadastral nao ativa na Receita Federal (inativa, baixada ou inapta)." data-desc-lay="% do dinheiro que a prefeitura pagou para empresas com problema: san&ccedil;&atilde;o ativa do governo federal, d&iacute;vida com impostos federais, ou situa&ccedil;&atilde;o irregular na Receita.">
+                    <span class="citizen-only">% para empresas irregulares</span>
+                    <span class="auditor-only">% Irregulares</span>
+                </button>
+                <button class="mt-btn" data-metric="pct_sem_licitacao" data-desc="% dos empenhos do municipio realizados sem processo licitatorio formal - dispensa, inexigibilidade, numero de licitacao vazio/zerado ou modalidade 'sem licitacao'." data-desc-lay="% das compras da prefeitura em que n&atilde;o houve disputa entre fornecedores (dispensa ou inexigibilidade). Licitar &eacute; a regra; exce&ccedil;&otilde;es precisam ser justificadas.">
+                    <span class="citizen-only">Compras sem licita&ccedil;&atilde;o</span>
+                    <span class="auditor-only">Sem licitacao</span>
+                </button>
+                <button class="mt-btn" data-metric="pct_top5" data-desc="% do total pago que ficou concentrado nos 5 maiores fornecedores do municipio. Indica dependencia de poucos fornecedores e pode sinalizar possivel direcionamento de contratacoes." data-desc-lay="% do total pago que ficou com apenas 5 empresas. Quando poucas empresas concentram muito dinheiro, pode indicar depend&ecirc;ncia ou favorecimento.">
+                    <span class="citizen-only">Top 5 empresas concentram</span>
+                    <span class="auditor-only">Concentracao top-5</span>
+                </button>
+                <button class="mt-btn" data-metric="pago_per_capita" data-desc="Total pago pelo municipio dividido pelo numero de habitantes (IBGE 2022). Util para comparar porte de gasto entre municipios de tamanhos diferentes." data-desc-lay="Total gasto pela prefeitura dividido pelo n&uacute;mero de moradores. Serve para comparar cidades de tamanhos diferentes.">
+                    <span class="citizen-only">Gasto por morador</span>
+                    <span class="auditor-only">Per capita</span>
+                </button>
+            </div>
+            <button type="button" class="mapa-info-btn" id="mapaInfoBtn" aria-label="O que significa este filtro" aria-expanded="false" aria-controls="mapa-metric-desc">?</button>
         </div>
-        <p class="mapa-metric-desc" id="mapa-metric-desc" tabindex="0" role="button" aria-expanded="false" title="Toque para expandir"></p>
+        <div class="mapa-metric-desc-popover" id="mapa-metric-desc" role="region" aria-live="polite" hidden></div>
         <p class="mapa-cutoff-note" id="mapa-cutoff-note">
             <span class="citizen-only">Cidades com menos de R$ 5 milh&otilde;es em gastos aparecem em cinza (amostra pequena).</span>
             <span class="auditor-only">Municipios com menos de R$ 5 milhoes em empenhos aparecem em cinza (amostra pequena).</span>
@@ -87,7 +90,7 @@
 </section>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="/static/mapa.js?v=6"></script>
+<script src="/static/mapa.js?v=9"></script>
 <script>
 (function(){
     // Fase 7 - geolocalizacao na home
@@ -183,4 +186,3 @@
 </script>
 </script>
 {% endblock %}
-

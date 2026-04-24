@@ -21,7 +21,14 @@ function setMode(mode) {
     const btn = document.getElementById('modeToggle');
     if (btn) {
         btn.setAttribute('aria-pressed', m === 'auditor' ? 'true' : 'false');
-        btn.setAttribute('aria-label', m === 'auditor' ? 'Desligar modo auditor' : 'Ligar modo auditor');
+        btn.setAttribute(
+            'aria-label',
+            m === 'auditor'
+                ? 'Modo auditor ativo. Toque para voltar ao modo cidadao'
+                : 'Modo cidadao ativo. Toque para ligar o modo auditor'
+        );
+        btn.setAttribute('title', m === 'auditor' ? 'Modo auditor ativo' : 'Modo cidadao ativo');
+        btn.dataset.currentMode = m;
     }
     document.dispatchEvent(new CustomEvent('modechange', { detail: { mode: m } }));
 }
@@ -90,6 +97,35 @@ function initTermTooltips() {
     });
 }
 
+function expandReportContext(target) {
+    if (!target) return;
+    const section = target.closest('.report-section');
+    if (section) {
+        section.classList.remove('report-collapsed');
+        section.dataset.userToggled = 'true';
+        const toggle = section.querySelector('[data-section-toggle]');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    }
+    if (target.classList.contains('finding-card')) {
+        target.classList.remove('collapsed');
+    }
+    // Quando o alvo eh uma report-section inteira (ex: clique em KPI hero
+    // -> #fornecedores-irregulares), expande TODOS os finding-cards filhos
+    // para que o usuario veja a tabela maximizada e nao precise dar mais
+    // um clique. Sem isso o usuario chega na section e ve cards colapsados.
+    if (target.classList.contains('report-section')) {
+        target.querySelectorAll('.finding-card.collapsed').forEach(c => {
+            c.classList.remove('collapsed');
+        });
+    }
+    // Tambem desfaz o estado collapsed em qualquer descendente direto que
+    // o usuario possa querer ver (ex: target id="servidores" cobre o panel
+    // top-servidores que tambem usa .collapsed).
+    target.querySelectorAll(':scope > .collapsed, :scope .async-collapsed').forEach(el => {
+        el.classList.remove('collapsed', 'async-collapsed');
+    });
+}
+
 function initNarrativeAnchors() {
     // Smooth scroll + flash highlight para links da narrativa da hero
     const narr = document.querySelector('.city-narrative');
@@ -101,6 +137,7 @@ function initNarrativeAnchors() {
         const target = document.getElementById(targetId);
         if (!target) return;
         e.preventDefault();
+        expandReportContext(target);
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         target.classList.remove('anchor-flash');
         // Force reflow para reiniciar animacao
@@ -112,31 +149,49 @@ function initNarrativeAnchors() {
     });
 }
 
+function initCityNarrativeToggle() { /* removido: resumo sempre visivel completo */ }
 
-function initDestaques() {
-    // Scroll + flash para cards de destaque (Fase 3).
-    const cards = document.querySelectorAll('.destaque-card[data-scroll-to]');
-    if (!cards.length) return;
-    cards.forEach(card => {
-        card.addEventListener('click', () => {
-            const slug = card.dataset.scrollTo;
-            const qid = card.dataset.queryId;
-            // Prefere scroll para o finding-card especifico (mais proximo ao achado);
-            // fallback para a secao do tema.
-            let target = qid ? document.querySelector(`.finding-card[data-query="${qid}"]`) : null;
-            if (!target && slug) target = document.getElementById(slug);
-            if (!target) return;
-            // Se finding-card, garante que esta expandido
-            if (target.classList.contains('finding-card')) {
-                target.classList.remove('collapsed');
-            }
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            target.classList.remove('destaque-flash', 'anchor-flash');
-            void target.offsetWidth;
-            target.classList.add('destaque-flash');
-            setTimeout(() => target.classList.remove('destaque-flash'), 1900);
-        });
+
+function initDestaques() { /* removido: substituido por initAnchorAutoExpand */ }
+
+
+function _scrollAndFlash(target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.remove('anchor-flash');
+    void target.offsetWidth;
+    target.classList.add('anchor-flash');
+    setTimeout(() => target.classList.remove('anchor-flash'), 1800);
+}
+
+function initAnchorAutoExpand() {
+    // Qualquer clique em <a href="#X"> dentro da pagina, OU navegacao por hashchange,
+    // expande o report-section/finding-card de destino antes de scrollar. Cobre
+    // KPI strip, narrativa, links inline e back/forward do navegador.
+    const handleHash = (hash, ev) => {
+        if (!hash || hash === '#') return;
+        const target = document.getElementById(hash.slice(1));
+        if (!target) return;
+        if (ev) ev.preventDefault();
+        expandReportContext(target);
+        _scrollAndFlash(target);
+        history.replaceState(null, '', hash);
+    };
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href^="#"]');
+        if (!link) return;
+        // Ignora links que sao apenas "#" ou estao dentro de modais que tratam navegacao propria
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        // Nao interceptar dropdowns/abas/etc que usam href="#" como hook
+        if (link.dataset.skipAnchorExpand === 'true') return;
+        handleHash(href, e);
     });
+    // Carga inicial com hash na URL
+    if (window.location.hash) {
+        // Dar um tick para o DOM estar pronto e finding-cards carregadas
+        setTimeout(() => handleHash(window.location.hash, null), 80);
+    }
+    window.addEventListener('hashchange', () => handleHash(window.location.hash, null));
 }
 
 
@@ -241,9 +296,9 @@ function initTour() {
             text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
         },
         {
-            selector: '.destaques, .findings-list',
+            selector: '.city-kpi-strip, .findings-list',
             title: 'Os pontos que merecem aten&ccedil;&atilde;o',
-            text: 'Aqui ficam os destaques: onde h&aacute; ind&iacute;cios de irregularidade ou risco. Cada cart&atilde;o mostra o que foi encontrado e quanto dinheiro est&aacute; envolvido.',
+            text: 'Aqui ficam os principais sinais investigativos: cada card mostra um cruzamento de dados que merece aten&ccedil;&atilde;o, e clicando voc&ecirc; vai direto para o detalhamento.',
         },
         {
             selector: '#modeToggle',
@@ -365,15 +420,8 @@ function initTour() {
         restartBtn.addEventListener('click', () => { current = 0; start(); });
     }
 
-    // Auto-start na primeira visita (tanto homepage quanto cidade)
-    if (isCityPage || isHomePage) {
-        let done = null;
-        try { done = localStorage.getItem('tour-v1'); } catch (_) {}
-        if (!done) {
-            // Espera um pouco para layout estabilizar (e mapa carregar na home)
-            setTimeout(start, isHomePage ? 1500 : 800);
-        }
-    }
+    // O tour continua disponivel no botao "?", mas nao abre sozinho:
+    // no mobile ele competia com a primeira dobra e escondia a busca.
 }
 
 
@@ -438,7 +486,8 @@ async function triggerShare(data) {
     const url = data.url || window.location.href;
     const title = data.title || document.title;
     const text = data.text || '';
-    if (navigator.share) {
+    const isTouch = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(hover: none)').matches;
+    if (isTouch && navigator.share) {
         try {
             await navigator.share({ title, text, url });
             return;
@@ -447,14 +496,26 @@ async function triggerShare(data) {
             // segue pra fallback
         }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
         try {
             await navigator.clipboard.writeText(url);
             showToast('Link copiado para a area de transferencia');
             return;
         } catch { /* noop */ }
     }
-    showToast('Nao foi possivel compartilhar');
+    // Fallback final: textarea + execCommand (funciona mesmo sem secure context)
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { showToast('Link copiado'); return; }
+    } catch { /* noop */ }
+    showToast('Nao foi possivel compartilhar. Copie a URL da barra de enderecos.');
 }
 
 function initShareButtons() {
@@ -590,13 +651,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
     const periodo = _getPeriodo();
 
-    // Update filter bar UI to reflect current state
-    if (_isDateFiltered()) {
-        const btnLimpar = document.getElementById('btnLimparData');
-        if (btnLimpar) btnLimpar.style.display = '';
-        const status = document.getElementById('dateFilterStatus');
-        if (status) status.textContent = `Periodo: ${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`;
-    }
+    _syncDateFilterUI();
 
     // Single batch request for everything (skip for CUSTOM — no cache)
     let batchData = {};
@@ -631,7 +686,14 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
 
         // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
         await _refreshPerfilLive(municipio, uf);
+        // KPIs hero, concentracao top-5 e nota de atencao tambem precisam respeitar
+        // o filtro temporal — re-renderiza a partir do endpoint /api/kpis (que usa
+        // cache pre-computado por warm_cache.py quando possivel).
+        await _refreshKpisLive(municipio, uf);
     }
+    // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
+    // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
+    _wireConcentracaoClicks();
 
     // Render fornecedores and servidores from batch (or fallback to HTML endpoint)
     const fornPanel = document.querySelector('[data-async-panel="fornecedores"]');
@@ -976,7 +1038,7 @@ function buildFornecedoresPanel(data) {
             if (recSan) return 'clickable-row row-sancao-leve';
             return 'clickable-row';
         })();
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td>${nome}</td><td class="auditor-only"><code class="text-sm">${cnpjFmt}</code></td><td class="text-right">${total}</td><td class="text-right auditor-only">${qtd}</td><td>${badges}</td></tr>`;
+        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-meta">${badges}</td></tr>`;
     }).join('');
 
     const hasRecInid = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_inidoneidade'));
@@ -1003,7 +1065,7 @@ function buildFornecedoresPanel(data) {
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar fornecedores">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
-            <div class="tbl-wrap"><table>
+            <div class="tbl-wrap"><table class="stack-mobile">
                 <thead><tr>
                     <th><span class="citizen-only">Empresa</span><span class="auditor-only">Fornecedor</span></th>
                     <th class="auditor-only">CNPJ</th>
@@ -1044,10 +1106,40 @@ let _currentUf = 'PB';
 
 function _isDateFiltered() { return !!(_dateInicio || _dateFim); }
 
+function _formatDateInput(date) {
+    return date.toISOString().slice(0, 10);
+}
+
+function _datePresetRange(preset) {
+    const today = new Date();
+    const todayIso = _formatDateInput(today);
+    if (preset === 'current-year') {
+        return { inicio: `${today.getFullYear()}-01-01`, fim: todayIso };
+    }
+    if (preset === 'last-12m') {
+        const start = new Date(today);
+        // Subtrai 12 meses preservando o dia; setMonth lida com transicoes (ex: 31/jan -> 31/jan ano anterior).
+        start.setMonth(start.getMonth() - 12);
+        start.setDate(start.getDate() + 1);
+        return { inicio: _formatDateInput(start), fim: todayIso };
+    }
+    return { inicio: '', fim: '' };
+}
+
+function _getDatePreset() {
+    if (!_isDateFiltered()) return 'all';
+    const currentYear = _datePresetRange('current-year');
+    if (_dateInicio === currentYear.inicio && _dateFim === currentYear.fim) return 'current-year';
+    const last12m = _datePresetRange('last-12m');
+    if (_dateInicio === last12m.inicio && _dateFim === last12m.fim) return 'last-12m';
+    return 'custom';
+}
+
 function _getPeriodo() {
     if (!_isDateFiltered()) return '';
     const yr = new Date().getFullYear();
-    if (_dateInicio === `${yr}-01-01` && _dateFim && _dateFim.startsWith(`${yr}`)) return 'ANO';
+    const currentYear = _datePresetRange('current-year');
+    if (_dateInicio === currentYear.inicio && _dateFim === currentYear.fim) return 'ANO';
     return 'CUSTOM';
 }
 
@@ -1062,6 +1154,94 @@ function _formatDatePt(iso) {
     if (!iso) return '';
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
+}
+
+function _brToIso(br) {
+    if (!br) return '';
+    const m = String(br).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return '';
+    const [, dd, mm, yyyy] = m;
+    const day = parseInt(dd, 10), mon = parseInt(mm, 10), year = parseInt(yyyy, 10);
+    if (mon < 1 || mon > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function _isoToBr(iso) { return _formatDatePt(iso); }
+
+function _readDateInputIso(el) {
+    if (!el) return '';
+    return _brToIso(el.value);
+}
+
+function _maskBrDate(input) {
+    if (!input || input.dataset.brMaskBound === '1') return;
+    input.dataset.brMaskBound = '1';
+    const apply = () => {
+        const digits = input.value.replace(/\D/g, '').slice(0, 8);
+        let out = digits;
+        if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+        else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        if (out !== input.value) input.value = out;
+    };
+    input.addEventListener('input', apply);
+    input.addEventListener('blur', apply);
+}
+
+function _initDateInputsBr() {
+    ['dateInicio', 'dateFim'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.dataset.isoValue && !el.value) el.value = _isoToBr(el.dataset.isoValue);
+        _maskBrDate(el);
+    });
+}
+
+function _setDateInputs(inicio, fim) {
+    const diEl = document.getElementById('dateInicio');
+    const dfEl = document.getElementById('dateFim');
+    if (diEl) diEl.value = inicio ? _isoToBr(inicio) : '';
+    if (dfEl) dfEl.value = fim ? _isoToBr(fim) : '';
+}
+
+function _getDateFilterCopy() {
+    const preset = _getDatePreset();
+    const range = `${_formatDatePt(_dateInicio)} a ${_formatDatePt(_dateFim)}`;
+    if (preset === 'all') {
+        return { headline: 'Periodo: todo o historico', clear: false };
+    }
+    if (preset === 'current-year') {
+        return { headline: `Ano atual: ${range}`, clear: true };
+    }
+    if (preset === 'last-12m') {
+        return { headline: `Ultimos 12 meses: ${range}`, clear: true };
+    }
+    return { headline: `Periodo: ${range}`, clear: true };
+}
+
+function _syncDateFilterUI() {
+    const btnLimpar = document.getElementById('btnLimparData');
+    const copy = _getDateFilterCopy();
+    if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
+    document.querySelectorAll('[data-date-preset]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
+    });
+}
+
+function _resetCityPanelsLoading() {
+    document.querySelectorAll('.finding-card').forEach(card => {
+        card.classList.add('loading');
+        card.classList.remove('is-empty', 'is-timeout');
+        const body = card.querySelector('.finding-body');
+        if (body) body.innerHTML = skeletonTableHtml(3, 3);
+        const countEl = card.querySelector('[data-count]');
+        if (countEl) countEl.textContent = '...';
+        delete card.dataset.count;
+    });
+    document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
+    document.querySelectorAll('[data-report-count]').forEach(el => el.textContent = 'Carregando...');
+    document.querySelectorAll('[data-async-panel]').forEach(panel => {
+        panel.innerHTML = skeletonTableHtml(4, 3);
+    });
 }
 
 function _updateHeroStats(perfil) {
@@ -1099,6 +1279,144 @@ function _updateInsightCards(perfil) {
     if (el('barEmpenhado')) el('barEmpenhado').textContent = _shortBrl(totalEmpenhado);
     if (el('barPago')) el('barPago').textContent = _shortBrl(totalPago);
     if (el('barFillPago')) el('barFillPago').style.width = `${pctPago.toFixed(1)}%`;
+}
+
+// ── KPI hero strip live refresh ─────────────────────────────────
+// Quando o filtro temporal muda, busca KPIs recalculados do servidor
+// e re-renderiza a hero strip + card de concentracao top-5 + nota de
+// atencao na narrativa. Mantem a UI consistente com o filtro aplicado.
+function _shortBrlLocal(v) {
+    return typeof _shortBrl === 'function' ? _shortBrl(v) : `R$ ${v}`;
+}
+
+function _shortNumLocal(v) {
+    return typeof _shortNum === 'function' ? _shortNum(v) : String(v);
+}
+
+function _renderKpiCardValue(kpi) {
+    let valHtml = '';
+    if (kpi.is_money) {
+        valHtml = _shortBrlLocal(kpi.value);
+    } else {
+        valHtml = _shortNumLocal(kpi.value);
+    }
+    if (kpi.value_suffix) {
+        valHtml += `<span class="kpi-card-suffix">${kpi.value_suffix}</span>`;
+    }
+    return valHtml;
+}
+
+function _updateKpiHeroStrip(kpis) {
+    if (!Array.isArray(kpis)) return;
+    kpis.forEach(kpi => {
+        const card = document.getElementById(kpi.id);
+        if (!card) return;
+        // severity class
+        card.classList.remove('severity-red', 'severity-yellow', 'severity-neutral');
+        card.classList.add(`severity-${kpi.severity || 'neutral'}`);
+        // value
+        const valEl = card.querySelector('.kpi-card-value');
+        if (valEl) valEl.innerHTML = _renderKpiCardValue(kpi);
+        // extra
+        let extraEl = card.querySelector('.kpi-card-extra');
+        if (kpi.value_extra) {
+            if (!extraEl) {
+                extraEl = document.createElement('span');
+                extraEl.className = 'kpi-card-extra';
+                const tip = card.querySelector('.kpi-card-tip');
+                card.insertBefore(extraEl, tip);
+            }
+            extraEl.textContent = kpi.value_extra;
+        } else if (extraEl) {
+            extraEl.remove();
+        }
+    });
+}
+
+function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
+    const card = document.querySelector('.city-concentracao');
+    if (!card) return;
+    if (concentracaoRed) {
+        card.classList.add('concentracao-alerta');
+    } else {
+        card.classList.remove('concentracao-alerta');
+    }
+    const summary = card.querySelector('.section-summary .insight-value');
+    if (summary) {
+        summary.textContent = `${Math.round(pctTop5 || 0)}%`;
+        summary.classList.toggle('text-red', (pctTop5 || 0) > 60);
+    }
+    const bars = card.querySelector('.chart-bars-concentracao');
+    if (!bars || !Array.isArray(topConcentracao)) return;
+    const medals = { 1: '\u{1F947}', 2: '\u{1F948}', 3: '\u{1F949}' };
+    bars.innerHTML = topConcentracao.map(c => {
+        const rankHtml = medals[c.rank]
+            ? medals[c.rank]
+            : `<span class="chart-bar-rank-num">${c.rank}</span>`;
+        const fillClass = c.is_red ? 'fill-red' : 'fill-blue';
+        const safeName = String(c.nome || '').replace(/[<>&"]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[m]));
+        const pct = (c.pct || 0).toFixed(1);
+        const val = _shortBrlLocal(c.total_pago || 0);
+        return `<div class="chart-bar-row" data-cnpj-completo="${c.cnpj_completo || ''}" data-cnpj-basico="${c.cnpj_basico || ''}" data-nome="${safeName}">
+            <span class="chart-bar-label" title="${safeName}">
+                <span class="chart-bar-rank${c.rank <= 3 ? ' chart-bar-rank-medal' : ''}" aria-label="Posicao ${c.rank}">${rankHtml}</span>
+                ${safeName.length > 40 ? safeName.slice(0, 37) + '...' : safeName}
+            </span>
+            <div class="chart-bar-track">
+                <div class="chart-bar-fill ${fillClass}" style="width: ${c.pct || 0}%"></div>
+            </div>
+            <span class="chart-bar-meta">
+                <strong>${pct}%</strong>
+                <span class="text-sm text-muted">${val}</span>
+            </span>
+        </div>`;
+    }).join('');
+    _wireConcentracaoClicks(bars);
+}
+
+function _wireConcentracaoClicks(scope) {
+    const root = scope || document.querySelector('.chart-bars-concentracao');
+    if (!root || root._wired) return;
+    root._wired = true;
+    root.style.cursor = 'pointer';
+    root.addEventListener('click', (e) => {
+        const row = e.target.closest('.chart-bar-row');
+        if (!row) return;
+        const cnpjBasico = row.dataset.cnpjBasico || '';
+        const cnpjCompleto = row.dataset.cnpjCompleto || '';
+        const nome = row.dataset.nome || '';
+        if (!cnpjBasico) return;
+        if (typeof openFornecedorDialog === 'function') {
+            openFornecedorDialog(cnpjBasico, nome, null, false, nome, cnpjCompleto);
+        }
+    });
+}
+
+async function _refreshKpisLive(municipio, uf) {
+    try {
+        const res = await fetch(`/api/kpis/${encodeURIComponent(municipio)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_buildBody(municipio, uf || 'PB')),
+        });
+        if (!res.ok) {
+            console.warn('kpis endpoint returned', res.status);
+            return;
+        }
+        const data = await res.json();
+        if (data && data.kpis) _updateKpiHeroStrip(data.kpis);
+        if (data && data.top_concentracao) {
+            _updateConcentracaoCard(data.top_concentracao, data.pct_top5, data.concentracao_red);
+        }
+        // Atualiza a nota de atencao na narrativa, se houver elemento expondo o score.
+        if (data && data.score_unificado != null) {
+            document.querySelectorAll('[data-score-unificado]').forEach(el => {
+                el.textContent = data.score_unificado;
+            });
+        }
+    } catch (e) {
+        console.warn('kpis fetch failed', e);
+    }
 }
 
 async function _loadHeatmap(municipio) {
@@ -1499,6 +1817,89 @@ function _initDialogTableSort(root) {
     });
 }
 
+function _dialogSectionNavLabel(rawText) {
+    const text = String(rawText || '').replace(/\s+/g, ' ').trim();
+    if (!text) return 'Resumo';
+    if (/dados cadastrais|dados da empresa|dados da licitacao|dados desta licitacao/i.test(text)) return 'Resumo';
+    if (/^resumo do mes/i.test(text)) return 'Resumo';
+    if (/resumo de pagamentos|pagamentos recentes|empenhos recentes|quanto esta empresa/i.test(text)) return 'Pagamentos';
+    if (/quem mais recebeu|top fornecedores/i.test(text)) return 'Fornecedores';
+    if (/em que a cidade gastou|top elementos|elementos de despesa/i.test(text)) return 'Despesas';
+    if (/areas do governo|funcao ?\/ ?programa/i.test(text)) return 'Areas';
+    if (/como foi contratado|modalidade/i.test(text)) return 'Modalidade';
+    if (/maiores pagamentos do mes|empenhos do mes/i.test(text)) return 'Maiores';
+    if (/vinculos como servidor|empregos publicos/i.test(text)) return 'Vinculos';
+    if (/empresas vinculadas|aparece como socio/i.test(text)) return 'Empresas';
+    if (/sancoes|punicoes/i.test(text)) return 'Sancoes';
+    if (/pgfn|divida ativa|impostos federais/i.test(text)) return 'PGFN';
+    if (/leniencia|acordos? de colaboracao/i.test(text)) return 'Leniencia';
+    if (/bolsa familia/i.test(text)) return 'Bolsa Familia';
+    if (/ceaf|expulsoes/i.test(text)) return 'CEAF';
+    if (/outros municipios|outras cidades/i.test(text)) return 'Outras cidades';
+    if (/proponentes|empresas que participaram/i.test(text)) return 'Proponentes';
+    if (/despesas vinculadas|pagamentos desta licitacao/i.test(text)) return 'Despesas';
+    if (/quem recebeu|^credor/i.test(text)) return 'Credor';
+    if (/em que foi gasto|classificacao orcamentaria/i.test(text)) return 'Classificacao';
+    if (/de onde veio|^origem/i.test(text)) return 'Origem';
+    if (/^valores$/i.test(text)) return 'Valores';
+    if (/^descricao$/i.test(text)) return 'Descricao';
+    if (/pagamentos do governo as empresas|empenhos recebidos pelas empresas/i.test(text)) return 'Empenhos';
+    return text.split(' ').slice(0, 2).join(' ');
+}
+
+function _decorateDialogBody(body) {
+    if (!body) return;
+    if (body._dialogNavScrollHandler) {
+        body.removeEventListener('scroll', body._dialogNavScrollHandler);
+        body._dialogNavScrollHandler = null;
+    }
+    body.querySelector('.dialog-nav')?.remove();
+
+    const sections = Array.from(body.querySelectorAll('.dialog-section'));
+    if (sections.length < 2) return;
+
+    sections.forEach((section, idx) => {
+        if (!section.id) section.id = `dialog-section-${idx + 1}`;
+        const heading = section.querySelector('h4');
+        section.dataset.dialogLabel = _dialogSectionNavLabel(heading ? heading.textContent : `Secao ${idx + 1}`);
+    });
+
+    const nav = document.createElement('div');
+    nav.className = 'dialog-nav';
+    nav.innerHTML = sections.map((section, idx) =>
+        `<button type="button" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
+    ).join('');
+    body.prepend(nav);
+
+    const buttons = Array.from(nav.querySelectorAll('.dialog-nav-btn'));
+    const setActive = (id) => {
+        buttons.forEach((btn) => btn.classList.toggle('is-active', btn.dataset.dialogTarget === id));
+    };
+
+    buttons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = body.querySelector(`#${CSS.escape(btn.dataset.dialogTarget)}`);
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setActive(btn.dataset.dialogTarget);
+        });
+    });
+
+    const onScroll = () => {
+        const bodyTop = body.getBoundingClientRect().top;
+        let activeId = sections[0].id;
+        sections.forEach((section) => {
+            const offsetTop = section.getBoundingClientRect().top - bodyTop;
+            if (offsetTop <= 120) activeId = section.id;
+        });
+        setActive(activeId);
+    };
+
+    body._dialogNavScrollHandler = onScroll;
+    body.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+}
+
 // Unified detail cache — evicts on fetch error
 const _detailCache = {};
 
@@ -1829,6 +2230,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     if (!html || html === '<div class="stats-grid"></div>') html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
 }
 
 async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj) {
@@ -2127,6 +2529,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
     if (switchMun) {
         const empSection = body.querySelector('#forn-empenhos');
         if (empSection) empSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2258,6 +2661,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
 
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
 }
 
 async function openEmpenhoDialog(empenhoId) {
@@ -2357,6 +2761,7 @@ async function openEmpenhoDialog(empenhoId) {
 
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
 }
 
 function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade) {
@@ -2464,6 +2869,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
 }
 
 function buildServidoresPanel(data) {
@@ -2513,7 +2919,7 @@ function buildServidoresPanel(data) {
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
-        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td>${nome}</td><td><code class="text-sm">${cpfFmt}</code></td><td>${cargo}</td><td>${municipiosStr}</td><td class="text-right">${salario}</td><td class="text-right">${qtdEmpresas || '-'}</td><td>${badges}</td></tr>`;
+        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Municipios" class="stack-meta">${municipiosStr}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Empresas" class="text-right num">${qtdEmpresas || '-'}</td><td data-label="Sinais" class="stack-meta">${badges}</td></tr>`;
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
@@ -2538,7 +2944,7 @@ function buildServidoresPanel(data) {
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
-            <div class="tbl-wrap"><table>
+            <div class="tbl-wrap"><table class="stack-mobile">
                 <thead><tr><th>Servidor</th><th>CPF</th><th>Cargo</th><th>Municipio(s)</th><th class="text-right">Maior Salario</th><th class="text-right">Empresas</th><th>Sinais de Atencao</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
@@ -2555,14 +2961,17 @@ async function loadAsyncPanel(panelName, municipio, uf) {
     const panel = document.querySelector(`[data-async-panel="${panelName}"]`);
     if (!panel) return;
 
-    // Get UF from data attribute if available
     const panelUf = uf || panel.dataset.uf || '';
     try {
         const response = await fetch(`/api/top/${panelName}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
             body: JSON.stringify(_buildBody(municipio, panelUf)),
         });
+        if (!response.ok) {
+            panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora. Tente novamente em alguns instantes.</p>';
+            return;
+        }
         panel.innerHTML = await response.text();
         initDataTables(panel);
         initInteractiveToggles(panel);
@@ -2570,6 +2979,38 @@ async function loadAsyncPanel(panelName, municipio, uf) {
     } catch {
         panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
     }
+}
+
+function _setReportSectionCollapsed(section, collapsed) {
+    if (!section) return;
+    section.classList.toggle('report-collapsed', collapsed);
+    const toggle = section.querySelector('[data-section-toggle]');
+    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function initReportSections() {
+    document.querySelectorAll('.report-section').forEach((section) => {
+        const toggle = section.querySelector('[data-section-toggle]');
+        toggle?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const collapsed = !section.classList.contains('report-collapsed');
+            section.dataset.userToggled = 'true';
+            _setReportSectionCollapsed(section, collapsed);
+        });
+    });
+
+    document.querySelectorAll('.report-index-link[data-report-link]').forEach((link) => {
+        link.addEventListener('click', (e) => {
+            const slug = link.dataset.reportLink;
+            const target = slug ? document.getElementById(slug) : null;
+            if (!target) return;
+            e.preventDefault();
+            target.dataset.userToggled = 'true';
+            _setReportSectionCollapsed(target, false);
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            history.replaceState(null, '', `#${slug}`);
+        });
+    });
 }
 
 function updateSectionSummaries() {
@@ -2587,15 +3028,21 @@ function updateSectionSummaries() {
         const summary = section.querySelector('[data-section-total]');
         if (!summary) return;
         const summaryLabel = summary.nextElementSibling;
+        const sectionSlug = section.dataset.sectionSlug;
+        const indexCount = sectionSlug
+            ? document.querySelector(`[data-report-link="${sectionSlug}"] [data-report-count]`)
+            : null;
 
         if (!findings) {
             summary.textContent = 'Nenhum achado carregado';
             if (summaryLabel) summaryLabel.style.display = 'none';
+            if (indexCount) indexCount.textContent = 'Sem achados';
             return;
         }
 
         if (summaryLabel) summaryLabel.style.display = '';
         summary.textContent = `${total} registros em ${findings} blocos`;
+        if (indexCount) indexCount.textContent = `${total} registros`;
     });
 }
 
@@ -2759,13 +3206,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initShareButtons();
     initModeToggle();
     initTermTooltips();
+    initCityNarrativeToggle();
     initNarrativeAnchors();
-    initDestaques();
+    initAnchorAutoExpand();
     initExplainers();
     initCredibilityDialog();
     initFontSizeToggle();
     initTour();
     initDenunciaDialog();
+    initReportSections();
 
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
@@ -2792,65 +3241,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Date filter handlers
+    _initDateInputsBr();
     document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
-        const inicio = document.getElementById('dateInicio')?.value;
-        const fim = document.getElementById('dateFim')?.value;
+        const inicio = _readDateInputIso(document.getElementById('dateInicio'));
+        const fim = _readDateInputIso(document.getElementById('dateFim'));
         if (!inicio || !fim) return;
-
-        // Reset all cards to loading state
-        document.querySelectorAll('.finding-card').forEach(card => {
-            card.classList.add('loading');
-            card.classList.remove('is-empty', 'is-timeout');
-            const body = card.querySelector('.finding-body');
-            if (body) body.innerHTML = skeletonTableHtml(3, 3);
-            const countEl = card.querySelector('[data-count]');
-            if (countEl) countEl.textContent = '...';
-            delete card.dataset.count;
-        });
-        // Reset section summaries
-        document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
-
-        // Reset async panels
-        document.querySelectorAll('[data-async-panel]').forEach(panel => {
-            panel.innerHTML = skeletonTableHtml(4, 3);
-        });
-
-        // Show clear button + status
-        const btnLimpar = document.getElementById('btnLimparData');
-        if (btnLimpar) btnLimpar.style.display = '';
-        const status = document.getElementById('dateFilterStatus');
-        if (status) status.textContent = `Periodo: ${_formatDatePt(inicio)} a ${_formatDatePt(fim)}`;
-
+        _setDateInputs(inicio, fim);
+        _resetCityPanelsLoading();
         bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {
-        const diEl = document.getElementById('dateInicio');
-        const dfEl = document.getElementById('dateFim');
-        if (diEl) diEl.value = '';
-        if (dfEl) dfEl.value = '';
-        const btnLimpar = document.getElementById('btnLimparData');
-        if (btnLimpar) btnLimpar.style.display = 'none';
-        const status = document.getElementById('dateFilterStatus');
-        if (status) status.textContent = '';
-
-        // Reset all cards to loading
-        document.querySelectorAll('.finding-card').forEach(card => {
-            card.classList.add('loading');
-            card.classList.remove('is-empty', 'is-timeout');
-            const body = card.querySelector('.finding-body');
-            if (body) body.innerHTML = skeletonTableHtml(3, 3);
-            const countEl = card.querySelector('[data-count]');
-            if (countEl) countEl.textContent = '...';
-            delete card.dataset.count;
-        });
-        document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
-        document.querySelectorAll('[data-async-panel]').forEach(panel => {
-            panel.innerHTML = skeletonTableHtml(4, 3);
-        });
-
-        // Clear filter — show all-time data
+        _setDateInputs('', '');
+        _resetCityPanelsLoading();
         bootstrapCityReport(_currentMunicipio, _currentUf);
+    });
+
+    document.querySelectorAll('[data-date-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const preset = btn.dataset.datePreset || 'all';
+            const { inicio, fim } = _datePresetRange(preset);
+            _setDateInputs(inicio, fim);
+            _resetCityPanelsLoading();
+            if (preset === 'all') {
+                bootstrapCityReport(_currentMunicipio, _currentUf);
+                return;
+            }
+            bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+        });
     });
 });
 
