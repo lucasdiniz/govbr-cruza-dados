@@ -1042,6 +1042,11 @@ td.num {
 .dialog-back:hover { color: var(--text); }
 .dialog-link { color: var(--accent); cursor: pointer; text-decoration: underline; background: none; border: none; font: inherit; padding: 0; }
 
+@media print {
+    .dialog-nav { display: none !important; }
+    .dialog-tab-panel[hidden] { display: block !important; }
+}
+
 /* Stats grid inside dialog */
 .stats-grid {
     display: grid;
@@ -1277,9 +1282,62 @@ td.num {
     flex: 1 1 100%;
     margin: 0.1rem 0 0;
 }
+.date-filter-status.color-red {
+    color: var(--red) !important;
+    font-weight: 600;
+}
 .period-badge {
     font-size: 0.78rem; color: var(--muted);
     font-style: italic; margin-bottom: 0.5rem;
+}
+.dialog-history-note,
+.heatmap-period-badge {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    border-radius: 10px;
+    background: rgba(219, 234, 254, 0.55);
+    color: #1e3a8a;
+    font-style: normal;
+    font-weight: 650;
+    line-height: 1.45;
+}
+.dialog-history-note::before,
+.heatmap-period-badge::before {
+    content: "i";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 1.1rem;
+    width: 1.1rem;
+    height: 1.1rem;
+    margin-top: 0.05rem;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    font-style: normal;
+}
+.detail-unavailable-hint {
+    display: inline-flex;
+    margin-left: 0.35rem;
+    padding: 0.08rem 0.38rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+.city-hero.is-refreshing,
+.insight-grid.is-refreshing,
+.city-kpi-strip.is-refreshing {
+    opacity: 0.64;
+    filter: saturate(0.75);
+    transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
 /* Responsive: stack stats on narrow dialogs */
@@ -1647,6 +1705,12 @@ body.dark-page .insight-card {
     border-color: var(--line);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+}
+body.dark-page .dialog-history-note,
+body.dark-page .heatmap-period-badge {
+    background: rgba(37, 99, 235, 0.14);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: #dbeafe;
 }
 body.dark-page .city-hero {
     background: linear-gradient(135deg, rgba(30, 58, 138, 0.45), rgba(15, 23, 42, 0.85));

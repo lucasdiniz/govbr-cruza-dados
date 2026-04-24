@@ -52,15 +52,20 @@
                 </thead>
                 <tbody>
                     {% for f in fornecedores %}
-                    {% if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
-                    {% elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
-                    {% else %}{% set row_extra = '' %}{% endif %}
+                     {% if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
+                     {% elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
+                     {% else %}{% set row_extra = '' %}{% endif %}
+                    {% set cnpj_completo_digits = f.cnpj_completo|default('', true)|string|replace('.', '')|replace('/', '')|replace('-', '') %}
+                    {% if cnpj_completo_digits|length == 14 %}
                     <tr class="clickable-row{{ row_extra }}"
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
-                        data-fornecedor-cpf-cnpj="{{ f.cnpj_completo|default('', true) }}"
+                        data-fornecedor-cpf-cnpj="{{ cnpj_completo_digits }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
                         data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}">
-                        <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}</td>
+                    {% else %}
+                    <tr class="row-detail-unavailable{{ row_extra }}" title="Detalhes indisponiveis: CNPJ completo ausente.">
+                    {% endif %}
+                        <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}{% if cnpj_completo_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}</td>
                         <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
                         <td data-label="Recebido" class="text-right num">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
                         <td data-label="Empenhos" class="text-right auditor-only num">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>

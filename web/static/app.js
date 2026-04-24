@@ -313,6 +313,7 @@ function initTour() {
     const isCityPage = !!document.querySelector('.city-hero');
     const isHomePage = !!document.querySelector('.search-hero') && !isCityPage;
     const restartBtn = document.getElementById('tourRestart');
+    if (restartBtn) restartBtn.style.display = 'inline';
     if (!isCityPage && !isHomePage && !restartBtn) return;
 
     const STEPS_CIDADE = [
@@ -442,7 +443,6 @@ function initTour() {
 
     // Mostra link "Como usar" no rodape sempre que o tour esta disponivel.
     if (restartBtn) {
-        restartBtn.style.display = 'inline';
         restartBtn.addEventListener('click', () => { current = 0; start(); });
     }
 
@@ -680,16 +680,24 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
     });
 }
 
-setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (value) => {
-    window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
-});
+function initCidadeAutocomplete() {
+    setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (value) => {
+        window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
+    });
+}
 
 async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     uf = uf || 'PB';
+    const nextInicio = dataInicio || null;
+    const nextFim = dataFim || null;
+    if ((nextInicio && !nextFim) || (!nextInicio && nextFim)) {
+        _setDateFilterStatus('Informe data inicial e final antes de filtrar.', 'error');
+        return;
+    }
     _currentMunicipio = municipio;
     _currentUf = uf;
-    _dateInicio = dataInicio || null;
-    _dateFim = dataFim || null;
+    _dateInicio = nextInicio;
+    _dateFim = nextFim;
 
     const periodo = _getPeriodo();
 
@@ -716,15 +724,15 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     // e a KPI strip presas em ANO enquanto os paineis abaixo iam para
     // all-time. Refrescar sempre garante consistencia em ambas as direcoes
     // (ANO->Tudo e Tudo->ANO/Custom).
-    const el = id => document.getElementById(id);
-    document.querySelectorAll('.city-hero, .insight-grid').forEach(node => {
-        node.setAttribute('aria-busy', 'true');
-    });
-
-    // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
-    await _refreshPerfilLive(municipio, uf);
-    // /api/kpis retorna kpi strip + concentracao + score unificado.
-    await _refreshKpisLive(municipio, uf);
+    _setLiveRefreshState(true);
+    try {
+        // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
+        await _refreshPerfilLive(municipio, uf);
+        // /api/kpis retorna kpi strip + concentracao + score unificado.
+        await _refreshKpisLive(municipio, uf);
+    } finally {
+        _setLiveRefreshState(false);
+    }
     // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
     // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
     _wireConcentracaoClicks();
@@ -846,6 +854,7 @@ function renderFindingCard(card, queryId, data, municipio) {
     body.classList.add('fade-in');
     setTimeout(() => body.classList.remove('fade-in'), 300);
     card.classList.remove('loading');
+    card.setAttribute('aria-busy', 'false');
 }
 
 function buildResultTable(queryId, columns, rows, municipio) {
@@ -897,7 +906,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     }
 
     const bodyRows = rows.map(row => {
-        const cells = row.map((val, ci) => {
+        let cells = row.map((val, ci) => {
             const col = columns[ci] || '';
             const labels = labelPairs[ci] || _columnLabelPair(col);
             const label = _esc(labels.citizen || labels.auditor || col);
@@ -973,6 +982,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
             if (iCnpjCompleto >= 0) cpfCnpjFull = String(row[iCnpjCompleto] || '').replace(/\D/g, '');
             else if (iCpfCnpj >= 0) cpfCnpjFull = String(row[iCpfCnpj] || '').replace(/\D/g, '');
             if (cpfCnpjFull.length === 14) cnpjB = cpfCnpjFull.slice(0, 8);
+            else if (iCnpjBasico >= 0) cnpjB = String(row[iCnpjBasico] || '').replace(/\D/g, '').slice(0, 8);
             const nome = _esc(row[iNomeCredor >= 0 ? iNomeCredor : (iCpfCnpj >= 0 ? iCpfCnpj : 0)] || '');
             if (cnpjB.length === 8 && cpfCnpjFull.length === 14) {
                 const nomeCredorAttr = (iNomeCredorExact >= 0 && iNomeCredorExact !== iNomeCredor)
@@ -980,6 +990,10 @@ function buildResultTable(queryId, columns, rows, municipio) {
                     : '';
                 const cpfCnpjAttr = ` data-fornecedor-cpf-cnpj="${_esc(cpfCnpjFull)}"`;
                 return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}"${nomeCredorAttr}${cpfCnpjAttr}>${cells}</tr>`;
+            }
+            if (cnpjB.length === 8) {
+                cells = cells.replace('</td>', ' <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td>');
+                return `<tr class="row-detail-unavailable${rowHighlight}" title="Detalhes indisponiveis: esta linha nao traz CNPJ completo de 14 digitos.">${cells}</tr>`;
             }
         }
         return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
@@ -1080,6 +1094,7 @@ function buildFornecedoresPanel(data) {
         const sitClass = situacao === 'Ativa' ? '' : (situacao === '-' ? '' : 'badge badge-gray');
         let badges = '';
         const isInidoneidade = _val(r, cols, 'flag_inidoneidade');
+        const cnpjCompletoDigits = String(cnpjCompleto || '').replace(/\D/g, '');
         const abrangenciaRaw = _val(r, cols, 'abrangencia_sancao_info') || '';
         const sancaoAplica = abrangenciaRaw.startsWith('!');
         const abrangenciaInfo = abrangenciaRaw.replace(/^!/, '');
@@ -1094,14 +1109,17 @@ function buildFornecedoresPanel(data) {
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow" title="Divida ativa da Uniao (PGFN) - impostos federais em aberto"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida ativa (PGFN)</span></span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray" title="Cadastro da empresa inativo na Receita Federal"><span class="citizen-only">Empresa inativa na Receita</span><span class="auditor-only">Cadastro inativo</span></span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
-        const rowClass = (() => {
+        const rowSeverityClass = (() => {
             const recInid = _val(r, cols, 'flag_recebeu_durante_inidoneidade');
             const recSan = _val(r, cols, 'flag_recebeu_durante_sancao_aplicavel');
-            if (recInid) return 'clickable-row row-sancao';
-            if (recSan) return 'clickable-row row-sancao-leve';
-            return 'clickable-row';
+            if (recInid) return 'row-sancao';
+            if (recSan) return 'row-sancao-leve';
+            return '';
         })();
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+        if (cnpjCompletoDigits.length !== 14) {
+            return `<tr class="row-detail-unavailable ${rowSeverityClass}" title="Detalhes indisponiveis: CNPJ completo ausente."><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+        }
+        return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
 
     const hasRecInid = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_inidoneidade'));
@@ -1176,15 +1194,39 @@ function _formatDateInput(date) {
     return `${y}-${m}-${d}`;
 }
 
+function _todayGmt3Parts() {
+    const gmt3 = new Date(Date.now() - (3 * 60 * 60 * 1000));
+    return {
+        year: gmt3.getUTCFullYear(),
+        month: gmt3.getUTCMonth() + 1,
+        day: gmt3.getUTCDate(),
+    };
+}
+
+function _partsToIso(parts) {
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function _addUtcDaysParts(year, month, day, days) {
+    const dt = new Date(Date.UTC(year, month - 1, day + days));
+    return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate() };
+}
+
+function _todayGmt3Iso() {
+    return _partsToIso(_todayGmt3Parts());
+}
+
 function _datePresetRange(preset) {
-    const today = new Date();
-    const todayIso = _formatDateInput(today);
+    const today = _todayGmt3Parts();
+    const todayIso = _partsToIso(today);
     if (preset === 'current-year') {
-        return { inicio: `${today.getFullYear()}-01-01`, fim: todayIso };
+        return { inicio: `${today.year}-01-01`, fim: todayIso };
     }
     if (preset === 'last-12m') {
-        const start = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1);
-        return { inicio: _formatDateInput(start), fim: todayIso };
+        const start = (today.month === 2 && today.day === 29)
+            ? { year: today.year - 1, month: 3, day: 1 }
+            : _addUtcDaysParts(today.year - 1, today.month, today.day, 1);
+        return { inicio: _partsToIso(start), fim: todayIso };
     }
     return { inicio: '', fim: '' };
 }
@@ -1269,6 +1311,25 @@ function _setDateFilterStatus(message, kind) {
     el.classList.toggle('color-red', kind === 'error');
 }
 
+function _setLiveRefreshState(isBusy) {
+    document.querySelectorAll('.city-hero, .insight-grid, .city-kpi-strip').forEach(node => {
+        node.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+        node.classList.toggle('is-refreshing', !!isBusy);
+    });
+}
+
+async function _handleDateApiError(response, fallbackMessage) {
+    let message = fallbackMessage || 'Nao foi possivel aplicar o filtro de periodo.';
+    try {
+        const data = await response.json();
+        if (data && data.error) message = data.error;
+    } catch {}
+    if (response.status === 400) {
+        _setDateFilterStatus(message, 'error');
+    }
+    return message;
+}
+
 function _validateDateInputs() {
     const inicioEl = document.getElementById('dateInicio');
     const fimEl = document.getElementById('dateFim');
@@ -1322,6 +1383,7 @@ function _resetCityPanelsLoading() {
     document.querySelectorAll('.finding-card').forEach(card => {
         card.classList.add('loading');
         card.classList.remove('is-empty', 'is-timeout');
+        card.setAttribute('aria-busy', 'true');
         const body = card.querySelector('.finding-body');
         if (body) body.innerHTML = skeletonTableHtml(3, 3);
         const countEl = card.querySelector('[data-count]');
@@ -1494,7 +1556,8 @@ async function _refreshKpisLive(municipio, uf) {
             body: JSON.stringify(_buildBody(municipio, uf || 'PB')),
         });
         if (!res.ok) {
-            console.warn('kpis endpoint returned', res.status);
+            const msg = await _handleDateApiError(res, 'Nao foi possivel carregar os indicadores deste periodo.');
+            console.warn('kpis endpoint returned', res.status, msg);
             return;
         }
         const data = await res.json();
@@ -1634,14 +1697,11 @@ async function _refreshPerfilLive(municipio, uf) {
                 _updateNarrative(data.narrative);
             }
         } else {
-            console.warn('perfil endpoint returned', res.status);
+            const msg = await _handleDateApiError(res, 'Nao foi possivel carregar o perfil deste periodo.');
+            console.warn('perfil endpoint returned', res.status, msg);
         }
     } catch (e) {
         console.warn('perfil fetch failed', e);
-    } finally {
-        document.querySelectorAll('.city-hero, .insight-grid').forEach(node => {
-            node.setAttribute('aria-busy', 'false');
-        });
     }
 }
 
@@ -1657,14 +1717,16 @@ function _updateNarrative(narrative) {
 
 // ── Dialog navigation stack ─────────────────────────────────────
 let _currentMunicipio = '';
-const _dialogStack = []; // [{title, html}]
+const _dialogStack = []; // [{title, html, activePanelId}]
 
 function _dialogPush() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     const title = dialog.querySelector('.dialog-title').textContent;
-    const html = dialog.querySelector('.dialog-body').innerHTML;
-    _dialogStack.push({ title, html });
+    const body = dialog.querySelector('.dialog-body');
+    const html = body.innerHTML;
+    const activePanelId = body._activeDialogSectionId || body.querySelector('.dialog-tab-panel:not([hidden])')?.id || '';
+    _dialogStack.push({ title, html, activePanelId });
     dialog.querySelector('.dialog-back').style.visibility = 'visible';
 }
 
@@ -1677,7 +1739,13 @@ function _dialogPop() {
     body.innerHTML = prev.html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
+    if (prev.activePanelId) _activateDialogSection(body, prev.activePanelId, { focus: false, scroll: false });
     if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
+}
+
+function _activateDialogSection(body, id, opts = {}) {
+    if (!body || !id || typeof body._activateDialogSection !== 'function') return false;
+    return body._activateDialogSection(id, opts);
 }
 
 function _dialogReset() {
@@ -1974,12 +2042,17 @@ function _decorateDialogBody(body) {
     body.querySelector('.dialog-nav')?.remove();
 
     const sections = Array.from(body.querySelectorAll('.dialog-section'));
-    if (sections.length < 2) return;
+    if (sections.length < 2) {
+        body._activateDialogSection = null;
+        body._activeDialogSectionId = '';
+        return;
+    }
 
     sections.forEach((section, idx) => {
         if (!section.id) section.id = `dialog-section-${idx + 1}`;
         const heading = section.querySelector('h4');
         section.dataset.dialogLabel = _dialogSectionNavLabel(heading ? heading.textContent : `Secao ${idx + 1}`);
+        section.setAttribute('aria-labelledby', `${section.id}-tab`);
         section.classList.add('dialog-tab-panel');
         section.setAttribute('role', 'tabpanel');
         section.hidden = idx !== 0;
@@ -1989,32 +2062,51 @@ function _decorateDialogBody(body) {
     nav.className = 'dialog-nav';
     nav.setAttribute('role', 'tablist');
     nav.setAttribute('aria-label', 'Secoes do dialogo');
+    nav.setAttribute('aria-orientation', 'horizontal');
     nav.innerHTML = sections.map((section, idx) =>
-        `<button type="button" role="tab" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-controls="${section.id}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
+        `<button type="button" role="tab" id="${section.id}-tab" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-controls="${section.id}" tabindex="${idx === 0 ? '0' : '-1'}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
     ).join('');
-    body.prepend(nav);
+    const introNote = body.querySelector(':scope > .dialog-history-note');
+    if (introNote) introNote.insertAdjacentElement('afterend', nav);
+    else body.prepend(nav);
 
     const buttons = Array.from(nav.querySelectorAll('.dialog-nav-btn'));
-    const setActive = (id) => {
+    const setActive = (id, opts = {}) => {
+        const activeButton = buttons.find(btn => btn.dataset.dialogTarget === id);
+        if (!activeButton) return false;
         buttons.forEach((btn) => {
             const active = btn.dataset.dialogTarget === id;
             btn.classList.toggle('is-active', active);
             btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            btn.tabIndex = active ? 0 : -1;
         });
         sections.forEach((section) => {
             section.hidden = section.id !== id;
         });
+        body._activeDialogSectionId = id;
+        if (opts.focus) activeButton.focus({ preventScroll: true });
+        if (opts.scroll) body.scrollTo({ top: 0, behavior: opts.smooth === false ? 'auto' : 'smooth' });
+        return true;
     };
+    body._activateDialogSection = setActive;
 
-    buttons.forEach((btn) => {
+    buttons.forEach((btn, idx) => {
         btn.addEventListener('click', () => {
-            const target = body.querySelector(`#${CSS.escape(btn.dataset.dialogTarget)}`);
-            if (!target) return;
-            setActive(btn.dataset.dialogTarget);
-            body.scrollTo({ top: 0, behavior: 'smooth' });
+            setActive(btn.dataset.dialogTarget, { scroll: true });
+        });
+        btn.addEventListener('keydown', (event) => {
+            let nextIndex = -1;
+            if (event.key === 'ArrowRight') nextIndex = (idx + 1) % buttons.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (idx - 1 + buttons.length) % buttons.length;
+            else if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = buttons.length - 1;
+            else return;
+            event.preventDefault();
+            const next = buttons[nextIndex];
+            setActive(next.dataset.dialogTarget, { focus: true, scroll: false });
         });
     });
-    setActive(sections[0].id);
+    setActive(sections[0].id, { smooth: false });
 }
 
 // Unified detail cache — evicts on fetch error
@@ -2037,6 +2129,11 @@ function _cachedPost(url, key, payload) {
     return promise;
 }
 
+function _historyNote(text) {
+    const copy = text || 'Historico completo — estes detalhes nao mudam com o filtro de periodo da pagina.';
+    return `<p class="period-badge dialog-history-note" role="note">${copy}</p>`;
+}
+
 function _fetchServidorDetails(cpf6, nome, cnpjs, municipio) {
     return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}`, { cpf6, nome, cnpjs, municipio });
 }
@@ -2045,7 +2142,7 @@ function _fetchFornecedorDetails(cnpjBasico, municipio, nomeCredor, cpfCnpj) {
     const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
     const payload = { cnpj_basico: cnpjBasico, municipio, cpf_cnpj: exactDoc };
     if (nomeCredor) payload.nome_credor = nomeCredor;
-    const cacheKey = `forn:${exactDoc || cnpjBasico}:${municipio}${nomeCredor ? ':' + nomeCredor : ''}`;
+    const cacheKey = `forn:${exactDoc}:${municipio}${nomeCredor ? ':' + nomeCredor : ''}`;
     return _cachedPost('/api/fornecedor/detalhes', cacheKey, payload);
 }
 
@@ -2113,7 +2210,10 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     const capital = e.capital_social ? _shortBrl(e.capital_social) : '-';
     const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
     const nome = _esc(e.razao_social || 'Razao social nao disponivel');
-    const nomeLink = `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-cpf-cnpj="${_esc(e.cnpj_completo || '')}" data-forn-nome="${nome}">${nome}</a>`;
+    const cnpjCompleto = String(e.cnpj_completo || '').replace(/\D/g, '');
+    const nomeLink = cnpjCompleto.length === 14
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-cpf-cnpj="${_esc(cnpjCompleto)}" data-forn-nome="${nome}">${nome}</a>`
+        : `${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>`;
     const qualif = e.qualificacao_socio ? `<span>${dualLabel('Papel:','Qualificacao:')} <strong>${_esc(e.qualificacao_socio)}</strong></span>` : '';
     const dtEntrada = e.dt_entrada_sociedade ? `<span class="auditor-only">Entrada: ${_fmtDate(e.dt_entrada_sociedade)}</span>` : '';
     return `<div class="empresa-card">
@@ -2145,11 +2245,15 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
+    if (data.detail_unavailable) {
+        body.innerHTML = `<p class="text-sm text-muted">${_esc(data.detail_unavailable)}</p>`;
+        return;
+    }
     const sancoes = data.empresa_sancoes || {};
     const pgfn = data.empresa_pgfn || {};
     const empMap = data.empresa_empenhos || {};
     const acordosMap = data.empresa_acordos || {};
-    let html = '<p class="period-badge dialog-history-note">Historico completo — estes detalhes nao mudam com o filtro de periodo da pagina.</p>';
+    let html = _historyNote();
 
     // Stats grid
     const vinculos = data.vinculos || [];
@@ -2207,7 +2311,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             let badges = '';
             // Sancao badges
             const sanList = sancoes[c] || [];
-            const hojeIso = _formatDateInput(new Date());
+            const hojeIso = _todayGmt3Iso();
             const vigentes = sanList.filter(s => !s.dt_final_sancao || s.dt_final_sancao >= hojeIso);
             if (vigentes.length) {
                 const hasInid = vigentes.some(s => /inidone/i.test(s.categoria_sancao || ''));
@@ -2345,7 +2449,9 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
         html += '</div>';
     }
 
-    if (!html || html === '<div class="stats-grid"></div>') html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
+    if (!/<div class="dialog-section"/.test(html)) {
+        html += '<p class="text-sm text-muted">Nenhum detalhe disponivel para este servidor.</p>';
+    }
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
@@ -2354,6 +2460,13 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
+    if (exactDoc.length !== 14) {
+        if (typeof showToast === 'function') {
+            showToast('Detalhes indisponiveis: esta linha nao traz CNPJ completo.', 3200);
+        }
+        return;
+    }
     if (!switchMun) {
         if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     } else {
@@ -2367,13 +2480,8 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     document.body.classList.add('dialog-open');
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
-    const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
-    if (exactDoc.length !== 14) {
-        body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel abrir os detalhes com seguranca porque esta linha nao traz um CNPJ completo.</p>';
-        return;
-    }
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);
-    let html = '<p class="period-badge dialog-history-note">Historico completo — estes detalhes nao mudam com o filtro de periodo da pagina.</p>';
+    let html = _historyNote();
 
     // Pre-compute sanction date ranges (used by charts and empenho table)
     // grave = sancao legalmente afeta contratos com este municipio
@@ -2514,7 +2622,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += data.sancoes.map(s => {
             const inicio = _fmtDate(s.dt_inicio_sancao);
             const fim = s.dt_final_sancao ? _fmtDate(s.dt_final_sancao) : 'Sem prazo definido';
-            const vigente = !s.dt_final_sancao || new Date(s.dt_final_sancao) >= new Date();
+            const vigente = !s.dt_final_sancao || s.dt_final_sancao >= _todayGmt3Iso();
             const origem = s.origem || 'CEIS';
             const multa = s.valor_multa ? `<span>Multa: ${_shortBrl(s.valor_multa)}</span>` : '';
             const categoria = s.categoria_sancao || 'Sancao';
@@ -2649,11 +2757,14 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += '</div>';
     }
 
-    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
+    if (!/<div class="dialog-section"/.test(html)) {
+        html += '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
+    }
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
     if (switchMun) {
+        _activateDialogSection(body, 'forn-empenhos', { focus: false, scroll: false, smooth: false });
         const empSection = body.querySelector('#forn-empenhos');
         if (empSection) empSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -2675,10 +2786,19 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
     let data;
     try {
         const resp = await fetch(`/api/heatmap/${encodeURIComponent(municipio)}/${ano}/${mes}`);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+            let msg = 'Nao foi possivel carregar os detalhes deste mes.';
+            try {
+                const err = await resp.json();
+                if (err && err.error) msg = err.error;
+            } catch {}
+            throw new Error(msg);
+        }
         data = await resp.json();
+        if (data && data.error) throw new Error(data.error);
     } catch (err) {
-        body.innerHTML = `<p class="text-sm text-muted">Erro ao carregar: ${_esc(err.message || String(err))}</p>`;
+        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><button type="button" class="btn btn-outline btn-sm" data-retry-heatmap> Tentar novamente</button></div>`;
+        body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes));
         return;
     }
 
@@ -2688,7 +2808,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
     const funcoes = data.funcoes || [];
     const modalidades = data.modalidades || [];
     const empenhos = data.empenhos || [];
-    let html = '';
+    let html = _historyNote('Historico completo do mes selecionado — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
     html += '<div class="stats-grid">';
@@ -2805,7 +2925,7 @@ async function openEmpenhoDialog(empenhoId) {
     }
 
     title.textContent = `Empenho ${data.numero_empenho}`;
-    let html = '';
+    let html = _historyNote('Historico completo do empenho — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     // Historico (descricao detalhada)
     if (data.historico) {
@@ -2904,7 +3024,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
-    let html = '';
+    let html = _historyNote('Historico completo da licitacao — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     // Metadata — always render header
     const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;
@@ -3366,6 +3486,7 @@ function initClickableRows(root = document) {
 
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
+    initCidadeAutocomplete();
     initInteractiveToggles(document);
     initClickableRows(document);
     initBackToTop();
@@ -3409,12 +3530,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Date filter handlers
     _initDateInputsBr();
-    document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
+    const applyDateFilter = () => {
         const range = _validateDateInputs();
         if (!range) return;
         _setDateInputs(range.inicio, range.fim);
         _resetCityPanelsLoading();
         bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
+    };
+    document.getElementById('btnFiltrarData')?.addEventListener('click', applyDateFilter);
+    ['dateInicio', 'dateFim'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            applyDateFilter();
+        });
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {

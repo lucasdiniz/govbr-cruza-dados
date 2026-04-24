@@ -667,7 +667,7 @@ cnpjs_inidoneidade AS (
       AND LENGTH(cpf_cnpj_sancionado) = 14
 ),
 ceaf_expulsos AS (
-    SELECT DISTINCT SUBSTRING(cpf_cnpj_norm, 4, 6) AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome
+    SELECT DISTINCT SUBSTRING(cpf_cnpj_norm, 4, 6) AS cpf6, normalize_name(nome_sancionado) AS nome
     FROM ceaf_expulsao
     WHERE LENGTH(cpf_cnpj_norm) = 11
 ),
@@ -701,11 +701,11 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
            SELECT 1 FROM unnest(cnpjs_socio) AS cs(cnpj)
            JOIN cnpjs_inidoneidade ini ON ini.cb = TRIM(cs.cnpj)
        ) AS flag_socio_inidoneidade,
-       EXISTS(
-           SELECT 1 FROM ceaf_expulsos ce
-           WHERE ce.cpf6 = mv_servidor_pb_risco.cpf_digitos_6
-             AND ce.nome = mv_servidor_pb_risco.nome_upper
-       ) AS flag_ceaf_expulso,
+        EXISTS(
+            SELECT 1 FROM ceaf_expulsos ce
+            WHERE ce.cpf6 = mv_servidor_pb_risco.cpf_digitos_6
+              AND ce.nome = normalize_name(mv_servidor_pb_risco.nome_upper)
+        ) AS flag_ceaf_expulso,
        COALESCE((
            SELECT SUM(ep.total_pago)
            FROM unnest(cnpjs_socio) AS cs(cnpj)

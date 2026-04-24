@@ -66,7 +66,8 @@
                     {% for row in rows %}
                     {% set cpf_cnpj_val = row.get('cnpj_completo', '') or row.get('cpf_cnpj', '') or row.get('cpf_cnpj_sancionado', '') or row.get('cpfcnpj_contratado', '') or row.get('cpf_cnpj_proponente', '') %}
                     {% set cpf_cnpj_digits = cpf_cnpj_val|string|replace('.', '')|replace('/', '')|replace('-', '') if cpf_cnpj_val else '' %}
-                    {% set cnpj_basico_val = cpf_cnpj_digits[:8] if cpf_cnpj_digits|length == 14 else '' %}
+                    {% set cnpj_basico_row = row.get('cnpj_basico', '')|string|replace('.', '')|replace('/', '')|replace('-', '') %}
+                    {% set cnpj_basico_val = cpf_cnpj_digits[:8] if cpf_cnpj_digits|length == 14 else cnpj_basico_row[:8] %}
                     {% set nome_val = row.get('nome_credor', '') or row.get('razao_social', '') or row.get('nome_sancionado', '') or row.get('nome_contratado', '') or row.get('nome_proponente', '') or '' %}
                     {% set cpf6_val = row.get('cpf_digitos_6', '') or '' %}
                     {% set nome_upper_val = row.get('nome_upper', '') or row.get('nome_servidor', '') or '' %}
@@ -87,9 +88,11 @@
                     <tr class="clickable-row{{ row_hl }}" data-cpf6="{{ cpf6_val }}" data-nome-upper="{{ nome_upper_val }}" data-nome="{{ nome_upper_val }}" data-cnpjs="[]">
                     {% elif lic_num_val and lic_num_val != '000000000' %}
                     <tr class="clickable-row{{ row_hl }}" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}" data-licitacao-mod="{{ lic_mod_val }}">
-                    {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
+                    {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() and cpf_cnpj_digits|length == 14 %}
                     {% set nome_credor_val = row.get('nome_credor', '') or '' %}
                     <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-cpf-cnpj="{{ cpf_cnpj_digits }}" data-fornecedor-nome="{{ nome_val|clean_text }}" data-fornecedor-nome-credor="{{ nome_credor_val|clean_text }}">
+                    {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
+                    <tr class="row-detail-unavailable{{ row_hl }}" title="Detalhes indisponiveis: esta linha nao traz CNPJ completo de 14 digitos.">
                     {% else %}
                     <tr{% if row_hl %} class="{{ row_hl|trim }}"{% endif %}>
                     {% endif %}
@@ -114,7 +117,7 @@
                             {% elif value is iterable and value is not string %}
                                 {{ value|join(", ")|clean_text }}
                             {% else %}
-                                {{ (value if value is not none else "-")|clean_text }}
+                                {{ (value if value is not none else "-")|clean_text }}{% if loop.first and cnpj_basico_val|length == 8 and cpf_cnpj_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}
                             {% endif %}
                         </td>
                         {% endfor %}

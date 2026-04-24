@@ -7,7 +7,7 @@
 //
 // Bump CACHE_VERSION para invalidar caches antigos.
 
-const CACHE_VERSION = 'tpb-v16';
+const CACHE_VERSION = 'tpb-v17';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 
@@ -72,19 +72,12 @@ self.addEventListener('fetch', (event) => {
 
 async function staleWhileRevalidate(request, cacheName) {
     const cache = await caches.open(cacheName);
-    const cacheKey = normalizedStaticRequest(request);
-    const cached = await cache.match(cacheKey);
+    const cached = await cache.match(request);
     const network = fetch(request).then((res) => {
-        if (res && res.status === 200) cache.put(cacheKey, res.clone()).catch(() => null);
+        if (res && res.status === 200) cache.put(request, res.clone()).catch(() => null);
         return res;
     }).catch(() => null);
     return cached || network || new Response('', { status: 504 });
-}
-
-function normalizedStaticRequest(request) {
-    const url = new URL(request.url);
-    url.search = '';
-    return new Request(url.toString(), { credentials: request.credentials });
 }
 
 async function networkFirst(request, cacheName) {

@@ -6,7 +6,7 @@ import csv
 import io
 import logging
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -45,6 +45,8 @@ from web.queries.registry import CIDADE_QUERIES, get_categories
 from web.kpis.cidade import compute_cidade_kpis
 
 router = APIRouter()
+
+GMT_MINUS_3 = timezone(timedelta(hours=-3))
 
 SECTION_META = {
     "Conflito de Interesses": {
@@ -133,6 +135,10 @@ def _last_12m_bounds(today: date) -> tuple[str, str]:
     return inicio.isoformat(), today.isoformat()
 
 
+def _today_gmt3() -> date:
+    return datetime.now(GMT_MINUS_3).date()
+
+
 def _date_validation_error(payload: MunicipioPayload) -> str | None:
     if not _has_date_filter(payload):
         return None
@@ -152,7 +158,7 @@ def _get_periodo(payload: MunicipioPayload) -> str:
     """'ANO'/'12M' se datas batem com presets, '' se sem filtro, 'CUSTOM' se custom."""
     if not _has_date_filter(payload):
         return ""
-    today = date.today()
+    today = _today_gmt3()
     if payload.data_inicio == f"{today.year}-01-01" and payload.data_fim == today.isoformat():
         return "ANO"
     inicio_12m, fim_12m = _last_12m_bounds(today)
@@ -409,10 +415,10 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
     Retorna dict com chaves `citizen` (HTML para modo cidadao) e `auditor`
     (HTML para modo auditor) — ambas prontas para |safe no template.
 
-    `periodo`: '' = all-time (default), 'ANO' = ano corrente, 'CUSTOM' = filtro
-    customizado. Quando filtrado, omite comparadores PB (medianas all-time) e o
-    risco_score (vem da MV all-time) para nao misturar escalas, e adiciona um
-    prefixo identificando o periodo no inicio da frase.
+    `periodo`: '' = all-time (default), 'ANO' = ano corrente, '12M' = ultimos
+    12 meses, 'CUSTOM' = filtro customizado. Quando filtrado, omite comparadores
+    PB (medianas all-time) e o risco_score (vem da MV all-time) para nao misturar
+    escalas, e adiciona um prefixo identificando o periodo no inicio da frase.
     """
     medias = medias or {}
     municipio = (perfil.get("municipio") or "Este munic&iacute;pio").title()
@@ -425,8 +431,12 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
 
     is_filtered = bool(periodo)
     if periodo == "ANO":
-        period_label_citizen = f"Em <strong>{date.today().year}</strong> (ate hoje), "
-        period_label_auditor = f"<strong>{date.today().year}</strong> (ate hoje) — "
+        year = _today_gmt3().year
+        period_label_citizen = f"Em <strong>{year}</strong> (ate hoje), "
+        period_label_auditor = f"<strong>{year}</strong> (ate hoje) — "
+    elif periodo == "12M":
+        period_label_citizen = "<strong>Nos ultimos 12 meses</strong>, "
+        period_label_auditor = "<strong>Ultimos 12 meses</strong> — "
     elif periodo == "CUSTOM":
         period_label_citizen = "<strong>No per&iacute;odo selecionado</strong>, "
         period_label_auditor = "<strong>Per&iacute;odo selecionado</strong> — "
@@ -633,7 +643,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
             status_code=404,
         )
 
-    _today = date.today()
+    _today = _today_gmt3()
     date_ctx = {
         "default_data_inicio": f"{_today.year}-01-01",
         "default_data_fim": _today.isoformat(),
@@ -1170,12 +1180,12 @@ async def invalidate_web_cache(payload: dict = Body(...)):
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
-    cpf6 = payload.get("cpf6", "")
-    nome = payload.get("nome", "")
+    cpf6 = "".join(ch for ch in str(payload.get("cpf6", "")) if ch.isdigit())
+    nome = str(payload.get("nome", "")).strip()
     cnpjs = (payload.get("cnpjs") or [])[:100]
     municipio = payload.get("municipio", "")
-    if not cpf6 or not nome:
-        return JSONResponse({})
+    if len(cpf6) != 6 or not nome:
+        return JSONResponse({"detail_unavailable": "CPF parcial invalido para consulta segura."})
     try:
         from web.db import get_conn
         result = {}
@@ -1274,24 +1284,29 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 if cnpjs:
                     ph = ",".join(["%s"] * len(cnpjs))
                     cur.execute(f"""
-                        SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
+                        WITH empresas_exatas AS (
+                            SELECT cnpj_basico, cnpj_completo
+                            FROM estabelecimento
+                            WHERE cnpj_basico IN ({ph})
+                              AND cnpj_ordem = '0001'
+                              AND LENGTH(cnpj_completo) = 14
+                        )
+                        SELECT ex.cnpj_basico,
                                'CEIS' AS fonte,
-                               nome_sancionado, categoria_sancao, orgao_sancionador,
-                               esfera_orgao_sancionador, abrangencia_sancao,
-                               dt_inicio_sancao, dt_final_sancao
-                        FROM ceis_sancao
-                        WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
-                          AND LENGTH(cpf_cnpj_sancionado) = 14
+                               ce.nome_sancionado, ce.categoria_sancao, ce.orgao_sancionador,
+                               ce.esfera_orgao_sancionador, ce.abrangencia_sancao,
+                               ce.dt_inicio_sancao, ce.dt_final_sancao
+                        FROM empresas_exatas ex
+                        JOIN ceis_sancao ce ON ce.cpf_cnpj_norm = ex.cnpj_completo
                         UNION ALL
-                        SELECT LEFT(cpf_cnpj_sancionado, 8) AS cnpj_basico,
+                        SELECT ex.cnpj_basico,
                                'CNEP' AS fonte,
-                               nome_sancionado, categoria_sancao, orgao_sancionador,
-                               esfera_orgao_sancionador, abrangencia_sancao,
-                               dt_inicio_sancao, dt_final_sancao
-                        FROM cnep_sancao
-                        WHERE LEFT(cpf_cnpj_sancionado, 8) IN ({ph})
-                          AND LENGTH(cpf_cnpj_sancionado) = 14
-                    """, cnpjs + cnpjs)
+                               cn.nome_sancionado, cn.categoria_sancao, cn.orgao_sancionador,
+                               cn.esfera_orgao_sancionador, cn.abrangencia_sancao,
+                               cn.dt_inicio_sancao, cn.dt_final_sancao
+                        FROM empresas_exatas ex
+                        JOIN cnep_sancao cn ON cn.cpf_cnpj_norm = ex.cnpj_completo
+                    """, cnpjs)
                     san_cols = [d[0] for d in cur.description]
                     san_rows = cur.fetchall()
                     sancoes_map = {}
@@ -1309,11 +1324,17 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 if cnpjs:
                     ph = ",".join(["%s"] * len(cnpjs))
                     cur.execute(f"""
-                        SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
-                               tipo_devedor, valor_consolidado, situacao_inscricao
-                        FROM pgfn_divida
-                        WHERE LENGTH(cpf_cnpj_norm) = 14
-                          AND LEFT(cpf_cnpj_norm, 8) IN ({ph})
+                        WITH empresas_exatas AS (
+                            SELECT cnpj_basico, cnpj_completo
+                            FROM estabelecimento
+                            WHERE cnpj_basico IN ({ph})
+                              AND cnpj_ordem = '0001'
+                              AND LENGTH(cnpj_completo) = 14
+                        )
+                        SELECT ex.cnpj_basico,
+                               pg.tipo_devedor, pg.valor_consolidado, pg.situacao_inscricao
+                        FROM empresas_exatas ex
+                        JOIN pgfn_divida pg ON pg.cpf_cnpj_norm = ex.cnpj_completo
                     """, cnpjs)
                     pgfn_cols = [d[0] for d in cur.description]
                     pgfn_rows = cur.fetchall()
@@ -1366,7 +1387,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                            numero_processo
                     FROM ceaf_expulsao
                     WHERE SUBSTRING(cpf_cnpj_norm, 4, 6) = %s
-                      AND UPPER(unaccent(nome_sancionado)) = %s
+                      AND normalize_name(nome_sancionado) = normalize_name(%s)
                       AND LENGTH(cpf_cnpj_norm) = 11
                     ORDER BY dt_inicio_sancao DESC
                 """, (cpf6, nome))
@@ -1386,10 +1407,17 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 if cnpjs:
                     ph = ",".join(["%s"] * len(cnpjs))
                     cur.execute(f"""
-                        SELECT LEFT(al.cnpj_norm, 8) AS cnpj_basico,
+                        WITH empresas_exatas AS (
+                            SELECT cnpj_basico, cnpj_completo
+                            FROM estabelecimento
+                            WHERE cnpj_basico IN ({ph})
+                              AND cnpj_ordem = '0001'
+                              AND LENGTH(cnpj_completo) = 14
+                        )
+                        SELECT ex.cnpj_basico,
                                al.situacao_acordo
-                        FROM acordo_leniencia al
-                        WHERE LEFT(al.cnpj_norm, 8) IN ({ph})
+                        FROM empresas_exatas ex
+                        JOIN acordo_leniencia al ON al.cnpj_norm = ex.cnpj_completo
                     """, cnpjs)
                     ac_cols = [d[0] for d in cur.description]
                     ac_rows = cur.fetchall()
@@ -1562,14 +1590,14 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
 
                 # Sancoes CEIS
                 cur.execute("""
-                    SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+                    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
+                           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
                            orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal,
                            abrangencia_sancao
                     FROM ceis_sancao
-                    WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
-                      AND LENGTH(cpf_cnpj_sancionado) = 14
+                    WHERE cpf_cnpj_norm = %s
                     ORDER BY dt_inicio_sancao DESC
-                """, (cnpj_basico,))
+                """, (cpf_cnpj,))
                 san_cols = [d[0] for d in cur.description]
                 san_rows = cur.fetchall()
                 sancoes = []
@@ -1583,14 +1611,14 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
 
                 # Sancoes CNEP
                 cur.execute("""
-                    SELECT cpf_cnpj_sancionado, categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+                    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
+                           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
                            orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal, valor_multa,
                            abrangencia_sancao
                     FROM cnep_sancao
-                    WHERE LEFT(cpf_cnpj_sancionado, 8) = %s
-                      AND LENGTH(cpf_cnpj_sancionado) = 14
+                    WHERE cpf_cnpj_norm = %s
                     ORDER BY dt_inicio_sancao DESC
-                """, (cnpj_basico,))
+                """, (cpf_cnpj,))
                 cnep_cols = [d[0] for d in cur.description]
                 cnep_rows = cur.fetchall()
                 for row in cnep_rows:
@@ -1614,22 +1642,23 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                                SUM(d.valor_pago) AS total_pago
                         FROM tce_pb_despesa d
                         JOIN (
-                            SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
-                                   dt_inicio_sancao, dt_final_sancao
+                            SELECT cpf_cnpj_norm AS cnpj_norm,
+                                    dt_inicio_sancao, dt_final_sancao
                             FROM ceis_sancao
+                            WHERE cpf_cnpj_norm = %s
                             UNION ALL
-                            SELECT LEFT(cpf_cnpj_sancionado, 8),
-                                   dt_inicio_sancao, dt_final_sancao
+                            SELECT cpf_cnpj_norm,
+                                    dt_inicio_sancao, dt_final_sancao
                             FROM cnep_sancao
-                        ) san ON san.cb = d.cnpj_basico
-                            AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
+                            WHERE cpf_cnpj_norm = %s
+                        ) san ON san.cnpj_norm = d.cpf_cnpj
                         WHERE {outros_where}
                           AND d.valor_pago > 0
                           AND d.data_empenho >= san.dt_inicio_sancao
                           AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
                         GROUP BY d.municipio
                         ORDER BY total_pago DESC
-                    """, outros_params)
+                    """, [cpf_cnpj, cpf_cnpj] + outros_params)
                     es_cols = [d2[0] for d2 in cur.description]
                     es_rows = cur.fetchall()
                     if es_rows:
@@ -1690,9 +1719,9 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                            receita_principal, valor_consolidado,
                            dt_inscricao, indicador_ajuizado
                     FROM pgfn_divida
-                    WHERE LEFT(cpf_cnpj_norm, 8) = %s AND LENGTH(cpf_cnpj_norm) = 14
+                    WHERE cpf_cnpj_norm = %s
                     ORDER BY valor_consolidado DESC
-                """, (cnpj_basico,))
+                """, (cpf_cnpj,))
                 pgfn_cols = [d[0] for d in cur.description]
                 pgfn_rows = cur.fetchall()
                 if pgfn_rows:
@@ -1713,9 +1742,9 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                            al.orgao_sancionador, al.dt_inicio_acordo, al.dt_fim_acordo,
                            al.numero_processo, al.id_acordo
                     FROM acordo_leniencia al
-                    WHERE LEFT(al.cnpj_norm, 8) = %s
+                    WHERE al.cnpj_norm = %s
                     ORDER BY al.dt_inicio_acordo DESC
-                """, (cnpj_basico,))
+                """, (cpf_cnpj,))
                 al_cols = [d[0] for d in cur.description]
                 al_rows = cur.fetchall()
                 if al_rows:

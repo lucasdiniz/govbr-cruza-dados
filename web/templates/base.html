@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
-    <link rel="stylesheet" href="/static/style.css?v=45">
+    <link rel="stylesheet" href="/static/style.css?v=46">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -124,7 +124,7 @@
     <script>
         window.COLUMN_META = {{ COLUMN_META | tojson }};
     </script>
-    <script src="/static/app.js?v=39"></script>
+    <script src="/static/app.js?v=40"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

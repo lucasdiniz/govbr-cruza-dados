@@ -1016,7 +1016,7 @@ ceaf_match AS MATERIALIZED (
     FROM mv_servidor_pb_base srv
     JOIN ceaf_expulsao ce
       ON SUBSTRING(ce.cpf_cnpj_norm, 4, 6) = srv.cpf_digitos_6
-     AND UPPER(unaccent(ce.nome_sancionado)) = srv.nome_upper
+     AND normalize_name(ce.nome_sancionado) = normalize_name(srv.nome_upper)
     WHERE LENGTH(ce.cpf_cnpj_norm) = 11
 ),
 ceaf_por_municipio AS (

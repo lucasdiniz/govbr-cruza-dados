@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg2
 
@@ -62,6 +62,11 @@ TIMEOUT_HEATMAP = 300
 TIMEOUT_REGISTRY_DEFAULT = 600  # piso para CIDADE_QUERIES no warmer
 
 _thread_local = threading.local()
+GMT_MINUS_3 = timezone(timedelta(hours=-3))
+
+
+def _today_gmt3() -> date:
+    return datetime.now(GMT_MINUS_3).date()
 
 
 def _thread_conn():
@@ -369,7 +374,7 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
     # 1o loop: variantes ANO (ano atual) — prioritario porque o frontend
     # usa "ano atual" como filtro padrao, gerando mais cache hits.
-    today = date.today()
+    today = _today_gmt3()
     ano_params_base = {
         "data_inicio": f"{today.year}-01-01",
         "data_fim": today.isoformat(),

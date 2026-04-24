@@ -57,6 +57,7 @@
 - [x] **Cache invalidation endpoint** — `POST /api/cache/invalidate` permite limpar queries especificas do web_cache
 - [ ] **Descricoes vagas nas secoes** — textos como "Situacoes em que servidores podem estar relacionados de forma inadequada" nao explicam nada. Reescrever com: o que estamos mostrando, por que e relevante, qual lei/norma se aplica. Menos tecnico, mais explicativo
 - [ ] **Integrar mv_fornecedor_pb_perfil** — view com score de risco (0-5) por fornecedor. Pode alimentar badges de risco no dialog e ordenar Top Fornecedores por risco
+- [ ] **Remover coluna CEAF cpf_digitos_6 obsoleta do normalizador** (`etl/15_normalizar.py`) — o frontend/SQL agora usa `SUBSTRING(cpf_cnpj_norm, 4, 6)` + nome normalizado. Planejar cleanup seguro sem criar dependencia nova nem mexer em producao manualmente
 - [ ] **HTTPS** — requer dominio. Opcoes: Let's Encrypt (gratis), Cloudflare proxy, ou Azure Application Gateway
 
 ### Frontend web — Arquitetura
