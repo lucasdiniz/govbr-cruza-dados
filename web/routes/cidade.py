@@ -566,6 +566,27 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
         "default_data_fim": _today.isoformat(),
     }
 
+    # Default da UI eh "Ano atual": sobrepoe os campos do perfil sensiveis ao
+    # filtro com o cache ANO:PERFIL para alinhar o primeiro paint com o filtro
+    # ativo (evita flash de all-time). Mantem campos historicos (risco_score,
+    # qtd_licitacoes, pct_proponente_unico) intactos para narrativa/ranking.
+    try:
+        cached_ano = read_web_cache("PERFIL", municipio, periodo="ANO")
+        if cached_ano:
+            ano_cols, ano_rows = cached_ano
+            if ano_rows:
+                ano = _row_to_dict(ano_cols, ano_rows[0])
+                for fld in (
+                    "qtd_empenhos", "total_empenhado", "total_pago",
+                    "qtd_fornecedores", "qtd_sem_licitacao", "pct_sem_licitacao",
+                    "qtd_dezembro", "pct_dezembro", "pct_nao_executado",
+                    "receita_arrecadada", "total_folha", "pct_folha_receita",
+                ):
+                    if fld in ano and ano[fld] is not None:
+                        perfil[fld] = ano[fld]
+    except Exception:
+        pass
+
     narrative = build_narrative(perfil, get_pb_medias())
 
     # Carrega fornecedorese servidores do cache (sem fallback live: a hero
@@ -575,9 +596,14 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     canonical_mun = str(perfil.get("municipio") or municipio)
     # Tenta cache KPI_SUMMARY pre-computado (warm_cache.py). Se nao houver,
     # carrega listas e roda compute_cidade_kpis em runtime.
+    # Default da UI eh "Ano atual": tenta primeiro a variante ANO:KPI_SUMMARY
+    # (e ANO:TOP_*) para que os KPIs/concentracao/score do primeiro paint ja
+    # respeitem o filtro. Cai para all-time se o ANO ainda nao foi populado.
     kpi_ctx: dict | None = None
     try:
-        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
+        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun, periodo="ANO")
+        if not cached_summary:
+            cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
         if cached_summary:
             scols, srows = cached_summary
             if srows and srows[0]:
@@ -593,14 +619,18 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
         fornecedores_dicts: list[dict] = []
         servidores_dicts: list[dict] = []
         try:
-            forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
+            forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun, periodo="ANO")
+            if not forn_cached:
+                forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
             if forn_cached:
                 fcols, frows = forn_cached
                 fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
         except Exception:
             pass
         try:
-            serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
+            serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun, periodo="ANO")
+            if not serv_cached:
+                serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
             if serv_cached:
                 scols, srows = serv_cached
                 servidores_dicts = [_row_to_dict(scols, r) for r in srows]
@@ -802,10 +832,11 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                     elif ":" in qid:
                         # Prefixed but not matching: skip
                         pass
-                    else:
-                        # Fallback: only for queries without dated variants (TOP_SERVIDORES)
-                        if periodo and qid == "TOP_SERVIDORES" and qid not in result:
-                            result[qid] = entry
+                    # Sem fallback all-time: hoje todas as queries que aparecem
+                    # nos cards/panels (TOP_FORNECEDORES, TOP_SERVIDORES, Q##)
+                    # tem variante datada e cache ANO:* populado pelo warm_cache.
+                    # Aceitar entradas all-time aqui contaminaria a resposta com
+                    # dados que nao respeitam o filtro de periodo.
     except Exception:
         pass
     return JSONResponse(result)

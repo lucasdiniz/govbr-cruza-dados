@@ -131,7 +131,9 @@ SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
-       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos,
+       MIN(d.data_empenho) AS primeiro_empenho_no_filtro,
+       MAX(d.data_empenho) AS ultimo_empenho_no_filtro
 FROM (
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem,
@@ -177,7 +179,9 @@ SELECT san.nome_sancionado, san.cpf_cnpj_sancionado,
        END AS abrangencia,
        san.dt_inicio_sancao, san.dt_final_sancao,
        d.municipio, d.nome_credor,
-       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
+       SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos,
+       MIN(d.data_empenho) AS primeiro_empenho_no_filtro,
+       MAX(d.data_empenho) AS ultimo_empenho_no_filtro
 FROM (
     SELECT nome_sancionado, cpf_cnpj_sancionado, categoria_sancao,
            dt_inicio_sancao, dt_final_sancao, 'CEIS' AS origem,
