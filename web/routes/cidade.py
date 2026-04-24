@@ -214,6 +214,9 @@ _PB_RANKING_CACHE: dict = {"value": None, "expires_at": 0.0}
 
 
 PB_RANKING_SQL = """
+-- Requer mv_municipio_pb_kpi_score (criada em phase 18). O COALESCE so cobre
+-- linhas faltantes na MV — se a propria MV nao existir, a query falha com
+-- UndefinedTable. Garantir deploy do schema antes de subir o app.
 WITH score AS (
     SELECT r.municipio,
            COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score

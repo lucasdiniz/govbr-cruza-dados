@@ -1181,8 +1181,11 @@ irreg AS (
 )
 SELECT
     r.municipio,
-    -- risco_score agora vem do score unificado (8 KPIs investigativos);
-    -- fallback para a formula TCE-PB legada caso a MV nova ainda nao tenha sido atualizada.
+    -- risco_score agora vem do score unificado (8 KPIs investigativos).
+    -- COALESCE protege apenas municipios sem linha em mv_municipio_pb_kpi_score
+    -- (ainda nao recalculados). Se a MV nao existir, esta view falha com
+    -- UndefinedTable — phase 18 (deploy.yml etl_phase=18) DEVE rodar antes do
+    -- merge entrar em producao para criar mv_municipio_pb_kpi_score.
     COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,
     r.risco_score AS risco_score_tce,
     k.risco_score_unificado,

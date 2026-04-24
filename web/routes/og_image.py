@@ -51,6 +51,9 @@ def _font(size: int):
 
 
 def _fetch_perfil(municipio: str) -> dict | None:
+    # Requer mv_municipio_pb_kpi_score: o COALESCE so trata linhas ausentes na
+    # MV; sem a MV criada (phase 18) a query falha com UndefinedTable e a OG
+    # image cai no fallback do bloco try/except abaixo.
     sql = """
         SELECT r.municipio,
                COALESCE(k.risco_score_unificado, r.risco_score) AS risco_score,

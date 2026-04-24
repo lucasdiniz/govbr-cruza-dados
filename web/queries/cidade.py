@@ -75,6 +75,8 @@ LIMIT 1
 
 # Agregados da Paraiba inteira — usados para contexto comparativo na narrativa.
 # Cached em memoria por 6h (ver get_pb_medias em web/routes/cidade.py).
+# REQUER mv_municipio_pb_kpi_score: o COALESCE so cobre municipios sem linha
+# na MV (ja recalculados); ausencia da propria MV resulta em UndefinedTable.
 PB_MEDIAS = """
 SELECT
     COUNT(*)::int                                                   AS n_municipios,
@@ -738,6 +740,8 @@ WHERE %(municipio)s = ANY(municipios)"""
 )
 
 AUTOCOMPLETE_MUNICIPIO = """
+-- Requer mv_municipio_pb_kpi_score: COALESCE so cobre linhas faltantes na MV;
+-- se a MV inteira nao existir, esta query lanca UndefinedTable.
 SELECT r.municipio AS nome,
        'PB' AS uf,
        COALESCE(k.risco_score_unificado, r.risco_score) AS rank_val
