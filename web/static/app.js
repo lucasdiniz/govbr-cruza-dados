@@ -668,29 +668,29 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         _loadHeatmap(municipio);
     }
 
-    // Update hero/insight when date-filtered
-    if (_isDateFiltered()) {
-        // Show loading placeholders to avoid flash of all-time data
-        const el = id => document.getElementById(id);
-        ['heroQtdEmpenhos', 'heroTotalPago', 'heroQtdFornecedores'].forEach(id => {
-            if (el(id)) el(id).textContent = '...';
-        });
-        ['insightPctPago', 'insightPctSemLicit', 'insightPctDispensa', 'insightPctFolha'].forEach(id => {
-            if (el(id)) el(id).textContent = '...';
-        });
-        if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = '';
-        if (el('progressPctPago')) el('progressPctPago').style.width = '0%';
-        if (el('barEmpenhado')) el('barEmpenhado').textContent = '...';
-        if (el('barPago')) el('barPago').textContent = '...';
-        if (el('barFillPago')) el('barFillPago').style.width = '0%';
+    // Hero/insights/KPI strip + narrativa SEMPRE refrescam apos o boot.
+    // Antes, isso era gated em `_isDateFiltered()`, mas como SSR agora pinta
+    // em ANO (default 'Ano atual'), clicar 'Tudo' (sem datas) deixava a hero
+    // e a KPI strip presas em ANO enquanto os paineis abaixo iam para
+    // all-time. Refrescar sempre garante consistencia em ambas as direcoes
+    // (ANO->Tudo e Tudo->ANO/Custom).
+    const el = id => document.getElementById(id);
+    ['heroQtdEmpenhos', 'heroTotalPago', 'heroQtdFornecedores'].forEach(id => {
+        if (el(id)) el(id).textContent = '...';
+    });
+    ['insightPctPago', 'insightPctSemLicit', 'insightPctDispensa', 'insightPctFolha'].forEach(id => {
+        if (el(id)) el(id).textContent = '...';
+    });
+    if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = '';
+    if (el('progressPctPago')) el('progressPctPago').style.width = '0%';
+    if (el('barEmpenhado')) el('barEmpenhado').textContent = '...';
+    if (el('barPago')) el('barPago').textContent = '...';
+    if (el('barFillPago')) el('barFillPago').style.width = '0%';
 
-        // Always fetch via /api/perfil (handles ANO cache + live fallback internally)
-        await _refreshPerfilLive(municipio, uf);
-        // KPIs hero, concentracao top-5 e nota de atencao tambem precisam respeitar
-        // o filtro temporal — re-renderiza a partir do endpoint /api/kpis (que usa
-        // cache pre-computado por warm_cache.py quando possivel).
-        await _refreshKpisLive(municipio, uf);
-    }
+    // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
+    await _refreshPerfilLive(municipio, uf);
+    // /api/kpis retorna kpi strip + concentracao + score unificado.
+    await _refreshKpisLive(municipio, uf);
     // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
     // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
     _wireConcentracaoClicks();
@@ -1529,15 +1529,32 @@ async function _refreshPerfilLive(municipio, uf) {
             body: JSON.stringify(_buildBody(municipio, uf)),
         });
         if (res.ok) {
-            const perfil = await res.json();
+            const data = await res.json();
+            // Compat: /api/perfil agora retorna {perfil, narrative}.
+            // Tolera o formato antigo (perfil flat) caso uma versao em cache do
+            // bundle JS antigo bata com um backend novo (ou vice-versa).
+            const perfil = (data && data.perfil) ? data.perfil : data;
             _updateHeroStats(perfil);
             _updateInsightCards(perfil);
+            if (data && data.narrative) {
+                _updateNarrative(data.narrative);
+            }
         } else {
             console.warn('perfil endpoint returned', res.status);
         }
     } catch (e) {
         console.warn('perfil fetch failed', e);
     }
+}
+
+function _updateNarrative(narrative) {
+    if (!narrative) return;
+    const block = document.getElementById('cityNarrative');
+    if (!block) return;
+    const cit = block.querySelector('.citizen-only');
+    const aud = block.querySelector('.auditor-only');
+    if (cit && typeof narrative.citizen === 'string') cit.innerHTML = narrative.citizen;
+    if (aud && typeof narrative.auditor === 'string') aud.innerHTML = narrative.auditor;
 }
 
 // ── Dialog navigation stack ─────────────────────────────────────

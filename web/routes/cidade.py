@@ -178,8 +178,19 @@ def _load_top_fornecedores_dated(params: dict):
 
 
 def _load_top_servidores(municipio: str, params: dict | None = None):
-    query = TOP_SERVIDORES_RISCO_DATED if params and "ano_mes_inicio" in params else TOP_SERVIDORES_RISCO
+    is_dated = bool(params and "ano_mes_inicio" in params)
+    query = TOP_SERVIDORES_RISCO_DATED if is_dated else TOP_SERVIDORES_RISCO
     qparams = params if params else {"municipio": municipio}
+    # IMPORTANTE: cache key DEVE incluir o range datado, caso contrario uma
+    # chamada all-time anterior poluia chamadas dated subsequentes (e
+    # vice-versa) — a cached_query bate so pela key. cached_query so cobre
+    # all-time; dated cai para execute_query direto (igual a
+    # _load_top_fornecedores_dated). Ver review gpt-5.5 PR #32.
+    if is_dated:
+        try:
+            return execute_query(query, qparams, timeout_sec=TIMEOUT_QUERY_HEAVY)
+        except (UndefinedTable, UndefinedColumn, QueryCanceled):
+            return _empty_top_servidores()
     try:
         return cached_query(
             f"serv:{municipio.casefold()}",
@@ -188,14 +199,18 @@ def _load_top_servidores(municipio: str, params: dict | None = None):
             timeout_sec=TIMEOUT_QUERY_HEAVY,
         )
     except QueryCanceled:
-        return [
-            "cpf_digitos_6", "nome_upper", "nome_servidor",
-            "municipios", "maior_salario", "cargo",
-            "qtd_empresas_socio", "cnpjs_socio",
-            "flag_conflito_interesses", "flag_multi_empresa",
-            "flag_bolsa_familia", "flag_duplo_vinculo_estado",
-            "flag_alto_salario_socio", "risco_score",
-        ], []
+        return _empty_top_servidores()
+
+
+def _empty_top_servidores():
+    return [
+        "cpf_digitos_6", "nome_upper", "nome_servidor",
+        "municipios", "maior_salario", "cargo",
+        "qtd_empresas_socio", "cnpjs_socio",
+        "flag_conflito_interesses", "flag_multi_empresa",
+        "flag_bolsa_familia", "flag_duplo_vinculo_estado",
+        "flag_alto_salario_socio", "risco_score",
+    ], []
 
 
 def _get_query_def(query_id: str):
@@ -359,11 +374,16 @@ def _compare_vs_mediana(valor, mediana, higher_is_worse: bool = True) -> str:
     return "abaixo da m&eacute;dia da Para&iacute;ba" if higher_is_worse else "abaixo da m&eacute;dia da Para&iacute;ba"
 
 
-def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
+def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "") -> dict:
     """Monta narrativa humana a partir do perfil + agregados PB.
 
     Retorna dict com chaves `citizen` (HTML para modo cidadao) e `auditor`
     (HTML para modo auditor) — ambas prontas para |safe no template.
+
+    `periodo`: '' = all-time (default), 'ANO' = ano corrente, 'CUSTOM' = filtro
+    customizado. Quando filtrado, omite comparadores PB (medianas all-time) e o
+    risco_score (vem da MV all-time) para nao misturar escalas, e adiciona um
+    prefixo identificando o periodo no inicio da frase.
     """
     medias = medias or {}
     municipio = (perfil.get("municipio") or "Este munic&iacute;pio").title()
@@ -373,6 +393,17 @@ def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
     pct_sem_licitacao = perfil.get("pct_sem_licitacao") or 0
     risco_score = perfil.get("risco_score")
     pct_folha = perfil.get("pct_folha_receita") or 0
+
+    is_filtered = bool(periodo)
+    if periodo == "ANO":
+        period_label_citizen = f"Em <strong>{date.today().year}</strong> (ate hoje), "
+        period_label_auditor = f"<strong>{date.today().year}</strong> (ate hoje) — "
+    elif periodo == "CUSTOM":
+        period_label_citizen = "<strong>No per&iacute;odo selecionado</strong>, "
+        period_label_auditor = "<strong>Per&iacute;odo selecionado</strong> — "
+    else:
+        period_label_citizen = ""
+        period_label_auditor = ""
 
     pct_pago = 0.0
     try:
@@ -386,22 +417,31 @@ def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
 
     # ----- Cidadao -----
     qtd_forn_fmt = f"{qtd_fornecedores:,}".replace(",", ".")
-    frag_citizen = [f"A prefeitura de <strong>{municipio}</strong> j&aacute; pagou "
-                    f"<a href=\"#fornecedores\"><strong>{_fmt_brl_narrative(total_pago)}</strong></a> "
-                    f"a <a href=\"#fornecedores\"><strong>{qtd_forn_fmt}</strong> empresas</a>."]
+    if is_filtered:
+        frag_citizen = [f"{period_label_citizen}a prefeitura de <strong>{municipio}</strong> pagou "
+                        f"<a href=\"#fornecedores\"><strong>{_fmt_brl_narrative(total_pago)}</strong></a> "
+                        f"a <a href=\"#fornecedores\"><strong>{qtd_forn_fmt}</strong> empresas</a>."]
+    else:
+        frag_citizen = [f"A prefeitura de <strong>{municipio}</strong> j&aacute; pagou "
+                        f"<a href=\"#fornecedores\"><strong>{_fmt_brl_narrative(total_pago)}</strong></a> "
+                        f"a <a href=\"#fornecedores\"><strong>{qtd_forn_fmt}</strong> empresas</a>."]
 
     if pct_sem_licitacao:
-        cmp_sl = _compare_vs_mediana(pct_sem_licitacao, mediana_pct_sem_licitacao, higher_is_worse=True)
         sl_txt = (
             f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_sem_licitacao)}</strong> "
             f"saiu em compras sem concorr&ecirc;ncia</a>"
         )
-        if cmp_sl and mediana_pct_sem_licitacao:
-            sl_txt += f" — {cmp_sl} (mediana: {_fmt_pct(mediana_pct_sem_licitacao)})"
+        # Comparador PB so faz sentido em all-time (medianas sao all-time).
+        if not is_filtered:
+            cmp_sl = _compare_vs_mediana(pct_sem_licitacao, mediana_pct_sem_licitacao, higher_is_worse=True)
+            if cmp_sl and mediana_pct_sem_licitacao:
+                sl_txt += f" — {cmp_sl} (mediana: {_fmt_pct(mediana_pct_sem_licitacao)})"
         sl_txt += "."
         frag_citizen.append(sl_txt)
 
-    if risco_score is not None:
+    # risco_score vem da MV mv_municipio_pb_risco (all-time). Omitir quando
+    # filtrado para nao confundir o usuario com uma metrica fora de escala.
+    if risco_score is not None and not is_filtered:
         cmp_nota = _compare_vs_mediana(risco_score, mediana_risco, higher_is_worse=True)
         nota_txt = (
             f" A <a href=\"#relatorio\"><strong>nota de aten&ccedil;&atilde;o</strong></a> desta cidade "
@@ -416,20 +456,23 @@ def build_narrative(perfil: dict, medias: dict | None = None) -> dict:
 
     # ----- Auditor -----
     frag_auditor = [
-        f"<strong>{municipio}</strong>: "
+        f"{period_label_auditor}<strong>{municipio}</strong>: "
         f"{_fmt_brl_narrative(total_empenhado)} empenhado / "
         f"<a href=\"#fornecedores\">{_fmt_brl_narrative(total_pago)} pago</a> "
         f"({_fmt_pct(pct_pago, decimals=1)})."
     ]
     if pct_sem_licitacao:
+        med_suffix = ""
+        if not is_filtered and mediana_pct_sem_licitacao:
+            med_suffix = f" (p50 PB: {_fmt_pct(mediana_pct_sem_licitacao)})"
         frag_auditor.append(
             f" <a href=\"#licitacoes\">Dispensa/inexigibilidade: {_fmt_pct(pct_sem_licitacao)}</a>"
-            + (f" (p50 PB: {_fmt_pct(mediana_pct_sem_licitacao)})" if mediana_pct_sem_licitacao else "")
+            + med_suffix
             + "."
         )
     if pct_folha:
         frag_auditor.append(f" Folha/receita: {_fmt_pct(pct_folha)}.")
-    if risco_score is not None:
+    if risco_score is not None and not is_filtered:
         frag_auditor.append(
             f" <a href=\"#relatorio\">Risco composto: {float(risco_score):.0f}/100</a>"
             + (f" (p50 PB: {float(mediana_risco):.0f})" if mediana_risco is not None else "")
@@ -566,18 +609,55 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
         "default_data_fim": _today.isoformat(),
     }
 
-    narrative = build_narrative(perfil, get_pb_medias())
-
-    # Carrega fornecedorese servidores do cache (sem fallback live: a hero
-    # KPI strip eh "best effort", se nao houver cache os cards mostram 0).
-    # IMPORTANTE: usar perfil['municipio'] (nome canonico com acento) ao inves
-    # do `municipio` do URL — o cache eh keyed pelo nome canonico.
+    # IMPORTANTE: cache eh keyed pelo nome canonico (com acento). Derivar antes
+    # do overlay para que tanto PERFIL quanto KPI_SUMMARY/TOP_* batam quando
+    # a URL veio sem acento.
     canonical_mun = str(perfil.get("municipio") or municipio)
-    # Tenta cache KPI_SUMMARY pre-computado (warm_cache.py). Se nao houver,
-    # carrega listas e roda compute_cidade_kpis em runtime.
+
+    # Default da UI eh "Ano atual": sobrepoe os campos do perfil sensiveis ao
+    # filtro com o cache ANO:PERFIL para alinhar o primeiro paint com o filtro
+    # ativo (evita flash de all-time). Mantem campos historicos (risco_score,
+    # qtd_licitacoes, pct_proponente_unico) intactos.
+    perfil_periodo = ""  # "" = all-time, "ANO" = ano corrente
+    try:
+        cached_ano = read_web_cache("PERFIL", canonical_mun, periodo="ANO")
+        if cached_ano:
+            ano_cols, ano_rows = cached_ano
+            if ano_rows:
+                ano = _row_to_dict(ano_cols, ano_rows[0])
+                applied = False
+                for fld in (
+                    "qtd_empenhos", "total_empenhado", "total_pago",
+                    "qtd_fornecedores", "qtd_sem_licitacao", "pct_sem_licitacao",
+                    "qtd_dezembro", "pct_dezembro", "pct_nao_executado",
+                    "receita_arrecadada", "total_folha", "pct_folha_receita",
+                ):
+                    if fld in ano and ano[fld] is not None:
+                        perfil[fld] = ano[fld]
+                        applied = True
+                if applied:
+                    perfil_periodo = "ANO"
+    except Exception:
+        pass
+
+    # Narrativa date-aware: quando o perfil foi sobreposto com dados ANO,
+    # build_narrative omite comparadores PB (medianas all-time) e o risco_score
+    # (MV all-time) e adiciona um prefixo identificando o periodo.
+    narrative = build_narrative(perfil, get_pb_medias(), periodo=perfil_periodo)
+
+    # Carrega KPI_SUMMARY com ANO-first; SEM fallback all-time se ANO faltou:
+    # como o primeiro paint precisa refletir o filtro 'Ano atual', mostrar
+    # numeros all-time aqui apenas para depois ser corrigido pelo /api/kpis
+    # recria exatamente o flash que este PR tenta eliminar. Em cache miss do
+    # ANO, cai para o calculo live via compute_cidade_kpis (que ja le os
+    # caches ANO:TOP_* abaixo, e tambem nao usa fallback all-time).
     kpi_ctx: dict | None = None
     try:
-        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
+        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun, periodo="ANO")
+        if not cached_summary and not perfil_periodo:
+            # Nao ha ANO disponivel para esta cidade: aceita all-time (consistente
+            # com perfil all-time tambem nao sobreposto).
+            cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
         if cached_summary:
             scols, srows = cached_summary
             if srows and srows[0]:
@@ -590,20 +670,39 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     except Exception:
         kpi_ctx = None
     if kpi_ctx is None:
+        # Replica a estrategia de _kpi_summary_payload (usado por /api/kpis)
+        # para que SSR e API produzam o mesmo resultado mesmo quando apenas
+        # ANO:PERFIL esta no cache mas ANO:TOP_* faltam: la, _load_*_for_kpis
+        # cai para uma query live datada. Fazer o mesmo aqui evita primeiro
+        # paint com KPIs zerados/subestimados que depois sao corrigidos pela
+        # chamada subsequente a /api/kpis.
         fornecedores_dicts: list[dict] = []
         servidores_dicts: list[dict] = []
+        ano_payload: MunicipioPayload | None = None
+        if perfil_periodo == "ANO":
+            ano_payload = MunicipioPayload(
+                municipio=canonical_mun,
+                data_inicio=date_ctx["default_data_inicio"],
+                data_fim=date_ctx["default_data_fim"],
+            )
         try:
-            forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
-            if forn_cached:
-                fcols, frows = forn_cached
-                fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
+            if ano_payload is not None:
+                fornecedores_dicts = _load_fornecedores_for_kpis(canonical_mun, ano_payload, "ANO")
+            else:
+                forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
+                if forn_cached:
+                    fcols, frows = forn_cached
+                    fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
         except Exception:
             pass
         try:
-            serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
-            if serv_cached:
-                scols, srows = serv_cached
-                servidores_dicts = [_row_to_dict(scols, r) for r in srows]
+            if ano_payload is not None:
+                servidores_dicts = _load_servidores_for_kpis(canonical_mun, ano_payload, "ANO")
+            else:
+                serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
+                if serv_cached:
+                    scols, srows = serv_cached
+                    servidores_dicts = [_row_to_dict(scols, r) for r in srows]
         except Exception:
             pass
         kpi_ctx = compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
@@ -802,10 +901,11 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                     elif ":" in qid:
                         # Prefixed but not matching: skip
                         pass
-                    else:
-                        # Fallback: only for queries without dated variants (TOP_SERVIDORES)
-                        if periodo and qid == "TOP_SERVIDORES" and qid not in result:
-                            result[qid] = entry
+                    # Sem fallback all-time: hoje todas as queries que aparecem
+                    # nos cards/panels (TOP_FORNECEDORES, TOP_SERVIDORES, Q##)
+                    # tem variante datada e cache ANO:* populado pelo warm_cache.
+                    # Aceitar entradas all-time aqui contaminaria a resposta com
+                    # dados que nao respeitam o filtro de periodo.
     except Exception:
         pass
     return JSONResponse(result)
@@ -938,11 +1038,14 @@ async def get_kpis(municipio_path: str, payload: MunicipioPayload):
 
 @router.post("/api/perfil")
 async def get_perfil(payload: MunicipioPayload):
-    """Retorna perfil do municipio como JSON, com filtro temporal opcional."""
+    """Retorna perfil do municipio + narrativa, com filtro temporal opcional."""
     municipio = _normalize_municipio(payload.municipio)
     periodo = _get_periodo(payload)
-    perfil = _load_perfil_for_kpis(municipio, payload, periodo)
-    return JSONResponse(perfil or {})
+    perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+    # Narrativa date-aware: o cliente substitui o HTML em #cityNarrative
+    # quando o filtro muda, evitando que o texto fique desalinhado dos KPIs.
+    narrative = build_narrative(perfil, get_pb_medias(), periodo=periodo) if perfil else None
+    return JSONResponse({"perfil": perfil, "narrative": narrative})
 
 
 @router.get("/api/heatmap/{municipio_path}")

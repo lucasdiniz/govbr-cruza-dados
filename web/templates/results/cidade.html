@@ -341,6 +341,9 @@
                 Bordas vermelhas destacam meses com desvio acima de 2 sigmas da m&eacute;dia do munic&iacute;pio —
                 tipicamente fim de ano (queima de or&ccedil;amento) ou picos pr&eacute;-eleitorais.</span>
             </p>
+            <p class="text-sm text-muted" style="margin-top:0.35rem">
+                <em>Hist&oacute;rico completo &mdash; n&atilde;o responde ao filtro de per&iacute;odo acima.</em>
+            </p>
         </div>
     </div>
     <div class="heatmap-wrap">
@@ -494,13 +497,17 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const _di = document.getElementById('dateInicio')?.value || '';
-    const _df = document.getElementById('dateFim')?.value || '';
-    if (_di && _df) {
-        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }}, _di, _df);
-    } else {
-        bootstrapCityReport({{ perfil.municipio|tojson }}, {{ (display_uf or 'PB')|tojson }});
-    }
+    // Default da UI eh "Ano atual": passa as datas direto da Jinja para o
+    // bootstrap. Antes a logica lia .value dos inputs, mas eles tem apenas
+    // data-iso-value nesse momento (a mascara so eh aplicada DENTRO do
+    // bootstrap), entao .value vinha vazio e _isDateFiltered() voltava false
+    // — deixando o JS pedir caches all-time apesar do filtro visivel.
+    bootstrapCityReport(
+        {{ perfil.municipio|tojson }},
+        {{ (display_uf or 'PB')|tojson }},
+        {{ default_data_inicio|tojson }},
+        {{ default_data_fim|tojson }}
+    );
 });
 // Close dialog on backdrop click
 document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
