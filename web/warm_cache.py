@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import psycopg2
 
@@ -160,7 +160,7 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
     e salva como JSON em uma unica linha {payload: {...}}.
 
     periodo='' -> all-time (chaves PERFIL, TOP_FORNECEDORES, TOP_SERVIDORES);
-    periodo='ANO' -> ANO:* equivalentes.
+    periodo='ANO'/'12M' -> chaves prefixadas equivalentes.
     """
     prefix = f"{periodo}:" if periodo else ""
     qid = f"{prefix}KPI_SUMMARY"
@@ -236,30 +236,31 @@ def _ensure_cache_table(conn):
     conn.commit()
 
 
-def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, all_queries: list, verbose: bool):
-    """Processa todas as variantes ANO para um municipio. Usa conn por thread."""
+def _warm_municipio_periodo(mun: str, idx: int, total: int, periodo: str, params_base: dict, all_queries: list, verbose: bool):
+    """Processa variantes datadas para um periodo cacheavel (ANO, 12M)."""
     conn = _thread_conn()
     t0 = time.time()
     ok, fail = 0, 0
-    params = {"municipio": mun, **ano_params_base}
+    params = {"municipio": mun, **params_base}
+    prefix = f"{periodo}:"
 
-    if _run_and_cache_dated(conn, "ANO:PERFIL", PERFIL_MUNICIPIO_LIVE, params, TIMEOUT_PERFIL_LIVE, verbose):
+    if _run_and_cache_dated(conn, f"{prefix}PERFIL", PERFIL_MUNICIPIO_LIVE, params, TIMEOUT_PERFIL_LIVE, verbose):
         ok += 1
     else:
         fail += 1
 
-    if _run_and_cache_dated(conn, "ANO:TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN, verbose):
+    if _run_and_cache_dated(conn, f"{prefix}TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN, verbose):
         ok += 1
     else:
         fail += 1
 
-    if _run_and_cache_dated(conn, "ANO:TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV, verbose):
+    if _run_and_cache_dated(conn, f"{prefix}TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV, verbose):
         ok += 1
     else:
         fail += 1
 
-    # KPI_SUMMARY ANO depende de PERFIL/TOP_FORN/TOP_SERV ANO ja cacheados acima
-    if _compute_and_cache_kpi_summary(conn, mun, "ANO", verbose):
+    # KPI_SUMMARY depende de PERFIL/TOP_FORN/TOP_SERV do periodo ja cacheados acima.
+    if _compute_and_cache_kpi_summary(conn, mun, periodo, verbose):
         ok += 1
     else:
         fail += 1
@@ -267,15 +268,25 @@ def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, a
     for qdef in all_queries:
         if qdef.sql_full_dated:
             cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
-            if _run_and_cache_dated(conn, f"ANO:{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
+            if _run_and_cache_dated(conn, f"{prefix}{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
                 ok += 1
             else:
                 fail += 1
 
     elapsed = time.time() - t0
     if verbose:
-        print(f"[{idx}/{total}] ANO:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
+        print(f"[{idx}/{total}] {periodo}:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
     return ok, fail
+
+
+def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, all_queries: list, verbose: bool):
+    """Processa todas as variantes ANO para um municipio. Usa conn por thread."""
+    return _warm_municipio_periodo(mun, idx, total, "ANO", ano_params_base, all_queries, verbose)
+
+
+def _warm_municipio_12m(mun: str, idx: int, total: int, params_12m_base: dict, all_queries: list, verbose: bool):
+    """Processa todas as variantes dos ultimos 12 meses para um municipio."""
+    return _warm_municipio_periodo(mun, idx, total, "12M", params_12m_base, all_queries, verbose)
 
 
 def _warm_municipio_alltime(mun: str, idx: int, total: int, all_queries: list, verbose: bool):
@@ -347,7 +358,7 @@ def _run_parallel(label: str, municipios: list[str], task_fn, verbose: bool, **k
 
 
 def warm_cycle_pb(municipios: list[str], verbose: bool = True):
-    """Processa um ciclo completo de todos os municipios PB (ANO primeiro, all-time depois)."""
+    """Processa um ciclo completo de todos os municipios PB (ANO, 12M e all-time)."""
     # Garante schema da tabela de cache em conexao dedicada (curta).
     bootstrap = psycopg2.connect(DSN)
     bootstrap.autocommit = False
@@ -358,15 +369,26 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
     # 1o loop: variantes ANO (ano atual) — prioritario porque o frontend
     # usa "ano atual" como filtro padrao, gerando mais cache hits.
-    from datetime import date as _date
-    today = _date.today()
+    today = date.today()
     ano_params_base = {
         "data_inicio": f"{today.year}-01-01",
-        "data_fim": f"{today.year}-12-31",
+        "data_fim": today.isoformat(),
         "ano_inicio": today.year,
         "ano_fim": today.year,
         "ano_mes_inicio": f"{today.year}-01",
-        "ano_mes_fim": f"{today.year}-12",
+        "ano_mes_fim": today.strftime("%Y-%m"),
+    }
+    try:
+        inicio_12m = today.replace(year=today.year - 1) + timedelta(days=1)
+    except ValueError:
+        inicio_12m = date(today.year - 1, 3, 1)
+    params_12m_base = {
+        "data_inicio": inicio_12m.isoformat(),
+        "data_fim": today.isoformat(),
+        "ano_inicio": inicio_12m.year,
+        "ano_fim": today.year,
+        "ano_mes_inicio": inicio_12m.strftime("%Y-%m"),
+        "ano_mes_fim": today.strftime("%Y-%m"),
     }
 
     ano_ok, ano_fail = _run_parallel(
@@ -374,13 +396,19 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         ano_params_base=ano_params_base, all_queries=all_queries,
     )
 
-    # 2o loop: variantes all-time (sem prefixo)
+    # 2o loop: ultimos 12 meses, usado pelo preset frequente do frontend.
+    m12_ok, m12_fail = _run_parallel(
+        "12M", municipios, _warm_municipio_12m, verbose,
+        params_12m_base=params_12m_base, all_queries=all_queries,
+    )
+
+    # 3o loop: variantes all-time (sem prefixo)
     all_ok, all_fail = _run_parallel(
         "ALL-TIME", municipios, _warm_municipio_alltime, verbose,
         all_queries=all_queries,
     )
 
-    return ano_ok + all_ok, ano_fail + all_fail
+    return ano_ok + m12_ok + all_ok, ano_fail + m12_fail + all_fail
 
 
 

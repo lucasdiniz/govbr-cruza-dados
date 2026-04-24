@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#060a14">
     <meta name="color-scheme" content="dark">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,7 +55,6 @@
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>
-        <button type="button" id="tourRestart" class="icon-btn" aria-label="Reiniciar tour" title="Como usar o site" style="display:none">?</button>
         <button type="button" id="fontSizeToggle" class="font-toggle" aria-label="Ajustar tamanho da fonte" title="Tamanho da fonte">
             <span class="font-toggle-label">A<span class="font-plus">+</span></span>
         </button>
@@ -80,9 +79,10 @@
         <div class="credibility">
             <span class="credibility-text">
                 Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, dados.pb.gov.br, PNCP, PGFN, IBGE, TSE.
-                Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.
+                {% if DATA_REFRESH_DATE %}Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.{% endif %}
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
                 &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
+                &middot; <button type="button" id="tourRestart" class="link-btn footer-link" style="display:none">Como usar</button>
             </span>
         </div>
     </footer>
@@ -106,7 +106,11 @@
                 <li><a href="https://www.tse.jus.br/" target="_blank" rel="noopener">TSE</a> &mdash; candidatos e doa&ccedil;&otilde;es eleitorais.</li>
             </ul>
             <h4>Atualiza&ccedil;&atilde;o</h4>
+            {% if DATA_REFRESH_DATE %}
             <p>Os dados deste site s&atilde;o atualizados periodicamente a partir dos arquivos abertos publicados pelas fontes acima. A &uacute;ltima atualiza&ccedil;&atilde;o foi em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.</p>
+            {% else %}
+            <p>Os dados deste site s&atilde;o atualizados periodicamente a partir dos arquivos abertos publicados pelas fontes acima.</p>
+            {% endif %}
             <h4>Importante</h4>
             <p class="text-sm text-muted">Os cruzamentos apontam <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o. N&atilde;o s&atilde;o conclus&otilde;es jur&iacute;dicas. Sempre consulte a fonte original e, se necess&aacute;rio, os &oacute;rg&atilde;os de controle (MP-PB, TCE-PB, CGU).</p>
         </div>
@@ -117,7 +121,10 @@
         </svg>
     </button>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="/static/app.js?v=38"></script>
+    <script>
+        window.COLUMN_META = {{ COLUMN_META | tojson }};
+    </script>
+    <script src="/static/app.js?v=39"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

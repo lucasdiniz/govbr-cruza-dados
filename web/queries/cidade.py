@@ -667,8 +667,9 @@ cnpjs_inidoneidade AS (
       AND LENGTH(cpf_cnpj_sancionado) = 14
 ),
 ceaf_expulsos AS (
-    SELECT DISTINCT cpf_cnpj_norm AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome
+    SELECT DISTINCT SUBSTRING(cpf_cnpj_norm, 4, 6) AS cpf6, UPPER(unaccent(nome_sancionado)) AS nome
     FROM ceaf_expulsao
+    WHERE LENGTH(cpf_cnpj_norm) = 11
 ),
 empresa_pagamentos AS (
     SELECT d.cnpj_basico, SUM(d.valor_pago) AS total_pago

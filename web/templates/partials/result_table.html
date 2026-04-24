@@ -64,8 +64,9 @@
                 </thead>
                 <tbody>
                     {% for row in rows %}
-                    {% set cnpj_val = row.get('cnpj_basico', '') or row.get('cpf_cnpj', '') or row.get('cpf_cnpj_sancionado', '') or row.get('cpfcnpj_contratado', '') or row.get('cpf_cnpj_proponente', '') %}
-                    {% set cnpj_basico_val = (cnpj_val|string|replace('.', '')|replace('/', '')|replace('-', ''))[:8] if cnpj_val else '' %}
+                    {% set cpf_cnpj_val = row.get('cnpj_completo', '') or row.get('cpf_cnpj', '') or row.get('cpf_cnpj_sancionado', '') or row.get('cpfcnpj_contratado', '') or row.get('cpf_cnpj_proponente', '') %}
+                    {% set cpf_cnpj_digits = cpf_cnpj_val|string|replace('.', '')|replace('/', '')|replace('-', '') if cpf_cnpj_val else '' %}
+                    {% set cnpj_basico_val = cpf_cnpj_digits[:8] if cpf_cnpj_digits|length == 14 else '' %}
                     {% set nome_val = row.get('nome_credor', '') or row.get('razao_social', '') or row.get('nome_sancionado', '') or row.get('nome_contratado', '') or row.get('nome_proponente', '') or '' %}
                     {% set cpf6_val = row.get('cpf_digitos_6', '') or '' %}
                     {% set nome_upper_val = row.get('nome_upper', '') or row.get('nome_servidor', '') or '' %}
@@ -88,8 +89,7 @@
                     <tr class="clickable-row{{ row_hl }}" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}" data-licitacao-mod="{{ lic_mod_val }}">
                     {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
                     {% set nome_credor_val = row.get('nome_credor', '') or '' %}
-                    {% set cpf_cnpj_val = row.get('cnpj_completo', '') or '' %}
-                    <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-cpf-cnpj="{{ cpf_cnpj_val }}" data-fornecedor-nome="{{ nome_val|clean_text }}" data-fornecedor-nome-credor="{{ nome_credor_val|clean_text }}">
+                    <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-cpf-cnpj="{{ cpf_cnpj_digits }}" data-fornecedor-nome="{{ nome_val|clean_text }}" data-fornecedor-nome-credor="{{ nome_credor_val|clean_text }}">
                     {% else %}
                     <tr{% if row_hl %} class="{{ row_hl|trim }}"{% endif %}>
                     {% endif %}
@@ -106,15 +106,7 @@
                             {% elif value is sameas false %}
                                 <span class="badge badge-gray">Nao</span>
                             {% elif value is number and (col.startswith("valor") or col.startswith("total") or col == "capital_social" or col == "maior_salario" or col == "salario") %}
-                                {% if value|abs >= 1000000000 %}
-                                    R$ {{ "{:,.1f}".format(value / 1000000000) }} bi
-                                {% elif value|abs >= 1000000 %}
-                                    R$ {{ "{:,.1f}".format(value / 1000000) }} mi
-                                {% elif value|abs >= 1000 %}
-                                    R$ {{ "{:,.1f}".format(value / 1000) }} mil
-                                {% else %}
-                                    R$ {{ "{:,.0f}".format(value) }}
-                                {% endif %}
+                                {{ value|short_brl }}
                             {% elif value is number and col.startswith("pct") %}
                                 <span class="{% if value >= 70 %}color-red{% elif value >= 30 %}color-yellow{% else %}color-green{% endif %}">
                                     {{ "{:,.1f}".format(value) }}%

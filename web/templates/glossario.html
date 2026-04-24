@@ -6,6 +6,7 @@
     <h1>Gloss&aacute;rio</h1>
     <p class="text-muted">Termos t&eacute;cnicos traduzidos para linguagem cidad&atilde;. Cada termo tem seu nome oficial, uma vers&atilde;o simples e o que significa.</p>
     <input type="search" id="glossarioSearch" class="glossario-search" placeholder="Buscar termo (ex: CEIS, empenho, dispensa)" autocomplete="off" inputmode="search" enterkeyhint="search">
+    <p id="glossarioCount" class="text-sm text-muted glossario-count" aria-live="polite"></p>
   </header>
   <div id="glossarioList" class="glossario-list" aria-live="polite"></div>
   <p id="glossarioEmpty" class="text-muted" style="display:none">Nenhum termo encontrado.</p>
@@ -16,6 +17,7 @@
     const listEl = document.getElementById('glossarioList');
     const emptyEl = document.getElementById('glossarioEmpty');
     const searchEl = document.getElementById('glossarioSearch');
+    const countEl = document.getElementById('glossarioCount');
     let terms = [];
 
     function norm(s) {
@@ -34,6 +36,12 @@
             </article>
         `).join('');
         emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
+        if (countEl) {
+            const total = terms.length;
+            countEl.textContent = filtered.length === total
+                ? `${total} termos no glossario`
+                : `${filtered.length} de ${total} termos encontrados`;
+        }
     }
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import time
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -123,26 +124,54 @@ def _has_date_filter(payload: MunicipioPayload) -> bool:
     return bool(payload.data_inicio or payload.data_fim)
 
 
+def _last_12m_bounds(today: date) -> tuple[str, str]:
+    try:
+        inicio = today.replace(year=today.year - 1) + timedelta(days=1)
+    except ValueError:
+        # 29/02 -> 01/03 do ano anterior, mantendo uma janela anual inclusiva.
+        inicio = date(today.year - 1, 3, 1)
+    return inicio.isoformat(), today.isoformat()
+
+
+def _date_validation_error(payload: MunicipioPayload) -> str | None:
+    if not _has_date_filter(payload):
+        return None
+    if not payload.data_inicio or not payload.data_fim:
+        return "Informe data inicial e final no formato AAAA-MM-DD."
+    try:
+        inicio = date.fromisoformat(payload.data_inicio)
+        fim = date.fromisoformat(payload.data_fim)
+    except ValueError:
+        return "Data invalida. Use o formato AAAA-MM-DD."
+    if inicio > fim:
+        return "A data inicial nao pode ser maior que a data final."
+    return None
+
+
 def _get_periodo(payload: MunicipioPayload) -> str:
-    """'ANO' se datas batem com ano atual, '' se sem filtro, 'CUSTOM' se custom."""
+    """'ANO'/'12M' se datas batem com presets, '' se sem filtro, 'CUSTOM' se custom."""
     if not _has_date_filter(payload):
         return ""
     today = date.today()
-    yr = str(today.year)
-    if payload.data_inicio == f"{yr}-01-01" and (payload.data_fim or "").startswith(yr):
+    if payload.data_inicio == f"{today.year}-01-01" and payload.data_fim == today.isoformat():
         return "ANO"
+    inicio_12m, fim_12m = _last_12m_bounds(today)
+    if payload.data_inicio == inicio_12m and payload.data_fim == fim_12m:
+        return "12M"
     return "CUSTOM"
 
 
 def _date_params(payload: MunicipioPayload) -> dict:
     params = {"municipio": _normalize_municipio(payload.municipio)}
     if payload.data_inicio:
+        inicio = date.fromisoformat(payload.data_inicio)
         params["data_inicio"] = payload.data_inicio
-        params["ano_inicio"] = int(payload.data_inicio[:4])
+        params["ano_inicio"] = inicio.year
         params["ano_mes_inicio"] = payload.data_inicio[:7]
     if payload.data_fim:
+        fim = date.fromisoformat(payload.data_fim)
         params["data_fim"] = payload.data_fim
-        params["ano_fim"] = int(payload.data_fim[:4])
+        params["ano_fim"] = fim.year
         params["ano_mes_fim"] = payload.data_fim[:7]
     return params
 
@@ -601,6 +630,7 @@ async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
                 "servidores": [],
                 "report_sections": [],
             },
+            status_code=404,
         )
 
     _today = date.today()
@@ -777,6 +807,9 @@ async def run_query(request: Request, query_id: str, payload: MunicipioPayload):
         return HTMLResponse("<p class='color-red text-sm'>Query nao encontrada.</p>", status_code=404)
 
     municipio = _normalize_municipio(payload.municipio)
+    date_error = _date_validation_error(payload)
+    if date_error:
+        return HTMLResponse(f"<p class='color-red text-sm'>{date_error}</p>", status_code=400)
     periodo = _get_periodo(payload)
 
     # Try pre-computed cache first (ALL or ANO)
@@ -808,6 +841,9 @@ async def run_query(request: Request, query_id: str, payload: MunicipioPayload):
 @router.post("/api/top/fornecedores", response_class=HTMLResponse)
 async def top_fornecedores(request: Request, payload: MunicipioPayload):
     municipio = _normalize_municipio(payload.municipio)
+    date_error = _date_validation_error(payload)
+    if date_error:
+        return HTMLResponse(f"<p class='color-red text-sm'>{date_error}</p>", status_code=400)
     periodo = _get_periodo(payload)
 
     if _has_date_filter(payload):
@@ -839,6 +875,9 @@ async def top_fornecedores(request: Request, payload: MunicipioPayload):
 @router.post("/api/top/servidores", response_class=HTMLResponse)
 async def top_servidores(request: Request, payload: MunicipioPayload):
     municipio = _normalize_municipio(payload.municipio)
+    date_error = _date_validation_error(payload)
+    if date_error:
+        return HTMLResponse(f"<p class='color-red text-sm'>{date_error}</p>", status_code=400)
     has_dates = _has_date_filter(payload)
     periodo = _get_periodo(payload) if has_dates else ""
     if has_dates:
@@ -869,7 +908,7 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
 async def batch_cache(municipio_path: str, periodo: str = ""):
     """Retorna todos os dados do cache de uma vez para o municipio.
 
-    periodo: '' para all-time, 'ANO' para ano atual.
+    periodo: '' para all-time, 'ANO' para ano atual, '12M' para ultimos 12 meses.
     Busca todos os rows e filtra por prefixo, com fallback.
     """
     municipio = _normalize_municipio(municipio_path)
@@ -944,7 +983,7 @@ def _load_fornecedores_for_kpis(municipio: str, payload: MunicipioPayload, perio
     cols: list[str] = []
     rows: list = []
     if _has_date_filter(payload):
-        if periodo == "ANO":
+        if periodo in ("ANO", "12M"):
             cached = read_web_cache("TOP_FORNECEDORES", municipio, periodo=periodo)
             if cached:
                 cols, rows = cached
@@ -970,7 +1009,7 @@ def _load_servidores_for_kpis(municipio: str, payload: MunicipioPayload, periodo
     cols: list[str] = []
     rows: list = []
     if _has_date_filter(payload):
-        if periodo == "ANO":
+        if periodo in ("ANO", "12M"):
             cached = read_web_cache("TOP_SERVIDORES", municipio, periodo=periodo)
             if cached:
                 cols, rows = cached
@@ -999,7 +1038,7 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
     compute_cidade_kpis em runtime. Em CUSTOM range, sempre recomputa live.
     """
     periodo = _get_periodo(payload)
-    if periodo in ("", "ANO"):
+    if periodo in ("", "ANO", "12M"):
         cached = read_web_cache("KPI_SUMMARY", municipio, periodo=periodo)
         if cached:
             cols, rows = cached
@@ -1029,10 +1068,14 @@ async def get_kpis(municipio_path: str, payload: MunicipioPayload):
     """
     municipio = _normalize_municipio(municipio_path)
     payload.municipio = municipio
+    date_error = _date_validation_error(payload)
+    if date_error:
+        return JSONResponse({"error": date_error}, status_code=400)
     try:
         summary = _kpi_summary_payload(municipio, payload)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except Exception:
+        logging.exception("kpis failed for municipio=%s", municipio)
+        return JSONResponse({"error": "falha ao carregar indicadores"}, status_code=500)
     return JSONResponse(summary)
 
 
@@ -1040,6 +1083,9 @@ async def get_kpis(municipio_path: str, payload: MunicipioPayload):
 async def get_perfil(payload: MunicipioPayload):
     """Retorna perfil do municipio + narrativa, com filtro temporal opcional."""
     municipio = _normalize_municipio(payload.municipio)
+    date_error = _date_validation_error(payload)
+    if date_error:
+        return JSONResponse({"error": date_error}, status_code=400)
     periodo = _get_periodo(payload)
     perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
     # Narrativa date-aware: o cliente substitui o HTML em #cityNarrative
@@ -1089,8 +1135,9 @@ async def get_heatmap_mes(municipio_path: str, ano: int, mes: int):
         fucols, furows = execute_query(HEATMAP_MES_FUNCOES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
         mcols, mrows = execute_query(HEATMAP_MES_MODALIDADES, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
         emcols, emrows = execute_query(HEATMAP_MES_EMPENHOS, params, timeout_sec=TIMEOUT_QUERY_LIGHT)
-    except (QueryCanceled, Exception) as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except (QueryCanceled, Exception):
+        logging.exception("heatmap mes failed municipio=%s ano=%s mes=%s", municipio, ano, mes)
+        return JSONResponse({"error": "falha ao carregar detalhes do mes"}, status_code=500)
     return JSONResponse({
         "resumo": _row_to_json_dict(rcols, rrows[0]) if rrows else {},
         "fornecedores": [_row_to_json_dict(fcols, r) for r in frows],
@@ -1318,8 +1365,9 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                            dt_final_sancao, dt_transito_julgado, fundamentacao_legal,
                            numero_processo
                     FROM ceaf_expulsao
-                    WHERE cpf_cnpj_norm = %s
+                    WHERE SUBSTRING(cpf_cnpj_norm, 4, 6) = %s
                       AND UPPER(unaccent(nome_sancionado)) = %s
+                      AND LENGTH(cpf_cnpj_norm) = 11
                     ORDER BY dt_inicio_sancao DESC
                 """, (cpf6, nome))
                 ceaf_cols = [d[0] for d in cur.description]
@@ -1402,23 +1450,19 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
     cnpj_basico = payload.get("cnpj_basico", "")
     municipio = payload.get("municipio", "")
     nome_credor = payload.get("nome_credor", "")
-    cpf_cnpj = payload.get("cpf_cnpj", "")
-    if not cnpj_basico:
+    cpf_cnpj = "".join(ch for ch in str(payload.get("cpf_cnpj", "")) if ch.isdigit())
+    if len(cpf_cnpj) != 14:
         return JSONResponse({})
+    cnpj_basico = cpf_cnpj[:8]
     try:
         from web.db import get_conn
         result = {}
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
-                # Build filters: prefer cpf_cnpj (exact entity), fallback to cnpj_basico + nome_credor
-                if cpf_cnpj:
-                    id_clause = "cpf_cnpj = %s AND municipio = %s"
-                    id_params = [cpf_cnpj, municipio]
-                else:
-                    nc_clause = " AND nome_credor = %s" if nome_credor else ""
-                    id_clause = f"cnpj_basico = %s AND municipio = %s{nc_clause}"
-                    id_params = [cnpj_basico, municipio] + ([nome_credor] if nome_credor else [])
+                # Usa a entidade exata para evitar colisao CPF/CNPJ por prefixo de 8 digitos.
+                id_clause = "cpf_cnpj = %s AND municipio = %s"
+                id_params = [cpf_cnpj, municipio]
 
                 # Empenhos recentes no municipio
                 cur.execute(f"""
@@ -1563,13 +1607,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["sancoes"] = sancoes
 
                     # Empenhos durante sancao em OUTROS municipios
-                    if cpf_cnpj:
-                        outros_where = "d.cpf_cnpj = %s AND d.municipio != %s"
-                        outros_params = [cpf_cnpj, municipio]
-                    else:
-                        outros_nc = " AND d.nome_credor = %s" if nome_credor else ""
-                        outros_where = f"d.cnpj_basico = %s AND d.municipio != %s{outros_nc}"
-                        outros_params = [cnpj_basico, municipio] + ([nome_credor] if nome_credor else [])
+                    outros_where = "d.cpf_cnpj = %s AND d.municipio != %s"
+                    outros_params = [cpf_cnpj, municipio]
                     cur.execute(f"""
                         SELECT d.municipio, COUNT(*) AS qtd_empenhos,
                                SUM(d.valor_pago) AS total_pago
@@ -1604,13 +1643,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                         result["empenhos_sancao_outros"] = outros
 
                 # Municipios onde o fornecedor recebeu pagamentos
-                if cpf_cnpj:
-                    mun_where = "cpf_cnpj = %s AND valor_pago > 0"
-                    mun_params = [cpf_cnpj]
-                else:
-                    mun_nc = " AND nome_credor = %s" if nome_credor else ""
-                    mun_where = f"cnpj_basico = %s AND valor_pago > 0{mun_nc}"
-                    mun_params = [cnpj_basico] + ([nome_credor] if nome_credor else [])
+                mun_where = "cpf_cnpj = %s AND valor_pago > 0"
+                mun_params = [cpf_cnpj]
                 cur.execute(f"""
                     SELECT municipio, SUM(valor_pago) AS total_pago
                     FROM tce_pb_despesa
@@ -1631,12 +1665,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["municipios_ativos"] = mun_list
 
                 # Situacao cadastral (inatividade)
-                if cpf_cnpj:
-                    est_where = "est.cnpj_completo = %s"
-                    est_params = (cpf_cnpj,)
-                else:
-                    est_where = "est.cnpj_basico = %s AND est.cnpj_ordem = '0001'"
-                    est_params = (cnpj_basico,)
+                est_where = "est.cnpj_completo = %s"
+                est_params = (cpf_cnpj,)
                 cur.execute(f"""
                     SELECT situacao_cadastral, dt_situacao,
                            cnpj_completo, cnae_principal, uf,
