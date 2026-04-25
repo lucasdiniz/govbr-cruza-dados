@@ -800,6 +800,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                     countEl.textContent = 'Tempo excedido';
                     body.innerHTML = '<p class="text-sm text-muted">Esse bloco nao terminou a tempo nesta tentativa.</p>';
                     card.classList.remove('loading');
+                    card.setAttribute('aria-busy', 'false');
                     card.classList.add('is-timeout');
                     updateSectionSummaries();
                     return;
@@ -821,6 +822,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 }
                 if (rowCount === 0) card.classList.add('is-empty', 'collapsed');
                 card.classList.remove('loading');
+                card.setAttribute('aria-busy', 'false');
                 initDataTables(body);
                 initClickableRows(body);
             } catch {
@@ -829,6 +831,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 if (countLabel) countLabel.style.display = 'none';
                 body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
                 card.classList.remove('loading');
+                card.setAttribute('aria-busy', 'false');
                 card.classList.add('is-timeout');
             }
             updateSectionSummaries();
@@ -2450,7 +2453,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     }
 
     if (!/<div class="dialog-section"/.test(html)) {
-        html += '<p class="text-sm text-muted">Nenhum detalhe disponivel para este servidor.</p>';
+        html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este servidor.</p>';
     }
     body.innerHTML = html;
     _reattachDialogLinks(body);
@@ -2758,7 +2761,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     }
 
     if (!/<div class="dialog-section"/.test(html)) {
-        html += '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
+        html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
     }
     body.innerHTML = html;
     _reattachDialogLinks(body);
@@ -2770,10 +2773,11 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     }
 }
 
-async function openHeatmapMonthDialog(municipio, ano, mes) {
+async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
-    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    if (dialog.open && !options.inPlace) { _dialogPush(); }
+    else if (!dialog.open) { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     const mesesLabel = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -2798,7 +2802,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
         if (data && data.error) throw new Error(data.error);
     } catch (err) {
         body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><button type="button" class="btn btn-outline btn-sm" data-retry-heatmap> Tentar novamente</button></div>`;
-        body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes));
+        body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes, { inPlace: true }));
         return;
     }
 
@@ -2824,9 +2828,10 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
         for (const f of fornecedores) {
             const nome = _esc(f.nome_credor || '-');
             const doc = _esc(f.cpf_cnpj || '-');
-            const isPJ = f.eh_pj && f.cpf_cnpj && f.cpf_cnpj.length === 14;
+            const cnpjRaw = String(f.cpf_cnpj || '').replace(/\D/g, '');
+            const isPJ = f.eh_pj && cnpjRaw.length === 14;
             const nomeCell = isPJ
-                ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjRaw.slice(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(cnpjRaw)}">${nome}</a>`
                 : nome;
             html += `<tr><td>${nomeCell}</td><td class="auditor-only"><code>${doc}</code></td><td class="num auditor-only">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
         }
@@ -3024,10 +3029,15 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
-    let html = _historyNote('Historico completo da licitacao — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     // Metadata — always render header
     const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;
+    if (!data.licitacao && !(data.proponentes && data.proponentes.length) && !(data.despesas && data.despesas.length)) {
+        body.innerHTML = `<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao (${_licNumLabel}).</p>`;
+        return;
+    }
+
+    let html = _historyNote('Historico completo da licitacao — este detalhamento nao muda com o filtro de periodo da pagina.');
     html += `<div class="dialog-section"><h4>${dualLabel('Dados desta licitacao','Dados da licitacao')}</h4>`;
     if (data.licitacao) {
         const lic = data.licitacao;
@@ -3108,8 +3118,6 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         }
         html += '</div>';
     }
-
-    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);

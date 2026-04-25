@@ -2169,6 +2169,11 @@ body {
         padding-bottom: max(1rem, env(safe-area-inset-bottom));
         max-height: calc(100dvh - 56px);
     }
+    .dialog-nav {
+        top: -1rem;
+        margin: -1rem -1rem 1rem;
+        padding: 0.7rem 1rem;
+    }
     .empresa-card { padding: 0.65rem; }
     .empresa-header strong { font-size: 0.88rem; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
