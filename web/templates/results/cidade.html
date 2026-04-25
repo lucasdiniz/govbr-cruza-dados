@@ -49,48 +49,54 @@
 {% set total_pago = perfil.total_pago|default(0)|float %}
 {% set pct_pago = (total_pago / total_empenhado * 100) if total_empenhado else 0 %}
 {% set gap_financeiro = total_empenhado - total_pago %}
-
-<div class="date-filter-bar" id="dateFilterBar" role="group" aria-label="Filtro de periodo">
-    <div class="date-filter-inputs">
-        <label class="date-field"><span>De</span>
-            <input type="text" id="dateInicio" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_inicio }}">
-        </label>
-        <label class="date-field"><span>Ate</span>
-            <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
-        </label>
-        <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
-        <p class="date-filter-status text-sm text-muted" id="dateFilterStatus" aria-live="polite"></p>
-    </div>
-    <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
-        <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
-        <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
-        <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
-        <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
-    </div>
-</div>
+{% set score_value = score_unificado if score_unificado is not none else perfil.risco_score %}
+{% if score_value is not none %}
+    {% set score_num = score_value|float %}
+    {% if score_num >= 70 %}
+        {% set score_level = 'red' %}
+        {% set score_label = 'Aten&ccedil;&atilde;o alta' %}
+    {% elif score_num >= 40 %}
+        {% set score_level = 'yellow' %}
+        {% set score_label = 'Aten&ccedil;&atilde;o' %}
+    {% else %}
+        {% set score_level = 'green' %}
+        {% set score_label = 'Baixa aten&ccedil;&atilde;o' %}
+    {% endif %}
+{% endif %}
 
 <section class="city-hero card">
     <div class="city-hero-copy">
-        <p class="eyebrow">Panorama do municipio</p>
-        <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
-        <div class="city-hero-actions">
-            <button
-                type="button"
-                class="share-btn share-btn-inline"
-                data-share
-                data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
-                data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
-                aria-label="Compartilhar este municipio"
-            >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Compartilhar
-            </button>
+        <div class="city-title-row">
+            <div>
+                <p class="eyebrow">Resumo de aten&ccedil;&atilde;o</p>
+                <h1 class="city-title">{{ perfil.municipio }} - PB</h1>
+            </div>
+            <div class="city-hero-actions">
+                {% if score_value is not none %}
+                <span class="city-risk-badge badge-{{ score_level }}" data-risk-summary>
+                    <span data-risk-label>{{ score_label|safe }}</span>
+                    <span class="city-risk-score"><strong data-score-unificado>{{ "%.0f"|format(score_num) }}</strong>/100</span>
+                </span>
+                {% endif %}
+                <button
+                    type="button"
+                    class="share-btn share-btn-icon"
+                    data-share
+                    data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
+                    data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
+                    aria-label="Compartilhar este municipio"
+                    title="Compartilhar"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="share-label">Compartilhar</span>
+                </button>
+            </div>
         </div>
         <p class="city-subtitle">
-            <span class="citizen-only">Veja como a prefeitura de {{ perfil.municipio }} usa o dinheiro p&uacute;blico — com quem gasta, se h&aacute; sinais de irregularidade, e onde v&atilde;o os maiores valores.</span>
-            <span class="auditor-only">Esta pagina resume os principais sinais de atencao encontrados nas despesas do municipio e organiza os achados por tema para facilitar a investigacao.</span>
+            <span class="citizen-only">Veja os principais sinais de risco nos gastos de {{ perfil.municipio }}.</span>
+            <span class="auditor-only">Resumo dos sinais investigativos prioritarios nas despesas do municipio.</span>
         </p>
         {% if narrative %}
         <div class="city-narrative-block" id="cityNarrativeBlock">
@@ -100,29 +106,6 @@
             </p>
         </div>
         {% endif %}
-    </div>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <span class="hero-stat-value" id="heroQtdEmpenhos">{{ perfil.qtd_empenhos|default(0)|short_number }}</span>
-            <span class="hero-stat-label">
-                <span class="citizen-only"><span class="term" data-tip="Empenho: reserva or&ccedil;ament&aacute;ria feita pela prefeitura para pagar despesas futuras.">gastos previstos</span></span>
-                <span class="auditor-only">despesas analisadas</span>
-            </span>
-        </div>
-        <div class="hero-stat">
-            <span class="hero-stat-value" id="heroTotalPago">{{ total_pago|short_brl }}</span>
-            <span class="hero-stat-label">
-                <span class="citizen-only">dinheiro que j&aacute; saiu do cofre</span>
-                <span class="auditor-only">pagos ao todo</span>
-            </span>
-        </div>
-        <div class="hero-stat">
-            <span class="hero-stat-value" id="heroQtdFornecedores">{{ perfil.qtd_fornecedores|default(0)|short_number }}</span>
-            <span class="hero-stat-label">
-                <span class="citizen-only">empresas contratadas</span>
-                <span class="auditor-only">fornecedores distintos</span>
-            </span>
-        </div>
     </div>
 </section>
 
@@ -158,6 +141,31 @@
     </div>
 </section>
 {% endif %}
+
+<details class="date-filter-bar" id="dateFilterBar">
+    <summary class="date-filter-summary">
+        <span class="date-filter-current" id="dateFilterCurrent">Per&iacute;odo: ano atual</span>
+        <span class="date-filter-action">Alterar per&iacute;odo</span>
+    </summary>
+    <div class="date-filter-panel" role="group" aria-label="Filtro de periodo">
+        <div class="date-filter-inputs">
+            <label class="date-field"><span>De</span>
+                <input type="text" id="dateInicio" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_inicio }}">
+            </label>
+            <label class="date-field"><span>Ate</span>
+                <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
+            </label>
+            <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+            <p class="date-filter-status text-sm text-muted" id="dateFilterStatus" aria-live="polite"></p>
+        </div>
+        <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+            <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
+            <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
+            <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
+            <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
+        </div>
+    </div>
+</details>
 
 <section class="card priority-guide" aria-label="Por onde comecar">
     <p class="eyebrow">
@@ -534,7 +542,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // bootstrap. Antes a logica lia .value dos inputs, mas eles tem apenas
     // data-iso-value nesse momento (a mascara so eh aplicada DENTRO do
     // bootstrap), entao .value vinha vazio e _isDateFiltered() voltava false
-    // — deixando o JS pedir caches all-time apesar do filtro visivel.
+    // — deixando o JS pedir caches all-time apesar do filtro padrao.
     bootstrapCityReport(
         {{ perfil.municipio|tojson }},
         {{ (display_uf or 'PB')|tojson }},

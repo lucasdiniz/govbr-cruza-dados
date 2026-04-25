@@ -330,9 +330,9 @@ function initTour() {
 
     const STEPS_CIDADE = [
         {
-            selector: '.city-narrative',
+            selector: '.city-risk-badge, .city-narrative',
             title: 'Resumo em 30 segundos',
-            text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
+            text: 'Aqui fica a nota de aten&ccedil;&atilde;o e um resumo curto da cidade. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
         },
         {
             selector: '.city-kpi-strip, .findings-list',
@@ -1390,18 +1390,20 @@ function _getDateFilterCopy() {
         return { headline: 'Periodo: todo o historico', clear: false };
     }
     if (preset === 'current-year') {
-        return { headline: `Ano atual: ${range}`, clear: true };
+        return { headline: `Periodo: ano atual (${range})`, clear: false };
     }
     if (preset === 'last-12m') {
-        return { headline: `Ultimos 12 meses: ${range}`, clear: true };
+        return { headline: `Periodo: ultimos 12 meses (${range})`, clear: false };
     }
     return { headline: `Periodo: ${range}`, clear: true };
 }
 
 function _syncDateFilterUI() {
     const btnLimpar = document.getElementById('btnLimparData');
+    const current = document.getElementById('dateFilterCurrent');
     const copy = _getDateFilterCopy();
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
+    if (current) current.textContent = copy.headline;
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
     });
@@ -1518,6 +1520,29 @@ function _updateKpiHeroStrip(kpis) {
     if (grid) orderedCards.forEach(card => grid.appendChild(card));
 }
 
+function _riskSummaryMeta(score) {
+    const n = Number(score);
+    if (!Number.isFinite(n)) return null;
+    if (n >= 70) return { level: 'red', label: 'Atencao alta' };
+    if (n >= 40) return { level: 'yellow', label: 'Atencao' };
+    return { level: 'green', label: 'Baixa atencao' };
+}
+
+function _updateRiskSummary(score) {
+    const meta = _riskSummaryMeta(score);
+    if (!meta) return;
+    const rounded = String(Math.round(Number(score)));
+    document.querySelectorAll('[data-risk-summary]').forEach(badge => {
+        badge.classList.remove('badge-red', 'badge-yellow', 'badge-green');
+        badge.classList.add(`badge-${meta.level}`);
+        const label = badge.querySelector('[data-risk-label]');
+        if (label) label.textContent = meta.label;
+        badge.querySelectorAll('[data-score-unificado]').forEach(el => {
+            el.textContent = rounded;
+        });
+    });
+}
+
 function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
     const card = document.querySelector('.city-concentracao');
     if (!card) return;
@@ -1599,6 +1624,7 @@ async function _refreshKpisLive(municipio, uf) {
             document.querySelectorAll('[data-score-unificado]').forEach(el => {
                 el.textContent = data.score_unificado;
             });
+            _updateRiskSummary(data.score_unificado);
         }
     } catch (e) {
         console.warn('kpis fetch failed', e);
