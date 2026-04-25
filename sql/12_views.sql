@@ -1009,16 +1009,15 @@ inativas_count AS (
 -- ---- Lado servidor ----
 -- CEAF: cruza mv_servidor_pb_base com ceaf_expulsao por (cpf_digitos_6, nome_upper).
 -- IMPORTANTE: ceaf_expulsao.cpf_cnpj_norm tem 11 digitos (CPF inteiro). O equivalente
--- ao cpf_digitos_6 vem da coluna ceaf_expulsao.cpf_digitos_6 (populada por
--- etl/15_normalizar.py). Sempre joinar tambem por nome para evitar colisao
+-- ao cpf_digitos_6 vem de SUBSTRING(cpf_cnpj_norm, 4, 6). Sempre joinar tambem por nome para evitar colisao
 -- (6 digitos colidem entre pessoas distintas).
 ceaf_match AS MATERIALIZED (
     SELECT srv.cpf_digitos_6, srv.nome_upper, srv.municipios
     FROM mv_servidor_pb_base srv
     JOIN ceaf_expulsao ce
-      ON ce.cpf_digitos_6 = srv.cpf_digitos_6
-     AND UPPER(unaccent(ce.nome_sancionado)) = srv.nome_upper
-    WHERE ce.cpf_digitos_6 IS NOT NULL
+      ON SUBSTRING(ce.cpf_cnpj_norm, 4, 6) = srv.cpf_digitos_6
+     AND normalize_name(ce.nome_sancionado) = normalize_name(srv.nome_upper)
+    WHERE LENGTH(ce.cpf_cnpj_norm) = 11
 ),
 ceaf_por_municipio AS (
     SELECT m AS municipio, COUNT(DISTINCT cpf_digitos_6) AS qtd

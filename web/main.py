@@ -186,8 +186,8 @@ templates.env.globals["column_is_auditor_only"] = column_is_auditor_only
 # Lida de env DATA_REFRESH_DATE (formato YYYY-MM-DD); se ausente, usa mes/ano atuais.
 _data_refresh = os.environ.get("DATA_REFRESH_DATE", "").strip()
 if not _data_refresh:
-    from datetime import date as _d
-    _data_refresh = _d.today().strftime("%Y-%m-%d")
+    from datetime import datetime as _dt_now, timedelta as _td, timezone as _tz
+    _data_refresh = _dt_now.now(_tz(_td(hours=-3))).strftime("%Y-%m-%d")
 # Formato amigavel pt-BR (DD/MM/YYYY). Entrada pode ser YYYY-MM-DD ou ja formatada.
 try:
     from datetime import datetime as _dt

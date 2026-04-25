@@ -78,8 +78,8 @@
                             {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow"><span class="citizen-only">Sal&aacute;rio alto + s&oacute;cio de empresa</span><span class="auditor-only">Salario alto + vinculo societario</span></span>{% endif %}
                             {% if s.flag_socio_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">S&oacute;cio de empresa proibida de contratar com o governo</span><span class="auditor-only">Socio de empresa com Inidoneidade (CEIS)</span></span>
                             {% elif s.flag_socio_sancionado %}<span class="badge badge-orange"><span class="citizen-only">S&oacute;cio de empresa sancionada pelo governo</span><span class="auditor-only">Socio de empresa sancionada (CEIS/CNEP)</span></span>{% endif %}
-                            {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio and not s.flag_socio_sancionado %}
-                                <span class="text-sm text-muted"><span class="citizen-only">V&aacute;rios indicadores elevados</span><span class="auditor-only">Combinacao de indicadores elevada</span></span>
+                            {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio and not s.flag_socio_sancionado and not s.flag_socio_inidoneidade and not (s.total_pago_durante_vinculo|default(0)|float > 0) %}
+                                <span class="text-sm text-muted"><span class="citizen-only">Sem sinais espec&iacute;ficos detectados</span><span class="auditor-only">Sem sinal automatico</span></span>
                             {% endif %}
                         </td>
                     </tr>
@@ -95,5 +95,5 @@
     </div>
 </section>
 {% else %}
-<p class="text-muted text-sm">Nenhum servidor foi carregado nesta etapa.</p>
+<p class="text-muted text-sm">Nenhum servidor com sinais foi encontrado para este per&iacute;odo.</p>
 {% endif %}

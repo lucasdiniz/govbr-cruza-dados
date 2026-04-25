@@ -79,21 +79,58 @@ function _lbl(citizen, auditor) {
 }
 window._lbl = _lbl;
 
+const _COLUMN_META = window.COLUMN_META || {};
+
+function _defaultColumnLabel(col) {
+    return String(col || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function _columnMeta(col) {
+    return _COLUMN_META[col] || {};
+}
+
+function _columnLabelPair(col) {
+    const meta = _columnMeta(col);
+    return {
+        citizen: meta.citizen || meta.auditor || _defaultColumnLabel(col),
+        auditor: meta.auditor || _defaultColumnLabel(col),
+        auditorOnly: !!meta.auditor_only,
+    };
+}
 
 function initTermTooltips() {
-    document.addEventListener('click', (e) => {
-        const term = e.target.closest('.term[data-tip]');
-        // Fecha abertos em outro clique
-        document.querySelectorAll('.term.tip-open').forEach(el => {
-            if (el !== term) el.classList.remove('tip-open');
+    const closeOtherTips = (active) => {
+        document.querySelectorAll('.term.tip-open, .kpi-card-tip.tip-open').forEach(el => {
+            if (el !== active) el.classList.remove('tip-open');
         });
+    };
+    document.addEventListener('click', (e) => {
+        const term = e.target.closest('.term[data-tip], .kpi-card-tip[data-tip]');
+        const isKpiTip = term && term.classList.contains('kpi-card-tip');
+        // Fecha abertos em outro clique
+        closeOtherTips(term);
         if (term) {
+            if (isKpiTip) {
+                e.preventDefault();
+                e.stopPropagation();
+                term.classList.toggle('tip-open');
+                return;
+            }
             // Em touch devices, tap alterna
             if (matchMedia('(hover: none)').matches) {
                 e.preventDefault();
                 term.classList.toggle('tip-open');
             }
         }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const term = e.target.closest('.kpi-card-tip[data-tip]');
+        if (!term) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeOtherTips(term);
+        term.classList.toggle('tip-open');
     });
 }
 
@@ -288,7 +325,8 @@ function initTour() {
     const isCityPage = !!document.querySelector('.city-hero');
     const isHomePage = !!document.querySelector('.search-hero') && !isCityPage;
     const restartBtn = document.getElementById('tourRestart');
-    if (!isCityPage && !isHomePage && !restartBtn) return;
+    const tourAvailable = isCityPage || isHomePage;
+    if (!tourAvailable) return;
 
     const STEPS_CIDADE = [
         {
@@ -327,6 +365,9 @@ function initTour() {
     ];
 
     const STEPS = isCityPage ? STEPS_CIDADE : STEPS_HOME;
+    if (restartBtn) {
+        restartBtn.style.display = 'inline';
+    }
 
     let current = 0;
     let overlay = null;
@@ -415,9 +456,8 @@ function initTour() {
         render();
     }
 
-    // Mostra botao "?" sempre que o tour ja rodou (para reiniciar)
+    // Mostra link "Como usar" no rodape sempre que o tour esta disponivel.
     if (restartBtn) {
-        restartBtn.style.display = 'inline-flex';
         restartBtn.addEventListener('click', () => { current = 0; start(); });
     }
 
@@ -600,7 +640,7 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
         const query = input.value.trim();
         if (query !== selectedValue && status) status.textContent = 'Selecione uma cidade da lista para continuar.';
         selectedValue = '';
-        if (query.length < 3) {
+        if (query.length < 2) {
             clearList();
             return;
         }
@@ -646,10 +686,6 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
 
     input.addEventListener('blur', () => {
         window.setTimeout(() => {
-            if (input.value.trim() !== selectedValue) {
-                input.value = '';
-                if (status) status.textContent = '';
-            }
             clearList();
         }, 120);
     });
@@ -659,16 +695,24 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
     });
 }
 
-setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (value) => {
-    window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
-});
+function initCidadeAutocomplete() {
+    setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (value) => {
+        window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
+    });
+}
 
 async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     uf = uf || 'PB';
+    const nextInicio = dataInicio || null;
+    const nextFim = dataFim || null;
+    if ((nextInicio && !nextFim) || (!nextInicio && nextFim)) {
+        _setDateFilterStatus('Informe data inicial e final antes de filtrar.', 'error');
+        return;
+    }
     _currentMunicipio = municipio;
     _currentUf = uf;
-    _dateInicio = dataInicio || null;
-    _dateFim = dataFim || null;
+    _dateInicio = nextInicio;
+    _dateFim = nextFim;
 
     const periodo = _getPeriodo();
 
@@ -695,23 +739,15 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     // e a KPI strip presas em ANO enquanto os paineis abaixo iam para
     // all-time. Refrescar sempre garante consistencia em ambas as direcoes
     // (ANO->Tudo e Tudo->ANO/Custom).
-    const el = id => document.getElementById(id);
-    ['heroQtdEmpenhos', 'heroTotalPago', 'heroQtdFornecedores'].forEach(id => {
-        if (el(id)) el(id).textContent = '...';
-    });
-    ['insightPctPago', 'insightPctSemLicit', 'insightPctDispensa', 'insightPctFolha'].forEach(id => {
-        if (el(id)) el(id).textContent = '...';
-    });
-    if (el('insightGapFinanceiro')) el('insightGapFinanceiro').textContent = '';
-    if (el('progressPctPago')) el('progressPctPago').style.width = '0%';
-    if (el('barEmpenhado')) el('barEmpenhado').textContent = '...';
-    if (el('barPago')) el('barPago').textContent = '...';
-    if (el('barFillPago')) el('barFillPago').style.width = '0%';
-
-    // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
-    await _refreshPerfilLive(municipio, uf);
-    // /api/kpis retorna kpi strip + concentracao + score unificado.
-    await _refreshKpisLive(municipio, uf);
+    _setLiveRefreshState(true);
+    try {
+        // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
+        await _refreshPerfilLive(municipio, uf);
+        // /api/kpis retorna kpi strip + concentracao + score unificado.
+        await _refreshKpisLive(municipio, uf);
+    } finally {
+        _setLiveRefreshState(false);
+    }
     // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
     // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
     _wireConcentracaoClicks();
@@ -724,6 +760,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
     if (batchData.TOP_FORNECEDORES && batchData.TOP_FORNECEDORES.row_count > 0) {
         if (fornPanel) {
             fornPanel.innerHTML = buildFornecedoresPanel(batchData.TOP_FORNECEDORES);
+            fornPanel.setAttribute('aria-busy', 'false');
             initDataTables(fornPanel);
             initClickableRows(fornPanel);
         }
@@ -735,6 +772,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         if (!_isDateFiltered() && batchData.TOP_SERVIDORES && batchData.TOP_SERVIDORES.row_count > 0) {
             const servData = batchData.TOP_SERVIDORES;
             servPanel.innerHTML = buildServidoresPanel(servData);
+            servPanel.setAttribute('aria-busy', 'false');
             initDataTables(servPanel);
             initClickableRows(servPanel);
         } else {
@@ -777,6 +815,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                     countEl.textContent = 'Tempo excedido';
                     body.innerHTML = '<p class="text-sm text-muted">Esse bloco nao terminou a tempo nesta tentativa.</p>';
                     card.classList.remove('loading');
+                    card.setAttribute('aria-busy', 'false');
                     card.classList.add('is-timeout');
                     updateSectionSummaries();
                     return;
@@ -798,6 +837,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 }
                 if (rowCount === 0) card.classList.add('is-empty', 'collapsed');
                 card.classList.remove('loading');
+                card.setAttribute('aria-busy', 'false');
                 initDataTables(body);
                 initClickableRows(body);
             } catch {
@@ -806,6 +846,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 if (countLabel) countLabel.style.display = 'none';
                 body.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
                 card.classList.remove('loading');
+                card.setAttribute('aria-busy', 'false');
                 card.classList.add('is-timeout');
             }
             updateSectionSummaries();
@@ -831,13 +872,19 @@ function renderFindingCard(card, queryId, data, municipio) {
     body.classList.add('fade-in');
     setTimeout(() => body.classList.remove('fade-in'), 300);
     card.classList.remove('loading');
+    card.setAttribute('aria-busy', 'false');
 }
 
 function buildResultTable(queryId, columns, rows, municipio) {
-    const columnLabels = columns.map(c => String(c || '').replace(/_/g, ' '));
-    const headerCells = columnLabels.map(c =>
-        `<th>${_esc(c)}</th>`
-    ).join('');
+    const labelPairs = columns.map(_columnLabelPair);
+    const headerCells = columns.map((col, idx) => {
+        const labels = labelPairs[idx];
+        const cls = labels.auditorOnly ? ' class="auditor-only"' : '';
+        const html = labels.auditorOnly || labels.citizen === labels.auditor
+            ? _esc(labels.auditor)
+            : `<span class="citizen-only">${_esc(labels.citizen)}</span><span class="auditor-only">${_esc(labels.auditor)}</span>`;
+        return `<th${cls}>${html}</th>`;
+    }).join('');
 
     // Auto-detect clickable columns for dialog reuse
     const iCnpjBasico = columns.indexOf('cnpj_basico');
@@ -851,7 +898,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const iLicAno = columns.indexOf('ano_licitacao');
     const iLicMod = columns.indexOf('modalidade');
     const iNomeCredorExact = columns.indexOf('nome_credor');
-    const hasFornecedor = iCnpjBasico >= 0 || iCpfCnpj >= 0;
+    const hasFornecedor = iCnpjBasico >= 0 || iCpfCnpj >= 0 || iCnpjCompleto >= 0;
     const hasServidor = iCpf6 >= 0 && (iNomeUpper >= 0 || iNomeServidor >= 0);
     const hasLicitacao = iLicNum >= 0;
 
@@ -877,29 +924,44 @@ function buildResultTable(queryId, columns, rows, municipio) {
     }
 
     const bodyRows = rows.map(row => {
-        const cells = row.map((val, ci) => {
+        let cells = row.map((val, ci) => {
             const col = columns[ci] || '';
-            const label = _esc(columnLabels[ci] || col);
+            const labels = labelPairs[ci] || _columnLabelPair(col);
+            const label = _esc(labels.citizen || labels.auditor || col);
             const classes = [ci === 0 ? 'stack-title' : 'stack-meta'];
+            if (labels.auditorOnly) classes.push('auditor-only');
             const isNumericColumn = col.startsWith('valor') || col.startsWith('total') || col === 'capital_social' ||
                 col === 'maior_salario' || col === 'salario' || col.startsWith('pct') || col.startsWith('qtd') ||
                 col === 'empenhos';
             if (isNumericColumn && ci !== 0) classes.push('num');
-            const td = (html) => `<td data-label="${label}" class="${classes.join(' ')}">${html}</td>`;
+            const td = (html, sortValue) => {
+                const sortAttr = sortValue === undefined || sortValue === null ? '' : ` data-sort="${_esc(sortValue)}"`;
+                return `<td data-label="${label}" class="${classes.join(' ')}"${sortAttr}>${html}</td>`;
+            };
             if (val === null || val === undefined) return td('-');
             if (typeof val === 'boolean') return td(val ? 'Sim' : 'Nao');
             if (Array.isArray(val)) return td(val.map(item => _esc(item)).join(', '));
+            const rawDigits = String(val || '').replace(/\D/g, '');
+            if ((col.startsWith('dt_') || col.startsWith('data_')) && typeof val === 'string') {
+                return td(_esc(_fmtDate(val)), val);
+            }
+            if ((col === 'cpf_cnpj' || col.startsWith('cpf_cnpj') || col === 'cpfcnpj_contratado' || col === 'cnpj_completo') && rawDigits.length === 14) {
+                return td(_formatCnpj(rawDigits.slice(0, 8), rawDigits), rawDigits);
+            }
+            if ((col === 'cpf_cnpj' || col.startsWith('cpf_cnpj') || col === 'cpfcnpj_contratado') && rawDigits.length === 11) {
+                return td(`***.${rawDigits.slice(3, 6)}.${rawDigits.slice(6, 9)}-**`, rawDigits);
+            }
             if (typeof val === 'number' || (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val))) {
                 const n = parseFloat(val);
                 if (!isNaN(n)) {
                     if (col.startsWith('valor') || col.startsWith('total') || col === 'capital_social' || col === 'maior_salario' || col === 'salario') {
-                        return td(_shortBrl(n));
+                        return td(_shortBrl(n), n);
                     }
                     if (col.startsWith('pct')) {
-                        return td(`${n.toFixed(1)}%`);
+                        return td(`${n.toFixed(1)}%`, n);
                     }
                     if (col.startsWith('qtd') || col === 'empenhos') {
-                        return td(_shortNum(n));
+                        return td(_shortNum(n), n);
                     }
                 }
             }
@@ -934,23 +996,22 @@ function buildResultTable(queryId, columns, rows, municipio) {
         // Fornecedor row detection
         if (hasFornecedor) {
             let cnpjB = '';
-            if (iCnpjBasico >= 0) {
-                cnpjB = String(row[iCnpjBasico] || '').replace(/\D/g, '').slice(0, 8);
-            } else if (iCpfCnpj >= 0) {
-                cnpjB = String(row[iCpfCnpj] || '').replace(/\D/g, '').slice(0, 8);
-            }
+            let cpfCnpjFull = '';
+            if (iCnpjCompleto >= 0) cpfCnpjFull = String(row[iCnpjCompleto] || '').replace(/\D/g, '');
+            else if (iCpfCnpj >= 0) cpfCnpjFull = String(row[iCpfCnpj] || '').replace(/\D/g, '');
+            if (cpfCnpjFull.length === 14) cnpjB = cpfCnpjFull.slice(0, 8);
+            else if (iCnpjBasico >= 0) cnpjB = String(row[iCnpjBasico] || '').replace(/\D/g, '').slice(0, 8);
             const nome = _esc(row[iNomeCredor >= 0 ? iNomeCredor : (iCpfCnpj >= 0 ? iCpfCnpj : 0)] || '');
-            if (cnpjB.length === 8) {
+            if (cnpjB.length === 8 && cpfCnpjFull.length === 14) {
                 const nomeCredorAttr = (iNomeCredorExact >= 0 && iNomeCredorExact !== iNomeCredor)
                     ? ` data-fornecedor-nome-credor="${_esc(row[iNomeCredorExact] || '')}"`
                     : '';
-                let cpfCnpjFull = '';
-                if (iCnpjCompleto >= 0) cpfCnpjFull = String(row[iCnpjCompleto] || '').replace(/\D/g, '');
-                else if (iCpfCnpj >= 0) cpfCnpjFull = String(row[iCpfCnpj] || '').replace(/\D/g, '');
-                const cpfCnpjAttr = cpfCnpjFull.length >= 14
-                    ? ` data-fornecedor-cpf-cnpj="${_esc(cpfCnpjFull)}"`
-                    : '';
+                const cpfCnpjAttr = ` data-fornecedor-cpf-cnpj="${_esc(cpfCnpjFull)}"`;
                 return `<tr class="clickable-row${rowHighlight}" data-fornecedor-cnpj="${_esc(cnpjB)}" data-fornecedor-nome="${nome}"${nomeCredorAttr}${cpfCnpjAttr}>${cells}</tr>`;
+            }
+            if (cnpjB.length === 8) {
+                cells = cells.replace('</td>', ' <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td>');
+                return `<tr class="row-detail-unavailable${rowHighlight}" aria-disabled="true">${cells}</tr>`;
             }
         }
         return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
@@ -968,7 +1029,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     return `<div class="result-block">
         <div class="result-toolbar">
             <div>${legendHtml}</div>
-            <a href="${exportHref}" data-export-link class="btn btn-outline btn-sm">Exportar CSV</a>
+            <a href="${exportHref}" data-export-link class="btn btn-outline btn-sm"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></a>
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
@@ -1051,6 +1112,7 @@ function buildFornecedoresPanel(data) {
         const sitClass = situacao === 'Ativa' ? '' : (situacao === '-' ? '' : 'badge badge-gray');
         let badges = '';
         const isInidoneidade = _val(r, cols, 'flag_inidoneidade');
+        const cnpjCompletoDigits = String(cnpjCompleto || '').replace(/\D/g, '');
         const abrangenciaRaw = _val(r, cols, 'abrangencia_sancao_info') || '';
         const sancaoAplica = abrangenciaRaw.startsWith('!');
         const abrangenciaInfo = abrangenciaRaw.replace(/^!/, '');
@@ -1065,14 +1127,17 @@ function buildFornecedoresPanel(data) {
         if (_val(r, cols, 'flag_pgfn')) badges += '<span class="badge badge-yellow" title="Divida ativa da Uniao (PGFN) - impostos federais em aberto"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida ativa (PGFN)</span></span>';
         if (_val(r, cols, 'flag_inativa')) badges += '<span class="badge badge-gray" title="Cadastro da empresa inativo na Receita Federal"><span class="citizen-only">Empresa inativa na Receita</span><span class="auditor-only">Cadastro inativo</span></span>';
         if (!badges) badges = '<span class="text-sm text-muted">Sem sinal automatico</span>';
-        const rowClass = (() => {
+        const rowSeverityClass = (() => {
             const recInid = _val(r, cols, 'flag_recebeu_durante_inidoneidade');
             const recSan = _val(r, cols, 'flag_recebeu_durante_sancao_aplicavel');
-            if (recInid) return 'clickable-row row-sancao';
-            if (recSan) return 'clickable-row row-sancao-leve';
-            return 'clickable-row';
+            if (recInid) return 'row-sancao';
+            if (recSan) return 'row-sancao-leve';
+            return '';
         })();
-        return `<tr class="${rowClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompleto)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-meta">${badges}</td></tr>`;
+        if (cnpjCompletoDigits.length !== 14) {
+            return `<tr class="row-detail-unavailable ${rowSeverityClass}" aria-disabled="true"><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+        }
+        return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
 
     const hasRecInid = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_inidoneidade'));
@@ -1090,8 +1155,8 @@ function buildFornecedoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">Maiores fornecedores do municipio</h3>
-            <p class="text-muted text-sm">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</p>
+            <h3 class="card-title">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')}</h3>
+            <p class="text-muted text-sm"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -1141,21 +1206,45 @@ let _currentUf = 'PB';
 function _isDateFiltered() { return !!(_dateInicio || _dateFim); }
 
 function _formatDateInput(date) {
-    return date.toISOString().slice(0, 10);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function _todayGmt3Parts() {
+    const gmt3 = new Date(Date.now() - (3 * 60 * 60 * 1000));
+    return {
+        year: gmt3.getUTCFullYear(),
+        month: gmt3.getUTCMonth() + 1,
+        day: gmt3.getUTCDate(),
+    };
+}
+
+function _partsToIso(parts) {
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function _addUtcDaysParts(year, month, day, days) {
+    const dt = new Date(Date.UTC(year, month - 1, day + days));
+    return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate() };
+}
+
+function _todayGmt3Iso() {
+    return _partsToIso(_todayGmt3Parts());
 }
 
 function _datePresetRange(preset) {
-    const today = new Date();
-    const todayIso = _formatDateInput(today);
+    const today = _todayGmt3Parts();
+    const todayIso = _partsToIso(today);
     if (preset === 'current-year') {
-        return { inicio: `${today.getFullYear()}-01-01`, fim: todayIso };
+        return { inicio: `${today.year}-01-01`, fim: todayIso };
     }
     if (preset === 'last-12m') {
-        const start = new Date(today);
-        // Subtrai 12 meses preservando o dia; setMonth lida com transicoes (ex: 31/jan -> 31/jan ano anterior).
-        start.setMonth(start.getMonth() - 12);
-        start.setDate(start.getDate() + 1);
-        return { inicio: _formatDateInput(start), fim: todayIso };
+        const start = (today.month === 2 && today.day === 29)
+            ? { year: today.year - 1, month: 3, day: 1 }
+            : _addUtcDaysParts(today.year - 1, today.month, today.day, 1);
+        return { inicio: _partsToIso(start), fim: todayIso };
     }
     return { inicio: '', fim: '' };
 }
@@ -1171,9 +1260,10 @@ function _getDatePreset() {
 
 function _getPeriodo() {
     if (!_isDateFiltered()) return '';
-    const yr = new Date().getFullYear();
     const currentYear = _datePresetRange('current-year');
     if (_dateInicio === currentYear.inicio && _dateFim === currentYear.fim) return 'ANO';
+    const last12m = _datePresetRange('last-12m');
+    if (_dateInicio === last12m.inicio && _dateFim === last12m.fim) return '12M';
     return 'CUSTOM';
 }
 
@@ -1197,6 +1287,8 @@ function _brToIso(br) {
     const [, dd, mm, yyyy] = m;
     const day = parseInt(dd, 10), mon = parseInt(mm, 10), year = parseInt(yyyy, 10);
     if (mon < 1 || mon > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+    const dt = new Date(year, mon - 1, day);
+    if (dt.getFullYear() !== year || dt.getMonth() !== mon - 1 || dt.getDate() !== day) return '';
     return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -1230,6 +1322,60 @@ function _initDateInputsBr() {
     });
 }
 
+function _setDateFilterStatus(message, kind) {
+    const el = document.getElementById('dateFilterStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.toggle('color-red', kind === 'error');
+}
+
+let _dateFilterBusy = false;
+
+function _setDateFilterButtonBusy(isBusy) {
+    const btn = document.getElementById('btnFiltrarData');
+    if (!btn) return;
+    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || 'Filtrar';
+    btn.disabled = !!isBusy;
+    btn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    btn.textContent = isBusy ? 'Filtrando...' : btn.dataset.defaultLabel;
+}
+
+function _setLiveRefreshState(isBusy) {
+    document.querySelectorAll('.city-hero, .insight-grid, .city-kpi-strip').forEach(node => {
+        node.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+        node.classList.toggle('is-refreshing', !!isBusy);
+    });
+}
+
+async function _handleDateApiError(response, fallbackMessage) {
+    let message = fallbackMessage || 'Nao foi possivel aplicar o filtro de periodo.';
+    try {
+        const data = await response.json();
+        if (data && data.error) message = data.error;
+    } catch {}
+    if (response.status === 400) {
+        _setDateFilterStatus(message, 'error');
+    }
+    return message;
+}
+
+function _validateDateInputs() {
+    const inicioEl = document.getElementById('dateInicio');
+    const fimEl = document.getElementById('dateFim');
+    const inicio = _readDateInputIso(inicioEl);
+    const fim = _readDateInputIso(fimEl);
+    if (!inicio || !fim) {
+        _setDateFilterStatus('Preencha as duas datas no formato DD/MM/AAAA.', 'error');
+        return null;
+    }
+    if (inicio > fim) {
+        _setDateFilterStatus('A data inicial nao pode ser maior que a data final.', 'error');
+        return null;
+    }
+    _setDateFilterStatus('');
+    return { inicio, fim };
+}
+
 function _setDateInputs(inicio, fim) {
     const diEl = document.getElementById('dateInicio');
     const dfEl = document.getElementById('dateFim');
@@ -1259,12 +1405,14 @@ function _syncDateFilterUI() {
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
     });
+    if (!_dateFilterBusy) _setDateFilterStatus('');
 }
 
 function _resetCityPanelsLoading() {
     document.querySelectorAll('.finding-card').forEach(card => {
         card.classList.add('loading');
         card.classList.remove('is-empty', 'is-timeout');
+        card.setAttribute('aria-busy', 'true');
         const body = card.querySelector('.finding-body');
         if (body) body.innerHTML = skeletonTableHtml(3, 3);
         const countEl = card.querySelector('[data-count]');
@@ -1274,6 +1422,7 @@ function _resetCityPanelsLoading() {
     document.querySelectorAll('[data-section-total]').forEach(el => el.textContent = 'Carregando...');
     document.querySelectorAll('[data-report-count]').forEach(el => el.textContent = 'Carregando...');
     document.querySelectorAll('[data-async-panel]').forEach(panel => {
+        panel.setAttribute('aria-busy', 'true');
         panel.innerHTML = skeletonTableHtml(4, 3);
     });
 }
@@ -1302,9 +1451,6 @@ function _updateInsightCards(perfil) {
 
     const pctSemLicit = perfil.pct_sem_licitacao;
     if (el('insightPctSemLicit')) el('insightPctSemLicit').textContent = pctSemLicit != null ? `${parseFloat(pctSemLicit).toFixed(1)}%` : 'N/D';
-
-    const pctDispensa = perfil.pct_sem_licitacao;
-    if (el('insightPctDispensa')) el('insightPctDispensa').textContent = pctDispensa != null ? `${parseFloat(pctDispensa).toFixed(1)}%` : 'N/D';
 
     const pctFolha = perfil.pct_folha_receita;
     if (el('insightPctFolha')) el('insightPctFolha').textContent = pctFolha != null ? `${parseFloat(pctFolha).toFixed(1)}%` : 'N/D';
@@ -1422,9 +1568,9 @@ function _wireConcentracaoClicks(scope) {
         const row = e.target.closest('.chart-bar-row');
         if (!row) return;
         const cnpjBasico = row.dataset.cnpjBasico || '';
-        const cnpjCompleto = row.dataset.cnpjCompleto || '';
+        const cnpjCompleto = String(row.dataset.cnpjCompleto || '').replace(/\D/g, '');
         const nome = row.dataset.nome || '';
-        if (!cnpjBasico) return;
+        if (!cnpjBasico || cnpjCompleto.length !== 14) return;
         if (typeof openFornecedorDialog === 'function') {
             openFornecedorDialog(cnpjBasico, nome, null, false, nome, cnpjCompleto);
         }
@@ -1439,7 +1585,8 @@ async function _refreshKpisLive(municipio, uf) {
             body: JSON.stringify(_buildBody(municipio, uf || 'PB')),
         });
         if (!res.ok) {
-            console.warn('kpis endpoint returned', res.status);
+            const msg = await _handleDateApiError(res, 'Nao foi possivel carregar os indicadores deste periodo.');
+            console.warn('kpis endpoint returned', res.status, msg);
             return;
         }
         const data = await res.json();
@@ -1579,7 +1726,8 @@ async function _refreshPerfilLive(municipio, uf) {
                 _updateNarrative(data.narrative);
             }
         } else {
-            console.warn('perfil endpoint returned', res.status);
+            const msg = await _handleDateApiError(res, 'Nao foi possivel carregar o perfil deste periodo.');
+            console.warn('perfil endpoint returned', res.status, msg);
         }
     } catch (e) {
         console.warn('perfil fetch failed', e);
@@ -1598,14 +1746,16 @@ function _updateNarrative(narrative) {
 
 // ── Dialog navigation stack ─────────────────────────────────────
 let _currentMunicipio = '';
-const _dialogStack = []; // [{title, html}]
+const _dialogStack = []; // [{title, html, activePanelId}]
 
 function _dialogPush() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     const title = dialog.querySelector('.dialog-title').textContent;
-    const html = dialog.querySelector('.dialog-body').innerHTML;
-    _dialogStack.push({ title, html });
+    const body = dialog.querySelector('.dialog-body');
+    const html = body.innerHTML;
+    const activePanelId = body._activeDialogSectionId || body.querySelector('.dialog-tab-panel:not([hidden])')?.id || '';
+    _dialogStack.push({ title, html, activePanelId });
     dialog.querySelector('.dialog-back').style.visibility = 'visible';
 }
 
@@ -1617,7 +1767,14 @@ function _dialogPop() {
     const body = dialog.querySelector('.dialog-body');
     body.innerHTML = prev.html;
     _reattachDialogLinks(body);
+    _decorateDialogBody(body);
+    if (prev.activePanelId) _activateDialogSection(body, prev.activePanelId, { focus: false, scroll: false });
     if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
+}
+
+function _activateDialogSection(body, id, opts = {}) {
+    if (!body || !id || typeof body._activateDialogSection !== 'function') return false;
+    return body._activateDialogSection(id, opts);
 }
 
 function _dialogReset() {
@@ -1860,10 +2017,12 @@ function _initDialogTableSort(root) {
                 const tbody = table.querySelector('tbody');
                 const rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort((a, b) => {
-                    const cellA = a.children[colIndex]?.textContent.trim() || '';
-                    const cellB = b.children[colIndex]?.textContent.trim() || '';
-                    const numA = parseFloat(cellA.replace(/[R$%\s.]/g, '').replace(',', '.'));
-                    const numB = parseFloat(cellB.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    const cellElA = a.children[colIndex];
+                    const cellElB = b.children[colIndex];
+                    const cellA = cellElA?.textContent.trim() || '';
+                    const cellB = cellElB?.textContent.trim() || '';
+                    const numA = _sortNumber(cellElA);
+                    const numB = _sortNumber(cellElB);
                     if (!isNaN(numA) && !isNaN(numB)) return sortAsc ? numA - numB : numB - numA;
                     return sortAsc ? cellA.localeCompare(cellB, 'pt-BR') : cellB.localeCompare(cellA, 'pt-BR');
                 });
@@ -1912,48 +2071,78 @@ function _decorateDialogBody(body) {
     body.querySelector('.dialog-nav')?.remove();
 
     const sections = Array.from(body.querySelectorAll('.dialog-section'));
-    if (sections.length < 2) return;
+    if (sections.length < 2) {
+        body._activateDialogSection = null;
+        body._activeDialogSectionId = '';
+        return;
+    }
 
     sections.forEach((section, idx) => {
         if (!section.id) section.id = `dialog-section-${idx + 1}`;
         const heading = section.querySelector('h4');
         section.dataset.dialogLabel = _dialogSectionNavLabel(heading ? heading.textContent : `Secao ${idx + 1}`);
+        section.setAttribute('aria-labelledby', `${section.id}-tab`);
+        section.classList.add('dialog-tab-panel');
+        section.setAttribute('role', 'tabpanel');
+        section.hidden = idx !== 0;
     });
 
     const nav = document.createElement('div');
     nav.className = 'dialog-nav';
+    nav.setAttribute('role', 'tablist');
+    nav.setAttribute('aria-label', 'Secoes do dialogo');
+    nav.setAttribute('aria-orientation', 'horizontal');
     nav.innerHTML = sections.map((section, idx) =>
-        `<button type="button" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
+        `<button type="button" role="tab" id="${section.id}-tab" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-controls="${section.id}" tabindex="${idx === 0 ? '0' : '-1'}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
     ).join('');
-    body.prepend(nav);
+    const introNote = body.querySelector(':scope > .dialog-history-note');
+    if (introNote) introNote.insertAdjacentElement('afterend', nav);
+    else body.prepend(nav);
 
     const buttons = Array.from(nav.querySelectorAll('.dialog-nav-btn'));
-    const setActive = (id) => {
-        buttons.forEach((btn) => btn.classList.toggle('is-active', btn.dataset.dialogTarget === id));
+    const setActive = (id, opts = {}) => {
+        const activeButton = buttons.find(btn => btn.dataset.dialogTarget === id);
+        if (!activeButton) return false;
+        buttons.forEach((btn) => {
+            const active = btn.dataset.dialogTarget === id;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            btn.tabIndex = active ? 0 : -1;
+        });
+        sections.forEach((section) => {
+            section.hidden = section.id !== id;
+        });
+        body._activeDialogSectionId = id;
+        if (opts.focus) {
+            activeButton.focus({ preventScroll: true });
+            activeButton.scrollIntoView({
+                block: 'nearest',
+                inline: 'nearest',
+                behavior: opts.smooth === false ? 'auto' : 'smooth',
+            });
+        }
+        if (opts.scroll) body.scrollTo({ top: 0, behavior: opts.smooth === false ? 'auto' : 'smooth' });
+        return true;
     };
+    body._activateDialogSection = setActive;
 
-    buttons.forEach((btn) => {
+    buttons.forEach((btn, idx) => {
         btn.addEventListener('click', () => {
-            const target = body.querySelector(`#${CSS.escape(btn.dataset.dialogTarget)}`);
-            if (!target) return;
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setActive(btn.dataset.dialogTarget);
+            setActive(btn.dataset.dialogTarget, { scroll: true });
+        });
+        btn.addEventListener('keydown', (event) => {
+            let nextIndex = -1;
+            if (event.key === 'ArrowRight') nextIndex = (idx + 1) % buttons.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (idx - 1 + buttons.length) % buttons.length;
+            else if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = buttons.length - 1;
+            else return;
+            event.preventDefault();
+            const next = buttons[nextIndex];
+            setActive(next.dataset.dialogTarget, { focus: true, scroll: false });
         });
     });
-
-    const onScroll = () => {
-        const bodyTop = body.getBoundingClientRect().top;
-        let activeId = sections[0].id;
-        sections.forEach((section) => {
-            const offsetTop = section.getBoundingClientRect().top - bodyTop;
-            if (offsetTop <= 120) activeId = section.id;
-        });
-        setActive(activeId);
-    };
-
-    body._dialogNavScrollHandler = onScroll;
-    body.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    setActive(sections[0].id, { smooth: false });
 }
 
 // Unified detail cache — evicts on fetch error
@@ -1976,15 +2165,22 @@ function _cachedPost(url, key, payload) {
     return promise;
 }
 
+function _historyNote(text) {
+    const copy = text || 'Historico completo — estes detalhes nao mudam com o filtro de periodo da pagina.';
+    return `<p class="period-badge dialog-history-note" role="note">${copy}</p>`;
+}
+
 function _fetchServidorDetails(cpf6, nome, cnpjs, municipio) {
-    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}`, { cpf6, nome, cnpjs, municipio });
+    const cnpjList = Array.isArray(cnpjs) ? cnpjs : [];
+    const cnpjKey = cnpjList.map(c => String(c || '').replace(/\D/g, '').slice(0, 8)).filter(Boolean).join(',');
+    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}:${cnpjKey}`, { cpf6, nome, cnpjs: cnpjList, municipio });
 }
 
 function _fetchFornecedorDetails(cnpjBasico, municipio, nomeCredor, cpfCnpj) {
-    const payload = { cnpj_basico: cnpjBasico, municipio };
-    if (cpfCnpj) payload.cpf_cnpj = cpfCnpj;
+    const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
+    const payload = { cnpj_basico: cnpjBasico, municipio, cpf_cnpj: exactDoc };
     if (nomeCredor) payload.nome_credor = nomeCredor;
-    const cacheKey = `forn:${cpfCnpj || cnpjBasico}:${municipio}${nomeCredor ? ':' + nomeCredor : ''}`;
+    const cacheKey = `forn:${exactDoc}:${municipio}${nomeCredor ? ':' + nomeCredor : ''}`;
     return _cachedPost('/api/fornecedor/detalhes', cacheKey, payload);
 }
 
@@ -2040,8 +2236,11 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     if (!e) {
         return `<div class="empresa-card empresa-missing">
             <div class="empresa-header">
-                <strong class="text-muted">Empresa nao encontrada na base RFB</strong>
+                <strong class="text-muted">Dados cadastrais da empresa indisponiveis na RFB</strong>
                 <code>${_formatCnpj(cnpjBasico, null)}</code>
+            </div>
+            <div class="empresa-details">
+                <span>O vinculo societario existe nos dados de socios, mas nao ha cadastro completo da empresa para abrir detalhes.</span>
             </div>
             ${extraBadges ? `<div class="empresa-details" style="margin-top:.3rem">${extraBadges}</div>` : ''}
         </div>`;
@@ -2052,7 +2251,10 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     const capital = e.capital_social ? _shortBrl(e.capital_social) : '-';
     const local = [e.municipio, e.uf].filter(Boolean).join(' - ') || '-';
     const nome = _esc(e.razao_social || 'Razao social nao disponivel');
-    const nomeLink = `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-nome="${nome}">${nome}</a>`;
+    const cnpjCompleto = String(e.cnpj_completo || '').replace(/\D/g, '');
+    const nomeLink = cnpjCompleto.length === 14
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${_esc(e.cnpj_basico)}" data-forn-cpf-cnpj="${_esc(cnpjCompleto)}" data-forn-nome="${nome}">${nome}</a>`
+        : `${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>`;
     const qualif = e.qualificacao_socio ? `<span>${dualLabel('Papel:','Qualificacao:')} <strong>${_esc(e.qualificacao_socio)}</strong></span>` : '';
     const dtEntrada = e.dt_entrada_sociedade ? `<span class="auditor-only">Entrada: ${_fmtDate(e.dt_entrada_sociedade)}</span>` : '';
     return `<div class="empresa-card">
@@ -2071,7 +2273,7 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     </div>`;
 }
 
-async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
+async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallback = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
@@ -2084,17 +2286,24 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
+    if (data.detail_unavailable) {
+        body.innerHTML = `<p class="text-sm text-muted">${_esc(data.detail_unavailable)}</p>`;
+        return;
+    }
     const sancoes = data.empresa_sancoes || {};
     const pgfn = data.empresa_pgfn || {};
     const empMap = data.empresa_empenhos || {};
     const acordosMap = data.empresa_acordos || {};
-    let html = '';
+    const cnpjsNorm = Array.from(new Set((Array.isArray(cnpjs) ? cnpjs : [])
+        .map(c => String(c || '').replace(/\D/g, '').slice(0, 8))
+        .filter(c => c.length === 8)));
+    let html = _historyNote();
 
     // Stats grid
     const vinculos = data.vinculos || [];
     const empresas = data.empresas || [];
     const bf = data.bolsa_familia || [];
-    const qtdEmpresas = cnpjs ? cnpjs.length : 0;
+    const qtdEmpresas = cnpjsNorm.length;
     const qtdSancionadas = Object.keys(sancoes).length;
     const qtdPgfn = Object.keys(pgfn).length;
     const totalPago = Object.values(empMap).reduce((s, e) => s + (e.total_pago || 0), 0);
@@ -2135,18 +2344,35 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             </div>`;
         }).join('');
         html += '</div>';
+    } else {
+        const cargoFallback = servidorFallback.cargo ? _stripCodePrefix(servidorFallback.cargo) : '';
+        const salarioFallback = servidorFallback.salario || '';
+        html += `<div class="dialog-section"><h4>${dualLabel('Dados do servidor','Resumo do servidor')}</h4>
+            <div class="empresa-card">
+                <div class="empresa-header">
+                    <strong>${_esc(servidorNome || nome || 'Servidor')}</strong>
+                    ${cpfMask ? `<span class="text-sm text-muted">CPF: ${cpfMask}</span>` : ''}
+                </div>
+                <div class="empresa-details">
+                    ${cargoFallback ? `<span>${dualLabel('Cargo:','Cargo:')} ${_esc(cargoFallback)}</span>` : ''}
+                    ${salarioFallback ? `<span>${dualLabel('Maior salario:','Maior salario:')} ${_esc(salarioFallback)}</span>` : ''}
+                    ${!cnpjsNorm.length ? '<span>Nenhuma empresa vinculada foi encontrada para este servidor.</span>' : ''}
+                </div>
+            </div>
+        </div>`;
     }
 
     // Empresas vinculadas (with badges)
-    if (cnpjs && cnpjs.length) {
+    if (cnpjsNorm.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Empresas onde aparece como socio','Empresas vinculadas')}</h4>`;
         const empresaMap = {};
         for (const e of empresas) empresaMap[e.cnpj_basico] = e;
-        html += cnpjs.map(c => {
+        html += cnpjsNorm.map(c => {
             let badges = '';
             // Sancao badges
             const sanList = sancoes[c] || [];
-            const vigentes = sanList.filter(s => !s.dt_final_sancao || s.dt_final_sancao >= new Date().toISOString().slice(0, 10));
+            const hojeIso = _todayGmt3Iso();
+            const vigentes = sanList.filter(s => !s.dt_final_sancao || s.dt_final_sancao >= hojeIso);
             if (vigentes.length) {
                 const hasInid = vigentes.some(s => /inidone/i.test(s.categoria_sancao || ''));
                 if (hasInid) {
@@ -2283,7 +2509,6 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
         html += '</div>';
     }
 
-    if (!html || html === '<div class="stats-grid"></div>') html = '<p class="text-sm text-muted">Nenhum detalhe disponivel.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
@@ -2292,6 +2517,13 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
 async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
+    if (exactDoc.length !== 14) {
+        if (typeof showToast === 'function') {
+            showToast('Detalhes indisponiveis: esta linha nao traz CNPJ completo.', 3200);
+        }
+        return;
+    }
     if (!switchMun) {
         if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     } else {
@@ -2306,7 +2538,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);
-    let html = '';
+    let html = _historyNote();
 
     // Pre-compute sanction date ranges (used by charts and empenho table)
     // grave = sancao legalmente afeta contratos com este municipio
@@ -2355,6 +2587,19 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             </div>
         </div>`;
         html += '</div>';
+    } else {
+        const cnpjFmt = _formatCnpj(cnpjBasico, exactDoc);
+        html += `<div class="dialog-section"><h4>${dualLabel('Dados da empresa','Identificacao do fornecedor')}</h4>
+            <div class="empresa-card empresa-missing">
+                <div class="empresa-header">
+                    <strong>${_esc(fornecedorNome || nomeCredor || 'Fornecedor')}</strong>
+                    <code class="auditor-only">${cnpjFmt}</code>
+                </div>
+                <div class="empresa-details">
+                    <span>Cadastro completo da empresa indisponivel na base RFB para este CNPJ.</span>
+                </div>
+            </div>
+        </div>`;
     }
 
     // Summary stats
@@ -2447,7 +2692,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += data.sancoes.map(s => {
             const inicio = _fmtDate(s.dt_inicio_sancao);
             const fim = s.dt_final_sancao ? _fmtDate(s.dt_final_sancao) : 'Sem prazo definido';
-            const vigente = !s.dt_final_sancao || new Date(s.dt_final_sancao) >= new Date();
+            const vigente = !s.dt_final_sancao || s.dt_final_sancao >= _todayGmt3Iso();
             const origem = s.origem || 'CEIS';
             const multa = s.valor_multa ? `<span>Multa: ${_shortBrl(s.valor_multa)}</span>` : '';
             const categoria = s.categoria_sancao || 'Sancao';
@@ -2582,20 +2827,21 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += '</div>';
     }
 
-    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
     if (switchMun) {
+        _activateDialogSection(body, 'forn-empenhos', { focus: false, scroll: false, smooth: false });
         const empSection = body.querySelector('#forn-empenhos');
         if (empSection) empSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
-async function openHeatmapMonthDialog(municipio, ano, mes) {
+async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
-    if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    if (dialog.open && !options.inPlace) { _dialogPush(); }
+    else if (!dialog.open) { _dialogReset(); }
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     const mesesLabel = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -2608,10 +2854,19 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
     let data;
     try {
         const resp = await fetch(`/api/heatmap/${encodeURIComponent(municipio)}/${ano}/${mes}`);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+            let msg = 'Nao foi possivel carregar os detalhes deste mes.';
+            try {
+                const err = await resp.json();
+                if (err && err.error) msg = err.error;
+            } catch {}
+            throw new Error(msg);
+        }
         data = await resp.json();
+        if (data && data.error) throw new Error(data.error);
     } catch (err) {
-        body.innerHTML = `<p class="text-sm text-muted">Erro ao carregar: ${_esc(err.message || String(err))}</p>`;
+        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><button type="button" class="btn btn-outline btn-sm" data-retry-heatmap> Tentar novamente</button></div>`;
+        body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes, { inPlace: true }));
         return;
     }
 
@@ -2621,7 +2876,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
     const funcoes = data.funcoes || [];
     const modalidades = data.modalidades || [];
     const empenhos = data.empenhos || [];
-    let html = '';
+    let html = _historyNote('Historico completo do mes selecionado — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
     html += '<div class="stats-grid">';
@@ -2637,9 +2892,10 @@ async function openHeatmapMonthDialog(municipio, ano, mes) {
         for (const f of fornecedores) {
             const nome = _esc(f.nome_credor || '-');
             const doc = _esc(f.cpf_cnpj || '-');
-            const isPJ = f.eh_pj && f.cpf_cnpj && f.cpf_cnpj.length === 14;
+            const cnpjRaw = String(f.cpf_cnpj || '').replace(/\D/g, '');
+            const isPJ = f.eh_pj && cnpjRaw.length === 14;
             const nomeCell = isPJ
-                ? `<a href="#" class="dialog-link" data-forn-cnpj="${f.cpf_cnpj.substring(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(f.cpf_cnpj)}">${nome}</a>`
+                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjRaw.slice(0, 8)}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}" data-forn-cpf-cnpj="${_esc(cnpjRaw)}">${nome}</a>`
                 : nome;
             html += `<tr><td>${nomeCell}</td><td class="auditor-only"><code>${doc}</code></td><td class="num auditor-only">${Number(f.qtd_empenhos || 0).toLocaleString('pt-BR')}</td><td class="num">${_shortBrl(Number(f.total_empenhado || 0))}</td><td class="num">${_shortBrl(Number(f.total_pago || 0))}</td></tr>`;
         }
@@ -2738,7 +2994,7 @@ async function openEmpenhoDialog(empenhoId) {
     }
 
     title.textContent = `Empenho ${data.numero_empenho}`;
-    let html = '';
+    let html = _historyNote('Historico completo do empenho — este detalhamento nao muda com o filtro de periodo da pagina.');
 
     // Historico (descricao detalhada)
     if (data.historico) {
@@ -2837,10 +3093,15 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
-    let html = '';
 
     // Metadata — always render header
     const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;
+    if (!data.licitacao && !(data.proponentes && data.proponentes.length) && !(data.despesas && data.despesas.length)) {
+        body.innerHTML = `<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao (${_licNumLabel}).</p>`;
+        return;
+    }
+
+    let html = _historyNote('Historico completo da licitacao — este detalhamento nao muda com o filtro de periodo da pagina.');
     html += `<div class="dialog-section"><h4>${dualLabel('Dados desta licitacao','Dados da licitacao')}</h4>`;
     if (data.licitacao) {
         const lic = data.licitacao;
@@ -2921,8 +3182,6 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         }
         html += '</div>';
     }
-
-    if (!html) html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para esta licitacao.</p>';
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
@@ -2944,28 +3203,27 @@ function buildServidoresPanel(data) {
 
     const bodyRows = sortedRows.map(r => {
         const nome = _esc(_val(r, cols, 'nome_servidor'));
-        const cargo = _esc(_val(r, cols, 'cargo') || '-');
+        const cargoRaw = _val(r, cols, 'cargo') || '-';
+        const cargo = _esc(cargoRaw);
         const salario = _shortBrl(_val(r, cols, 'maior_salario'));
         const qtdEmpresas = _val(r, cols, 'qtd_empresas_socio') || 0;
         const cnpjs = _val(r, cols, 'cnpjs_socio') || [];
-        const municipios = _val(r, cols, 'municipios') || [];
-        const municipiosStr = municipios.map(m => _esc(m)).join(', ') || '-';
         let badges = '';
         const ceafExpulso = _val(r, cols, 'flag_ceaf_expulso');
-        if (ceafExpulso) badges += '<span class="badge badge-red">Expulso da Adm. Federal (CEAF)</span>';
+        if (ceafExpulso) badges += `<span class="badge badge-red">${dualLabel('Expulso do servico publico federal','Expulso da Adm. Federal (CEAF)')}</span>`;
         const totalDuranteVinculo = _val(r, cols, 'total_pago_durante_vinculo');
         if (totalDuranteVinculo > 0) {
-            badges += `<span class="badge badge-red">Empresa recebeu ${_shortBrl(totalDuranteVinculo)} durante vinculo</span>`;
+            badges += `<span class="badge badge-red">${dualLabel(`Empresa ligada a ele recebeu ${_shortBrl(totalDuranteVinculo)} enquanto era servidor`, `Empresa recebeu ${_shortBrl(totalDuranteVinculo)} durante vinculo`)}</span>`;
         }
-        if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += '<span class="badge badge-red">Tambem recebe pagamentos do governo estadual</span>';
-        if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">Socio de ${qtdEmpresas || 'varias'} empresas</span>`;
-        if (_val(r, cols, 'flag_bolsa_familia')) badges += '<span class="badge badge-yellow">Bolsa Familia durante vinculo</span>';
-        if (_val(r, cols, 'flag_alto_salario_socio')) badges += '<span class="badge badge-yellow">Salario alto + vinculo societario</span>';
+        if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += `<span class="badge badge-red">${dualLabel('Recebe salario em dois governos ao mesmo tempo','Tambem recebe pagamentos do governo estadual')}</span>`;
+        if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">${dualLabel(`Socio de ${qtdEmpresas || 'varias'} empresas`, `Socio de ${qtdEmpresas || 'varias'} empresas`)}</span>`;
+        if (_val(r, cols, 'flag_bolsa_familia')) badges += `<span class="badge badge-yellow">${dualLabel('Recebe Bolsa Familia sendo servidor','Bolsa Familia durante vinculo')}</span>`;
+        if (_val(r, cols, 'flag_alto_salario_socio')) badges += `<span class="badge badge-yellow">${dualLabel('Salario alto + socio de empresa','Salario alto + vinculo societario')}</span>`;
         const socioSancionado = _val(r, cols, 'flag_socio_sancionado');
         const socioInidoneidade = _val(r, cols, 'flag_socio_inidoneidade');
-        if (socioInidoneidade) badges += '<span class="badge badge-red">Socio de empresa com Inidoneidade (CEIS)</span>';
-        else if (socioSancionado) badges += '<span class="badge badge-orange">Socio de empresa sancionada (CEIS/CNEP)</span>';
-        if (!badges) badges = '<span class="text-sm text-muted">Combinacao de indicadores elevada</span>';
+        if (socioInidoneidade) badges += `<span class="badge badge-red">${dualLabel('Socio de empresa proibida de contratar com o governo','Socio de empresa com Inidoneidade (CEIS)')}</span>`;
+        else if (socioSancionado) badges += `<span class="badge badge-orange">${dualLabel('Socio de empresa sancionada pelo governo','Socio de empresa sancionada (CEIS/CNEP)')}</span>`;
+        if (!badges) badges = `<span class="text-sm text-muted">${dualLabel('Sem sinais especificos detectados','Sem sinal automatico')}</span>`;
 
         const cpf6 = _esc(_val(r, cols, 'cpf_digitos_6') || '');
         const nomeUpper = _esc(_val(r, cols, 'nome_upper') || '');
@@ -2975,7 +3233,7 @@ function buildServidoresPanel(data) {
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
-        return `<tr data-cargo="${cargo.toLowerCase()}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Municipios" class="stack-meta">${municipiosStr}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Empresas" class="text-right num">${qtdEmpresas || '-'}</td><td data-label="Sinais" class="stack-meta">${badges}</td></tr>`;
+        return `<tr data-cargo="${_esc(String(cargoRaw).toLowerCase())}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
@@ -2991,8 +3249,8 @@ function buildServidoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">Servidores com sinais de atencao</h3>
-            <p class="text-muted text-sm">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</p>
+            <h3 class="card-title">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</h3>
+            <p class="text-muted text-sm"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
             ${servLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -3001,7 +3259,7 @@ function buildServidoresPanel(data) {
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
             </div>
             <div class="tbl-wrap"><table class="stack-mobile">
-                <thead><tr><th>Servidor</th><th>CPF</th><th>Cargo</th><th>Municipio(s)</th><th class="text-right">Maior Salario</th><th class="text-right">Empresas</th><th>Sinais de Atencao</th></tr></thead>
+                <thead><tr><th>Servidor</th><th class="auditor-only">CPF</th><th>Cargo</th><th class="text-right">${dualLabel('Maior salario','Maior Salario')}</th><th>${dualLabel('Sinais','Sinais de Atencao')}</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
@@ -3018,6 +3276,15 @@ async function loadAsyncPanel(panelName, municipio, uf) {
     if (!panel) return;
 
     const panelUf = uf || panel.dataset.uf || '';
+    const showPanelError = (message) => {
+        panel.setAttribute('aria-busy', 'false');
+        panel.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${message}</p><button type="button" class="btn btn-outline btn-sm" data-retry-panel="${panelName}">Tentar novamente</button></div>`;
+        panel.querySelector('[data-retry-panel]')?.addEventListener('click', () => {
+            panel.setAttribute('aria-busy', 'true');
+            panel.innerHTML = skeletonTableHtml(4, 3);
+            loadAsyncPanel(panelName, municipio, panelUf);
+        });
+    };
     try {
         const response = await fetch(`/api/top/${panelName}`, {
             method: 'POST',
@@ -3025,15 +3292,16 @@ async function loadAsyncPanel(panelName, municipio, uf) {
             body: JSON.stringify(_buildBody(municipio, panelUf)),
         });
         if (!response.ok) {
-            panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora. Tente novamente em alguns instantes.</p>';
+            showPanelError('Nao foi possivel carregar este bloco agora.');
             return;
         }
         panel.innerHTML = await response.text();
+        panel.setAttribute('aria-busy', 'false');
         initDataTables(panel);
         initInteractiveToggles(panel);
         initClickableRows(panel);
     } catch {
-        panel.innerHTML = '<p class="text-sm text-muted">Nao foi possivel carregar este bloco agora.</p>';
+        showPanelError('Nao foi possivel carregar este bloco agora.');
     }
 }
 
@@ -3156,6 +3424,8 @@ function initDataTables(root = document) {
             if (pageLabel) pageLabel.textContent = `Pagina ${page} de ${totalPages}`;
             if (prevBtn) prevBtn.disabled = page === 1;
             if (nextBtn) nextBtn.disabled = page === totalPages;
+            const pager = tableShell.querySelector('.table-pagination');
+            if (pager) pager.hidden = totalPages <= 1;
         };
 
         // Expose refilter for external toggles
@@ -3184,11 +3454,12 @@ function initDataTables(root = document) {
                 th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
 
                 filteredRows.sort((a, b) => {
-                    const cellA = a.children[colIndex]?.textContent.trim() || '';
-                    const cellB = b.children[colIndex]?.textContent.trim() || '';
-                    // Try numeric comparison (handle R$, %, commas)
-                    const numA = parseFloat(cellA.replace(/[R$%\s.]/g, '').replace(',', '.'));
-                    const numB = parseFloat(cellB.replace(/[R$%\s.]/g, '').replace(',', '.'));
+                    const cellElA = a.children[colIndex];
+                    const cellElB = b.children[colIndex];
+                    const cellA = cellElA?.textContent.trim() || '';
+                    const cellB = cellElB?.textContent.trim() || '';
+                    const numA = _sortNumber(cellElA);
+                    const numB = _sortNumber(cellElB);
                     if (!isNaN(numA) && !isNaN(numB)) {
                         return sortAsc ? numA - numB : numB - numA;
                     }
@@ -3220,18 +3491,47 @@ function initDataTables(root = document) {
     });
 }
 
+function _sortNumber(cell) {
+    if (!cell) return NaN;
+    if (cell.dataset && cell.dataset.sort !== undefined) {
+        const byData = parseFloat(String(cell.dataset.sort).replace(',', '.'));
+        if (!isNaN(byData)) return byData;
+    }
+    const text = (cell.textContent || '').toLowerCase();
+    let mult = 1;
+    if (/\bbi\b/.test(text)) mult = 1e9;
+    else if (/\bmi\b/.test(text)) mult = 1e6;
+    else if (/\bmil\b/.test(text)) mult = 1e3;
+    const cleaned = text
+        .replace(/r\$|%|bi|mi|mil|\s/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? NaN : n * mult;
+}
+
 function initClickableRows(root = document) {
     root.querySelectorAll('.clickable-row').forEach((row) => {
         if (row.dataset.clickInit === 'true') return;
         row.dataset.clickInit = 'true';
-        row.addEventListener('click', () => {
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        const titleCell = row.querySelector('.stack-title, td:first-child');
+        if (titleCell && !row.getAttribute('aria-label')) {
+            row.setAttribute('aria-label', `Abrir detalhes de ${titleCell.textContent.trim()}`);
+        }
+        const activate = () => {
             // Servidor row
             const cpf6 = row.dataset.cpf6 || '';
             const nomeUpper = row.dataset.nomeUpper || '';
             if (cpf6 && nomeUpper) {
                 const cnpjs = JSON.parse(row.dataset.cnpjs || '[]') || [];
                 const servidorNome = row.dataset.nome || '';
-                openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome);
+                const servidorFallback = {
+                    cargo: row.querySelector('[data-label="Cargo"]')?.textContent?.trim() || row.dataset.cargo || '',
+                    salario: row.querySelector('[data-label="Maior salario"]')?.textContent?.trim() || '',
+                };
+                openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome, servidorFallback);
                 return;
             }
             // Fornecedor row
@@ -3250,12 +3550,19 @@ function initClickableRows(root = document) {
                 const licMod = row.dataset.licitacaoMod || '';
                 openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`, licMod);
             }
+        };
+        row.addEventListener('click', activate);
+        row.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            activate();
         });
     });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
+    initCidadeAutocomplete();
     initInteractiveToggles(document);
     initClickableRows(document);
     initBackToTop();
@@ -3299,32 +3606,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Date filter handlers
     _initDateInputsBr();
-    document.getElementById('btnFiltrarData')?.addEventListener('click', () => {
-        const inicio = _readDateInputIso(document.getElementById('dateInicio'));
-        const fim = _readDateInputIso(document.getElementById('dateFim'));
-        if (!inicio || !fim) return;
-        _setDateInputs(inicio, fim);
-        _resetCityPanelsLoading();
-        bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+    const runDateRefresh = async (message, refreshFn) => {
+        if (_dateFilterBusy) return;
+        _dateFilterBusy = true;
+        _setDateFilterButtonBusy(true);
+        _setDateFilterStatus(message || 'Atualizando dados do periodo...');
+        try {
+            await refreshFn();
+            const statusEl = document.getElementById('dateFilterStatus');
+            if (!statusEl?.classList.contains('color-red')) _setDateFilterStatus('Filtro aplicado.');
+        } catch (err) {
+            console.warn('Falha ao atualizar filtro de periodo', err);
+            _setDateFilterStatus('Nao foi possivel atualizar os dados agora.', 'error');
+        } finally {
+            _dateFilterBusy = false;
+            _setDateFilterButtonBusy(false);
+        }
+    };
+    const applyDateFilter = () => {
+        const range = _validateDateInputs();
+        if (!range) return;
+        runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
+            _setDateInputs(range.inicio, range.fim);
+            _resetCityPanelsLoading();
+            await bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
+        });
+    };
+    document.getElementById('btnFiltrarData')?.addEventListener('click', applyDateFilter);
+    ['dateInicio', 'dateFim'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            applyDateFilter();
+        });
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {
-        _setDateInputs('', '');
-        _resetCityPanelsLoading();
-        bootstrapCityReport(_currentMunicipio, _currentUf);
+        runDateRefresh('Voltando para todo o historico...', async () => {
+            _setDateInputs('', '');
+            _resetCityPanelsLoading();
+            await bootstrapCityReport(_currentMunicipio, _currentUf);
+        });
     });
 
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const preset = btn.dataset.datePreset || 'all';
             const { inicio, fim } = _datePresetRange(preset);
-            _setDateInputs(inicio, fim);
-            _resetCityPanelsLoading();
-            if (preset === 'all') {
-                bootstrapCityReport(_currentMunicipio, _currentUf);
-                return;
-            }
-            bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+            runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
+                _setDateInputs(inicio, fim);
+                _resetCityPanelsLoading();
+                if (preset === 'all') {
+                    await bootstrapCityReport(_currentMunicipio, _currentUf);
+                    return;
+                }
+                await bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+            });
         });
     });
 });

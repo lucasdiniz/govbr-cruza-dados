@@ -16,7 +16,29 @@
 {% if not perfil %}
 <div class="card">
     <p>Municipio <strong>{{ municipio }} - PB</strong> nao encontrado na base de dados.</p>
-    <a href="/">&larr; Voltar</a>
+    <p class="text-muted text-sm">Confira se o nome foi digitado corretamente ou busque novamente abaixo.</p>
+    <div class="autocomplete-wrap mt-2">
+        <input
+            type="search"
+            id="ac-cidade"
+            value="{{ municipio }}"
+            placeholder="Buscar municipio..."
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            inputmode="search"
+            enterkeyhint="search"
+            aria-label="Buscar municipio da Paraiba"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="false"
+            aria-controls="aclist-cidade"
+        >
+        <ul class="ac-list" id="aclist-cidade" role="listbox" aria-label="Sugestoes de municipios"></ul>
+    </div>
+    <p class="search-status" id="cidade-status" aria-live="polite"></p>
+    <a href="/">&larr; Voltar para o mapa</a>
 </div>
 {% else %}
 
@@ -37,6 +59,7 @@
             <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
         </label>
         <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+        <p class="date-filter-status text-sm text-muted" id="dateFilterStatus" aria-live="polite"></p>
     </div>
     <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
         <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
@@ -129,7 +152,7 @@
             {% if k.value_extra %}
             <span class="kpi-card-extra">{{ k.value_extra }}</span>
             {% endif %}
-            <span class="kpi-card-tip" data-tip="{{ k.tooltip }}" tabindex="0" aria-label="Saiba mais">?</span>
+            <span class="kpi-card-tip" data-tip="{{ k.tooltip }}" tabindex="0" role="button" aria-label="Saiba mais sobre {{ k.label_citizen }}">?</span>
         </a>
         {% endfor %}
     </div>
@@ -174,7 +197,7 @@
             <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
             Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
         </p>
-        <div class="async-card" data-async-panel="fornecedores">
+        <div class="async-card" data-async-panel="fornecedores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>
         </div>
@@ -199,7 +222,7 @@
             pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
             Clique em um servidor para ver detalhes.</span>
         </p>
-        <div class="async-card" data-async-panel="servidores">
+        <div class="async-card" data-async-panel="servidores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>
         </div>
@@ -292,15 +315,6 @@
             <span class="citizen-only">Quanto maior, mais importa verificar se as justificativas fazem sentido.</span>
             <span class="auditor-only">Quanto maior esse numero, maior a importancia de revisar justificativas e documentos.</span>
         </p>
-    </article>
-
-    <article class="insight-card auditor-only">
-        <h2 class="card-title">Dispensas e inexigibilidades</h2>
-        <p class="text-muted">
-            Proporcao das despesas sem processo competitivo de licitacao.
-        </p>
-        <p class="insight-value" id="insightPctDispensa">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
-        <p class="text-sm text-muted">Valores altos podem indicar baixa concorrencia.</p>
     </article>
 
     <article class="insight-card">
@@ -411,8 +425,8 @@
                 Bordas vermelhas destacam meses com desvio acima de 2 sigmas da m&eacute;dia do munic&iacute;pio —
                 tipicamente fim de ano (queima de or&ccedil;amento) ou picos pr&eacute;-eleitorais.</span>
             </p>
-            <p class="text-sm text-muted" style="margin-top:0.35rem">
-                <em>Hist&oacute;rico completo &mdash; n&atilde;o responde ao filtro de per&iacute;odo acima.</em>
+            <p class="period-badge heatmap-period-badge" style="margin-top:0.35rem">
+                Hist&oacute;rico completo &mdash; este mapa n&atilde;o muda com o filtro de per&iacute;odo acima.
             </p>
         </div>
     </div>
@@ -423,8 +437,8 @@
         </div>
         <div class="heatmap-legend" id="heatmapLegend"></div>
         <span class="heatmap-mobile-hint">
-            <span class="citizen-only">Toque em um m&ecirc;s para ver os maiores gastos.</span>
-            <span class="auditor-only">Toque em uma c&eacute;lula para ver os maiores empenhos do m&ecirc;s.</span>
+            <span class="citizen-only">Deslize para os lados se necess&aacute;rio e toque em um m&ecirc;s para ver os maiores gastos.</span>
+            <span class="auditor-only">Deslize para os lados se necess&aacute;rio e toque em uma c&eacute;lula para ver os maiores empenhos do m&ecirc;s.</span>
         </span>
     </div>
 </section>
@@ -464,7 +478,7 @@
         </div>
         <div class="finding-list">
             {% for query in section.queries %}
-            <section class="finding-card loading collapsed" data-query="{{ query.id }}">
+            <section class="finding-card loading collapsed" data-query="{{ query.id }}" aria-busy="true">
                 <div class="finding-head">
                     <div>
                         <h3 class="finding-title">
