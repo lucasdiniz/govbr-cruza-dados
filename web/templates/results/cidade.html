@@ -78,21 +78,6 @@
                     <span class="city-risk-score"><strong data-score-unificado>{{ "%.0f"|format(score_num) }}</strong>/100</span>
                 </span>
                 {% endif %}
-                <button
-                    type="button"
-                    class="share-btn share-btn-icon"
-                    hidden
-                    data-share
-                    data-share-title="{{ perfil.municipio }} - PB | TransparenciaPB"
-                    data-share-text="Panorama de transparencia de {{ perfil.municipio }} - PB"
-                    aria-label="Compartilhar este municipio"
-                    title="Compartilhar"
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span class="share-label">Compartilhar</span>
-                </button>
             </div>
         </div>
         <p class="city-subtitle">
