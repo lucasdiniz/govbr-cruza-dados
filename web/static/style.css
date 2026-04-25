@@ -909,6 +909,12 @@ td.num {
 .row-sancao:hover { background: #fee2e2; }
 .row-sancao-leve { background: #fffbeb; }
 .row-sancao-leve:hover { background: #fef3c7; }
+.row-detail-unavailable {
+    cursor: default;
+}
+.row-detail-unavailable:hover { background: transparent; }
+.row-detail-unavailable.row-sancao:hover { background: #fef2f2; }
+.row-detail-unavailable.row-sancao-leve:hover { background: #fffbeb; }
 .mun-selector { font-size: .85rem; padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); vertical-align: middle; max-width: 260px; }
 
 /* Empresa dialog */
@@ -1002,6 +1008,7 @@ td.num {
     display: flex;
     gap: 0.45rem;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     margin: -1.5rem -2rem 1rem;
     padding: 0.85rem 2rem 0.85rem;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.92));
@@ -1800,6 +1807,9 @@ body.dark-page .row-sancao { background: rgba(220, 38, 38, 0.18); }
 body.dark-page .row-sancao:hover { background: rgba(220, 38, 38, 0.28); }
 body.dark-page .row-sancao-leve { background: rgba(234, 179, 8, 0.12); }
 body.dark-page .row-sancao-leve:hover { background: rgba(234, 179, 8, 0.2); }
+body.dark-page .row-detail-unavailable:hover { background: transparent; }
+body.dark-page .row-detail-unavailable.row-sancao:hover { background: rgba(220, 38, 38, 0.18); }
+body.dark-page .row-detail-unavailable.row-sancao-leve:hover { background: rgba(234, 179, 8, 0.12); }
 
 /* Badges */
 body.dark-page .badge-red { background: rgba(220, 38, 38, 0.18); color: #fca5a5; border-color: rgba(220, 38, 38, 0.35); }
@@ -2173,6 +2183,7 @@ body {
         top: -1rem;
         margin: -1rem -1rem 1rem;
         padding: 0.7rem 1rem;
+        box-shadow: inset -22px 0 18px -22px rgba(15, 23, 42, 0.55);
     }
     .empresa-card { padding: 0.65rem; }
     .empresa-header strong { font-size: 0.88rem; }

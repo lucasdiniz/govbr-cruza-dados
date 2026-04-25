@@ -92,7 +92,7 @@
                     {% set nome_credor_val = row.get('nome_credor', '') or '' %}
                     <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-cpf-cnpj="{{ cpf_cnpj_digits }}" data-fornecedor-nome="{{ nome_val|clean_text }}" data-fornecedor-nome-credor="{{ nome_credor_val|clean_text }}">
                     {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() %}
-                    <tr class="row-detail-unavailable{{ row_hl }}" title="Detalhes indisponiveis: esta linha nao traz CNPJ completo de 14 digitos.">
+                    <tr class="row-detail-unavailable{{ row_hl }}" aria-disabled="true">
                     {% else %}
                     <tr{% if row_hl %} class="{{ row_hl|trim }}"{% endif %}>
                     {% endif %}
@@ -117,8 +117,9 @@
                             {% elif value is iterable and value is not string %}
                                 {{ value|join(", ")|clean_text }}
                             {% else %}
-                                {{ (value if value is not none else "-")|clean_text }}{% if loop.first and cnpj_basico_val|length == 8 and cpf_cnpj_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}
+                                {{ (value if value is not none else "-")|clean_text }}
                             {% endif %}
+                            {% if loop.first and cnpj_basico_val|length == 8 and cpf_cnpj_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}
                         </td>
                         {% endfor %}
                     </tr>

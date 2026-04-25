@@ -99,13 +99,16 @@ function _columnLabelPair(col) {
 }
 
 function initTermTooltips() {
+    const closeOtherTips = (active) => {
+        document.querySelectorAll('.term.tip-open, .kpi-card-tip.tip-open').forEach(el => {
+            if (el !== active) el.classList.remove('tip-open');
+        });
+    };
     document.addEventListener('click', (e) => {
         const term = e.target.closest('.term[data-tip], .kpi-card-tip[data-tip]');
         const isKpiTip = term && term.classList.contains('kpi-card-tip');
         // Fecha abertos em outro clique
-        document.querySelectorAll('.term.tip-open, .kpi-card-tip.tip-open').forEach(el => {
-            if (el !== term) el.classList.remove('tip-open');
-        });
+        closeOtherTips(term);
         if (term) {
             if (isKpiTip) {
                 e.preventDefault();
@@ -119,6 +122,15 @@ function initTermTooltips() {
                 term.classList.toggle('tip-open');
             }
         }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const term = e.target.closest('.kpi-card-tip[data-tip]');
+        if (!term) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeOtherTips(term);
+        term.classList.toggle('tip-open');
     });
 }
 
@@ -313,8 +325,8 @@ function initTour() {
     const isCityPage = !!document.querySelector('.city-hero');
     const isHomePage = !!document.querySelector('.search-hero') && !isCityPage;
     const restartBtn = document.getElementById('tourRestart');
-    if (restartBtn) restartBtn.style.display = 'inline';
-    if (!isCityPage && !isHomePage && !restartBtn) return;
+    const tourAvailable = isCityPage || isHomePage;
+    if (!tourAvailable) return;
 
     const STEPS_CIDADE = [
         {
@@ -353,6 +365,9 @@ function initTour() {
     ];
 
     const STEPS = isCityPage ? STEPS_CIDADE : STEPS_HOME;
+    if (restartBtn) {
+        restartBtn.style.display = 'inline';
+    }
 
     let current = 0;
     let overlay = null;
@@ -996,7 +1011,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
             }
             if (cnpjB.length === 8) {
                 cells = cells.replace('</td>', ' <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td>');
-                return `<tr class="row-detail-unavailable${rowHighlight}" title="Detalhes indisponiveis: esta linha nao traz CNPJ completo de 14 digitos.">${cells}</tr>`;
+                return `<tr class="row-detail-unavailable${rowHighlight}" aria-disabled="true">${cells}</tr>`;
             }
         }
         return `<tr${rowHighlight ? ` class="${rowHighlight.trim()}"` : ''}>${cells}</tr>`;
@@ -1120,7 +1135,7 @@ function buildFornecedoresPanel(data) {
             return '';
         })();
         if (cnpjCompletoDigits.length !== 14) {
-            return `<tr class="row-detail-unavailable ${rowSeverityClass}" title="Detalhes indisponiveis: CNPJ completo ausente."><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+            return `<tr class="row-detail-unavailable ${rowSeverityClass}" aria-disabled="true"><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
         }
         return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
@@ -1314,6 +1329,17 @@ function _setDateFilterStatus(message, kind) {
     el.classList.toggle('color-red', kind === 'error');
 }
 
+let _dateFilterBusy = false;
+
+function _setDateFilterButtonBusy(isBusy) {
+    const btn = document.getElementById('btnFiltrarData');
+    if (!btn) return;
+    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || 'Filtrar';
+    btn.disabled = !!isBusy;
+    btn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    btn.textContent = isBusy ? 'Filtrando...' : btn.dataset.defaultLabel;
+}
+
 function _setLiveRefreshState(isBusy) {
     document.querySelectorAll('.city-hero, .insight-grid, .city-kpi-strip').forEach(node => {
         node.setAttribute('aria-busy', isBusy ? 'true' : 'false');
@@ -1379,7 +1405,7 @@ function _syncDateFilterUI() {
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
     });
-    _setDateFilterStatus('');
+    if (!_dateFilterBusy) _setDateFilterStatus('');
 }
 
 function _resetCityPanelsLoading() {
@@ -2087,7 +2113,14 @@ function _decorateDialogBody(body) {
             section.hidden = section.id !== id;
         });
         body._activeDialogSectionId = id;
-        if (opts.focus) activeButton.focus({ preventScroll: true });
+        if (opts.focus) {
+            activeButton.focus({ preventScroll: true });
+            activeButton.scrollIntoView({
+                block: 'nearest',
+                inline: 'nearest',
+                behavior: opts.smooth === false ? 'auto' : 'smooth',
+            });
+        }
         if (opts.scroll) body.scrollTo({ top: 0, behavior: opts.smooth === false ? 'auto' : 'smooth' });
         return true;
     };
@@ -2138,7 +2171,9 @@ function _historyNote(text) {
 }
 
 function _fetchServidorDetails(cpf6, nome, cnpjs, municipio) {
-    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}`, { cpf6, nome, cnpjs, municipio });
+    const cnpjList = Array.isArray(cnpjs) ? cnpjs : [];
+    const cnpjKey = cnpjList.map(c => String(c || '').replace(/\D/g, '').slice(0, 8)).filter(Boolean).join(',');
+    return _cachedPost('/api/servidor/detalhes', `srv:${cpf6}:${nome}:${municipio}:${cnpjKey}`, { cpf6, nome, cnpjs: cnpjList, municipio });
 }
 
 function _fetchFornecedorDetails(cnpjBasico, municipio, nomeCredor, cpfCnpj) {
@@ -2201,8 +2236,11 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     if (!e) {
         return `<div class="empresa-card empresa-missing">
             <div class="empresa-header">
-                <strong class="text-muted">Empresa nao encontrada na base RFB</strong>
+                <strong class="text-muted">Dados cadastrais da empresa indisponiveis na RFB</strong>
                 <code>${_formatCnpj(cnpjBasico, null)}</code>
+            </div>
+            <div class="empresa-details">
+                <span>O vinculo societario existe nos dados de socios, mas nao ha cadastro completo da empresa para abrir detalhes.</span>
             </div>
             ${extraBadges ? `<div class="empresa-details" style="margin-top:.3rem">${extraBadges}</div>` : ''}
         </div>`;
@@ -2235,7 +2273,7 @@ function _renderEmpresaCard(e, cnpjBasico, extraBadges) {
     </div>`;
 }
 
-async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
+async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallback = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
@@ -2256,13 +2294,16 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
     const pgfn = data.empresa_pgfn || {};
     const empMap = data.empresa_empenhos || {};
     const acordosMap = data.empresa_acordos || {};
+    const cnpjsNorm = Array.from(new Set((Array.isArray(cnpjs) ? cnpjs : [])
+        .map(c => String(c || '').replace(/\D/g, '').slice(0, 8))
+        .filter(c => c.length === 8)));
     let html = _historyNote();
 
     // Stats grid
     const vinculos = data.vinculos || [];
     const empresas = data.empresas || [];
     const bf = data.bolsa_familia || [];
-    const qtdEmpresas = cnpjs ? cnpjs.length : 0;
+    const qtdEmpresas = cnpjsNorm.length;
     const qtdSancionadas = Object.keys(sancoes).length;
     const qtdPgfn = Object.keys(pgfn).length;
     const totalPago = Object.values(empMap).reduce((s, e) => s + (e.total_pago || 0), 0);
@@ -2303,14 +2344,30 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
             </div>`;
         }).join('');
         html += '</div>';
+    } else {
+        const cargoFallback = servidorFallback.cargo ? _stripCodePrefix(servidorFallback.cargo) : '';
+        const salarioFallback = servidorFallback.salario || '';
+        html += `<div class="dialog-section"><h4>${dualLabel('Dados do servidor','Resumo do servidor')}</h4>
+            <div class="empresa-card">
+                <div class="empresa-header">
+                    <strong>${_esc(servidorNome || nome || 'Servidor')}</strong>
+                    ${cpfMask ? `<span class="text-sm text-muted">CPF: ${cpfMask}</span>` : ''}
+                </div>
+                <div class="empresa-details">
+                    ${cargoFallback ? `<span>${dualLabel('Cargo:','Cargo:')} ${_esc(cargoFallback)}</span>` : ''}
+                    ${salarioFallback ? `<span>${dualLabel('Maior salario:','Maior salario:')} ${_esc(salarioFallback)}</span>` : ''}
+                    ${!cnpjsNorm.length ? '<span>Nenhuma empresa vinculada foi encontrada para este servidor.</span>' : ''}
+                </div>
+            </div>
+        </div>`;
     }
 
     // Empresas vinculadas (with badges)
-    if (cnpjs && cnpjs.length) {
+    if (cnpjsNorm.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Empresas onde aparece como socio','Empresas vinculadas')}</h4>`;
         const empresaMap = {};
         for (const e of empresas) empresaMap[e.cnpj_basico] = e;
-        html += cnpjs.map(c => {
+        html += cnpjsNorm.map(c => {
             let badges = '';
             // Sancao badges
             const sanList = sancoes[c] || [];
@@ -2452,9 +2509,6 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome) {
         html += '</div>';
     }
 
-    if (!/<div class="dialog-section"/.test(html)) {
-        html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este servidor.</p>';
-    }
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
@@ -2533,6 +2587,19 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             </div>
         </div>`;
         html += '</div>';
+    } else {
+        const cnpjFmt = _formatCnpj(cnpjBasico, exactDoc);
+        html += `<div class="dialog-section"><h4>${dualLabel('Dados da empresa','Identificacao do fornecedor')}</h4>
+            <div class="empresa-card empresa-missing">
+                <div class="empresa-header">
+                    <strong>${_esc(fornecedorNome || nomeCredor || 'Fornecedor')}</strong>
+                    <code class="auditor-only">${cnpjFmt}</code>
+                </div>
+                <div class="empresa-details">
+                    <span>Cadastro completo da empresa indisponivel na base RFB para este CNPJ.</span>
+                </div>
+            </div>
+        </div>`;
     }
 
     // Summary stats
@@ -2760,9 +2827,6 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += '</div>';
     }
 
-    if (!/<div class="dialog-section"/.test(html)) {
-        html = '<p class="text-sm text-muted">Nenhum detalhe disponivel para este fornecedor.</p>';
-    }
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
@@ -3463,7 +3527,11 @@ function initClickableRows(root = document) {
             if (cpf6 && nomeUpper) {
                 const cnpjs = JSON.parse(row.dataset.cnpjs || '[]') || [];
                 const servidorNome = row.dataset.nome || '';
-                openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome);
+                const servidorFallback = {
+                    cargo: row.querySelector('[data-label="Cargo"]')?.textContent?.trim() || row.dataset.cargo || '',
+                    salario: row.querySelector('[data-label="Maior salario"]')?.textContent?.trim() || '',
+                };
+                openServidorDialog(cpf6, nomeUpper, cnpjs, servidorNome, servidorFallback);
                 return;
             }
             // Fornecedor row
@@ -3538,12 +3606,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Date filter handlers
     _initDateInputsBr();
+    const runDateRefresh = async (message, refreshFn) => {
+        if (_dateFilterBusy) return;
+        _dateFilterBusy = true;
+        _setDateFilterButtonBusy(true);
+        _setDateFilterStatus(message || 'Atualizando dados do periodo...');
+        try {
+            await refreshFn();
+            const statusEl = document.getElementById('dateFilterStatus');
+            if (!statusEl?.classList.contains('color-red')) _setDateFilterStatus('Filtro aplicado.');
+        } catch (err) {
+            console.warn('Falha ao atualizar filtro de periodo', err);
+            _setDateFilterStatus('Nao foi possivel atualizar os dados agora.', 'error');
+        } finally {
+            _dateFilterBusy = false;
+            _setDateFilterButtonBusy(false);
+        }
+    };
     const applyDateFilter = () => {
         const range = _validateDateInputs();
         if (!range) return;
-        _setDateInputs(range.inicio, range.fim);
-        _resetCityPanelsLoading();
-        bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
+        runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
+            _setDateInputs(range.inicio, range.fim);
+            _resetCityPanelsLoading();
+            await bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
+        });
     };
     document.getElementById('btnFiltrarData')?.addEventListener('click', applyDateFilter);
     ['dateInicio', 'dateFim'].forEach((id) => {
@@ -3555,23 +3642,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {
-        _setDateInputs('', '');
-        _resetCityPanelsLoading();
-        bootstrapCityReport(_currentMunicipio, _currentUf);
+        runDateRefresh('Voltando para todo o historico...', async () => {
+            _setDateInputs('', '');
+            _resetCityPanelsLoading();
+            await bootstrapCityReport(_currentMunicipio, _currentUf);
+        });
     });
 
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const preset = btn.dataset.datePreset || 'all';
             const { inicio, fim } = _datePresetRange(preset);
-            _setDateFilterStatus('');
-            _setDateInputs(inicio, fim);
-            _resetCityPanelsLoading();
-            if (preset === 'all') {
-                bootstrapCityReport(_currentMunicipio, _currentUf);
-                return;
-            }
-            bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+            runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
+                _setDateInputs(inicio, fim);
+                _resetCityPanelsLoading();
+                if (preset === 'all') {
+                    await bootstrapCityReport(_currentMunicipio, _currentUf);
+                    return;
+                }
+                await bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
+            });
         });
     });
 });

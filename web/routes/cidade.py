@@ -1182,7 +1182,16 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
     cpf6 = "".join(ch for ch in str(payload.get("cpf6", "")) if ch.isdigit())
     nome = str(payload.get("nome", "")).strip()
-    cnpjs = (payload.get("cnpjs") or [])[:100]
+    cnpjs_raw = payload.get("cnpjs") or []
+    cnpjs = []
+    for raw in cnpjs_raw:
+        digits = "".join(ch for ch in str(raw) if ch.isdigit())
+        if len(digits) >= 8:
+            cnpj_basico = digits[:8]
+            if cnpj_basico not in cnpjs:
+                cnpjs.append(cnpj_basico)
+        if len(cnpjs) >= 100:
+            break
     municipio = payload.get("municipio", "")
     if len(cpf6) != 6 or not nome:
         return JSONResponse({"detail_unavailable": "CPF parcial invalido para consulta segura."})

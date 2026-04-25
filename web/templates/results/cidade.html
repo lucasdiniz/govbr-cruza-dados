@@ -478,7 +478,7 @@
         </div>
         <div class="finding-list">
             {% for query in section.queries %}
-            <section class="finding-card loading collapsed" data-query="{{ query.id }}">
+            <section class="finding-card loading collapsed" data-query="{{ query.id }}" aria-busy="true">
                 <div class="finding-head">
                     <div>
                         <h3 class="finding-title">

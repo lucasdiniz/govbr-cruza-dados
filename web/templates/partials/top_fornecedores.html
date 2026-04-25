@@ -63,7 +63,7 @@
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
                         data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}">
                     {% else %}
-                    <tr class="row-detail-unavailable{{ row_extra }}" title="Detalhes indisponiveis: CNPJ completo ausente.">
+                    <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true">
                     {% endif %}
                         <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}{% if cnpj_completo_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}</td>
                         <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
