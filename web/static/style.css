@@ -2090,9 +2090,6 @@ body {
     .city-title-row {
         gap: 0.7rem;
     }
-    .city-title-row .eyebrow {
-        margin-bottom: 0.35rem;
-    }
     .city-hero-actions {
         flex-direction: column;
         align-items: flex-end;
