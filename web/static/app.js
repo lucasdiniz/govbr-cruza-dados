@@ -62,6 +62,10 @@ function dualLabel(citizen, auditor, opts) {
 // Expose globally for inline usage dentro de template literals
 window.dualLabel = dualLabel;
 
+function mobileDescToggleHtml() {
+    return `<button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>`;
+}
+
 // Remove o prefixo tecnico de codigo em strings como "04021602 - COMISSIONADOS SMN-1"
 // ou "5005 - Atencao Integral a Saude". Mantem a string original se nao houver prefixo.
 function _stripCodePrefix(s) {
@@ -233,7 +237,8 @@ function initAnchorAutoExpand() {
 
 
 function initExplainers() {
-    // Fase 4: "O que isso significa?" inline. Toggle com persistencia em localStorage.
+    // Fase 4: "O que isso significa?" inline. Sempre comeca fechado:
+    // explicacao aberta por padrao empurra os registros para baixo em mobile.
     const buttons = document.querySelectorAll('.explainer-btn[data-explainer-target]');
     if (!buttons.length) return;
     buttons.forEach(btn => {
@@ -241,12 +246,10 @@ function initExplainers() {
         const panel = document.getElementById(targetId);
         if (!panel) return;
         const key = `explainer:${targetId}`;
-        // Restaura estado salvo
-        if (localStorage.getItem(key) === 'open') {
-            panel.hidden = false;
-            btn.setAttribute('aria-expanded', 'true');
-            btn.classList.add('is-open');
-        }
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        btn.classList.remove('is-open');
+        try { localStorage.removeItem(key); } catch (_) { /* quota/private mode */ }
         btn.addEventListener('click', (e) => {
             // Nao propaga para finding-head (evita toggle de collapse)
             e.stopPropagation();
@@ -255,10 +258,46 @@ function initExplainers() {
             panel.hidden = !willOpen;
             btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
             btn.classList.toggle('is-open', willOpen);
-            try {
-                if (willOpen) localStorage.setItem(key, 'open');
-                else localStorage.removeItem(key);
-            } catch (_) { /* quota/private mode */ }
+        });
+    });
+}
+
+
+function initMobileDescriptions(root = document) {
+    root.querySelectorAll('.mobile-desc-toggle[data-mobile-desc-next], .mobile-desc-toggle[data-mobile-desc-target]').forEach((btn) => {
+        if (btn.dataset.enhanced === 'true') return;
+        btn.dataset.enhanced = 'true';
+        const extraPanels = [];
+        let panel = btn.dataset.mobileDescTarget
+            ? document.getElementById(btn.dataset.mobileDescTarget)
+            : btn.nextElementSibling;
+        if (!panel || !panel.classList.contains('mobile-collapsible-desc')) {
+            const title = btn.closest('.card-title, .finding-title');
+            panel = title ? title.nextElementSibling : panel;
+        }
+        if (!panel || !panel.classList.contains('mobile-collapsible-desc')) {
+            panel = btn.closest('div, section, article')?.querySelector('.mobile-collapsible-desc') || panel;
+        }
+        if (!panel || !panel.classList.contains('mobile-collapsible-desc')) return;
+        if (btn.dataset.mobileDescExplainer) {
+            const explainer = document.getElementById(btn.dataset.mobileDescExplainer);
+            if (explainer) {
+                explainer.hidden = true;
+                extraPanels.push(explainer);
+            }
+        }
+        panel.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !panel.classList.contains('is-open');
+            panel.classList.toggle('is-open', willOpen);
+            extraPanels.forEach((extraPanel) => {
+                extraPanel.hidden = !willOpen;
+                extraPanel.classList.toggle('is-open', willOpen);
+            });
+            btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
     });
 }
@@ -330,9 +369,9 @@ function initTour() {
 
     const STEPS_CIDADE = [
         {
-            selector: '.city-narrative',
+            selector: '.city-risk-badge, .city-narrative',
             title: 'Resumo em 30 segundos',
-            text: 'Este par&aacute;grafo traduz os n&uacute;meros da cidade em linguagem simples. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
+            text: 'Aqui fica a nota de aten&ccedil;&atilde;o e um resumo curto da cidade. Clique nas palavras destacadas para ir direto &agrave; se&ccedil;&atilde;o relacionada.',
         },
         {
             selector: '.city-kpi-strip, .findings-list',
@@ -762,6 +801,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             fornPanel.innerHTML = buildFornecedoresPanel(batchData.TOP_FORNECEDORES);
             fornPanel.setAttribute('aria-busy', 'false');
             initDataTables(fornPanel);
+            initMobileDescriptions(fornPanel);
             initClickableRows(fornPanel);
         }
     } else {
@@ -774,6 +814,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             servPanel.innerHTML = buildServidoresPanel(servData);
             servPanel.setAttribute('aria-busy', 'false');
             initDataTables(servPanel);
+            initMobileDescriptions(servPanel);
             initClickableRows(servPanel);
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
@@ -839,6 +880,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 card.classList.remove('loading');
                 card.setAttribute('aria-busy', 'false');
                 initDataTables(body);
+                initMobileDescriptions(body);
                 initClickableRows(body);
             } catch {
                 countEl.textContent = '—';
@@ -867,6 +909,7 @@ function renderFindingCard(card, queryId, data, municipio) {
     } else {
         body.innerHTML = buildResultTable(queryId, data.columns, data.rows, municipio);
         initDataTables(body);
+        initMobileDescriptions(body);
         initClickableRows(body);
     }
     body.classList.add('fade-in');
@@ -1155,8 +1198,8 @@ function buildFornecedoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')}</h3>
-            <p class="text-muted text-sm"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
+            <h3 class="card-title title-with-action"><span class="title-text">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')}</span> ${mobileDescToggleHtml()}</h3>
+            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -1390,18 +1433,20 @@ function _getDateFilterCopy() {
         return { headline: 'Periodo: todo o historico', clear: false };
     }
     if (preset === 'current-year') {
-        return { headline: `Ano atual: ${range}`, clear: true };
+        return { headline: `Periodo: ano atual (${range})`, clear: false };
     }
     if (preset === 'last-12m') {
-        return { headline: `Ultimos 12 meses: ${range}`, clear: true };
+        return { headline: `Periodo: ultimos 12 meses (${range})`, clear: false };
     }
     return { headline: `Periodo: ${range}`, clear: true };
 }
 
 function _syncDateFilterUI() {
     const btnLimpar = document.getElementById('btnLimparData');
+    const current = document.getElementById('dateFilterCurrent');
     const copy = _getDateFilterCopy();
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
+    if (current) current.textContent = copy.headline;
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
         btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
     });
@@ -1518,6 +1563,29 @@ function _updateKpiHeroStrip(kpis) {
     if (grid) orderedCards.forEach(card => grid.appendChild(card));
 }
 
+function _riskSummaryMeta(score) {
+    const n = Number(score);
+    if (!Number.isFinite(n)) return null;
+    if (n >= 70) return { level: 'red', label: 'Atencao alta' };
+    if (n >= 40) return { level: 'yellow', label: 'Atencao' };
+    return { level: 'green', label: 'Baixa atencao' };
+}
+
+function _updateRiskSummary(score) {
+    const meta = _riskSummaryMeta(score);
+    if (!meta) return;
+    const rounded = String(Math.round(Number(score)));
+    document.querySelectorAll('[data-risk-summary]').forEach(badge => {
+        badge.classList.remove('badge-red', 'badge-yellow', 'badge-green');
+        badge.classList.add(`badge-${meta.level}`);
+        const label = badge.querySelector('[data-risk-label]');
+        if (label) label.textContent = meta.label;
+        badge.querySelectorAll('[data-score-unificado]').forEach(el => {
+            el.textContent = rounded;
+        });
+    });
+}
+
 function _updateConcentracaoCard(topConcentracao, pctTop5, concentracaoRed) {
     const card = document.querySelector('.city-concentracao');
     if (!card) return;
@@ -1599,6 +1667,7 @@ async function _refreshKpisLive(municipio, uf) {
             document.querySelectorAll('[data-score-unificado]').forEach(el => {
                 el.textContent = data.score_unificado;
             });
+            _updateRiskSummary(data.score_unificado);
         }
     } catch (e) {
         console.warn('kpis fetch failed', e);
@@ -3249,8 +3318,8 @@ function buildServidoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</h3>
-            <p class="text-muted text-sm"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
+            <h3 class="card-title title-with-action"><span class="title-text">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</span> ${mobileDescToggleHtml()}</h3>
+            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
             ${servLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -3299,6 +3368,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.setAttribute('aria-busy', 'false');
         initDataTables(panel);
         initInteractiveToggles(panel);
+        initMobileDescriptions(panel);
         initClickableRows(panel);
     } catch {
         showPanelError('Nao foi possivel carregar este bloco agora.');
@@ -3571,6 +3641,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();
+    initMobileDescriptions(document);
     initAnchorAutoExpand();
     initExplainers();
     initCredibilityDialog();

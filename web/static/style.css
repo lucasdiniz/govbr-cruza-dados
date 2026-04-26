@@ -440,28 +440,45 @@ body.dark-page.mapa-page .container {
 
 .city-hero {
     display: grid;
-    grid-template-columns: 1.8fr 1fr;
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
     background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239, 246, 255, 0.95));
 }
+.city-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+}
+.city-title-row > div:first-child { min-width: 0; }
 .city-title {
     font-size: 2.15rem;
     line-height: 1.08;
     margin-bottom: 0.5rem;
 }
 .city-subtitle { max-width: 760px; }
-.city-hero-copy .share-btn { margin-top: 0.85rem; }
 .city-hero-copy { min-width: 0; }
 .city-hero-actions {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.65rem;
-    margin: 0.45rem 0 0.8rem;
-}
-.city-hero-actions .rank-badge,
-.city-hero-actions .share-btn-inline {
+    justify-content: flex-end;
+    gap: 0.5rem;
     margin: 0;
+}
+.city-risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 36px;
+    padding: 0.38rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.city-risk-score {
+    font-variant-numeric: tabular-nums;
 }
 
 .hero-stats {
@@ -791,6 +808,26 @@ td.num {
     font-weight: 600;
     margin-bottom: 0.25rem;
     color: #334155;
+}
+
+.title-with-action {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+}
+
+.title-with-action .title-text {
+    min-width: 0;
+}
+
+.title-with-action .mobile-desc-toggle,
+.title-with-action .explainer-btn {
+    flex: 0 0 auto;
+}
+
+.mobile-desc-toggle {
+    display: none;
 }
 
 .result-block .card-title {
@@ -1215,19 +1252,45 @@ td.num {
     text-decoration: none;
 }
 
-/* Date filter bar — linha discreta no topo */
+/* Date filter bar — recolhido para nao competir com os alertas principais */
 .date-filter-bar {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    margin: 0.35rem 0 1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 0.88rem;
+}
+.date-filter-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 34px;
+    list-style: none;
+    cursor: pointer;
+}
+.date-filter-summary::-webkit-details-marker { display: none; }
+.date-filter-current {
+    font-weight: 700;
+    color: var(--text);
+}
+.date-filter-action {
+    color: var(--blue);
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.date-filter-panel {
     display: flex;
     align-items: center;
     gap: 0.6rem 1rem;
     flex-wrap: wrap;
     justify-content: space-between;
-    padding: 0.45rem 0.85rem;
-    margin: 0.4rem 0 0.9rem;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--surface);
-    font-size: 0.88rem;
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 .date-filter-inputs {
     display: flex;
@@ -1872,6 +1935,8 @@ body.dark-page .dialog-header { border-bottom-color: var(--line); }
 
 /* Date filter bar */
 body.dark-page .date-filter-bar { background: rgba(15, 23, 42, 0.55); border-color: rgba(255,255,255,0.1); }
+body.dark-page .date-filter-panel { border-top-color: rgba(148, 163, 184, 0.18); }
+body.dark-page .date-filter-action { color: #93c5fd; }
 body.dark-page .date-field span { color: var(--muted); }
 body.dark-page .date-filter-label { color: rgba(226, 232, 240, 0.78); }
 
@@ -2042,11 +2107,30 @@ body {
     .city-title { font-size: 1.55rem; }
     .city-subtitle { font-size: 0.88rem; }
     .city-hero { gap: 0.8rem; padding: 1rem; }
-    .city-hero-actions { gap: 0.5rem; margin: 0.35rem 0 0.7rem; }
-    .city-hero-actions .rank-badge,
-    .city-hero-actions .share-btn-inline {
-        width: 100%;
+    .city-title-row {
+        gap: 0.7rem;
+    }
+    .city-title-row .eyebrow {
+        margin-bottom: 0.35rem;
+    }
+    .city-hero-actions {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.4rem;
+    }
+    .city-risk-badge {
+        min-height: 34px;
+        padding: 0.32rem 0.58rem;
+        font-size: 0.72rem;
+    }
+    .share-btn.share-btn-icon {
+        width: 40px;
+        min-height: 40px;
+        padding: 0;
         justify-content: center;
+    }
+    .share-btn-icon .share-label {
+        display: none;
     }
     .hero-stats { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
     .hero-stat { padding: 0.65rem 0.5rem; text-align: center; }
@@ -2064,10 +2148,18 @@ body {
     .insight-card { padding: 0.85rem; }
     .insight-value { font-size: 1.2rem; margin: 0.7rem 0 0.25rem; }
 
-    /* Date filter bar mobile: tudo empilhado mas ainda compacto */
+    /* Date filter mobile: compacto e so expande quando solicitado */
     .date-filter-bar {
-        gap: 0.45rem;
-        padding: 0.5rem 0.65rem;
+        padding: 0.45rem 0.65rem;
+    }
+    .date-filter-summary {
+        min-height: 40px;
+    }
+    .date-filter-panel {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.55rem;
+        justify-content: stretch;
     }
     .date-filter-inputs {
         flex-wrap: wrap;
@@ -2110,9 +2202,12 @@ body {
     }
     .section-summary {
         width: 100%;
+        flex-direction: row;
         align-items: flex-start;
         text-align: left;
+        gap: 0.45rem;
     }
+    .section-summary .section-collapse-toggle { margin-left: auto; }
     .section-collapse-toggle { min-height: 40px; }
     .city-narrative {
         font-size: 0.95rem;
@@ -2146,6 +2241,60 @@ body {
     .finding-summary {
         justify-content: space-between;
         text-align: left;
+    }
+    .mobile-collapsible-desc {
+        display: none;
+    }
+    .mobile-duplicate-desc {
+        display: none;
+    }
+    .mobile-collapsible-desc.is-open {
+        display: block;
+    }
+    .mobile-desc-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        margin-left: 0.35rem;
+        padding: 0;
+        border-radius: 999px;
+        border: 1px solid rgba(96, 165, 250, 0.28);
+        background: rgba(59, 130, 246, 0.1);
+        color: #bfdbfe;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+    .title-with-action {
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+    }
+    .title-with-action .title-text {
+        flex: 1 1 auto;
+    }
+    .title-with-action .mobile-desc-toggle {
+        margin-left: 0.2rem;
+    }
+    .finding-title .explainer-btn {
+        display: none !important;
+    }
+    body:not(.dark-page) .mobile-desc-toggle {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .mobile-desc-toggle[aria-expanded="true"] {
+        background: #2563eb;
+        border-color: #3b82f6;
+        color: #fff;
     }
 
     /* Autocomplete: itens com tap target maior */
@@ -2832,7 +2981,28 @@ body.dark-page .city-narrative-toggle:focus-visible {
         border-color: rgba(148, 163, 184, 0.15);
     }
     table.stack-mobile tbody tr.row-sancao {
-        border-left: 3px solid var(--red, #dc2626);
+        background: linear-gradient(90deg, rgba(239, 68, 68, 0.14), rgba(254, 242, 242, 0.98) 38%, var(--surface, #fff));
+        border-color: rgba(239, 68, 68, 0.42);
+        border-left: 4px solid var(--red, #dc2626);
+        box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    table.stack-mobile tbody tr.row-sancao-leve {
+        background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(255, 251, 235, 0.98) 38%, var(--surface, #fff));
+        border-color: rgba(245, 158, 11, 0.38);
+        border-left: 4px solid #f59e0b;
+        box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    body.dark-page table.stack-mobile tbody tr.row-sancao {
+        background: linear-gradient(90deg, rgba(127, 29, 29, 0.68), rgba(127, 29, 29, 0.34) 34%, rgba(15, 23, 42, 0.98));
+        border-color: rgba(248, 113, 113, 0.46);
+        border-left-color: #ef4444;
+        box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.12), 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+    body.dark-page table.stack-mobile tbody tr.row-sancao-leve {
+        background: linear-gradient(90deg, rgba(120, 53, 15, 0.68), rgba(120, 53, 15, 0.32) 34%, rgba(15, 23, 42, 0.98));
+        border-color: rgba(251, 191, 36, 0.42);
+        border-left-color: #f59e0b;
+        box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.12), 0 1px 2px rgba(0, 0, 0, 0.18);
     }
     /* Linha padrao: label a esquerda, valor a direita (mesma linha) */
     table.stack-mobile tbody td {
@@ -2975,6 +3145,9 @@ body.dark-page .city-narrative-toggle:focus-visible {
     border-left: 3px solid var(--blue, #2563eb);
     border-radius: 6px;
     animation: explainer-slide 0.22s ease-out;
+}
+.finding-explainer[hidden] {
+    display: none !important;
 }
 .finding-explainer p {
     margin: 0;
@@ -3544,7 +3717,7 @@ html.audit-mode .denuncia-cta { display: none; }
    Substitui o antigo rank-badge no topo da pagina /search/cidade.
    ============================================================ */
 .city-kpi-strip {
-    margin: 1.25rem 0 1.5rem;
+    margin: 0.8rem 0 0.9rem;
 }
 .city-kpi-head {
     margin-bottom: .75rem;
