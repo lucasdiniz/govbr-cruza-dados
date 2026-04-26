@@ -62,6 +62,10 @@ function dualLabel(citizen, auditor, opts) {
 // Expose globally for inline usage dentro de template literals
 window.dualLabel = dualLabel;
 
+function mobileDescToggleHtml() {
+    return `<button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false"><span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span><span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span></button>`;
+}
+
 // Remove o prefixo tecnico de codigo em strings como "04021602 - COMISSIONADOS SMN-1"
 // ou "5005 - Atencao Integral a Saude". Mantem a string original se nao houver prefixo.
 function _stripCodePrefix(s) {
@@ -254,6 +258,27 @@ function initExplainers() {
             panel.hidden = !willOpen;
             btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
             btn.classList.toggle('is-open', willOpen);
+        });
+    });
+}
+
+
+function initMobileDescriptions(root = document) {
+    root.querySelectorAll('.mobile-desc-toggle[data-mobile-desc-next], .mobile-desc-toggle[data-mobile-desc-target]').forEach((btn) => {
+        if (btn.dataset.enhanced === 'true') return;
+        btn.dataset.enhanced = 'true';
+        const panel = btn.dataset.mobileDescTarget
+            ? document.getElementById(btn.dataset.mobileDescTarget)
+            : btn.nextElementSibling;
+        if (!panel || !panel.classList.contains('mobile-collapsible-desc')) return;
+        panel.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !panel.classList.contains('is-open');
+            panel.classList.toggle('is-open', willOpen);
+            btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
     });
 }
@@ -757,6 +782,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             fornPanel.innerHTML = buildFornecedoresPanel(batchData.TOP_FORNECEDORES);
             fornPanel.setAttribute('aria-busy', 'false');
             initDataTables(fornPanel);
+            initMobileDescriptions(fornPanel);
             initClickableRows(fornPanel);
         }
     } else {
@@ -769,6 +795,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             servPanel.innerHTML = buildServidoresPanel(servData);
             servPanel.setAttribute('aria-busy', 'false');
             initDataTables(servPanel);
+            initMobileDescriptions(servPanel);
             initClickableRows(servPanel);
         } else {
             panelPromises.push(loadAsyncPanel('servidores', municipio, uf));
@@ -834,6 +861,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 card.classList.remove('loading');
                 card.setAttribute('aria-busy', 'false');
                 initDataTables(body);
+                initMobileDescriptions(body);
                 initClickableRows(body);
             } catch {
                 countEl.textContent = '—';
@@ -862,6 +890,7 @@ function renderFindingCard(card, queryId, data, municipio) {
     } else {
         body.innerHTML = buildResultTable(queryId, data.columns, data.rows, municipio);
         initDataTables(body);
+        initMobileDescriptions(body);
         initClickableRows(body);
     }
     body.classList.add('fade-in');
@@ -1151,7 +1180,8 @@ function buildFornecedoresPanel(data) {
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')}</h3>
-            <p class="text-muted text-sm"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
+            ${mobileDescToggleHtml()}
+            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -3271,7 +3301,8 @@ function buildServidoresPanel(data) {
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</h3>
-            <p class="text-muted text-sm"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
+            ${mobileDescToggleHtml()}
+            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
             ${servLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
@@ -3320,6 +3351,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.setAttribute('aria-busy', 'false');
         initDataTables(panel);
         initInteractiveToggles(panel);
+        initMobileDescriptions(panel);
         initClickableRows(panel);
     } catch {
         showPanelError('Nao foi possivel carregar este bloco agora.');
@@ -3592,6 +3624,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();
+    initMobileDescriptions(document);
     initAnchorAutoExpand();
     initExplainers();
     initCredibilityDialog();

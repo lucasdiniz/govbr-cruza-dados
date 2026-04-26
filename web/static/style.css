@@ -810,6 +810,13 @@ td.num {
     color: #334155;
 }
 
+.mobile-desc-toggle {
+    display: none;
+}
+.mobile-desc-hide {
+    display: none;
+}
+
 .result-block .card-title {
     font-size: 1.05rem;
     font-weight: 700;
@@ -2218,6 +2225,39 @@ body {
     .finding-summary {
         justify-content: space-between;
         text-align: left;
+    }
+    .mobile-collapsible-desc {
+        display: none;
+    }
+    .mobile-collapsible-desc.is-open {
+        display: block;
+    }
+    .mobile-desc-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        margin: 0.15rem 0 0.35rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: 999px;
+        border: 1px solid rgba(96, 165, 250, 0.28);
+        background: rgba(59, 130, 246, 0.1);
+        color: #bfdbfe;
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    body:not(.dark-page) .mobile-desc-toggle {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .mobile-desc-toggle[aria-expanded="true"] .mobile-desc-show {
+        display: none;
+    }
+    .mobile-desc-toggle[aria-expanded="true"] .mobile-desc-hide {
+        display: inline;
     }
 
     /* Autocomplete: itens com tap target maior */

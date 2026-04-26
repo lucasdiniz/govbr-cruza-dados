@@ -186,7 +186,11 @@
                 </h2>
             </div>
         </div>
-        <p class="text-muted mb-1">
+        <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false">
+            <span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span>
+            <span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span>
+        </button>
+        <p class="text-muted mb-1 mobile-collapsible-desc">
             <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
             <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
             Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
@@ -210,7 +214,11 @@
                 </h2>
             </div>
         </div>
-        <p class="text-muted mb-1">
+        <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false">
+            <span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span>
+            <span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span>
+        </button>
+        <p class="text-muted mb-1 mobile-collapsible-desc">
             <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
             <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
             pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
@@ -337,15 +345,19 @@
                 <span class="citizen-only">Onde investigar primeiro</span>
                 <span class="auditor-only">Indice de investigacao</span>
             </p>
-            <h2 class="card-title">
-                <span class="citizen-only">Navegue pelos temas desta cidade</span>
-                <span class="auditor-only">Temas e blocos do relatorio</span>
-            </h2>
-            <p class="text-muted">
-                <span class="citizen-only">Escolha um tema para abrir so os achados daquela area e evitar rolagem longa.</span>
-                <span class="auditor-only">Use o indice abaixo para expandir apenas a area desejada e escanear o relatorio com menos scroll.</span>
-            </p>
-        </div>
+                <h2 class="card-title">
+                    <span class="citizen-only">Navegue pelos temas desta cidade</span>
+                    <span class="auditor-only">Temas e blocos do relatorio</span>
+                </h2>
+                <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false">
+                    <span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span>
+                    <span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span>
+                </button>
+                <p class="text-muted mobile-collapsible-desc">
+                    <span class="citizen-only">Escolha um tema para abrir so os achados daquela area e evitar rolagem longa.</span>
+                    <span class="auditor-only">Use o indice abaixo para expandir apenas a area desejada e escanear o relatorio com menos scroll.</span>
+                </p>
+            </div>
     </div>
     <div class="report-index">
         {% for section in report_sections %}
@@ -454,7 +466,11 @@
                 <h2 class="card-title">
                     {% if section.title_lay %}<span class="citizen-only">{{ section.title_lay|safe }}</span><span class="auditor-only">{{ section.title }}</span>{% else %}{{ section.title }}{% endif %}
                 </h2>
-                <p class="text-muted">
+                <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false">
+                    <span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span>
+                    <span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span>
+                </button>
+                <p class="text-muted mobile-collapsible-desc">
                     {% if section.description_lay %}<span class="citizen-only">{{ section.description_lay|safe }}</span><span class="auditor-only">{{ section.description }}</span>{% else %}{{ section.description }}{% endif %}
                 </p>
             </div>
@@ -479,7 +495,11 @@
                             {% if query.title_lay %}<span class="citizen-only">{{ query.title_lay|safe }}</span><span class="auditor-only">{{ query.title }}</span>{% else %}{{ query.title }}{% endif %}
                             {% if query.explainer_lay %}<button type="button" class="explainer-btn citizen-only" data-explainer-target="exp-{{ query.id }}" aria-expanded="false" aria-label="O que isso significa?" title="O que isso significa?">&#8505;</button>{% endif %}
                         </h3>
-                        <p class="text-sm text-muted">
+                        <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false">
+                            <span class="mobile-desc-show">Ver descri&ccedil;&atilde;o</span>
+                            <span class="mobile-desc-hide">Ocultar descri&ccedil;&atilde;o</span>
+                        </button>
+                        <p class="text-sm text-muted mobile-collapsible-desc">
                             {% if query.description_lay %}<span class="citizen-only">{{ query.description_lay|safe }}</span><span class="auditor-only">{{ query.description }}</span>{% else %}{{ query.description }}{% endif %}
                         </p>
                     </div>

@@ -7,7 +7,7 @@
 //
 // Bump CACHE_VERSION para invalidar caches antigos.
 
-const CACHE_VERSION = 'tpb-v18';
+const CACHE_VERSION = 'tpb-v19';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 
