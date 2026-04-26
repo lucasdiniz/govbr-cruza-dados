@@ -186,7 +186,7 @@
                 </h2>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-collapsible-desc">
+        <p class="text-muted mb-1 mobile-duplicate-desc">
             <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
             <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
             Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
@@ -210,7 +210,7 @@
                 </h2>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-collapsible-desc">
+        <p class="text-muted mb-1 mobile-duplicate-desc">
             <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
             <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
             pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
@@ -457,7 +457,7 @@
                 <h2 class="card-title">
                     {% if section.title_lay %}<span class="citizen-only">{{ section.title_lay|safe }}</span><span class="auditor-only">{{ section.title }}</span>{% else %}{{ section.title }}{% endif %}
                 </h2>
-                <p class="text-muted mobile-collapsible-desc">
+                <p class="text-muted">
                     {% if section.description_lay %}<span class="citizen-only">{{ section.description_lay|safe }}</span><span class="auditor-only">{{ section.description }}</span>{% else %}{{ section.description }}{% endif %}
                 </p>
             </div>

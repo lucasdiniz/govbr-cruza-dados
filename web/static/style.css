@@ -2245,6 +2245,9 @@ body {
     .mobile-collapsible-desc {
         display: none;
     }
+    .mobile-duplicate-desc {
+        display: none;
+    }
     .mobile-collapsible-desc.is-open {
         display: block;
     }
