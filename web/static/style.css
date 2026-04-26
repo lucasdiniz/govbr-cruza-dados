@@ -813,9 +813,6 @@ td.num {
 .mobile-desc-toggle {
     display: none;
 }
-.mobile-desc-hide {
-    display: none;
-}
 
 .result-block .card-title {
     font-size: 1.05rem;
@@ -2236,28 +2233,32 @@ body {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 34px;
-        margin: 0.15rem 0 0.35rem;
-        padding: 0.25rem 0.65rem;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        margin-left: 0.35rem;
+        padding: 0;
         border-radius: 999px;
         border: 1px solid rgba(96, 165, 250, 0.28);
         background: rgba(59, 130, 246, 0.1);
         color: #bfdbfe;
         font: inherit;
-        font-size: 0.78rem;
+        font-size: 0.82rem;
         font-weight: 700;
+        line-height: 1;
         cursor: pointer;
+        vertical-align: middle;
     }
     body:not(.dark-page) .mobile-desc-toggle {
         background: #eff6ff;
         color: #1d4ed8;
         border-color: #bfdbfe;
     }
-    .mobile-desc-toggle[aria-expanded="true"] .mobile-desc-show {
-        display: none;
-    }
-    .mobile-desc-toggle[aria-expanded="true"] .mobile-desc-hide {
-        display: inline;
+    .mobile-desc-toggle[aria-expanded="true"] {
+        background: #2563eb;
+        border-color: #3b82f6;
+        color: #fff;
     }
 
     /* Autocomplete: itens com tap target maior */
