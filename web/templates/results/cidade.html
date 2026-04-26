@@ -337,9 +337,11 @@
                 <span class="citizen-only">Onde investigar primeiro</span>
                 <span class="auditor-only">Indice de investigacao</span>
             </p>
-                <h2 class="card-title">
-                    <span class="citizen-only">Navegue pelos temas desta cidade</span>
-                    <span class="auditor-only">Temas e blocos do relatorio</span>
+                <h2 class="card-title title-with-action">
+                    <span class="title-text">
+                        <span class="citizen-only">Navegue pelos temas desta cidade</span>
+                        <span class="auditor-only">Temas e blocos do relatorio</span>
+                    </span>
                     <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
                 </h2>
                 <p class="text-muted mobile-collapsible-desc">
@@ -454,7 +456,6 @@
                 </p>
                 <h2 class="card-title">
                     {% if section.title_lay %}<span class="citizen-only">{{ section.title_lay|safe }}</span><span class="auditor-only">{{ section.title }}</span>{% else %}{{ section.title }}{% endif %}
-                    <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
                 </h2>
                 <p class="text-muted mobile-collapsible-desc">
                     {% if section.description_lay %}<span class="citizen-only">{{ section.description_lay|safe }}</span><span class="auditor-only">{{ section.description }}</span>{% else %}{{ section.description }}{% endif %}
@@ -477,10 +478,12 @@
             <section class="finding-card loading collapsed" data-query="{{ query.id }}" aria-busy="true">
                 <div class="finding-head">
                     <div>
-                        <h3 class="finding-title">
-                            {% if query.title_lay %}<span class="citizen-only">{{ query.title_lay|safe }}</span><span class="auditor-only">{{ query.title }}</span>{% else %}{{ query.title }}{% endif %}
+                        <h3 class="finding-title title-with-action">
+                            <span class="title-text">
+                                {% if query.title_lay %}<span class="citizen-only">{{ query.title_lay|safe }}</span><span class="auditor-only">{{ query.title }}</span>{% else %}{{ query.title }}{% endif %}
+                            </span>
                             {% if query.explainer_lay %}<button type="button" class="explainer-btn citizen-only" data-explainer-target="exp-{{ query.id }}" aria-expanded="false" aria-label="O que isso significa?" title="O que isso significa?">&#8505;</button>{% endif %}
-                            <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
+                            <button type="button" class="mobile-desc-toggle" data-mobile-desc-next{% if query.explainer_lay %} data-mobile-desc-explainer="exp-{{ query.id }}"{% endif %} aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
                         </h3>
                         <p class="text-sm text-muted mobile-collapsible-desc">
                             {% if query.description_lay %}<span class="citizen-only">{{ query.description_lay|safe }}</span><span class="auditor-only">{{ query.description }}</span>{% else %}{{ query.description }}{% endif %}

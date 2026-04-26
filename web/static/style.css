@@ -810,6 +810,22 @@ td.num {
     color: #334155;
 }
 
+.title-with-action {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+}
+
+.title-with-action .title-text {
+    min-width: 0;
+}
+
+.title-with-action .mobile-desc-toggle,
+.title-with-action .explainer-btn {
+    flex: 0 0 auto;
+}
+
 .mobile-desc-toggle {
     display: none;
 }
@@ -2186,9 +2202,12 @@ body {
     }
     .section-summary {
         width: 100%;
+        flex-direction: row;
         align-items: flex-start;
         text-align: left;
+        gap: 0.45rem;
     }
+    .section-summary .section-collapse-toggle { margin-left: auto; }
     .section-collapse-toggle { min-height: 40px; }
     .city-narrative {
         font-size: 0.95rem;
@@ -2249,6 +2268,20 @@ body {
         line-height: 1;
         cursor: pointer;
         vertical-align: middle;
+    }
+    .title-with-action {
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+    }
+    .title-with-action .title-text {
+        flex: 1 1 auto;
+    }
+    .title-with-action .mobile-desc-toggle {
+        margin-left: 0.2rem;
+    }
+    .finding-title .explainer-btn {
+        display: none !important;
     }
     body:not(.dark-page) .mobile-desc-toggle {
         background: #eff6ff;

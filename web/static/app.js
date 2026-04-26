@@ -267,6 +267,7 @@ function initMobileDescriptions(root = document) {
     root.querySelectorAll('.mobile-desc-toggle[data-mobile-desc-next], .mobile-desc-toggle[data-mobile-desc-target]').forEach((btn) => {
         if (btn.dataset.enhanced === 'true') return;
         btn.dataset.enhanced = 'true';
+        const extraPanels = [];
         let panel = btn.dataset.mobileDescTarget
             ? document.getElementById(btn.dataset.mobileDescTarget)
             : btn.nextElementSibling;
@@ -278,6 +279,13 @@ function initMobileDescriptions(root = document) {
             panel = btn.closest('div, section, article')?.querySelector('.mobile-collapsible-desc') || panel;
         }
         if (!panel || !panel.classList.contains('mobile-collapsible-desc')) return;
+        if (btn.dataset.mobileDescExplainer) {
+            const explainer = document.getElementById(btn.dataset.mobileDescExplainer);
+            if (explainer) {
+                explainer.hidden = true;
+                extraPanels.push(explainer);
+            }
+        }
         panel.classList.remove('is-open');
         btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', (event) => {
@@ -285,6 +293,10 @@ function initMobileDescriptions(root = document) {
             event.stopPropagation();
             const willOpen = !panel.classList.contains('is-open');
             panel.classList.toggle('is-open', willOpen);
+            extraPanels.forEach((extraPanel) => {
+                extraPanel.hidden = !willOpen;
+                extraPanel.classList.toggle('is-open', willOpen);
+            });
             btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
     });
@@ -1186,7 +1198,7 @@ function buildFornecedoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')} ${mobileDescToggleHtml()}</h3>
+            <h3 class="card-title title-with-action"><span class="title-text">${dualLabel('Empresas que mais receberam da prefeitura', 'Maiores fornecedores do municipio')}</span> ${mobileDescToggleHtml()}</h3>
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
@@ -3306,7 +3318,7 @@ function buildServidoresPanel(data) {
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
-            <h3 class="card-title">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')} ${mobileDescToggleHtml()}</h3>
+            <h3 class="card-title title-with-action"><span class="title-text">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</span> ${mobileDescToggleHtml()}</h3>
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
             ${servLegend}
         </div></div>
