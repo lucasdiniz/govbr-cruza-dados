@@ -2978,7 +2978,28 @@ body.dark-page .city-narrative-toggle:focus-visible {
         border-color: rgba(148, 163, 184, 0.15);
     }
     table.stack-mobile tbody tr.row-sancao {
-        border-left: 3px solid var(--red, #dc2626);
+        background: linear-gradient(90deg, rgba(239, 68, 68, 0.14), rgba(254, 242, 242, 0.98) 38%, var(--surface, #fff));
+        border-color: rgba(239, 68, 68, 0.42);
+        border-left: 4px solid var(--red, #dc2626);
+        box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    table.stack-mobile tbody tr.row-sancao-leve {
+        background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(255, 251, 235, 0.98) 38%, var(--surface, #fff));
+        border-color: rgba(245, 158, 11, 0.38);
+        border-left: 4px solid #f59e0b;
+        box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    body.dark-page table.stack-mobile tbody tr.row-sancao {
+        background: linear-gradient(90deg, rgba(127, 29, 29, 0.68), rgba(127, 29, 29, 0.34) 34%, rgba(15, 23, 42, 0.98));
+        border-color: rgba(248, 113, 113, 0.46);
+        border-left-color: #ef4444;
+        box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.12), 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+    body.dark-page table.stack-mobile tbody tr.row-sancao-leve {
+        background: linear-gradient(90deg, rgba(120, 53, 15, 0.68), rgba(120, 53, 15, 0.32) 34%, rgba(15, 23, 42, 0.98));
+        border-color: rgba(251, 191, 36, 0.42);
+        border-left-color: #f59e0b;
+        box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.12), 0 1px 2px rgba(0, 0, 0, 0.18);
     }
     /* Linha padrao: label a esquerda, valor a direita (mesma linha) */
     table.stack-mobile tbody td {
