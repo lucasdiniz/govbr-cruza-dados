@@ -118,14 +118,49 @@ Todos os municipios da PB recebem perfil completo com insight cards, servidores 
 
 ### VM Azure (producao)
 
-| Componente | Especificacao | Custo |
-|---|---|---|
-| VM | Standard_B4as_v2 (4 vCPU, 16GB RAM) | ~US$110/mes |
-| Disco | 512GB Standard SSD (`/data`) | ~US$38/mes |
-| Regiao | North Central US | |
-| **Total** | | **~US$148/mes** |
+A VM **muda de tamanho automaticamente** dependendo do trabalho — `B2as_v2` (8GB) para servir web normalmente, `B4as_v2` (16GB) durante ETL/views pesados. Ver secao [Auto-resize de VM](#auto-resize-de-vm) abaixo.
+
+| Componente | Spec | Custo/mes (USD) | Custo/mes (BRL ~5.6) |
+|---|---|---|---|
+| **VM web** (`B2as_v2`, 2 vCPU, 8GB) | uso 100% do mes | ~$55 | ~R$ 308 |
+| **VM ETL** (`B4as_v2`, 4 vCPU, 16GB) | uso pontual (~$1.80/dia extra) | $54-108 (variavel) | R$ 300-600 |
+| Disco dados (`/data`) | 512GB Standard SSD | ~$38 | ~R$ 213 |
+| Disco OS | 32GB Standard SSD | ~$2.40 | ~R$ 13 |
+| IP publico estatico | Standard | ~$4 | ~R$ 22 |
+| Bandwidth | trafego web normal | ~$1 | ~R$ 6 |
+| **Total tipico (apenas web)** | | **~$100** | **~R$ 562** |
+| **Total com 1 ETL/mes** | | **~$115** | **~R$ 645** |
+
+> Cabe nos **$150/mes de credito Azure** (Visual Studio Enterprise) com folga de ~$35-50.
+> Regiao: **North Central US**. Resource group: `RG-GOVBR-NCUS`. VM: `vm-govbr`.
 
 O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de download (~230GB no pico). Para caber no disco, o ETL **limpa automaticamente os CSVs brutos** apos cada fase completar com sucesso (`run_all.py`). Diretorios compartilhados entre fases (ex: `rfb/`, `tse/`) so sao removidos quando todas as fases dependentes completam.
+
+### Auto-resize de VM
+
+O workflow `deploy.yml` tem 3 jobs:
+
+```
+preflight (github-hosted, OIDC) → deploy (self-hosted na VM) → postflight (github-hosted, OIDC)
+```
+
+| etl_phase | Preflight: tamanho | Postflight: tamanho final |
+|---|---|---|
+| `web` | B2as_v2 (8GB) — sem mudanca se ja estiver | (nenhum) |
+| `all`, `sql`, `N` | B4as_v2 (16GB) — resize up se necessario | B2as_v2 (8GB) — resize down se deploy succeeded |
+
+**O que acontece:**
+1. **Preflight** redimensiona a VM para o tamanho adequado (`az vm deallocate → resize → start`).
+2. **Deploy** roda no self-hosted runner DENTRO da VM. O step `Apply PostgreSQL auto-tuning` detecta a RAM atual e ajusta `shared_buffers / effective_cache / work_mem / maintenance_work_mem` em `tuning.conf`. Reinicia o postgres se a config mudou.
+3. **Postflight** so roda em `etl_phase != web` E quando o deploy succeeded. Faz downsize de volta para o tamanho web. No proximo boot da VM, `pg-autotune.service` (systemd oneshot, `Before=postgresql.service`) re-tuna o postgres antes dele subir.
+
+**Quando o ETL falha no meio**, postflight nao roda — a VM fica em B4as_v2 (16GB) para voce poder retomar com `etl_phase=N` sem outro resize.
+
+**Tuning detectado automaticamente** (formulas Postgres-best-practices):
+- `shared_buffers` = 25% RAM
+- `effective_cache_size` = 75% RAM
+- `work_mem` = RAM / 128
+- `maintenance_work_mem` = 6% RAM (cap 1GB)
 
 ## Deploy (1 click)
 
@@ -137,11 +172,44 @@ O deploy roda via **GitHub Actions self-hosted runner** instalado na VM.
 2. **Fork** deste repositorio
 3. **Secrets obrigatorios** (Settings > Secrets > Actions):
    - `VM_HOST` — IP ou hostname da VM
-   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr`
    - `DB_PASSWORD` — senha do PostgreSQL
    - `ENV_FILE` — conteudo do `.env` (ver `.env.example`)
-4. **Secret opcional**:
-   - `RUNNER_ADMIN_TOKEN` — PAT para instalar/reparar o self-hosted runner
+   - `AZURE_CLIENT_ID` — clientId do AD app para OIDC (auto-resize)
+   - `AZURE_TENANT_ID` — tenantId Azure
+   - `AZURE_SUBSCRIPTION_ID` — subscription com a VM
+4. **Secrets opcionais** (apenas para `setup-runner.yml`, nao usados no deploy):
+   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr` (instalacao/reparo do runner)
+   - `RUNNER_ADMIN_TOKEN` — PAT para registrar/atualizar o self-hosted runner
+
+**Setup do OIDC para auto-resize** (1x, ~5min):
+
+```bash
+# Cria AD app + service principal + role no resource group + federated credential
+az ad app create --display-name govbr-deploy-github-oidc
+APP_ID=<appId-retornado>
+az ad sp create --id $APP_ID
+SP_ID=$(az ad sp show --id $APP_ID --query id -o tsv)
+az role assignment create \
+  --assignee-object-id $SP_ID \
+  --assignee-principal-type ServicePrincipal \
+  --role "Virtual Machine Contributor" \
+  --scope /subscriptions/<SUB_ID>/resourceGroups/<RG>
+
+# Federated credential trustando workflow_dispatch da branch main
+az ad app federated-credential create --id $APP_ID --parameters '{
+  "name": "github-deploy-main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<OWNER>/<REPO>:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# Adiciona secrets no GitHub
+gh secret set AZURE_CLIENT_ID --body "$APP_ID"
+gh secret set AZURE_TENANT_ID --body "$(az account show --query tenantId -o tsv)"
+gh secret set AZURE_SUBSCRIPTION_ID --body "<SUB_ID>"
+```
+
+O service principal so tem permissao de mexer em VMs/discos do resource group especifico — nao acessa outras subscriptions, billing, etc.
 
 ### Execucao
 
@@ -157,14 +225,14 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 
 ### Opcoes do deploy
 
-| Parametro | Descricao |
-|---|---|
-| `etl_phase=all` | ETL completo (download + carga + indices + views) |
-| `etl_phase=sql` | Apenas indices, normalizacao e views (sem schema destrutivo) |
-| `etl_phase=web` | Sync de codigo apenas (git pull + reinicia web services) |
-| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB) |
-| `skip_download=true` | Pular downloads, usar dados ja existentes na VM |
-| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) |
+| Parametro | Descricao | Tamanho VM |
+|---|---|---|
+| `etl_phase=all` | ETL completo (download + carga + indices + views) | B4as_v2 (16GB) |
+| `etl_phase=sql` | Apenas indices, normalizacao e views (sem schema destrutivo) | B4as_v2 (16GB) |
+| `etl_phase=web` | Sync de codigo apenas (git pull + reinicia web services) | B2as_v2 (8GB) |
+| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB) | B4as_v2 (16GB) |
+| `skip_download=true` | Pular downloads, usar dados ja existentes na VM | (sem mudanca) |
+| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) | (sem mudanca) |
 
 ### Uso local
 

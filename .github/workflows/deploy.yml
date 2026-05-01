@@ -1,17 +1,23 @@
 name: Deploy to Azure VM
 
-# Runs directly on the VM via self-hosted runner (installed by setup-runner.yml).
-# Full live logs with the GitHub self-hosted runner max timeout (5 days / 7200 min).
+# Pipeline em 3 jobs:
+#   1. preflight  (github-hosted, OIDC) — resize VM up se etl_phase != web
+#   2. deploy     (self-hosted na VM) — ETL/SQL/web
+#   3. postflight (github-hosted, OIDC) — resize VM down se etl_phase != web
 #
 # Required secrets:
-#   DB_PASSWORD - PostgreSQL password
-#   ENV_FILE    - Contents of .env file
+#   DB_PASSWORD            - PostgreSQL password
+#   ENV_FILE               - Contents of .env file
+#   VM_HOST                - VM IP/hostname (used pelo preflight pra checar SSH)
+#   AZURE_CLIENT_ID        - OIDC: app registration clientId
+#   AZURE_TENANT_ID        - OIDC: tenant
+#   AZURE_SUBSCRIPTION_ID  - OIDC: subscription com a VM
 #
 # First-time setup:
-#   1. Create an Ubuntu VM (tested on Azure Standard_D4s_v3, 16GB RAM)
+#   1. Create an Ubuntu VM (tested on Azure Standard_B4as_v2, 16GB RAM)
 #   2. Attach a data disk mounted at /data (400GB+)
 #   3. Create user 'govbr' with SSH key access
-#   4. Set repo secrets: VM_HOST, VM_SSH_KEY, DB_PASSWORD, ENV_FILE
+#   4. Set repo secrets above (DB_PASSWORD, ENV_FILE, VM_HOST, AZURE_*)
 #   5. Run the "Setup Self-Hosted Runner" workflow (once)
 #   6. Run this workflow with etl_phase=all
 
@@ -33,11 +39,113 @@ on:
         type: boolean
         default: false
 
+# OIDC federado pro Azure (sem secrets de SP, sem expiracao).
+permissions:
+  id-token: write
+  contents: read
+
+# Lock global: apenas 1 run em voo por vez nessa VM. Sem isso, dois disparos
+# concorrentes podem fazer az vm deallocate/resize um sobre o outro e quebrar o
+# banco (que leva DIAS para reconstruir do zero).
+concurrency:
+  group: deploy-vm-govbr
+  cancel-in-progress: false
+
 env:
   PROJECT_DIR: /home/govbr/govbr-project
+  AZURE_RG: RG-GOVBR-NCUS
+  AZURE_VM: vm-govbr
+  # B2as_v2: 2 vCPU, 8GB  ~$55/mes  — adequado para servir web
+  # B4as_v2: 4 vCPU, 16GB ~$108/mes — necessario para ETL/views pesados
+  VM_SIZE_WEB: Standard_B2as_v2
+  VM_SIZE_ETL: Standard_B4as_v2
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # PREFLIGHT: redimensiona a VM para o tamanho adequado ao etl_phase
+  # ─────────────────────────────────────────────────────────────────────
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      target_size: ${{ steps.decide.outputs.target_size }}
+    steps:
+      - name: Decide target VM size
+        id: decide
+        run: |
+          if [ "${{ inputs.etl_phase }}" = "web" ]; then
+            echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
+            echo "etl_phase=web → target=${{ env.VM_SIZE_WEB }} (8GB)"
+          else
+            echo "target_size=${{ env.VM_SIZE_ETL }}" >> "$GITHUB_OUTPUT"
+            echo "etl_phase=${{ inputs.etl_phase }} → target=${{ env.VM_SIZE_ETL }} (16GB)"
+          fi
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resize VM to target size
+        run: |
+          set -e
+          TARGET="${{ steps.decide.outputs.target_size }}"
+          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
+          POWER=$(az vm get-instance-view -g "$AZURE_RG" -n "$AZURE_VM" \
+            --query "instanceView.statuses[?contains(code, 'PowerState')].code | [0]" -o tsv)
+
+          echo "Current size:  $CURRENT"
+          echo "Target size:   $TARGET"
+          echo "Power state:   $POWER"
+
+          if [ "$CURRENT" = "$TARGET" ]; then
+            echo "VM ja esta no tamanho correto."
+            if [ "$POWER" != "PowerState/running" ]; then
+              echo "VM esta $POWER, ligando..."
+              az vm start -g "$AZURE_RG" -n "$AZURE_VM"
+            fi
+          else
+            # Valida que o target SKU esta disponivel ANTES de deallocate.
+            # Sem isso, um SKU indisponivel deixa a VM parada e a producao no chao.
+            AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
+            if ! echo "$AVAILABLE" | grep -qx "$TARGET"; then
+              echo "::error::Tamanho $TARGET indisponivel nessa VM/regiao no momento."
+              echo "Disponiveis:"; echo "$AVAILABLE"
+              exit 1
+            fi
+
+            echo "Resize: $CURRENT → $TARGET"
+            az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
+
+            if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET"; then
+              echo "::warning::Resize falhou, restaurando para $CURRENT..."
+              az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT" || true
+              az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
+              echo "::error::Resize para $TARGET falhou — VM restaurada para $CURRENT"
+              exit 1
+            fi
+
+            az vm start -g "$AZURE_RG" -n "$AZURE_VM"
+          fi
+
+          # Aguarda SSH responder (runner systemd reconecta sozinho assim que sobe)
+          echo "Aguardando VM ficar reachable em SSH (porta 22)..."
+          for i in $(seq 1 30); do
+            if timeout 5 bash -c "</dev/tcp/${{ secrets.VM_HOST }}/22" 2>/dev/null; then
+              echo "VM reachable apos ${i} tentativas (~$((i*10))s)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::SSH nao respondeu em 5 minutos — runner pode demorar pra conectar"
+
+  # ─────────────────────────────────────────────────────────────────────
+  # DEPLOY: roda DENTRO da VM via self-hosted runner
+  # ─────────────────────────────────────────────────────────────────────
   deploy:
+    needs: preflight
     runs-on: [self-hosted, linux, azure]
     timeout-minutes: 7200  # GitHub self-hosted runner hard limit (5 days)
 
@@ -104,8 +212,10 @@ jobs:
             sudo -u postgres psql -c "ALTER USER govbr WITH PASSWORD '${{ secrets.DB_PASSWORD }}';"
             sudo -u postgres psql -d govbr -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
-            # Tuning for 16GB RAM
-            echo -e "shared_buffers = 4GB\neffective_cache_size = 12GB\nwork_mem = 512MB\nmaintenance_work_mem = 1GB\nmax_wal_size = 4GB\ncheckpoint_completion_target = 0.9\nrandom_page_cost = 1.1" | sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null
+            # Tuning inicial hardcoded (sera sobrescrito pelo step "Apply PostgreSQL auto-tuning"
+            # logo abaixo, que detecta a RAM real da VM). Mantido aqui apenas para que o postgres
+            # consiga subir pela primeira vez sem depender de ordem de execucao.
+            echo -e "shared_buffers = 2GB\neffective_cache_size = 6GB\nwork_mem = 64MB\nmaintenance_work_mem = 512MB\nmax_wal_size = 4GB\ncheckpoint_completion_target = 0.9\nrandom_page_cost = 1.1" | sudo tee /etc/postgresql/16/main/conf.d/tuning.conf > /dev/null
 
             sudo sed -i 's/local\s\+all\s\+all\s\+peer/local all all md5/' /etc/postgresql/16/main/pg_hba.conf
             sudo systemctl restart postgresql
@@ -147,6 +257,45 @@ jobs:
           pip install -e ".[web]" -q
 
           echo "=== Code deployed. Data dir: $DATA ==="
+
+      # ── Apply PostgreSQL auto-tuning based on detected RAM ──
+      # Idempotente: roda em todo deploy. Detecta RAM via /proc/meminfo e ajusta
+      # shared_buffers / effective_cache / work_mem / maintenance_work_mem.
+      # Tambem instala um systemd unit (pg-autotune.service) + drop-in que torna
+      # ele DEPENDENCIA HARD do postgres, garantindo re-tuning automatico apos
+      # resize de VM (preflight/postflight).
+      - name: Apply PostgreSQL auto-tuning
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+
+          sudo install -m 0755 deploy/pg-autotune.sh /usr/local/bin/pg-autotune.sh
+          sudo install -m 0644 deploy/pg-autotune.service /etc/systemd/system/pg-autotune.service
+
+          # Drop-in que faz postgresql@16-main.service depender de pg-autotune.service.
+          sudo mkdir -p /etc/systemd/system/postgresql@16-main.service.d
+          sudo install -m 0644 deploy/pg-autotune-pg-dropin.conf \
+            /etc/systemd/system/postgresql@16-main.service.d/99-autotune.conf
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable pg-autotune.service
+
+          # Captura hash do tuning antes/depois para decidir se precisa restart.
+          # IMPORTANT: pg-autotune.sh nao escreve timestamp no arquivo, entao o
+          # hash so muda se a RAM detectada mudou (ex: apos resize de VM).
+          OLD_HASH=$(sudo md5sum /etc/postgresql/16/main/conf.d/tuning.conf 2>/dev/null | awk '{print $1}' || echo "none")
+          sudo /usr/local/bin/pg-autotune.sh
+          NEW_HASH=$(sudo md5sum /etc/postgresql/16/main/conf.d/tuning.conf | awk '{print $1}')
+
+          if [ "$OLD_HASH" != "$NEW_HASH" ]; then
+            echo "Tuning mudou ($OLD_HASH → $NEW_HASH), reiniciando postgres..."
+            sudo systemctl restart postgresql
+          else
+            echo "Tuning inalterado, no-op."
+          fi
+
+          # Mostra config atual para audit log
+          sudo cat /etc/postgresql/16/main/conf.d/tuning.conf
 
       # ── Verify disk space ──
       - name: Verify disk space
@@ -226,10 +375,17 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
           echo "=== Applying SQL changes (indices, normalization, views) ==="
-          echo "NOTA: etl.01_schema NÃO é executado aqui — ele faz DROP+CREATE e apagaria dados existentes"
-          python -m etl.10_indices 2>&1 || true
-          python -m etl.15_normalizar 2>&1 || true
-          python -m etl.21_views 2>&1 || true
+          echo "NOTA: etl.01_schema NAO eh executado aqui — ele faz DROP+CREATE e apagaria dados existentes"
+
+          # 10_indices: nao-idempotente (CREATE INDEX falha se ja existe). Soft-fail.
+          python -m etl.10_indices 2>&1 || echo "::warning::etl.10_indices falhou (provavelmente ja aplicado)"
+
+          # 15_normalizar: usa ADD COLUMN IF NOT EXISTS, idempotente. Soft-fail por seguranca.
+          python -m etl.15_normalizar 2>&1 || echo "::warning::etl.15_normalizar falhou (provavelmente ja aplicado)"
+
+          # 21_views: dropa+recria todas as MVs. SE ESSE FALHAR, queremos hard-fail
+          # para que o postflight NAO faca downsize da VM (deixa em 16GB para retomar).
+          python -m etl.21_views 2>&1
 
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
@@ -246,7 +402,7 @@ jobs:
       - name: Run queries
         if: inputs.etl_phase != 'web'
         run: |
-          set -e
+          set -euo pipefail
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
           echo "=== Running all queries ==="
@@ -294,3 +450,71 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
           python3 -m etl.verify 2>/dev/null || echo "Verify script not available"
+
+  # ─────────────────────────────────────────────────────────────────────
+  # POSTFLIGHT: redimensiona a VM de volta para o tamanho web (B2as_v2)
+  # apos um deploy de ETL/SQL bem-sucedido. Mantem o estado "limpo" da VM
+  # otimizado para servir web (~$55/mes vs ~$108/mes do tamanho ETL).
+  #
+  # IMPORTANT: so roda quando deploy succeeded — se o ETL falhou no meio,
+  # mantemos a VM no tamanho grande para retomar sem outro resize.
+  # ─────────────────────────────────────────────────────────────────────
+  postflight:
+    needs: deploy
+    if: success() && inputs.etl_phase != 'web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resize VM down to web-serving size
+        run: |
+          set -e
+          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
+          TARGET="$VM_SIZE_WEB"
+
+          echo "Current size: $CURRENT"
+          echo "Target size:  $TARGET"
+
+          if [ "$CURRENT" = "$TARGET" ]; then
+            echo "VM ja esta no tamanho web. Nada a fazer."
+            exit 0
+          fi
+
+          # Valida disponibilidade antes de deallocate.
+          AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
+          if ! echo "$AVAILABLE" | grep -qx "$TARGET"; then
+            echo "::error::Tamanho $TARGET indisponivel — abortando downsize, VM continua em $CURRENT"
+            exit 1
+          fi
+
+          echo "Downsize: $CURRENT → $TARGET"
+          az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
+
+          if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET"; then
+            echo "::warning::Resize falhou, restaurando para $CURRENT..."
+            az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT" || true
+            az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
+            echo "::error::Downsize para $TARGET falhou — VM restaurada para $CURRENT"
+            exit 1
+          fi
+
+          az vm start -g "$AZURE_RG" -n "$AZURE_VM"
+
+          # Aguarda SSH responder antes de declarar sucesso.
+          echo "Aguardando VM ficar reachable em SSH apos downsize..."
+          for i in $(seq 1 30); do
+            if timeout 5 bash -c "</dev/tcp/${{ secrets.VM_HOST }}/22" 2>/dev/null; then
+              echo "VM reachable apos ${i} tentativas (~$((i*10))s)"
+              echo "Resize concluido. pg-autotune.service vai re-tunar postgres no boot."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::SSH nao respondeu em 5 minutos apos downsize — VM pode estar com problema"
+          exit 1
