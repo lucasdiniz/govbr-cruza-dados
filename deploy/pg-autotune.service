@@ -1,0 +1,19 @@
+[Unit]
+Description=PostgreSQL auto-tune based on detected RAM
+Documentation=file:///home/govbr/govbr-project/deploy/pg-autotune.sh
+# Roda no boot antes do postgres. A garantia de que o postgres NAO vai subir
+# antes desse servico nao depende deste Before= — depende do drop-in
+# 99-autotune.conf (em postgresql@16-main.service.d/) que adiciona
+# Requires=pg-autotune.service. Esse drop-in eh instalado pelo step
+# "Apply PostgreSQL auto-tuning" do deploy.yml.
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pg-autotune.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

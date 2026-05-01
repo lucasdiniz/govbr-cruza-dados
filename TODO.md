@@ -136,12 +136,16 @@
 - 115+ queries em queries/*.sql, 26 relatorios validos em relatorios/
 
 ### VM Azure
-- **Standard_B4as_v2** (4 vCPU, 16GB RAM) — North Central US
+- **B2as_v2** (2 vCPU, 8GB RAM, ~$55/mes) — uso normal (servir web)
+- **B4as_v2** (4 vCPU, 16GB RAM, ~$108/mes) — durante ETL/views (auto-resize via deploy.yml)
 - Disco: 512GB Standard SSD em /data (PostgreSQL 248GB + dados brutos ~105GB apos limpeza)
-- Budget: ~US$150/mes
-- SSH: `ssh -i /tmp/azure_vm_key govbr@52.162.207.186`
-- Workflows: `deploy.yml` (ETL + web services), `setup-runner.yml` (runner 1x)
-- Secrets: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`, `RUNNER_ADMIN_TOKEN`
+- IP estatico: 52.162.207.186 (~$4/mes)
+- Budget: ~US$150/mes (creditos Visual Studio Enterprise)
+- **Custo tipico:** ~$100/mes so web, ~$115/mes com 1 ETL completo
+- Resource group: `RG-GOVBR-NCUS`. VM name: `vm-govbr`. Subscription: `90676d79-a73b-462d-bdd6-2b4c738237f5`
+- SSH: `ssh -i C:\Users\lucas\.ssh\azure_vm.txt govbr@52.162.207.186` (read-only debug)
+- Workflows: `deploy.yml` (preflight resize → ETL → postflight resize), `setup-runner.yml` (runner 1x)
+- Secrets: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`, `RUNNER_ADMIN_TOKEN`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 
 ### Frontend web
 - **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL
