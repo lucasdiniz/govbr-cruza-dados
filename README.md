@@ -2,7 +2,7 @@
 
 Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, voltado para deteccao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes e programas sociais.
 
-> **Vibe coded** com [Claude Code](https://claude.ai/claude-code) (Opus 4.6 e 4.7) e Codex (GPT-5.4 e 5.5) - da modelagem do schema ate o ultimo `INSERT INTO`.
+> **Vibe coded** com Github Copilot, [Claude Code](https://claude.ai/claude-code), e Codex (Opus 4.6, Opus 4.7, GPT-5.4 e GPT 5.5) - da modelagem do schema ate o ultimo `INSERT INTO`.
 
 ## O que faz
 
