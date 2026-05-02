@@ -106,7 +106,8 @@ def _get_municipios_pb(conn, only: str | None = None) -> list[str]:
         if only:
             cur.execute(
                 "SELECT municipio FROM mv_municipio_pb_risco "
-                "WHERE unaccent(municipio) ILIKE unaccent(%s) LIMIT 1",
+                "WHERE municipio IS NOT NULL "
+                "  AND unaccent(municipio) ILIKE unaccent(%s) LIMIT 1",
                 (only,),
             )
         else:
@@ -115,11 +116,17 @@ def _get_municipios_pb(conn, only: str | None = None) -> list[str]:
             # mais real (workers terminam rapido com os pequenos depois).
             # Tambem ajuda usuarios: as cidades mais consultadas (geralmente
             # as maiores) ficam quentes no cache antes.
+            # WHERE municipio IS NOT NULL exclui 1 row "fantasma" presente
+            # nas MVs por dados ruins na origem (tce_pb_despesa). Sem isso,
+            # o warm tenta inserir muni=None no web_cache e leva NOT NULL
+            # constraint violation. Causa raiz das MVs deve ser tratada em
+            # outro PR (TODO #12).
             cur.execute(
                 """
                 SELECT r.municipio
                 FROM mv_municipio_pb_risco r
                 LEFT JOIN mv_municipio_pb_mapa m ON m.municipio = r.municipio
+                WHERE r.municipio IS NOT NULL
                 ORDER BY COALESCE(m.total_pago_pj, 0) DESC, r.municipio
                 """
             )
