@@ -667,9 +667,12 @@ cnpjs_inidoneidade AS (
       AND LENGTH(cpf_cnpj_sancionado) = 14
 ),
 ceaf_expulsos AS (
-    SELECT DISTINCT SUBSTRING(cpf_cnpj_norm, 4, 6) AS cpf6, normalize_name(nome_sancionado) AS nome
+    -- ceaf_expulsao.cpf_cnpj_norm tem 6 digitos centrais (CSV original vem
+    -- mascarado como ***.123.456-** e o ETL extrai apenas digitos via
+    -- REGEXP_REPLACE — equivalente direto ao cpf_digitos_6 dos servidores).
+    SELECT DISTINCT cpf_cnpj_norm AS cpf6, normalize_name(nome_sancionado) AS nome
     FROM ceaf_expulsao
-    WHERE LENGTH(cpf_cnpj_norm) = 11
+    WHERE LENGTH(cpf_cnpj_norm) = 6
 ),
 empresa_pagamentos AS (
     SELECT d.cnpj_basico, SUM(d.valor_pago) AS total_pago

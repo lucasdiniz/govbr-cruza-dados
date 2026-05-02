@@ -1389,15 +1389,16 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         result["empresa_empenhos"] = empenhos_map
 
                 # CEAF - Expulsoes da Administracao Federal
+                # cpf_cnpj_norm tem 6 digitos centrais (CSV vem mascarado).
                 cur.execute("""
                     SELECT categoria_sancao, cargo_efetivo, funcao_confianca,
                            orgao_lotacao, orgao_sancionador, dt_inicio_sancao,
                            dt_final_sancao, dt_transito_julgado, fundamentacao_legal,
                            numero_processo
                     FROM ceaf_expulsao
-                    WHERE SUBSTRING(cpf_cnpj_norm, 4, 6) = %s
+                    WHERE cpf_cnpj_norm = %s
+                      AND LENGTH(cpf_cnpj_norm) = 6
                       AND normalize_name(nome_sancionado) = normalize_name(%s)
-                      AND LENGTH(cpf_cnpj_norm) = 11
                     ORDER BY dt_inicio_sancao DESC
                 """, (cpf6, nome))
                 ceaf_cols = [d[0] for d in cur.description]

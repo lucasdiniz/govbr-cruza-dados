@@ -25,13 +25,18 @@ WHERE ef.ano_mes >= TO_CHAR(cn.dt_inicio_sancao, 'YYYY/MM')
 ORDER BY ef.valor_recebido DESC;
 
 -- Q27: Servidor expulso (CEAF) que ainda aparece como socio de empresa
+-- FIX (CEAF length=6): cpf_cnpj_norm em ceaf_expulsao tem 6 digitos centrais
+-- (CSV vem mascarado), mesmo formato que socio.cpf_cnpj_norm para PFs.
+-- Adicionado match por nome para evitar colisao em 6 digitos.
 SELECT ce.nome_sancionado, ce.cpf_cnpj_sancionado,
        ce.categoria_sancao, ce.cargo_efetivo, ce.orgao_lotacao,
        s.cnpj_basico, e.razao_social, s.qualificacao,
        est.uf AS uf_empresa, est.municipio AS municipio_empresa
 FROM ceaf_expulsao ce
 JOIN socio s ON ce.cpf_cnpj_norm = s.cpf_cnpj_norm
+  AND LENGTH(ce.cpf_cnpj_norm) = 6
   AND s.tipo_socio = 2
+  AND normalize_name(ce.nome_sancionado) = normalize_name(s.nome)
 JOIN empresa e ON e.cnpj_basico = s.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_basico = s.cnpj_basico
   AND est.cnpj_ordem = '0001' AND est.situacao_cadastral = '2'
