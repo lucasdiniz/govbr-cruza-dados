@@ -80,6 +80,35 @@
 - [ ] **Padronizar citacao `razao social + CNPJ` nos relatorios ativos**
 - [ ] **Corrigir relatorios com CNPJ nao encontrado na base RFB local**
 
+### Warm cache - performance (deferred big PRs)
+Os items abaixo ficaram fora do PR de speedup inicial (loop invertido + Q67 MV +
+PARALLEL_WORKERS=4 + ANALYZE + work_mem + disable timers) por serem refactors
+maiores. Considerar quando o ciclo atual de warm (~12-18h esperados) ainda for
+bottleneck.
+
+- [ ] **#9 Single GROUP BY query (warm 1 query agrupada para todos os munis)**
+  - Hoje cada query roda 224 vezes (uma por muni). Com `WITH .. GROUP BY municipio`
+    + `ROW_NUMBER() OVER (PARTITION BY municipio ORDER BY ... LIMIT 500)`, vira
+    1 query unica → ~10-20x speedup esperado.
+  - Risco alto: cada query em `web/queries/registry.py` tem `WHERE municipio = X`
+    em local diferente (CTEs profundas, subqueries). Precisa rewrite manual de
+    cada query + helper Python pra splitar resultados grouped → `web_cache`.
+- [ ] **#10 Pre-aggregate todas as queries lentas em MVs unificadas**
+  - Uma MV por familia de query (ex: `mv_top_fornecedores_pb`, `mv_q70_pb`,
+    `mv_q89_pb`...) materializando o resultado agrupado por (muni, ano).
+  - Warm passa a ser `SELECT * FROM mv_X WHERE muni=X` × N queries → ~30min total.
+  - Ja temos #8 (mv_q67_dated_pb) como blueprint.
+  - Custo: profile pra identificar queries com >5s/muni; design das MVs;
+    espaco em disco; tempo de criacao inicial; refresh strategy.
+  - Esforco: vario dias.
+- [ ] **#11 Partition `tce_pb_despesa` por ano**
+  - Tabela atual = 44GB. Particionando por ano (2018, 2019, ..., 2026), queries
+    com filtro `WHERE ano = 2026` (ou `data_empenho >= 'YYYY-...'`) leem apenas
+    o slice de ~4GB do ano corrente. Speedup: ~4-6x em queries com filtro de ano.
+  - Migration: criar tabela particionada, COPY data por ano (~1-2h em B4), swap.
+  - Risco medio: PG suporta nativamente, mas migration eh all-or-nothing.
+    Atualizar `etl/03_rfb` ou loaders TCE-PB para escrever na tabela particionada.
+
 ### Catalogo de relatorios - revisao de validade
 
 #### Relatorios validos

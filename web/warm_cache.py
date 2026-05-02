@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 import psycopg2
@@ -48,9 +49,14 @@ CREATE TABLE IF NOT EXISTS {CACHE_TABLE} (
 PAUSE_BETWEEN_CYCLES = 60  # seconds between full cycles in daemon mode
 
 # Numero de municipios processados em paralelo. Cada worker abre 1 conexao PG
-# propria. Mantemos baixo (2) para nao competir com os 3 workers do uvicorn
-# nem saturar I/O de tabelas grandes (tce_pb_despesa, etc).
-PARALLEL_WORKERS = 2
+# propria. Em B4as_v2 (4 vCPU) usamos 4 para saturar o CPU.
+# Em VMs menores, override via env var WARM_CACHE_WORKERS.
+PARALLEL_WORKERS = int(os.getenv("WARM_CACHE_WORKERS", "4"))
+
+# work_mem por sessao do warm. Evita disk-based sorts em queries com Sort/Hash
+# pesados. Padrao do PG (em B4 16GB) eh ~124MB; 256MB cobre Sort spillover
+# em queries do registry sem comprometer o uso geral do banco.
+WARM_WORK_MEM = "256MB"
 
 # Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
 # porque rodamos em background e queremos popular o cache mesmo para queries
@@ -75,6 +81,11 @@ def _thread_conn():
     if conn is None or conn.closed:
         conn = psycopg2.connect(DSN)
         conn.autocommit = False
+        # Aumenta work_mem nessa sessao especifica para evitar disk-based sorts.
+        # Aplica em todas as queries do warm (PERFIL, TOP_*, registry, etc).
+        with conn.cursor() as cur:
+            cur.execute(f"SET work_mem = '{WARM_WORK_MEM}'")
+        conn.commit()
         _thread_local.conn = conn
     return conn
 
@@ -88,7 +99,19 @@ def _get_municipios_pb(conn, only: str | None = None) -> list[str]:
                 (only,),
             )
         else:
-            cur.execute("SELECT municipio FROM mv_municipio_pb_risco ORDER BY municipio")
+            # ORDER BY tamanho/risco desc primeiro: municipios maiores levam
+            # mais tempo, entao processa-los cedo da feedback de progresso
+            # mais real (workers terminam rapido com os pequenos depois).
+            # Tambem ajuda usuarios: as cidades mais consultadas (geralmente
+            # as maiores) ficam quentes no cache antes.
+            cur.execute(
+                """
+                SELECT r.municipio
+                FROM mv_municipio_pb_risco r
+                LEFT JOIN mv_municipio_pb_mapa m ON m.municipio = r.municipio
+                ORDER BY COALESCE(m.total_pago_pj, 0) DESC, r.municipio
+                """
+            )
         return [r[0] for r in cur.fetchall()]
 
 
@@ -196,174 +219,185 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
         return False
 
 
-def _run_and_cache(conn, query_id: str, sql: str, mun: str, timeout_sec: int, verbose: bool):
-    """Executa uma query e salva no cache. Retorna True se ok."""
-    try:
-        cols, rows = _execute(conn, sql, {"municipio": mun}, timeout_sec)
-        conn.commit()
-        with conn.cursor() as cur:
-            _upsert(cur, query_id, mun, cols, rows)
-        conn.commit()
-        return True
-    except Exception as e:
-        conn.rollback()
-        msg = str(e).split("\n")[0]
-        # Sempre loga (timeout incluso) para podermos identificar queries que
-        # nunca completam dentro do tempo configurado.
-        if verbose:
-            tag = "TIMEOUT" if "statement_timeout" in msg else "ERR"
-            print(f"  [{tag}] {query_id} mun={mun}: {msg}", flush=True)
-        return False
-
-
-def _run_and_cache_dated(conn, query_id: str, sql: str, params: dict, timeout_sec: int, verbose: bool):
-    """Executa query com params de data e salva no cache. Retorna True se ok."""
-    mun = params["municipio"]
-    try:
-        cols, rows = _execute(conn, sql, params, timeout_sec)
-        conn.commit()
-        with conn.cursor() as cur:
-            _upsert(cur, query_id, mun, cols, rows)
-        conn.commit()
-        return True
-    except Exception as e:
-        conn.rollback()
-        msg = str(e).split("\n")[0]
-        if verbose:
-            tag = "TIMEOUT" if "statement_timeout" in msg else "ERR"
-            print(f"  [{tag}] {query_id} mun={mun}: {msg}", flush=True)
-        return False
-
-
 def _ensure_cache_table(conn):
     with conn.cursor() as cur:
         cur.execute(SCHEMA_DDL)
     conn.commit()
 
 
-def _warm_municipio_periodo(mun: str, idx: int, total: int, periodo: str, params_base: dict, all_queries: list, verbose: bool):
-    """Processa variantes datadas para um periodo cacheavel (ANO, 12M)."""
+def _run_query_for_muni(query_id: str, sql: str, mun: str, extra_params: dict | None, timeout_sec: int):
+    """Executa uma query para 1 muni e cacheia. Retorna (ok, msg|None).
+
+    Usado pelo loop invertido (1 query × N munis em paralelo). Por design,
+    nao printa nada — o caller agrega resultados e decide o que logar.
+    """
     conn = _thread_conn()
+    if extra_params:
+        params = {**extra_params, "municipio": mun}
+    else:
+        params = {"municipio": mun}
+    try:
+        cols, rows = _execute(conn, sql, params, timeout_sec)
+        conn.commit()
+        with conn.cursor() as cur:
+            _upsert(cur, query_id, mun, cols, rows)
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        msg = str(e).split("\n")[0]
+        return False, msg
+
+
+def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
+                              extra_params: dict | None, timeout: int, verbose: bool):
+    """Executa uma unica query para TODOS os municipios em paralelo.
+
+    Inversao do loop original (que era muni->query). Aqui rodamos query->muni:
+    apos a primeira muni, os indexes/tables relevantes ficam quentes no
+    shared_buffers/host cache, beneficiando as munis seguintes.
+    """
+    total = len(municipios)
+    ok = fail = 0
+    timeouts = 0
     t0 = time.time()
-    ok, fail = 0, 0
-    params = {"municipio": mun, **params_base}
-    prefix = f"{periodo}:"
 
-    if _run_and_cache_dated(conn, f"{prefix}PERFIL", PERFIL_MUNICIPIO_LIVE, params, TIMEOUT_PERFIL_LIVE, verbose):
-        ok += 1
-    else:
-        fail += 1
+    def task(mun):
+        return _run_query_for_muni(query_id, sql, mun, extra_params, timeout)
 
-    if _run_and_cache_dated(conn, f"{prefix}TOP_FORNECEDORES", TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN, verbose):
-        ok += 1
-    else:
-        fail += 1
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+        for success, msg in ex.map(task, municipios):
+            if success:
+                ok += 1
+            else:
+                fail += 1
+                if msg and "statement_timeout" in msg:
+                    timeouts += 1
 
-    if _run_and_cache_dated(conn, f"{prefix}TOP_SERVIDORES", TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV, verbose):
-        ok += 1
-    else:
-        fail += 1
+    elapsed = time.time() - t0
+    if verbose:
+        rate = total / elapsed if elapsed > 0 else 0
+        suffix = f" ({timeouts} timeouts)" if timeouts else ""
+        print(
+            f"  {query_id}: {ok}/{total} ok, {fail} fail{suffix} "
+            f"({elapsed:.0f}s, {rate:.1f}/s)",
+            flush=True,
+        )
+    return ok, fail
 
-    # KPI_SUMMARY depende de PERFIL/TOP_FORN/TOP_SERV do periodo ja cacheados acima.
-    if _compute_and_cache_kpi_summary(conn, mun, periodo, verbose):
-        ok += 1
-    else:
-        fail += 1
 
-    for qdef in all_queries:
-        if qdef.sql_full_dated:
-            cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
-            if _run_and_cache_dated(conn, f"{prefix}{qdef.id}", qdef.sql_full_dated, params, cache_timeout, verbose):
+def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose: bool):
+    """Computa KPI_SUMMARY para todos os munis em paralelo. Depende de
+    PERFIL/TOP_FORN/TOP_SERV ja cacheados para o periodo."""
+    total = len(municipios)
+    ok = fail = 0
+    t0 = time.time()
+    qid = f"{periodo}:KPI_SUMMARY" if periodo else "KPI_SUMMARY"
+
+    def task(mun):
+        conn = _thread_conn()
+        return _compute_and_cache_kpi_summary(conn, mun, periodo, verbose=False)
+
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+        for result in ex.map(task, municipios):
+            if result:
                 ok += 1
             else:
                 fail += 1
 
     elapsed = time.time() - t0
     if verbose:
-        print(f"[{idx}/{total}] {periodo}:{mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
+        print(f"  {qid}: {ok}/{total} ok, {fail} fail ({elapsed:.0f}s)", flush=True)
     return ok, fail
 
 
-def _warm_municipio_ano(mun: str, idx: int, total: int, ano_params_base: dict, all_queries: list, verbose: bool):
-    """Processa todas as variantes ANO para um municipio. Usa conn por thread."""
-    return _warm_municipio_periodo(mun, idx, total, "ANO", ano_params_base, all_queries, verbose)
+def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
+                extra_params: dict | None, verbose: bool):
+    """Roda um ciclo completo para uma fase (ANO/12M/ALL-TIME) com loop
+    invertido: cada query roda contra todos os munis em paralelo, em ordem
+    de dependencia (PERFIL/TOP_* primeiro, depois KPI_SUMMARY, depois
+    HEATMAP, depois queries do registry).
 
+    Beneficios vs loop original (muni->query):
+    - Cache locality: indexes/tables consultadas pela query ficam quentes
+      no shared_buffers/host cache apos a primeira muni; demais munis se
+      beneficiam.
+    - Plan caching: postgres pode reusar o plano executado para uma muni
+      ao executar a mesma query (com municipio diferente) na proxima.
+    - Progresso visivel: cada query tem seu proprio summary timing.
+    """
+    is_dated = bool(extra_params)
+    prefix = f"{phase_name}:" if phase_name else ""
+    label = phase_name or "ALL-TIME"
+    if verbose:
+        print(f"\n--- {label}: {len(municipios)} munis, "
+              f"workers={PARALLEL_WORKERS} (loop invertido) ---", flush=True)
 
-def _warm_municipio_12m(mun: str, idx: int, total: int, params_12m_base: dict, all_queries: list, verbose: bool):
-    """Processa todas as variantes dos ultimos 12 meses para um municipio."""
-    return _warm_municipio_periodo(mun, idx, total, "12M", params_12m_base, all_queries, verbose)
+    cycle_ok = cycle_fail = 0
 
+    # 1. PERFIL — alimenta KPI_SUMMARY (dependencia)
+    perfil_sql = PERFIL_MUNICIPIO_LIVE if is_dated else PERFIL_MUNICIPIO
+    ok, fail = _warm_query_across_munis(
+        f"{prefix}PERFIL", perfil_sql, municipios, extra_params, TIMEOUT_PERFIL_LIVE, verbose,
+    )
+    cycle_ok += ok
+    cycle_fail += fail
 
-def _warm_municipio_alltime(mun: str, idx: int, total: int, all_queries: list, verbose: bool):
-    """Processa todas as variantes all-time para um municipio. Usa conn por thread."""
-    conn = _thread_conn()
-    t0 = time.time()
-    ok, fail = 0, 0
+    # 2. TOP_FORNECEDORES — alimenta KPI_SUMMARY
+    forn_sql = TOP_FORNECEDORES_DATED if is_dated else TOP_FORNECEDORES
+    ok, fail = _warm_query_across_munis(
+        f"{prefix}TOP_FORNECEDORES", forn_sql, municipios, extra_params, TIMEOUT_TOP_FORN, verbose,
+    )
+    cycle_ok += ok
+    cycle_fail += fail
 
-    if _run_and_cache(conn, "PERFIL", PERFIL_MUNICIPIO, mun, TIMEOUT_PERFIL_LIVE, verbose):
-        ok += 1
-    else:
-        fail += 1
+    # 3. TOP_SERVIDORES — alimenta KPI_SUMMARY
+    serv_sql = TOP_SERVIDORES_RISCO_DATED if is_dated else TOP_SERVIDORES_RISCO
+    ok, fail = _warm_query_across_munis(
+        f"{prefix}TOP_SERVIDORES", serv_sql, municipios, extra_params, TIMEOUT_TOP_SERV, verbose,
+    )
+    cycle_ok += ok
+    cycle_fail += fail
 
-    if _run_and_cache(conn, "TOP_FORNECEDORES", TOP_FORNECEDORES, mun, TIMEOUT_TOP_FORN, verbose):
-        ok += 1
-    else:
-        fail += 1
+    # 4. KPI_SUMMARY — depende dos 3 acima
+    ok, fail = _warm_kpi_summary_across_munis(municipios, phase_name, verbose)
+    cycle_ok += ok
+    cycle_fail += fail
 
-    if _run_and_cache(conn, "TOP_SERVIDORES", TOP_SERVIDORES_RISCO, mun, TIMEOUT_TOP_SERV, verbose):
-        ok += 1
-    else:
-        fail += 1
+    # 5. HEATMAP — apenas all-time
+    if not is_dated:
+        ok, fail = _warm_query_across_munis(
+            "HEATMAP", HEATMAP_MENSAL, municipios, None, TIMEOUT_HEATMAP, verbose,
+        )
+        cycle_ok += ok
+        cycle_fail += fail
 
-    # KPI_SUMMARY all-time depende de PERFIL/TOP_FORN/TOP_SERV ja cacheados acima
-    if _compute_and_cache_kpi_summary(conn, mun, "", verbose):
-        ok += 1
-    else:
-        fail += 1
-
-    if _run_and_cache(conn, "HEATMAP", HEATMAP_MENSAL, mun, TIMEOUT_HEATMAP, verbose):
-        ok += 1
-    else:
-        fail += 1
-
+    # 6. Queries do registry (Q01-Q310). Cada uma roda contra todos os munis.
     for qdef in all_queries:
-        cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
-        if _run_and_cache(conn, qdef.id, qdef.sql_full, mun, cache_timeout, verbose):
-            ok += 1
+        if is_dated:
+            sql = qdef.sql_full_dated
+            if not sql:
+                continue  # registry permite query sem variante dated
         else:
-            fail += 1
+            sql = qdef.sql_full
+        cache_timeout = max(qdef.timeout_sec, TIMEOUT_REGISTRY_DEFAULT)
+        ok, fail = _warm_query_across_munis(
+            f"{prefix}{qdef.id}", sql, municipios, extra_params, cache_timeout, verbose,
+        )
+        cycle_ok += ok
+        cycle_fail += fail
 
-    elapsed = time.time() - t0
-    if verbose:
-        print(f"[{idx}/{total}] {mun}: {ok} ok, {fail} fail ({elapsed:.1f}s)", flush=True)
-    return ok, fail
-
-
-def _run_parallel(label: str, municipios: list[str], task_fn, verbose: bool, **kwargs):
-    """Executa task_fn(mun, idx, total, ...) em paralelo entre municipios."""
-    total = len(municipios)
-    if verbose:
-        print(f"--- {label}: {total} municipios (workers={PARALLEL_WORKERS}) ---", flush=True)
-    cycle_ok, cycle_fail = 0, 0
-    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
-        futs = [
-            ex.submit(task_fn, mun, i, total, verbose=verbose, **kwargs)
-            for i, mun in enumerate(municipios, 1)
-        ]
-        for f in as_completed(futs):
-            try:
-                ok, fail = f.result()
-                cycle_ok += ok
-                cycle_fail += fail
-            except Exception as e:
-                cycle_fail += 1
-                if verbose:
-                    print(f"  [WORKER ERR] {e}", flush=True)
     return cycle_ok, cycle_fail
 
 
 def warm_cycle_pb(municipios: list[str], verbose: bool = True):
-    """Processa um ciclo completo de todos os municipios PB (ANO, 12M e all-time)."""
+    """Processa um ciclo completo com loop invertido (query->muni).
+
+    Estrategia: para cada fase (ANO, 12M, all-time), iteramos QUERIES e
+    paralelizamos sobre munis. Isso melhora cache locality vs o loop
+    original (muni->query) — apos a primeira muni, indexes/tables
+    relevantes ja estao quentes no shared_buffers/host cache.
+    """
     # Garante schema da tabela de cache em conexao dedicada (curta).
     bootstrap = psycopg2.connect(DSN)
     bootstrap.autocommit = False
@@ -372,8 +406,6 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
     all_queries = list(CIDADE_QUERIES.values())
 
-    # 1o loop: variantes ANO (ano atual) — prioritario porque o frontend
-    # usa "ano atual" como filtro padrao, gerando mais cache hits.
     today = _today_gmt3()
     ano_params_base = {
         "data_inicio": f"{today.year}-01-01",
@@ -396,21 +428,20 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         "ano_mes_fim": today.strftime("%Y-%m"),
     }
 
-    ano_ok, ano_fail = _run_parallel(
-        f"ANO {today.year}", municipios, _warm_municipio_ano, verbose,
-        ano_params_base=ano_params_base, all_queries=all_queries,
+    # Fase 1: ANO atual — prioritario porque o frontend usa "ano atual" como
+    # filtro padrao, gerando mais cache hits.
+    ano_ok, ano_fail = _warm_phase(
+        f"ANO {today.year}", municipios, all_queries, ano_params_base, verbose,
     )
 
-    # 2o loop: ultimos 12 meses, usado pelo preset frequente do frontend.
-    m12_ok, m12_fail = _run_parallel(
-        "12M", municipios, _warm_municipio_12m, verbose,
-        params_12m_base=params_12m_base, all_queries=all_queries,
+    # Fase 2: ultimos 12 meses, usado pelo preset frequente do frontend.
+    m12_ok, m12_fail = _warm_phase(
+        "12M", municipios, all_queries, params_12m_base, verbose,
     )
 
-    # 3o loop: variantes all-time (sem prefixo)
-    all_ok, all_fail = _run_parallel(
-        "ALL-TIME", municipios, _warm_municipio_alltime, verbose,
-        all_queries=all_queries,
+    # Fase 3: all-time (sem prefixo, sem params de data).
+    all_ok, all_fail = _warm_phase(
+        "", municipios, all_queries, None, verbose,
     )
 
     return ano_ok + m12_ok + all_ok, ano_fail + m12_fail + all_fail

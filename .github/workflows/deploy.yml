@@ -229,12 +229,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Stop legacy warm-cache daemon FIRST ──
-      # Antes de qualquer trabalho pesado (ETL, migracoes), garantimos que o
-      # antigo daemon `cruza-warm-cache --loop` (Type=simple) NAO esteja rodando
-      # e disputando I/O. Roda incondicionalmente para tornar a transicao para
-      # oneshot idempotente: a falha do is-active eh tratada via `|| true`.
-      - name: Stop legacy warm-cache daemon
+      # ── Stop legacy warm-cache daemon + disable auto-update timers FIRST ──
+      # Antes de qualquer trabalho pesado, paramos:
+      #   1. Daemon antigo cruza-warm-cache (--loop), que disputa I/O.
+      #   2. Timers do unattended-upgrade — eles disparam systemctl daemon-reexec
+      #      que mata processos longos (warm de 12-18h foi morto antes por isso).
+      # Roda incondicionalmente para idempotencia.
+      - name: Stop legacy warm-cache daemon and mask auto-update timers
         run: |
           set +e
           if systemctl is-active --quiet cruza-warm-cache; then
@@ -247,6 +248,18 @@ jobs:
           fi
           # Mata qualquer processo orfao rodando warm_cache --loop diretamente.
           sudo pkill -f 'warm_cache.*--loop' 2>/dev/null || true
+
+          # Mask timers de auto-update (idempotente — symlink para /dev/null).
+          # Sem isso, apt-daily-upgrade.timer dispara systemctl daemon-reexec que
+          # envia SIGTERM para todos os servicos, matando warms longos.
+          # `mask` eh mais forte que `disable`: nao pode ser ativado nem por dependencia.
+          for unit in apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service; do
+            if systemctl is-enabled "$unit" 2>/dev/null | grep -qE '^(static|enabled|alias)$'; then
+              echo "Masking $unit..."
+              sudo systemctl mask "$unit"
+            fi
+          done
+
           exit 0
 
       # ── Clean previous failed state (manual trigger only) ──
@@ -539,6 +552,29 @@ jobs:
           systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
           systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
           echo "cruza-warm-cache: oneshot instalado (executado sob demanda)"
+
+      # ── Atualizar estatisticas das tabelas hot ANTES do warm ──
+      # Sem stats atualizadas, o planner pode escolher planos ruins (ex: hash
+      # join em vez de nested loop, ou Bitmap Heap Scan em vez de Index Scan).
+      # ANALYZE roda rapido e nao bloqueia leituras. Limitado as tabelas/MVs
+      # mais consultadas pelo warm (evita ANALYZE em tabelas muito grandes
+      # como rfb que nao mudam tao frequentemente).
+      - name: ANALYZE hot tables before warm
+        if: |
+          inputs.warm_cache == true ||
+          inputs.etl_phase == 'all' ||
+          inputs.etl_phase == 'sql'
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== ANALYZE em tabelas hot ==="
+          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score; do
+            echo "  ANALYZE $tbl..."
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -c "ANALYZE $tbl" 2>&1 | tail -1
+          done
+          echo "=== ANALYZE complete ==="
 
       # ── Warm cache (oneshot, ~20h em B4) ──
       # Auto: roda apos etl_phase=all ou sql (dados mudaram, queries mudaram).
