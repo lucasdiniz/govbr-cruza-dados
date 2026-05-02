@@ -136,15 +136,17 @@
 - 115+ queries em queries/*.sql, 26 relatorios validos em relatorios/
 
 ### VM Azure
-- **B2as_v2** (2 vCPU, 8GB RAM, ~$55/mes) — uso normal (servir web)
-- **B4as_v2** (4 vCPU, 16GB RAM, ~$108/mes) — durante ETL/views (auto-resize via deploy.yml)
-- Disco: 512GB Standard SSD em /data (PostgreSQL 248GB + dados brutos ~105GB apos limpeza)
+- **B2as_v2** (2 vCPU, 8GB, ~$55/mes) + Standard SSD E20 ($38/mes) — uso normal (servir web)
+- **B4as_v2** (4 vCPU, 16GB, ~$108/mes) + Premium SSD P20 ($73/mes, ReadOnly host caching) — durante ETL/warm
+- VM e disco mudam de SKU juntos via deploy.yml (preflight upsize, postflight downsize)
+- Disco Premium so cobra durante operacoes pesadas (~$3/mes vs $35/mes always-on)
+- Limite Azure: 2 mudancas de SKU de disco por 24h — workflow detecta e prossegue se atingir
 - IP estatico: 52.162.207.186 (~$4/mes)
 - Budget: ~US$150/mes (creditos Visual Studio Enterprise)
-- **Custo tipico:** ~$100/mes so web, ~$115/mes com 1 ETL completo
-- Resource group: `RG-GOVBR-NCUS`. VM name: `vm-govbr`. Subscription: `90676d79-a73b-462d-bdd6-2b4c738237f5`
+- **Custo tipico:** ~$104/mes (web + 1 ETL + 1 warm)
+- Resource group: `RG-GOVBR-NCUS`. VM: `vm-govbr`. Data disk: `disk-govbr-data`. Subscription: `90676d79-a73b-462d-bdd6-2b4c738237f5`
 - SSH: `ssh -i C:\Users\lucas\.ssh\azure_vm.txt govbr@52.162.207.186` (read-only debug)
-- Workflows: `deploy.yml` (preflight resize → ETL → postflight resize), `setup-runner.yml` (runner 1x)
+- Workflows: `deploy.yml` (preflight resize + disk SKU → ETL → postflight resize back), `setup-runner.yml` (runner 1x)
 - Secrets: `VM_HOST`, `VM_SSH_KEY`, `DB_PASSWORD`, `ENV_FILE`, `RUNNER_ADMIN_TOKEN`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 
 ### Frontend web

@@ -118,25 +118,29 @@ Todos os municipios da PB recebem perfil completo com insight cards, servidores 
 
 ### VM Azure (producao)
 
-A VM **muda de tamanho automaticamente** dependendo do trabalho — `B2as_v2` (8GB) para servir web normalmente, `B4as_v2` (16GB) durante ETL/views pesados. Ver secao [Auto-resize de VM](#auto-resize-de-vm) abaixo.
+A VM e o disco mudam de SKU automaticamente conforme o trabalho. Custos sao prorateados por hora pelo Azure, entao Premium SSD so cobra durante operacoes pesadas (~24h/mes), nao always-on.
 
-| Componente | Spec | Custo/mes (USD) | Custo/mes (BRL ~5.6) |
+| Componente | Spec leve (web) | Spec pesado (ETL/warm) | Custo/hora dif |
 |---|---|---|---|
-| **VM web** (`B2as_v2`, 2 vCPU, 8GB) | uso 100% do mes | ~$55 | ~R$ 308 |
-| **VM ETL** (`B4as_v2`, 4 vCPU, 16GB) | uso pontual (~$1.80/dia extra) | $54-108 (variavel) | R$ 300-600 |
-| Disco dados (`/data`) | 512GB Standard SSD | ~$38 | ~R$ 213 |
-| Disco OS | 32GB Standard SSD | ~$2.40 | ~R$ 13 |
-| IP publico estatico | Standard | ~$4 | ~R$ 22 |
-| Bandwidth | trafego web normal | ~$1 | ~R$ 6 |
-| **Total tipico (apenas web)** | | **~$100** | **~R$ 562** |
-| **Total com 1 ETL/mes** | | **~$115** | **~R$ 645** |
+| **VM** | B2as_v2 (2 vCPU, 8GB) | B4as_v2 (4 vCPU, 16GB) | +$0.07/h |
+| **Data disk** | Standard SSD E20 (500 IOPS) | Premium SSD P20 (2300 IOPS + ReadOnly host caching ~16GB) | +$0.05/h |
+| **Caching** | sempre ReadOnly | sempre ReadOnly | $0 |
 
-> Cabe nos **$150/mes de credito Azure** (Visual Studio Enterprise) com folga de ~$35-50.
-> Regiao: **North Central US**. Resource group: `RG-GOVBR-NCUS`. VM: `vm-govbr`.
+| Custo mensal estimado | USD | BRL (~5.6) |
+|---|---|---|
+| **Web base** (B2 + Standard SSD + IP + bandwidth) | ~$100 | ~R$ 562 |
+| **+ 1 ETL/mes** (~24h em B4 + Premium): | +$3 | +R$ 17 |
+| **+ 1 warm/mes** (~6h em B4 + Premium, com Premium acelerando 4x): | +$1 | +R$ 6 |
+| **Total tipico** | **~$104** | **~R$ 585** |
+
+> Cabe nos **$150/mes de credito Azure** (Visual Studio Enterprise) com folga de ~$45.
+> Regiao: **North Central US**. Resource group: `RG-GOVBR-NCUS`. VM: `vm-govbr`. Data disk: `disk-govbr-data`.
+
+⚠️ **Limite Azure:** disco aceita no maximo 2 mudancas de SKU por 24h. Se rodar 2 deploys com etl/warm no mesmo dia, o segundo upgrade falha — fica em Standard SSD por algumas horas (warm sera mais lento, mas funciona). Workflow detecta e segue.
 
 O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de download (~230GB no pico). Para caber no disco, o ETL **limpa automaticamente os CSVs brutos** apos cada fase completar com sucesso (`run_all.py`). Diretorios compartilhados entre fases (ex: `rfb/`, `tse/`) so sao removidos quando todas as fases dependentes completam.
 
-### Auto-resize de VM
+### Auto-resize de VM (e disco)
 
 O workflow `deploy.yml` tem 3 jobs:
 
@@ -146,19 +150,27 @@ preflight (github-hosted, OIDC) → deploy (self-hosted na VM) → postflight (g
 
 | Cenario | Preflight | Steps no deploy | Postflight |
 |---|---|---|---|
-| `etl_phase=web` (default) | B2as_v2 (8GB) | sync code, restart cruza-web | (nenhum) |
-| `etl_phase=web warm_cache=true` | B4as_v2 (16GB) | sync + warm_cache (~20h) | downsize → B2as_v2 |
-| `etl_phase=all` | B4as_v2 (16GB) | ETL completo + warm_cache (auto) | downsize → B2as_v2 |
-| `etl_phase=sql` | B4as_v2 (16GB) | indices/normalizar/views + warm_cache (auto) | downsize → B2as_v2 |
-| `etl_phase=N` | B4as_v2 (16GB) | ETL phase N (warm NAO eh auto, use warm_cache=true) | downsize → B2as_v2 |
-| `etl_phase=N run_queries=true warm_cache=true` | B4as_v2 (16GB) | ETL + queries + warm_cache | downsize → B2as_v2 |
+| `etl_phase=web` (default) | B2 + Standard SSD | sync code, restart cruza-web | (nenhum) |
+| `etl_phase=web warm_cache=true` | **B4 + Premium SSD** | sync + warm_cache (~5-7h em Premium) | downsize → B2 + Standard |
+| `etl_phase=all` | **B4 + Premium SSD** | ETL completo + warm_cache (auto) | downsize → B2 + Standard |
+| `etl_phase=sql` | **B4 + Premium SSD** | indices/normalizar/views + warm_cache (auto) | downsize → B2 + Standard |
+| `etl_phase=N` | **B4 + Premium SSD** | ETL phase N (warm NAO eh auto) | downsize → B2 + Standard |
 
-**O que acontece:**
-1. **Preflight** redimensiona a VM (`az vm deallocate → resize → start`). Valida disponibilidade do SKU antes e faz rollback se resize falhar.
+**O que acontece em cada job:**
+
+1. **Preflight** redimensiona a VM e o disco juntos numa unica deallocation:
+   - `az vm deallocate`
+   - `az vm resize` (se tamanho diferente)
+   - `az disk update --sku` (se SKU diferente — gracioso ao limite de 2 mudancas/24h)
+   - `az vm update --set ...caching=ReadOnly` (se caching diferente — idempotente, configurado uma vez)
+   - `az vm start`
+   - Aguarda SSH na porta 22
+
 2. **Deploy** roda no self-hosted runner DENTRO da VM. O step `Apply PostgreSQL auto-tuning` detecta a RAM atual e ajusta `shared_buffers / effective_cache / work_mem / maintenance_work_mem`. Os steps de ETL/queries/warm sao opt-in conforme inputs.
-3. **Postflight** so roda quando preflight fez upsize E deploy succeeded. Faz downsize de volta para `B2as_v2`. No proximo boot da VM, `pg-autotune.service` re-tuna o postgres antes dele subir.
 
-**Quando o deploy falha no meio**, postflight nao roda — a VM fica em B4as_v2 (16GB) para voce retomar com `etl_phase=N` sem outro resize.
+3. **Postflight** so roda quando preflight fez upsize E deploy succeeded. Faz downsize VM + disco numa unica deallocation. Se o downgrade do disco falhar (limite 2/24h), a VM ainda eh redimensionada — disco fica em Premium ate o proximo deploy ($35/mes extra durante esse periodo).
+
+**Quando o deploy falha no meio**, postflight nao roda — VM e disco ficam grandes para voce retomar com `etl_phase=N` sem outro resize.
 
 **Tuning detectado automaticamente** (formulas Postgres-best-practices):
 - `shared_buffers` = 25% RAM

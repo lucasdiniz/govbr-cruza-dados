@@ -69,6 +69,16 @@ env:
   # B4as_v2: 4 vCPU, 16GB ~$108/mes — necessario para ETL/views pesados
   VM_SIZE_WEB: Standard_B2as_v2
   VM_SIZE_ETL: Standard_B4as_v2
+  # Disco de dados (PostgreSQL ~248GB).
+  # Standard SSD E20: ~$38/mes, 500 IOPS, 100 MB/s — ok para servir web.
+  # Premium SSD P20:  ~$73/mes, 2300 IOPS, 150 MB/s + ReadOnly host caching
+  # (~4GB RAM da host como cache) — necessario para ETL/warm pesados.
+  # Como o disco eh cobrado POR HORA, swappar StandardSSD<->Premium nas
+  # transicoes de tamanho da VM custa ~$0.05/h extra durante operacoes
+  # pesadas, em vez de $35/mes always-on.
+  DATA_DISK: disk-govbr-data
+  DISK_SKU_LIGHT: StandardSSD_LRS
+  DISK_SKU_HEAVY: Premium_LRS
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
@@ -79,20 +89,24 @@ jobs:
     timeout-minutes: 15
     outputs:
       target_size: ${{ steps.decide.outputs.target_size }}
+      target_disk_sku: ${{ steps.decide.outputs.target_disk_sku }}
     steps:
-      - name: Decide target VM size
+      - name: Decide target VM size and disk SKU
         id: decide
         run: |
           # Resize UP para B4 (16GB) sempre que houver trabalho pesado:
           #   - qualquer etl_phase != web (ETL/SQL/N usam mais RAM e CPU)
           #   - warm_cache=true (1 ciclo de warm leva ~20h, beneficia muito de B4)
           # Caso contrario (etl_phase=web sem warm), mantem B2 (8GB) para economizar.
+          # Disco segue a VM: Premium para trabalho pesado, Standard para web.
           if [ "${{ inputs.etl_phase }}" = "web" ] && [ "${{ inputs.warm_cache }}" != "true" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
-            echo "etl_phase=web warm_cache=false → target=${{ env.VM_SIZE_WEB }} (8GB, code sync)"
+            echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
+            echo "etl_phase=web warm_cache=false → B2 + Standard SSD (web)"
           else
             echo "target_size=${{ env.VM_SIZE_ETL }}" >> "$GITHUB_OUTPUT"
-            echo "trabalho pesado (etl_phase=${{ inputs.etl_phase }} warm_cache=${{ inputs.warm_cache }}) → target=${{ env.VM_SIZE_ETL }} (16GB)"
+            echo "target_disk_sku=${{ env.DISK_SKU_HEAVY }}" >> "$GITHUB_OUTPUT"
+            echo "trabalho pesado → B4 + Premium SSD (16GB, 2300 IOPS)"
           fi
 
       - name: Azure login (OIDC)
@@ -102,45 +116,93 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resize VM to target size
+      - name: Resize VM and convert data disk SKU
         run: |
           set -e
-          TARGET="${{ steps.decide.outputs.target_size }}"
-          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
+          TARGET_SIZE="${{ steps.decide.outputs.target_size }}"
+          TARGET_DISK_SKU="${{ steps.decide.outputs.target_disk_sku }}"
+
+          CURRENT_SIZE=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
+          CURRENT_DISK_SKU=$(az disk show -g "$AZURE_RG" -n "$DATA_DISK" --query sku.name -o tsv)
+          CURRENT_CACHING=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query "storageProfile.dataDisks[?name=='$DATA_DISK'].caching | [0]" -o tsv)
           POWER=$(az vm get-instance-view -g "$AZURE_RG" -n "$AZURE_VM" \
             --query "instanceView.statuses[?contains(code, 'PowerState')].code | [0]" -o tsv)
 
-          echo "Current size:  $CURRENT"
-          echo "Target size:   $TARGET"
-          echo "Power state:   $POWER"
+          echo "Current VM size:   $CURRENT_SIZE"
+          echo "Target VM size:    $TARGET_SIZE"
+          echo "Current disk SKU:  $CURRENT_DISK_SKU"
+          echo "Target disk SKU:   $TARGET_DISK_SKU"
+          echo "Current caching:   $CURRENT_CACHING"
+          echo "Power state:       $POWER"
 
-          if [ "$CURRENT" = "$TARGET" ]; then
-            echo "VM ja esta no tamanho correto."
+          # Decide se algum trabalho eh necessario (idempotencia: skip se ja correto)
+          NEEDS_RESIZE="false"
+          NEEDS_DISK_CHANGE="false"
+          NEEDS_CACHING_FIX="false"
+          [ "$CURRENT_SIZE" != "$TARGET_SIZE" ] && NEEDS_RESIZE="true"
+          [ "$CURRENT_DISK_SKU" != "$TARGET_DISK_SKU" ] && NEEDS_DISK_CHANGE="true"
+          # ReadOnly caching no data disk acelera muito leituras de pgfn_divida
+          # e tce_pb_despesa (host caching ~4GB RAM da maquina hospedeira).
+          # Idempotente: setado uma vez, persiste.
+          [ "$CURRENT_CACHING" != "ReadOnly" ] && NEEDS_CACHING_FIX="true"
+
+          if [ "$NEEDS_RESIZE" = "false" ] && [ "$NEEDS_DISK_CHANGE" = "false" ] && [ "$NEEDS_CACHING_FIX" = "false" ]; then
+            echo "Tudo ja esta no estado correto."
             if [ "$POWER" != "PowerState/running" ]; then
               echo "VM esta $POWER, ligando..."
               az vm start -g "$AZURE_RG" -n "$AZURE_VM"
             fi
           else
-            # Valida que o target SKU esta disponivel ANTES de deallocate.
-            # Sem isso, um SKU indisponivel deixa a VM parada e a producao no chao.
-            AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
-            if ! echo "$AVAILABLE" | grep -qx "$TARGET"; then
-              echo "::error::Tamanho $TARGET indisponivel nessa VM/regiao no momento."
-              echo "Disponiveis:"; echo "$AVAILABLE"
-              exit 1
+            # Valida disponibilidade do tamanho ANTES de deallocate
+            if [ "$NEEDS_RESIZE" = "true" ]; then
+              AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
+              if ! echo "$AVAILABLE" | grep -qx "$TARGET_SIZE"; then
+                echo "::error::Tamanho $TARGET_SIZE indisponivel."
+                echo "Disponiveis:"; echo "$AVAILABLE"
+                exit 1
+              fi
             fi
 
-            echo "Resize: $CURRENT → $TARGET"
+            # VM precisa ser deallocated para: resize, disk SKU change, e mudanca de caching.
+            echo "Deallocating VM..."
             az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
 
-            if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET"; then
-              echo "::warning::Resize falhou, restaurando para $CURRENT..."
-              az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT" || true
-              az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
-              echo "::error::Resize para $TARGET falhou — VM restaurada para $CURRENT"
-              exit 1
+            # 1. Resize VM (com rollback)
+            if [ "$NEEDS_RESIZE" = "true" ]; then
+              echo "Resize VM: $CURRENT_SIZE → $TARGET_SIZE"
+              if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET_SIZE"; then
+                echo "::warning::Resize VM falhou, restaurando para $CURRENT_SIZE..."
+                az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT_SIZE" || true
+                az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
+                echo "::error::Resize VM para $TARGET_SIZE falhou — VM restaurada"
+                exit 1
+              fi
             fi
 
+            # 2. Convert disk SKU. Azure limita a 2 mudancas por disco/24h —
+            # se atingir o limite, prossegue com o disco atual (warm rodara
+            # mais lento mas funciona).
+            if [ "$NEEDS_DISK_CHANGE" = "true" ]; then
+              echo "Disk SKU: $CURRENT_DISK_SKU → $TARGET_DISK_SKU"
+              if ! az disk update -g "$AZURE_RG" -n "$DATA_DISK" --sku "$TARGET_DISK_SKU"; then
+                echo "::warning::Conversao de disco falhou (provavelmente atingiu limite 2/24h)."
+                echo "::warning::Prosseguindo com SKU atual: $CURRENT_DISK_SKU"
+                echo "::warning::Performance pode ser inferior ao esperado."
+              fi
+            fi
+
+            # 3. Set caching ReadOnly no data disk (idempotente).
+            #    Azure CLI moderno: az vm update aceita `--set` no path do storageProfile.
+            if [ "$NEEDS_CACHING_FIX" = "true" ]; then
+              echo "Setting caching to ReadOnly on $DATA_DISK..."
+              # Encontra o LUN do disco para usar no --set
+              LUN=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query "storageProfile.dataDisks[?name=='$DATA_DISK'].lun | [0]" -o tsv)
+              az vm update -g "$AZURE_RG" -n "$AZURE_VM" \
+                --set "storageProfile.dataDisks[$LUN].caching=ReadOnly" \
+                || echo "::warning::Falha ao setar caching ReadOnly — prosseguindo"
+            fi
+
+            echo "Starting VM..."
             az vm start -g "$AZURE_RG" -n "$AZURE_VM"
           fi
 
@@ -555,41 +617,70 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resize VM down to web-serving size
+      - name: Resize VM down and convert disk SKU back
         run: |
           set -e
-          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
-          TARGET="$VM_SIZE_WEB"
+          TARGET_SIZE="$VM_SIZE_WEB"
+          TARGET_DISK_SKU="$DISK_SKU_LIGHT"
 
-          echo "Current size: $CURRENT"
-          echo "Target size:  $TARGET"
+          CURRENT_SIZE=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query hardwareProfile.vmSize -o tsv)
+          CURRENT_DISK_SKU=$(az disk show -g "$AZURE_RG" -n "$DATA_DISK" --query sku.name -o tsv)
 
-          if [ "$CURRENT" = "$TARGET" ]; then
-            echo "VM ja esta no tamanho web. Nada a fazer."
+          echo "Current VM size:   $CURRENT_SIZE"
+          echo "Target VM size:    $TARGET_SIZE"
+          echo "Current disk SKU:  $CURRENT_DISK_SKU"
+          echo "Target disk SKU:   $TARGET_DISK_SKU"
+
+          NEEDS_RESIZE="false"
+          NEEDS_DISK_CHANGE="false"
+          [ "$CURRENT_SIZE" != "$TARGET_SIZE" ] && NEEDS_RESIZE="true"
+          [ "$CURRENT_DISK_SKU" != "$TARGET_DISK_SKU" ] && NEEDS_DISK_CHANGE="true"
+
+          if [ "$NEEDS_RESIZE" = "false" ] && [ "$NEEDS_DISK_CHANGE" = "false" ]; then
+            echo "VM ja esta no tamanho web e disco no SKU correto. Nada a fazer."
             exit 0
           fi
 
-          # Valida disponibilidade antes de deallocate.
-          AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
-          if ! echo "$AVAILABLE" | grep -qx "$TARGET"; then
-            echo "::error::Tamanho $TARGET indisponivel — abortando downsize, VM continua em $CURRENT"
-            exit 1
+          # Valida disponibilidade antes de deallocate
+          if [ "$NEEDS_RESIZE" = "true" ]; then
+            AVAILABLE=$(az vm list-vm-resize-options -g "$AZURE_RG" -n "$AZURE_VM" --query "[].name" -o tsv)
+            if ! echo "$AVAILABLE" | grep -qx "$TARGET_SIZE"; then
+              echo "::error::Tamanho $TARGET_SIZE indisponivel — abortando, VM continua em $CURRENT_SIZE"
+              exit 1
+            fi
           fi
 
-          echo "Downsize: $CURRENT → $TARGET"
+          echo "Deallocating VM..."
           az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
 
-          if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET"; then
-            echo "::warning::Resize falhou, restaurando para $CURRENT..."
-            az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT" || true
-            az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
-            echo "::error::Downsize para $TARGET falhou — VM restaurada para $CURRENT"
-            exit 1
+          # 1. Resize VM down (com rollback)
+          if [ "$NEEDS_RESIZE" = "true" ]; then
+            echo "Downsize: $CURRENT_SIZE → $TARGET_SIZE"
+            if ! az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$TARGET_SIZE"; then
+              echo "::warning::Resize falhou, restaurando para $CURRENT_SIZE..."
+              az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$CURRENT_SIZE" || true
+              az vm start -g "$AZURE_RG" -n "$AZURE_VM" || true
+              echo "::error::Downsize para $TARGET_SIZE falhou — VM restaurada"
+              exit 1
+            fi
           fi
 
+          # 2. Downgrade disk SKU. Se atingir limite Azure (2/24h), falha eh
+          # benigna: disco fica em Premium ($35/mes extra) ate o proximo
+          # postflight. Nao bloqueamos o downsize da VM por causa disso.
+          if [ "$NEEDS_DISK_CHANGE" = "true" ]; then
+            echo "Disk SKU: $CURRENT_DISK_SKU → $TARGET_DISK_SKU"
+            if ! az disk update -g "$AZURE_RG" -n "$DATA_DISK" --sku "$TARGET_DISK_SKU"; then
+              echo "::warning::Conversao de disco falhou (provavelmente atingiu limite 2/24h)."
+              echo "::warning::Disco permanece em $CURRENT_DISK_SKU."
+              echo "::warning::Sera convertido no proximo deploy ou manualmente."
+            fi
+          fi
+
+          echo "Starting VM..."
           az vm start -g "$AZURE_RG" -n "$AZURE_VM"
 
-          # Aguarda SSH responder antes de declarar sucesso.
+          # Aguarda SSH responder antes de declarar sucesso
           echo "Aguardando VM ficar reachable em SSH apos downsize..."
           for i in $(seq 1 30); do
             if timeout 5 bash -c "</dev/tcp/${{ secrets.VM_HOST }}/22" 2>/dev/null; then
