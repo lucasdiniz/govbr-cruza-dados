@@ -666,13 +666,44 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail  # SEM -e: queremos capturar exit do systemctl
-          echo "=== Warming web_cache table (esperado ~12-18h em B4as_v2 16GB) ==="
+          echo "=== Warming web_cache table (esperado ~3-5h pos-fix bpchar) ==="
           echo "Inicio: $(date -Iseconds)"
+
+          # Captura timestamp ANTES de qualquer coisa: usado pelo journalctl
+          # para nao perder logs emitidos entre o start do servico e o
+          # journalctl entrar em modo follow. Sem isso, ha race onde o
+          # oneshot emite as primeiras linhas (ex: "=== Ciclo 1 iniciado ===")
+          # antes do tail estar pronto e elas nunca aparecem no UI.
+          START_TS=$(date '+%Y-%m-%d %H:%M:%S')
+
+          # Stream do journalctl em background para acompanhar progresso ao
+          # vivo no UI do GitHub Actions. Sem isso, o step parece travado por
+          # horas ate o systemctl --wait retornar.
+          # -f follow, --since "$START_TS" pega tudo desde antes do start
+          # (NAO usa -n 0 porque queremos replay desde o START_TS).
+          # O sed prefixa as linhas pra distinguir do output direto do step.
+          sudo journalctl -u cruza-warm-cache -f --since "$START_TS" --no-pager 2>&1 \
+            | sed -u 's/^/[journal] /' &
+          TAIL_PID=$!
+          # Garante que o tail morre quando o step termina, mesmo em erro.
+          trap 'kill $TAIL_PID 2>/dev/null || true; wait $TAIL_PID 2>/dev/null || true' EXIT
+
           # systemctl start --wait com Type=oneshot bloqueia ate o ExecStart
           # terminar e propaga exit code do processo. Usa EnvironmentFile,
           # User=govbr, journal logging — tudo da unidade.
-          sudo systemctl start --wait cruza-warm-cache
-          STATUS=$?
+          # GitHub Actions default shell tem -e; capturamos via if/else
+          # para que STATUS=$? e o post-processing rodem mesmo em falha.
+          if sudo systemctl start --wait cruza-warm-cache; then
+            STATUS=0
+          else
+            STATUS=$?
+          fi
+
+          # Aguarda tail capturar ultimas linhas do journal antes de matar.
+          sleep 3
+          kill $TAIL_PID 2>/dev/null || true
+          wait $TAIL_PID 2>/dev/null || true
+
           echo "Fim:    $(date -Iseconds)"
           sudo systemctl status cruza-warm-cache --no-pager --lines=20 || true
           if [ "$STATUS" -ne 0 ]; then
