@@ -80,51 +80,11 @@ O deploy e feito por **GitHub Actions** no workflow `Deploy to Azure VM`:
 - `etl_phase=sql`: recria indices/normalizacao/views e warm cache
 - `etl_phase=N`: retoma a partir da fase N
 
+## Licenca
+
+MIT
+
 ## Detalhes do projeto
-
-<details>
-<summary><strong>Queries de investigacao e relatorios</strong></summary>
-
-As queries estao organizadas por dominio de analise:
-
-| Arquivo | Faixa | Tema |
-|---|---|---|
-| `fraude_licitacao.sql` | Q01-Q05 | Licitacao, bid rigging, fornecedor dominante, empresa recem-criada |
-| `fraude_emendas.sql` | Q06-Q08, Q20 | Emendas parlamentares, concentracao de favorecidos, divida ativa |
-| `fraude_cpgf.sql` | Q09-Q11, Q19 | Cartao corporativo, concentracao de gastos, conflito com socios, fracionamento |
-| `fraude_cruzamento.sql` | Q12-Q15 | Cruzamento multi-fonte, beneficio triplo, empresa inativa recebendo pagamentos |
-| `fraude_rede_societaria.sql` | Q16-Q18 | Redes societarias, holdings, socios laranjas |
-| `fraude_servidores.sql` | Q21-Q24 | Servidores federais, remuneracao, emendas, conflito de interesses |
-| `fraude_sancoes.sql` | Q25-Q28 | CEIS, CNEP, CEAF e acordos de leniencia |
-| `fraude_viagens.sql` | Q29-Q32 | Viagens a servico, gastos fora do padrao, servidor expulso |
-| `fraude_tse.sql` | Q33-Q37 | Candidatos, doadores, patrimonio, sancoes eleitorais |
-| `fraude_bolsa_familia.sql` | Q38-Q42 | Bolsa Familia, socios, candidatos, concentracao municipal |
-| `fraude_superfaturamento.sql` | Q43-Q58, Q99 | Sobrepreco, aditivos, fracionamento, empresa fenix, ciclo politico-eleitoral |
-| `fraude_tce_pb.sql` | Q59-Q68, Q70-Q72, Q74, Q77 | TCE-PB municipal: despesas, servidores, licitacoes e Bolsa Familia |
-| `fraude_dados_pb.sql` | Q78-Q91 | dados PB estadual: PF/PJ, saude, convenios, dominancia e splitting |
-| `fraude_dados_pb_novos.sql` | Q101-Q111 | dados PB ampliados: NF duplicada, ciclo anulacao, diarias sobrepostas, suplementacoes |
-| `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
-| `fraude_familia_hugo_motta.sql` | Q201-Q209 | Rede empresarial da familia Hugo Motta na Paraiba |
-| `fraude_cruzamentos_avancados.sql` | Q301-Q310 | Duplo vinculo, porta giratoria, BNDES×TSE, saude dominante |
-
-Relatorios ja produzidos cobrem temas como:
-
-- Pejotizacao medica e conflito entre servidor e fornecedor
-- Empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
-- Sobrepreco por item no PNCP
-- Fracionamento de despesa municipal e estadual
-- Empresas relacionadas competindo entre si em licitacoes (PB e nacional)
-- Duplo pagamento de notas fiscais e ciclos de anulacao/re-empenho
-- Suplementacoes orcamentarias concentradas (empenho-semente)
-- Convenios com entidades devedoras da Uniao
-- Rede empresarial familiar (caso Hugo Motta: 23 empresas, R$52.8M em contratos publicos)
-- Duplo vinculo publico: servidores federais e municipais simultaneos (815 casos PB)
-- Porta giratoria: servidores municipais socios de fornecedores (4.616 casos)
-- Fornecedores de saude dominantes: monopolio em dezenas de municipios
-- BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
-- Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
-
-</details>
 
 <details>
 <summary><strong>Frontend web (TransparenciaPB)</strong></summary>
@@ -160,6 +120,53 @@ python -m web.warm_cache --daemon --loop
 ```
 
 Todos os municipios da PB recebem perfil completo com insight cards, servidores de risco e secoes de investigacao.
+
+</details>
+
+<details>
+<summary><strong>Fontes de dados e entity resolution</strong></summary>
+
+### Fontes de dados
+
+Todas baixadas automaticamente via `python -m etl.00_download`:
+
+| Fonte | URL | Tamanho aprox. |
+|-------|-----|----------------|
+| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | ~58GB |
+| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~2GB (snapshot mais recente) |
+| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | ~20GB |
+| PNCP (itens) | [pncp.gov.br](https://pncp.gov.br/) | ~19GB |
+| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | ~12GB |
+| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | ~11GB |
+| PNCP (contratos) | [pncp.gov.br](https://pncp.gov.br/) | ~6GB |
+| Viagens a Servico | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~6GB |
+| PNCP (contratacoes) | [pncp.gov.br](https://pncp.gov.br/) | ~5GB |
+| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | ~4GB |
+| Emendas Parlamentares | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1GB |
+| SIAPE | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1.3GB |
+| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | ~1.1GB |
+| CPGF | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~210MB |
+| Renuncias Fiscais | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~510MB |
+| Sancoes | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~240MB |
+| ComprasNet | Incluido no repo (`data/static/`) | N/A |
+
+### Entity Resolution
+
+CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte:
+
+| Fonte | Formato | Exemplo |
+|-------|---------|---------|
+| Bolsa Familia / SIAPE / CPGF | `***.456.789-**` | 6 digitos centrais visiveis |
+| Socio (RFB) | `***456789**` | 6 digitos centrais, sem pontuacao |
+| PGFN | `XXX456.789XX` | 6 digitos centrais, formato proprio |
+| CEIS/CNEP | `12345678901` | CPF completo (raro) |
+| TCE-PB servidores | `***.456.789-**` | 6 digitos centrais |
+| dados.pb.gov.br pagamento | `00045678901` | CPF **completo** (11 digitos) |
+| dados.pb.gov.br empenho PF | `***456***` | CPF mascarado (3 digitos centrais) |
+
+O pipeline normaliza automaticamente na **fase 17** criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo `JOIN`s por igualdade direta entre fontes.
+
+Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio x servidor x Bolsa Familia) reduz drasticamente falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), o cruzamento usa CPF completo de 11 digitos.
 
 </details>
 
@@ -353,52 +360,45 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 </details>
 
 <details>
-<summary><strong>Fontes de dados e entity resolution</strong></summary>
+<summary><strong>Queries de investigacao e relatorios</strong></summary>
 
-### Fontes de dados
+As queries estao organizadas por dominio de analise:
 
-Todas baixadas automaticamente via `python -m etl.00_download`:
+| Arquivo | Faixa | Tema |
+|---|---|---|
+| `fraude_licitacao.sql` | Q01-Q05 | Licitacao, bid rigging, fornecedor dominante, empresa recem-criada |
+| `fraude_emendas.sql` | Q06-Q08, Q20 | Emendas parlamentares, concentracao de favorecidos, divida ativa |
+| `fraude_cpgf.sql` | Q09-Q11, Q19 | Cartao corporativo, concentracao de gastos, conflito com socios, fracionamento |
+| `fraude_cruzamento.sql` | Q12-Q15 | Cruzamento multi-fonte, beneficio triplo, empresa inativa recebendo pagamentos |
+| `fraude_rede_societaria.sql` | Q16-Q18 | Redes societarias, holdings, socios laranjas |
+| `fraude_servidores.sql` | Q21-Q24 | Servidores federais, remuneracao, emendas, conflito de interesses |
+| `fraude_sancoes.sql` | Q25-Q28 | CEIS, CNEP, CEAF e acordos de leniencia |
+| `fraude_viagens.sql` | Q29-Q32 | Viagens a servico, gastos fora do padrao, servidor expulso |
+| `fraude_tse.sql` | Q33-Q37 | Candidatos, doadores, patrimonio, sancoes eleitorais |
+| `fraude_bolsa_familia.sql` | Q38-Q42 | Bolsa Familia, socios, candidatos, concentracao municipal |
+| `fraude_superfaturamento.sql` | Q43-Q58, Q99 | Sobrepreco, aditivos, fracionamento, empresa fenix, ciclo politico-eleitoral |
+| `fraude_tce_pb.sql` | Q59-Q68, Q70-Q72, Q74, Q77 | TCE-PB municipal: despesas, servidores, licitacoes e Bolsa Familia |
+| `fraude_dados_pb.sql` | Q78-Q91 | dados PB estadual: PF/PJ, saude, convenios, dominancia e splitting |
+| `fraude_dados_pb_novos.sql` | Q101-Q111 | dados PB ampliados: NF duplicada, ciclo anulacao, diarias sobrepostas, suplementacoes |
+| `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
+| `fraude_familia_hugo_motta.sql` | Q201-Q209 | Rede empresarial da familia Hugo Motta na Paraiba |
+| `fraude_cruzamentos_avancados.sql` | Q301-Q310 | Duplo vinculo, porta giratoria, BNDES×TSE, saude dominante |
 
-| Fonte | URL | Tamanho aprox. |
-|-------|-----|----------------|
-| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | ~58GB |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~2GB (snapshot mais recente) |
-| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | ~20GB |
-| PNCP (itens) | [pncp.gov.br](https://pncp.gov.br/) | ~19GB |
-| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | ~12GB |
-| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | ~11GB |
-| PNCP (contratos) | [pncp.gov.br](https://pncp.gov.br/) | ~6GB |
-| Viagens a Servico | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~6GB |
-| PNCP (contratacoes) | [pncp.gov.br](https://pncp.gov.br/) | ~5GB |
-| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | ~4GB |
-| Emendas Parlamentares | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1GB |
-| SIAPE | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1.3GB |
-| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | ~1.1GB |
-| CPGF | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~210MB |
-| Renuncias Fiscais | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~510MB |
-| Sancoes | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~240MB |
-| ComprasNet | Incluido no repo (`data/static/`) | N/A |
+Relatorios ja produzidos cobrem temas como:
 
-### Entity Resolution
-
-CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte:
-
-| Fonte | Formato | Exemplo |
-|-------|---------|---------|
-| Bolsa Familia / SIAPE / CPGF | `***.456.789-**` | 6 digitos centrais visiveis |
-| Socio (RFB) | `***456789**` | 6 digitos centrais, sem pontuacao |
-| PGFN | `XXX456.789XX` | 6 digitos centrais, formato proprio |
-| CEIS/CNEP | `12345678901` | CPF completo (raro) |
-| TCE-PB servidores | `***.456.789-**` | 6 digitos centrais |
-| dados.pb.gov.br pagamento | `00045678901` | CPF **completo** (11 digitos) |
-| dados.pb.gov.br empenho PF | `***456***` | CPF mascarado (3 digitos centrais) |
-
-O pipeline normaliza automaticamente na **fase 17** criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo `JOIN`s por igualdade direta entre fontes.
-
-Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio x servidor x Bolsa Familia) reduz drasticamente falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), o cruzamento usa CPF completo de 11 digitos.
+- Pejotizacao medica e conflito entre servidor e fornecedor
+- Empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
+- Sobrepreco por item no PNCP
+- Fracionamento de despesa municipal e estadual
+- Empresas relacionadas competindo entre si em licitacoes (PB e nacional)
+- Duplo pagamento de notas fiscais e ciclos de anulacao/re-empenho
+- Suplementacoes orcamentarias concentradas (empenho-semente)
+- Convenios com entidades devedoras da Uniao
+- Rede empresarial familiar (caso Hugo Motta: 23 empresas, R$52.8M em contratos publicos)
+- Duplo vinculo publico: servidores federais e municipais simultaneos (815 casos PB)
+- Porta giratoria: servidores municipais socios de fornecedores (4.616 casos)
+- Fornecedores de saude dominantes: monopolio em dezenas de municipios
+- BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
+- Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
 
 </details>
-
-## Licenca
-
-MIT
