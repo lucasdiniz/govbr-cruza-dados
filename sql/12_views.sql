@@ -11,6 +11,7 @@ DROP MATERIALIZED VIEW IF EXISTS mv_rede_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_empresa_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_risco CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_base CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_q67_dated_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_mapa CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_kpi_score CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_risco CASCADE;
@@ -1319,6 +1320,70 @@ FROM mv_pessoa_pb ppb
 WHERE ppb.flag_auto_contratacao_potencial OR ppb.flag_duplo_vinculo_mun_est
    OR ppb.flag_duplo_vinculo_fed_est OR ppb.flag_bf_com_renda_estado
    OR ppb.flag_sancionado;
+
+
+-- =============================================================================
+-- mv_q67_dated_pb: Pre-aggregate da Q67 (Fornecedor com divida PGFN recebendo)
+-- por (municipio, ano, cnpj_basico) — uma das queries mais lentas do warm cache.
+--
+-- Q67 dated original escaneava tce_pb_despesa (44GB) + pgfn_divida (32GB)
+-- a cada chamada → ~30-90s/muni. Pre-agregando, a query do warm vira um
+-- INDEX SCAN em ~10-50ms.
+--
+-- Granularidade: (municipio, ano, cnpj_basico). Cobre 2022+ (filtro fixo).
+--
+-- IMPORTANTE: o filtro `HAVING SUM(valor_pago) > 50000` da query original
+-- aplicava-se ao TOTAL no range solicitado. Aqui agregamos por (ano, cnpj_basico)
+-- SEM filtro de threshold — o threshold eh aplicado pela query consumidora
+-- apos somar varios anos, garantindo correctness em ranges multi-ano (ex: 12M).
+--
+-- Tambem expomos cnpj_basico para que a query consumidora agrupe por ele
+-- (evita duplicar divida_pgfn quando uma empresa tem multiplas filiais com
+-- cpf_cnpj diferentes em anos diferentes).
+-- =============================================================================
+CREATE MATERIALIZED VIEW mv_q67_dated_pb AS
+WITH desp_per_muni_ano AS (
+    SELECT
+        municipio,
+        ano,
+        cnpj_basico,
+        MAX(cpf_cnpj) AS cpf_cnpj,
+        MAX(nome_credor) AS nome_credor,
+        SUM(valor_pago) AS total_pago,
+        COUNT(*) AS qtd_empenhos
+    FROM tce_pb_despesa
+    WHERE cnpj_basico IS NOT NULL
+      AND valor_pago > 0
+      AND ano >= 2022
+      AND municipio IS NOT NULL
+    GROUP BY municipio, ano, cnpj_basico
+    -- Sem HAVING aqui: deixar a query consumidora aplicar o threshold
+    -- depois de somar anos do range solicitado.
+),
+pgfn_agg AS (
+    SELECT
+        LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
+        MAX(situacao_inscricao) AS situacao_inscricao,
+        SUM(valor_consolidado) AS divida_pgfn
+    FROM pgfn_divida
+    WHERE LENGTH(cpf_cnpj_norm) = 14
+    GROUP BY LEFT(cpf_cnpj_norm, 8)
+)
+SELECT
+    d.municipio,
+    d.ano,
+    d.cnpj_basico,
+    d.cpf_cnpj,
+    d.nome_credor,
+    pg.situacao_inscricao,
+    pg.divida_pgfn,
+    d.total_pago,
+    d.qtd_empenhos
+FROM desp_per_muni_ano d
+JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico;
+
+CREATE INDEX idx_mv_q67_dated_mun_ano
+    ON mv_q67_dated_pb(municipio, ano, divida_pgfn DESC);
 
 
 -- =============================================================================

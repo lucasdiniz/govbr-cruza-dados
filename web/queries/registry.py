@@ -250,32 +250,28 @@ JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico
 ORDER BY pg.divida_pgfn DESC
 LIMIT 500
 """, timeout=90, sql_dated="""
-WITH desp AS (
-    SELECT cnpj_basico, MAX(cpf_cnpj) AS cpf_cnpj, MAX(nome_credor) AS nome_credor,
-           SUM(valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
-    FROM tce_pb_despesa
-    WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
-      AND data_empenho >= %(data_inicio)s AND data_empenho <= %(data_fim)s
-      AND municipio = %(municipio)s
-    GROUP BY cnpj_basico
-    HAVING SUM(valor_pago) > 50000
-),
-pgfn_agg AS (
-    SELECT LEFT(cpf_cnpj_norm, 8) AS cnpj_basico,
-           MAX(situacao_inscricao) AS situacao_inscricao,
-           SUM(valor_consolidado) AS divida_pgfn
-    FROM pgfn_divida
-    WHERE LENGTH(cpf_cnpj_norm) = 14
-      AND LEFT(cpf_cnpj_norm, 8) IN (SELECT cnpj_basico FROM desp)
-    GROUP BY LEFT(cpf_cnpj_norm, 8)
-)
-SELECT d.cpf_cnpj, d.nome_credor, %(municipio)s AS municipio,
-       pg.situacao_inscricao,
-       pg.divida_pgfn,
-       d.total_pago, d.qtd_empenhos
-FROM desp d
-JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico
-ORDER BY pg.divida_pgfn DESC
+-- Variante dated (filtro por ano) usa mv_q67_dated_pb pre-agregada.
+-- ~100x mais rapida que a versao live (escanear tce_pb_despesa + pgfn_divida).
+-- Limitacoes da MV:
+--  - Granularidade ano (nao mes/dia). Para ano_inicio=ano_fim filtra exatamente.
+--  - Para ano_inicio < ano_fim, agrega multiplos anos.
+--  - Cobre 2022+ apenas (alinhado com uso real do frontend).
+-- GROUP BY cnpj_basico (nao cpf_cnpj) para evitar duplicar divida_pgfn quando
+-- uma empresa tem multiplas filiais com cpf_cnpj diferentes em anos diferentes.
+-- HAVING aplicado apos SUM dos anos no range solicitado (correctness em multi-ano).
+SELECT MAX(cpf_cnpj) AS cpf_cnpj,
+       MAX(nome_credor) AS nome_credor,
+       %(municipio)s AS municipio,
+       MAX(situacao_inscricao) AS situacao_inscricao,
+       MAX(divida_pgfn) AS divida_pgfn,
+       SUM(total_pago) AS total_pago,
+       SUM(qtd_empenhos) AS qtd_empenhos
+FROM mv_q67_dated_pb
+WHERE municipio = %(municipio)s
+  AND ano BETWEEN %(ano_inicio)s AND %(ano_fim)s
+GROUP BY cnpj_basico
+HAVING SUM(total_pago) > 50000
+ORDER BY MAX(divida_pgfn) DESC
 LIMIT 500
 """)
 
