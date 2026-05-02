@@ -4,7 +4,7 @@ Pipeline ETL para cruzamento de dados abertos do governo brasileiro, voltado par
 
 > **Vibe coded** com Github Copilot, [Claude Code](https://claude.ai/claude-code), e Codex (Opus 4.6, Opus 4.7, GPT-5.4 e GPT 5.5) - da modelagem do schema ate o ultimo `INSERT INTO`.
 
-## O que e o projeto
+## O que é?
 
 O projeto carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco **PostgreSQL 16** e cruza pessoas/empresas por CNPJ/CPF para revelar padroes suspeitos, conflitos de interesse e anomalias de contratacao.
 
