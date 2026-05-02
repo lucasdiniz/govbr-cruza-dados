@@ -49,7 +49,7 @@ on:
         type: boolean
         default: false
       drop_cache:
-        description: 'TRUNCATE web_cache antes do warm. AUTO=true para etl_phase!=web (dados mudaram). Para etl_phase=web, default false ativa resume mode (skip munis cacheados <24h).'
+        description: 'TRUNCATE web_cache antes do warm. Use APENAS em mudancas de schema. Por padrao (false), cache antigo eh preservado e UPSERT-ado (evita 12-18h sem cache).'
         required: false
         type: boolean
         default: false
@@ -575,41 +575,54 @@ jobs:
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
           echo "=== ANALYZE em tabelas hot ==="
-          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score; do
+          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score mv_q67_dated_pb; do
             echo "  ANALYZE $tbl..."
             PGPASSWORD="$PASS" psql -U govbr -d govbr -c "ANALYZE $tbl" 2>&1 | tail -1
           done
           echo "=== ANALYZE complete ==="
 
-      # ── Drop web_cache quando dados mudaram ──
-      # Apos ETL (etl_phase != web), as MVs/tabelas foram recriadas, entao o
-      # cache antigo pode estar inconsistente (ex: muni X com Q67 baseada na
-      # mv_q67_dated_pb antiga, antes da MV ser recriada). TRUNCATE eh idempotente.
-      # Para etl_phase=web (dados nao mudaram), o cache eh preservado e o resume
-      # mode no warm_cache.py pula munis ja cacheados.
-      # Override manual via inputs.drop_cache=true.
-      - name: Drop web_cache (data changed)
+      # ── Drop web_cache (opcional, padrao OFF) ──
+      # Por padrao NAO truncamos o cache mesmo apos ETL/SQL: o warm faz UPSERT
+      # (INSERT ... ON CONFLICT DO UPDATE), entao cada muni X / query Y eh
+      # substituido assim que o warm chegar nele. Cache antigo serve durante
+      # as 12-18h do warm, evitando que o site fique sem cache hit.
+      #
+      # Trade-off: durante a janela do warm, algumas munis exibem dados
+      # baseados em logica de query/MV anterior. Esse risco eh ACEITAVEL para
+      # mudancas tipicas (registry.py com nova versao de query). Mas para
+      # mudancas de SCHEMA (ex: coluna removida em web_cache), use
+      # drop_cache=true para forcar TRUNCATE.
+      #
+      # Idempotente em VM nova (DO block guarda a existencia da tabela).
+      - name: Drop web_cache (only if drop_cache=true)
         if: |
+          inputs.drop_cache == true &&
           (inputs.warm_cache == true ||
            inputs.etl_phase == 'all' ||
-           inputs.etl_phase == 'sql') &&
-          (inputs.drop_cache == true || inputs.etl_phase != 'web')
+           inputs.etl_phase == 'sql')
         run: |
           set -euo pipefail
           cd ${{ env.PROJECT_DIR }}
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
-          echo "=== TRUNCATE web_cache (dados mudaram, cache obsoleto) ==="
-          BEFORE=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -t -A -c 'SELECT count(*) FROM web_cache' || echo 0)
-          PGPASSWORD="$PASS" psql -U govbr -d govbr -c 'TRUNCATE web_cache'
-          echo "Removidas $BEFORE entries do web_cache"
+          echo "=== TRUNCATE web_cache (drop_cache=true) ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -c "
+            DO \$\$
+            BEGIN
+              IF to_regclass('public.web_cache') IS NOT NULL THEN
+                EXECUTE 'TRUNCATE web_cache';
+                RAISE NOTICE 'web_cache truncated';
+              ELSE
+                RAISE NOTICE 'web_cache nao existe ainda — nada a truncar';
+              END IF;
+            END \$\$;
+          "
 
       # ── Configure warm cache resume mode ──
-      # Em etl_phase=web (dados nao mudaram), ativa resume mode para pular
-      # munis ja cacheados nas ultimas 24h. Util para retomar warms
-      # interrompidos sem refazer trabalho.
-      # Em outros etl_phases, drop_cache acima ja zerou o cache, entao
-      # o skip nao tem efeito (mas seta para 0 para deixar explicito).
+      # Se drop_cache=false (default): cache eh preservado, ativa resume mode
+      # (skip 24h) pra retomar warms interrompidos rapidamente. Trabalho ja
+      # feito eh preservado via UPSERT.
+      # Se drop_cache=true: cache foi TRUNCATE-ado, sem o que skip-ar.
       - name: Configure warm cache resume mode
         if: |
           inputs.warm_cache == true ||
@@ -617,12 +630,12 @@ jobs:
           inputs.etl_phase == 'sql'
         run: |
           set -euo pipefail
-          if [ "${{ inputs.etl_phase }}" = "web" ] && [ "${{ inputs.drop_cache }}" != "true" ]; then
+          if [ "${{ inputs.drop_cache }}" = "true" ]; then
+            SKIP_HRS=0
+            echo "Full rebuild mode (drop_cache=true)"
+          else
             SKIP_HRS=24
             echo "Resume mode: pula munis cacheados nas ultimas 24h"
-          else
-            SKIP_HRS=0
-            echo "Full rebuild mode (dados mudaram ou drop_cache=true)"
           fi
           sudo mkdir -p /etc/systemd/system/cruza-warm-cache.service.d
           cat <<EOF | sudo tee /etc/systemd/system/cruza-warm-cache.service.d/runtime-env.conf > /dev/null
@@ -652,7 +665,7 @@ jobs:
           inputs.etl_phase == 'sql'
         continue-on-error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail  # SEM -e: queremos capturar exit do systemctl
           echo "=== Warming web_cache table (esperado ~12-18h em B4as_v2 16GB) ==="
           echo "Inicio: $(date -Iseconds)"
           # systemctl start --wait com Type=oneshot bloqueia ate o ExecStart
@@ -664,8 +677,6 @@ jobs:
           sudo systemctl status cruza-warm-cache --no-pager --lines=20 || true
           if [ "$STATUS" -ne 0 ]; then
             echo "::warning::cruza-warm-cache encerrou com falha (>5% queries falharam)"
-            # Re-emite o exit code para o GitHub Actions marcar o step como failed,
-            # mas continue-on-error garante que postflight ainda roda.
             exit "$STATUS"
           fi
           echo "=== Cache warming complete ==="

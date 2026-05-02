@@ -256,7 +256,12 @@ LIMIT 500
 --  - Granularidade ano (nao mes/dia). Para ano_inicio=ano_fim filtra exatamente.
 --  - Para ano_inicio < ano_fim, agrega multiplos anos.
 --  - Cobre 2022+ apenas (alinhado com uso real do frontend).
-SELECT cpf_cnpj, MAX(nome_credor) AS nome_credor, %(municipio)s AS municipio,
+-- GROUP BY cnpj_basico (nao cpf_cnpj) para evitar duplicar divida_pgfn quando
+-- uma empresa tem multiplas filiais com cpf_cnpj diferentes em anos diferentes.
+-- HAVING aplicado apos SUM dos anos no range solicitado (correctness em multi-ano).
+SELECT MAX(cpf_cnpj) AS cpf_cnpj,
+       MAX(nome_credor) AS nome_credor,
+       %(municipio)s AS municipio,
        MAX(situacao_inscricao) AS situacao_inscricao,
        MAX(divida_pgfn) AS divida_pgfn,
        SUM(total_pago) AS total_pago,
@@ -264,7 +269,8 @@ SELECT cpf_cnpj, MAX(nome_credor) AS nome_credor, %(municipio)s AS municipio,
 FROM mv_q67_dated_pb
 WHERE municipio = %(municipio)s
   AND ano BETWEEN %(ano_inicio)s AND %(ano_fim)s
-GROUP BY cpf_cnpj
+GROUP BY cnpj_basico
+HAVING SUM(total_pago) > 50000
 ORDER BY MAX(divida_pgfn) DESC
 LIMIT 500
 """)

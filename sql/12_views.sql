@@ -1324,15 +1324,22 @@ WHERE ppb.flag_auto_contratacao_potencial OR ppb.flag_duplo_vinculo_mun_est
 
 -- =============================================================================
 -- mv_q67_dated_pb: Pre-aggregate da Q67 (Fornecedor com divida PGFN recebendo)
--- por (municipio, ano) — uma das queries mais lentas do warm cache.
+-- por (municipio, ano, cnpj_basico) — uma das queries mais lentas do warm cache.
 --
 -- Q67 dated original escaneava tce_pb_despesa (44GB) + pgfn_divida (32GB)
 -- a cada chamada → ~30-90s/muni. Pre-agregando, a query do warm vira um
 -- INDEX SCAN em ~10-50ms.
 --
--- Granularidade: (municipio, ano). Preserva todas as colunas que a query
--- original retorna. Cobre 2022+ (filtro fixo de ano >= 2022, alinhado com
--- o uso real da pagina /search/cidade).
+-- Granularidade: (municipio, ano, cnpj_basico). Cobre 2022+ (filtro fixo).
+--
+-- IMPORTANTE: o filtro `HAVING SUM(valor_pago) > 50000` da query original
+-- aplicava-se ao TOTAL no range solicitado. Aqui agregamos por (ano, cnpj_basico)
+-- SEM filtro de threshold — o threshold eh aplicado pela query consumidora
+-- apos somar varios anos, garantindo correctness em ranges multi-ano (ex: 12M).
+--
+-- Tambem expomos cnpj_basico para que a query consumidora agrupe por ele
+-- (evita duplicar divida_pgfn quando uma empresa tem multiplas filiais com
+-- cpf_cnpj diferentes em anos diferentes).
 -- =============================================================================
 CREATE MATERIALIZED VIEW mv_q67_dated_pb AS
 WITH desp_per_muni_ano AS (
@@ -1350,7 +1357,8 @@ WITH desp_per_muni_ano AS (
       AND ano >= 2022
       AND municipio IS NOT NULL
     GROUP BY municipio, ano, cnpj_basico
-    HAVING SUM(valor_pago) > 50000
+    -- Sem HAVING aqui: deixar a query consumidora aplicar o threshold
+    -- depois de somar anos do range solicitado.
 ),
 pgfn_agg AS (
     SELECT
@@ -1364,6 +1372,7 @@ pgfn_agg AS (
 SELECT
     d.municipio,
     d.ano,
+    d.cnpj_basico,
     d.cpf_cnpj,
     d.nome_credor,
     pg.situacao_inscricao,

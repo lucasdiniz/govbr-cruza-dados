@@ -54,9 +54,13 @@ PAUSE_BETWEEN_CYCLES = 60  # seconds between full cycles in daemon mode
 PARALLEL_WORKERS = int(os.getenv("WARM_CACHE_WORKERS", "4"))
 
 # work_mem por sessao do warm. Evita disk-based sorts em queries com Sort/Hash
-# pesados. Padrao do PG (em B4 16GB) eh ~124MB; 256MB cobre Sort spillover
-# em queries do registry sem comprometer o uso geral do banco.
-WARM_WORK_MEM = "256MB"
+# pesados. Padrao do PG (em B4 16GB) eh ~124MB.
+# 192MB = compromisso entre acelerar Sort e nao saturar memoria com 4 workers
+# rodando simultaneamente (4 workers * 3 sort ops * 192MB = ~2.3GB peak).
+# Nota: psycopg2 nao suporta SET LOCAL fora de transacao explicita; SET
+# session-level afeta apenas as conexoes abertas pelo warm (nao o postgres
+# como um todo). cruza-web abre suas proprias conexoes e nao eh afetado.
+WARM_WORK_MEM = "192MB"
 
 # Resume mode: pula queries cacheadas ha menos de N horas.
 # Usado quando os DADOS nao mudaram (ex: etl_phase=web warm_cache=true).
@@ -385,7 +389,12 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     prefix = f"{phase_name}:" if phase_name else ""
     label = phase_name or "ALL-TIME"
     if verbose:
-        print(f"\n--- {label}: {len(municipios)} munis, "
+        # Em ANO/12M, mostrar o range efetivo nos logs ja que o prefix
+        # nao carrega mais o ano (precisa bater com ANO: lido pelo frontend).
+        range_info = ""
+        if extra_params:
+            range_info = f" (ano_inicio={extra_params.get('ano_inicio')}, ano_fim={extra_params.get('ano_fim')})"
+        print(f"\n--- {label}{range_info}: {len(municipios)} munis, "
               f"workers={PARALLEL_WORKERS} (loop invertido) ---", flush=True)
 
     cycle_ok = cycle_fail = 0
@@ -485,8 +494,10 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
     # Fase 1: ANO atual — prioritario porque o frontend usa "ano atual" como
     # filtro padrao, gerando mais cache hits.
+    # IMPORTANTE: usar prefix "ANO" (sem ano), porque eh o que o frontend espera
+    # ler em web/db.py e web/routes/cidade.py. O ano em si vai nos params.
     ano_ok, ano_fail = _warm_phase(
-        f"ANO {today.year}", municipios, all_queries, ano_params_base, verbose,
+        "ANO", municipios, all_queries, ano_params_base, verbose,
     )
 
     # Fase 2: ultimos 12 meses, usado pelo preset frequente do frontend.
