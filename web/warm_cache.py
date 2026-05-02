@@ -58,6 +58,13 @@ PARALLEL_WORKERS = int(os.getenv("WARM_CACHE_WORKERS", "4"))
 # em queries do registry sem comprometer o uso geral do banco.
 WARM_WORK_MEM = "256MB"
 
+# Resume mode: pula queries cacheadas ha menos de N horas.
+# Usado quando os DADOS nao mudaram (ex: etl_phase=web warm_cache=true).
+# 0 = sem skip (rebuild completo), tipico apos ETL/SQL que recriou MVs.
+# 24 = pula tudo cacheado nas ultimas 24h (resume de warm interrompido).
+# Configurado via env var pelo deploy.yml conforme etl_phase.
+SKIP_RECENT_HOURS = int(os.getenv("WARM_SKIP_RECENT_HOURS", "0"))
+
 # Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
 # porque rodamos em background e queremos popular o cache mesmo para queries
 # pesadas. Falhar aqui significa cache miss eterno no usuario final.
@@ -249,6 +256,34 @@ def _run_query_for_muni(query_id: str, sql: str, mun: str, extra_params: dict | 
         return False, msg
 
 
+def _filter_cached_munis(query_id: str, municipios: list[str]) -> tuple[list[str], int]:
+    """Em resume mode (SKIP_RECENT_HOURS > 0), remove munis cujo cache para
+    `query_id` foi atualizado nas ultimas SKIP_RECENT_HOURS horas.
+
+    Returns (munis_to_process, num_skipped).
+    """
+    if SKIP_RECENT_HOURS <= 0:
+        return municipios, 0
+
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT municipio FROM {CACHE_TABLE} "
+                f"WHERE query_id = %s AND updated_at > now() - interval %s",
+                (query_id, f"{SKIP_RECENT_HOURS} hours"),
+            )
+            cached = {r[0] for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+    if not cached:
+        return municipios, 0
+    remaining = [m for m in municipios if m not in cached]
+    return remaining, len(municipios) - len(remaining)
+
+
 def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
                               extra_params: dict | None, timeout: int, verbose: bool):
     """Executa uma unica query para TODOS os municipios em paralelo.
@@ -256,7 +291,17 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
     Inversao do loop original (que era muni->query). Aqui rodamos query->muni:
     apos a primeira muni, os indexes/tables relevantes ficam quentes no
     shared_buffers/host cache, beneficiando as munis seguintes.
+
+    Em resume mode (SKIP_RECENT_HOURS > 0), pula munis ja cacheados
+    recentemente para essa query.
     """
+    original_total = len(municipios)
+    municipios, skipped = _filter_cached_munis(query_id, municipios)
+    if not municipios:
+        if verbose:
+            print(f"  {query_id}: skipped {skipped}/{original_total} (resume mode)", flush=True)
+        return skipped, 0  # contam como ok porque ja estao cacheados
+
     total = len(municipios)
     ok = fail = 0
     timeouts = 0
@@ -278,21 +323,30 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
     if verbose:
         rate = total / elapsed if elapsed > 0 else 0
         suffix = f" ({timeouts} timeouts)" if timeouts else ""
+        skip_msg = f", {skipped} skipped" if skipped else ""
         print(
-            f"  {query_id}: {ok}/{total} ok, {fail} fail{suffix} "
+            f"  {query_id}: {ok}/{total} ok, {fail} fail{suffix}{skip_msg} "
             f"({elapsed:.0f}s, {rate:.1f}/s)",
             flush=True,
         )
-    return ok, fail
+    # Skipped contam como ok no agregado: ja estao cacheados.
+    return ok + skipped, fail
 
 
 def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose: bool):
     """Computa KPI_SUMMARY para todos os munis em paralelo. Depende de
     PERFIL/TOP_FORN/TOP_SERV ja cacheados para o periodo."""
+    qid = f"{periodo}:KPI_SUMMARY" if periodo else "KPI_SUMMARY"
+    original_total = len(municipios)
+    municipios, skipped = _filter_cached_munis(qid, municipios)
+    if not municipios:
+        if verbose:
+            print(f"  {qid}: skipped {skipped}/{original_total} (resume mode)", flush=True)
+        return skipped, 0
+
     total = len(municipios)
     ok = fail = 0
     t0 = time.time()
-    qid = f"{periodo}:KPI_SUMMARY" if periodo else "KPI_SUMMARY"
 
     def task(mun):
         conn = _thread_conn()
@@ -307,8 +361,9 @@ def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose:
 
     elapsed = time.time() - t0
     if verbose:
-        print(f"  {qid}: {ok}/{total} ok, {fail} fail ({elapsed:.0f}s)", flush=True)
-    return ok, fail
+        skip_msg = f", {skipped} skipped" if skipped else ""
+        print(f"  {qid}: {ok}/{total} ok, {fail} fail{skip_msg} ({elapsed:.0f}s)", flush=True)
+    return ok + skipped, fail
 
 
 def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,

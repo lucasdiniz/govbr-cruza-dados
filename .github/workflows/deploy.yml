@@ -48,6 +48,11 @@ on:
         required: false
         type: boolean
         default: false
+      drop_cache:
+        description: 'TRUNCATE web_cache antes do warm. AUTO=true para etl_phase!=web (dados mudaram). Para etl_phase=web, default false ativa resume mode (skip munis cacheados <24h).'
+        required: false
+        type: boolean
+        default: false
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -576,7 +581,58 @@ jobs:
           done
           echo "=== ANALYZE complete ==="
 
-      # ── Warm cache (oneshot, ~20h em B4) ──
+      # ── Drop web_cache quando dados mudaram ──
+      # Apos ETL (etl_phase != web), as MVs/tabelas foram recriadas, entao o
+      # cache antigo pode estar inconsistente (ex: muni X com Q67 baseada na
+      # mv_q67_dated_pb antiga, antes da MV ser recriada). TRUNCATE eh idempotente.
+      # Para etl_phase=web (dados nao mudaram), o cache eh preservado e o resume
+      # mode no warm_cache.py pula munis ja cacheados.
+      # Override manual via inputs.drop_cache=true.
+      - name: Drop web_cache (data changed)
+        if: |
+          (inputs.warm_cache == true ||
+           inputs.etl_phase == 'all' ||
+           inputs.etl_phase == 'sql') &&
+          (inputs.drop_cache == true || inputs.etl_phase != 'web')
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== TRUNCATE web_cache (dados mudaram, cache obsoleto) ==="
+          BEFORE=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -t -A -c 'SELECT count(*) FROM web_cache' || echo 0)
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -c 'TRUNCATE web_cache'
+          echo "Removidas $BEFORE entries do web_cache"
+
+      # ── Configure warm cache resume mode ──
+      # Em etl_phase=web (dados nao mudaram), ativa resume mode para pular
+      # munis ja cacheados nas ultimas 24h. Util para retomar warms
+      # interrompidos sem refazer trabalho.
+      # Em outros etl_phases, drop_cache acima ja zerou o cache, entao
+      # o skip nao tem efeito (mas seta para 0 para deixar explicito).
+      - name: Configure warm cache resume mode
+        if: |
+          inputs.warm_cache == true ||
+          inputs.etl_phase == 'all' ||
+          inputs.etl_phase == 'sql'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.etl_phase }}" = "web" ] && [ "${{ inputs.drop_cache }}" != "true" ]; then
+            SKIP_HRS=24
+            echo "Resume mode: pula munis cacheados nas ultimas 24h"
+          else
+            SKIP_HRS=0
+            echo "Full rebuild mode (dados mudaram ou drop_cache=true)"
+          fi
+          sudo mkdir -p /etc/systemd/system/cruza-warm-cache.service.d
+          cat <<EOF | sudo tee /etc/systemd/system/cruza-warm-cache.service.d/runtime-env.conf > /dev/null
+          [Service]
+          Environment=WARM_SKIP_RECENT_HOURS=$SKIP_HRS
+          EOF
+          sudo systemctl daemon-reload
+          echo "WARM_SKIP_RECENT_HOURS=$SKIP_HRS configurado"
+
+      # ── Warm cache (oneshot, ~12-18h em B4 com fixes do PR de speedup) ──
       # Auto: roda apos etl_phase=all ou sql (dados mudaram, queries mudaram).
       # Manual: roda em qualquer etl_phase quando warm_cache=true (incluindo
       # phase=N e phase=web).
@@ -597,7 +653,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          echo "=== Warming web_cache table (esperado ~20h em B4as_v2 16GB) ==="
+          echo "=== Warming web_cache table (esperado ~12-18h em B4as_v2 16GB) ==="
           echo "Inicio: $(date -Iseconds)"
           # systemctl start --wait com Type=oneshot bloqueia ate o ExecStart
           # terminar e propaga exit code do processo. Usa EnvironmentFile,
