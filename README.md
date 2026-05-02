@@ -1,37 +1,89 @@
 # govbr-cruza-dados
 
-Pipeline ETL para cruzamento de dados abertos do governo federal brasileiro, voltado para deteccao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes e programas sociais.
+Pipeline ETL para cruzamento de dados abertos do governo brasileiro, voltado para deteccao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes, programas sociais e contratos publicos.
 
 > **Vibe coded** com Github Copilot, [Claude Code](https://claude.ai/claude-code), e Codex (Opus 4.6, Opus 4.7, GPT-5.4 e GPT 5.5) - da modelagem do schema ate o ultimo `INSERT INTO`.
 
-## O que faz
+## O que e o projeto
 
-Carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco PostgreSQL e cruza tudo por CNPJ/CPF para encontrar padroes suspeitos, conflitos de interesse e anomalias de contratacao:
+O projeto carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco **PostgreSQL 16** e cruza pessoas/empresas por CNPJ/CPF para revelar padroes suspeitos, conflitos de interesse e anomalias de contratacao.
 
-- **Receita Federal** (66M empresas, 69.8M estabelecimentos, 27M socios, 47M simples)
-- **TCE-PB** - despesas, servidores, licitacoes e receitas municipais da Paraiba (39M registros, 237 municipios)
-- **dados.pb.gov.br** - pagamentos, empenhos, contratos, saude, convenios e 11 datasets auxiliares estaduais PB (~14.4M registros)
-- **PNCP** - licitacoes, contratos e itens publicos
-- **Emendas Parlamentares** - Tesouro + TransfereGov
-- **CPGF** - cartao corporativo do governo
-- **PGFN** - divida ativa da Uniao
-- **TSE** - candidatos, bens e prestacao de contas
-- **Bolsa Familia** - beneficiarios e pagamentos
-- **SIAPE** - servidores federais (cadastro + remuneracao)
-- **BNDES** - emprestimos do banco de desenvolvimento
-- **ComprasNet** - contratos federais historicos (pre-PNCP, base estatica incluida no repo)
-- **Renuncias Fiscais** - beneficios e isencoes tributarias
-- **Viagens a Servico** - passagens e diarias
-- **Sancoes** - CEIS, CNEP, CEAF e acordos de leniencia
-
-O repositorio hoje inclui:
+Ele inclui:
 
 - **23 fases de ETL** orquestradas por `python -m etl.run_all`
 - **125+ queries SQL** em 17 arquivos tematicos (`Q01-Q310`)
 - **40 relatorios de investigacao** derivados dos resultados
 - **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
+- **Frontend web TransparenciaPB** para consulta por municipio da Paraiba
 
-## Queries de investigacao
+Principais fontes integradas:
+
+- Receita Federal, PNCP, TCE-PB, dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Familia, CPGF, BNDES, ComprasNet, emendas parlamentares, sancoes, renuncias fiscais e viagens a servico.
+
+## Como rodar
+
+### 1. Preparar ambiente local
+
+```bash
+cp .env.example .env
+# Edite .env com credenciais do PostgreSQL e DATA_DIR
+
+pip install -e .
+# ou, para incluir o frontend web:
+pip install -e .[web]
+```
+
+### 2. Configurar PostgreSQL
+
+Suba um PostgreSQL 16 local ou use uma instancia existente.
+
+O projeto le a conexao pelas variaveis `POSTGRES_*` do `.env`, e os arquivos brutos pelo `DATA_DIR`.
+
+### 3. Rodar o ETL
+
+```bash
+# ETL completo, incluindo downloads e carga das 23 fases
+python -m etl.run_all
+
+# Retomar a partir de uma fase especifica (1-based)
+python -m etl.run_all 4
+
+# Apenas downloads
+python -m etl.00_download
+```
+
+### 4. Rodar as queries de investigacao
+
+```bash
+# Todas as queries Q## para resultados/
+python -m etl.run_queries
+
+# Query especifica
+python -m etl.run_queries --query Q03
+```
+
+### 5. Rodar o frontend web
+
+```bash
+python -m uvicorn web.main:app --port 8000
+
+# Opcional: aquecer cache do frontend
+python -m web.warm_cache --pb
+```
+
+### 6. Deploy em producao
+
+O deploy e feito por **GitHub Actions** no workflow `Deploy to Azure VM`:
+
+- `etl_phase=web`: sincroniza codigo e reinicia o frontend
+- `etl_phase=all`: roda ETL completo e warm cache
+- `etl_phase=sql`: recria indices/normalizacao/views e warm cache
+- `etl_phase=N`: retoma a partir da fase N
+
+## Detalhes do projeto
+
+<details>
+<summary><strong>Queries de investigacao e relatorios</strong></summary>
 
 As queries estao organizadas por dominio de analise:
 
@@ -72,7 +124,10 @@ Relatorios ja produzidos cobrem temas como:
 - BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
 - Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
 
-## Frontend web (TransparenciaPB)
+</details>
+
+<details>
+<summary><strong>Frontend web (TransparenciaPB)</strong></summary>
 
 Painel interativo para consulta por municipio da Paraiba com cruzamentos automaticos, branded como **TransparenciaPB**.
 
@@ -106,7 +161,12 @@ python -m web.warm_cache --daemon --loop
 
 Todos os municipios da PB recebem perfil completo com insight cards, servidores de risco e secoes de investigacao.
 
-## Stack
+</details>
+
+<details>
+<summary><strong>Stack e estrutura do repositorio</strong></summary>
+
+### Stack
 
 - **Python 3.10+** - ETL com streaming (sem pandas, cabe em 16GB RAM)
 - **PostgreSQL 16** - com `pg_trgm` para fuzzy match de nomes
@@ -114,7 +174,24 @@ Todos os municipios da PB recebem perfil completo com insight cards, servidores 
 - **ijson** - parsing incremental de JSONs do PNCP
 - **FastAPI + Jinja2** - frontend web com cache pre-processado
 
-## Infraestrutura
+### Estrutura
+
+```text
+sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
+etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
+queries/       125+ queries SQL em 17 arquivos tematicos
+resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
+relatorios/    40 investigacoes baseadas nos resultados (Markdown)
+web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
+deploy/        Systemd services e configuracao de deploy
+data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
+scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
+```
+
+</details>
+
+<details>
+<summary><strong>Infraestrutura e deploy</strong></summary>
 
 ### VM Azure (producao)
 
@@ -144,7 +221,7 @@ O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de 
 
 O workflow `deploy.yml` tem 3 jobs:
 
-```
+```text
 preflight (github-hosted, OIDC) → deploy (self-hosted na VM) → postflight (github-hosted, OIDC)
 ```
 
@@ -193,11 +270,11 @@ O processo retorna exit 1 quando >5% das queries falham, sinalizando warm parcia
 
 Tempo esperado: **~20h em B4as_v2 (16GB)** por ciclo completo de 224 municipios PB.
 
-## Deploy (1 click)
+### Deploy (1 click)
 
 O deploy roda via **GitHub Actions self-hosted runner** instalado na VM.
 
-### Pre-requisitos
+#### Pre-requisitos
 
 1. **VM Ubuntu** com SSH e disco de dados montado em `/data`
 2. **Fork** deste repositorio
@@ -242,7 +319,7 @@ gh secret set AZURE_SUBSCRIPTION_ID --body "<SUB_ID>"
 
 O service principal so tem permissao de mexer em VMs/discos do resource group especifico — nao acessa outras subscriptions, billing, etc.
 
-### Execucao
+#### Execucao
 
 ```bash
 # Passo 1: Instalar o runner na VM (1x)
@@ -254,7 +331,7 @@ O service principal so tem permissao de mexer em VMs/discos do resource group es
 
 O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa os dados e popula o banco. Live logs disponiveis durante toda a execucao. Timeout maximo: 5 dias (limite do GitHub self-hosted runner). Duracao tipica: 10-20h dependendo da rede.
 
-### Opcoes do deploy
+#### Opcoes do deploy
 
 | Input | Descricao | Default | VM size |
 |---|---|---|---|
@@ -273,45 +350,12 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 - `etl_phase=all`: ETL completo + warm_cache automatico. Use para reload completo dos dados.
 - `etl_phase=19`: retoma fase 19 sem warm. Adicione `warm_cache=true` se a fase reabastecer dados que afetam o cache.
 
-### Uso local
+</details>
 
-```bash
-# 1. Configurar
-cp .env.example .env
-# Editar .env com credenciais do PostgreSQL e DATA_DIR
+<details>
+<summary><strong>Fontes de dados e entity resolution</strong></summary>
 
-# 2. Instalar
-pip install -e .
-
-# 3. Subir PostgreSQL (ou usar um existente)
-docker compose up -d
-
-# 4. Rodar ETL completo
-python -m etl.run_all
-
-# 5. Retomar a partir de fase especifica (ex: fase 4 = PNCP)
-python -m etl.run_all 4
-
-# 6. Exportar resultados das queries de fraude
-python -m etl.run_queries              # todas as queries
-python -m etl.run_queries --query Q03  # query especifica
-```
-
-## Estrutura
-
-```
-sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
-queries/       125+ queries SQL em 17 arquivos tematicos
-resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    40 investigacoes baseadas nos resultados (Markdown)
-web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
-deploy/        Systemd services e configuracao de deploy
-data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
-scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
-```
-
-## Fontes de dados
+### Fontes de dados
 
 Todas baixadas automaticamente via `python -m etl.00_download`:
 
@@ -335,7 +379,7 @@ Todas baixadas automaticamente via `python -m etl.00_download`:
 | Sancoes | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~240MB |
 | ComprasNet | Incluido no repo (`data/static/`) | N/A |
 
-## Entity Resolution
+### Entity Resolution
 
 CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte:
 
@@ -352,6 +396,8 @@ CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte
 O pipeline normaliza automaticamente na **fase 17** criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo `JOIN`s por igualdade direta entre fontes.
 
 Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio x servidor x Bolsa Familia) reduz drasticamente falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), o cruzamento usa CPF completo de 11 digitos.
+
+</details>
 
 ## Licenca
 
