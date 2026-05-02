@@ -262,7 +262,7 @@ PERFIL_MUNICIPIO_PNCP = None  # deprecated: non-PB removed from frontend
 TOP_FORNECEDORES = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
-           MAX(d.cpf_cnpj) AS cpf_cnpj,
+           MAX(d.cpf_cnpj)::bpchar(14) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -351,7 +351,7 @@ ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 TOP_FORNECEDORES_FALLBACK = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
-           MAX(d.cpf_cnpj) AS cpf_cnpj,
+           MAX(d.cpf_cnpj)::bpchar(14) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -458,7 +458,7 @@ ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 TOP_FORNECEDORES_DATED = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
-           MAX(d.cpf_cnpj) AS cpf_cnpj,
+           MAX(d.cpf_cnpj)::bpchar(14) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
@@ -548,7 +548,7 @@ ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 TOP_FORNECEDORES_FALLBACK_DATED = """
 WITH top_forn AS (
     SELECT d.cnpj_basico, d.nome_credor,
-           MAX(d.cpf_cnpj) AS cpf_cnpj,
+           MAX(d.cpf_cnpj)::bpchar(14) AS cpf_cnpj,
            SUM(d.valor_pago) AS total_pago,
            COUNT(DISTINCT d.numero_empenho) AS qtd_empenhos
     FROM tce_pb_despesa d
