@@ -144,23 +144,42 @@ O workflow `deploy.yml` tem 3 jobs:
 preflight (github-hosted, OIDC) → deploy (self-hosted na VM) → postflight (github-hosted, OIDC)
 ```
 
-| etl_phase | Preflight: tamanho | Postflight: tamanho final |
-|---|---|---|
-| `web` | B2as_v2 (8GB) — sem mudanca se ja estiver | (nenhum) |
-| `all`, `sql`, `N` | B4as_v2 (16GB) — resize up se necessario | B2as_v2 (8GB) — resize down se deploy succeeded |
+| Cenario | Preflight | Steps no deploy | Postflight |
+|---|---|---|---|
+| `etl_phase=web` (default) | B2as_v2 (8GB) | sync code, restart cruza-web | (nenhum) |
+| `etl_phase=web warm_cache=true` | B4as_v2 (16GB) | sync + warm_cache (~20h) | downsize → B2as_v2 |
+| `etl_phase=all` | B4as_v2 (16GB) | ETL completo + warm_cache (auto) | downsize → B2as_v2 |
+| `etl_phase=sql` | B4as_v2 (16GB) | indices/normalizar/views + warm_cache (auto) | downsize → B2as_v2 |
+| `etl_phase=N` | B4as_v2 (16GB) | ETL phase N (warm NAO eh auto, use warm_cache=true) | downsize → B2as_v2 |
+| `etl_phase=N run_queries=true warm_cache=true` | B4as_v2 (16GB) | ETL + queries + warm_cache | downsize → B2as_v2 |
 
 **O que acontece:**
-1. **Preflight** redimensiona a VM para o tamanho adequado (`az vm deallocate → resize → start`).
-2. **Deploy** roda no self-hosted runner DENTRO da VM. O step `Apply PostgreSQL auto-tuning` detecta a RAM atual e ajusta `shared_buffers / effective_cache / work_mem / maintenance_work_mem` em `tuning.conf`. Reinicia o postgres se a config mudou.
-3. **Postflight** so roda em `etl_phase != web` E quando o deploy succeeded. Faz downsize de volta para o tamanho web. No proximo boot da VM, `pg-autotune.service` (systemd oneshot, `Before=postgresql.service`) re-tuna o postgres antes dele subir.
+1. **Preflight** redimensiona a VM (`az vm deallocate → resize → start`). Valida disponibilidade do SKU antes e faz rollback se resize falhar.
+2. **Deploy** roda no self-hosted runner DENTRO da VM. O step `Apply PostgreSQL auto-tuning` detecta a RAM atual e ajusta `shared_buffers / effective_cache / work_mem / maintenance_work_mem`. Os steps de ETL/queries/warm sao opt-in conforme inputs.
+3. **Postflight** so roda quando preflight fez upsize E deploy succeeded. Faz downsize de volta para `B2as_v2`. No proximo boot da VM, `pg-autotune.service` re-tuna o postgres antes dele subir.
 
-**Quando o ETL falha no meio**, postflight nao roda — a VM fica em B4as_v2 (16GB) para voce poder retomar com `etl_phase=N` sem outro resize.
+**Quando o deploy falha no meio**, postflight nao roda — a VM fica em B4as_v2 (16GB) para voce retomar com `etl_phase=N` sem outro resize.
 
 **Tuning detectado automaticamente** (formulas Postgres-best-practices):
 - `shared_buffers` = 25% RAM
 - `effective_cache_size` = 75% RAM
 - `work_mem` = RAM / 128
 - `maintenance_work_mem` = 6% RAM (cap 1GB)
+
+### Cache warming (web_cache table)
+
+A tabela `web_cache` armazena resultados pre-computados das queries do frontend (FastAPI le diretamente dela em vez de rodar SQL pesado em request time). Os dados das tabelas mudam APENAS quando o ETL roda, entao o warm-cache foi simplificado:
+
+- `cruza-warm-cache.service` eh `Type=oneshot` e **NAO** tem `[Install]` section (nao auto-inicia no boot).
+- Roda 1 ciclo completo (`python -m web.warm_cache --daemon` sem `--loop`) e termina.
+- Workflow dispara via `sudo systemctl start --wait cruza-warm-cache` — bloqueia ate completar e propaga exit code.
+- Auto-disparado apos `etl_phase=all` ou `etl_phase=sql` (dados/queries mudaram).
+- Para `etl_phase=N` ou `etl_phase=web`: opt-in via input `warm_cache=true`.
+- Disparo manual na VM: `sudo systemctl start cruza-warm-cache`.
+
+O processo retorna exit 1 quando >5% das queries falham, sinalizando warm parcial. O deploy job marca o step como failed mas o `continue-on-error` garante que o postflight ainda faz downsize da VM (evita deixar B4 ligada por engano). Logs ficam disponiveis via `journalctl -u cruza-warm-cache`.
+
+Tempo esperado: **~20h em B4as_v2 (16GB)** por ciclo completo de 224 municipios PB.
 
 ## Deploy (1 click)
 
@@ -225,14 +244,22 @@ O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueado
 
 ### Opcoes do deploy
 
-| Parametro | Descricao | Tamanho VM |
-|---|---|---|
-| `etl_phase=all` | ETL completo (download + carga + indices + views) | B4as_v2 (16GB) |
-| `etl_phase=sql` | Apenas indices, normalizacao e views (sem schema destrutivo) | B4as_v2 (16GB) |
-| `etl_phase=web` | Sync de codigo apenas (git pull + reinicia web services) | B2as_v2 (8GB) |
-| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB) | B4as_v2 (16GB) |
-| `skip_download=true` | Pular downloads, usar dados ja existentes na VM | (sem mudanca) |
-| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) | (sem mudanca) |
+| Input | Descricao | Default | VM size |
+|---|---|---|---|
+| `etl_phase=all` | ETL completo (download + carga + indices + views) + warm_cache auto | — | B4as_v2 (16GB) |
+| `etl_phase=sql` | Apenas indices, normalizacao e views + warm_cache auto | — | B4as_v2 (16GB) |
+| `etl_phase=web` | Sync de codigo + restart web services | — | B2as_v2 (8GB) |
+| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB). Warm NAO auto. | — | B4as_v2 (16GB) |
+| `warm_cache=true` | Forca warm_cache em qualquer etl_phase (~20h em B4) | `false` | B4as_v2 (16GB) |
+| `run_queries=true` | Roda etl.run_queries (~30min) apos ETL — analises de fraude | `false` | (sem mudanca) |
+| `skip_download=true` | Pular downloads, usar dados ja existentes na VM | `false` | (sem mudanca) |
+| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) | `false` | (sem mudanca) |
+
+**Cenarios tipicos:**
+- `etl_phase=web` (sozinho): rapido (~5min), sem warm_cache. Use para deploy de mudancas frontend que nao afetam queries.
+- `etl_phase=web warm_cache=true`: deploy + re-warming (~20h em B4). Use apos mudancas em `web/queries/registry.py`.
+- `etl_phase=all`: ETL completo + warm_cache automatico. Use para reload completo dos dados.
+- `etl_phase=19`: retoma fase 19 sem warm. Adicione `warm_cache=true` se a fase reabastecer dados que afetam o cache.
 
 ### Uso local
 
