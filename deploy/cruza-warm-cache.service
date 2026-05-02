@@ -1,16 +1,25 @@
 [Unit]
-Description=Cruza Dados - Cache Warmer
+Description=Cruza Dados - Cache Warmer (oneshot, executado sob demanda)
 After=postgresql.service network.target
 Wants=postgresql.service
 
 [Service]
-Type=simple
+# Type=oneshot: o systemctl start bloqueia ate o processo terminar e a unidade
+# vai para "inactive (dead)" apos sucesso. Permite rodar como step de deploy
+# que precisa esperar a conclusao antes de prosseguir (postflight resize down).
+Type=oneshot
 User=govbr
 WorkingDirectory=/home/govbr/govbr-project
 EnvironmentFile=/home/govbr/govbr-project/.env
-ExecStart=/home/govbr/govbr-project/venv/bin/python -u -m web.warm_cache --daemon --loop
-Restart=always
-RestartSec=30
+# --daemon (sem --loop) roda 1 ciclo completo e termina. Atualizar todos os
+# municipios PB pode demorar varias horas; sem timeout aqui.
+ExecStart=/home/govbr/govbr-project/venv/bin/python -u -m web.warm_cache --daemon
+TimeoutStartSec=0
+StandardOutput=journal
+StandardError=journal
 
-[Install]
-WantedBy=multi-user.target
+# SEM secao [Install]: a unidade NAO eh auto-iniciada no boot. Eh disparada
+# apenas explicitamente pelo deploy.yml ou por sysadmin via:
+#   sudo systemctl start cruza-warm-cache
+# Os dados das tabelas mudam apenas quando o ETL roda, entao warm-cache eh
+# uma operacao pos-ETL, nao um daemon continuo.

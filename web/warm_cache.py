@@ -446,21 +446,42 @@ def main():
     if args.daemon:
         print(f"Daemon mode: {len(municipios_pb)} PB municipios.")
         cycle = 0
+        last_fail_pct = 0.0
         while True:
             cycle += 1
             t0 = time.time()
             ok, fail = run_one_cycle(cycle)
             elapsed = time.time() - t0
-            print(f"=== Ciclo {cycle} completo: {ok} ok, {fail} fail ({elapsed/60:.1f}min) ===")
+            total = ok + fail
+            last_fail_pct = (fail / total * 100) if total > 0 else 0.0
+            print(
+                f"=== Ciclo {cycle} completo: {ok} ok, {fail} fail "
+                f"({last_fail_pct:.1f}%, {elapsed/60:.1f}min) ==="
+            )
             if not args.loop:
                 print("Ciclo unico finalizado (use --loop para repetir).")
                 break
             print(f"Proximo ciclo em {PAUSE_BETWEEN_CYCLES}s...")
             time.sleep(PAUSE_BETWEEN_CYCLES)
+
+        # Falha o processo se taxa de falha >5% em ciclo unico (--daemon sem --loop).
+        # Isso permite ao deploy.yml detectar warm parcial e nao mascarar como sucesso.
+        # Em modo --loop nao falhamos: o intuito eh continuar tentando.
+        if not args.loop and last_fail_pct > 5.0:
+            print(
+                f"ERRO: taxa de falha {last_fail_pct:.1f}% > 5% — exit 1",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     else:
         print(f"Processando {len(municipios_pb)} PB municipios...")
         ok, fail = run_one_cycle()
-        print(f"Completo: {ok} ok, {fail} fail")
+        total = ok + fail
+        fail_pct = (fail / total * 100) if total > 0 else 0.0
+        print(f"Completo: {ok} ok, {fail} fail ({fail_pct:.1f}%)")
+        if fail_pct > 5.0:
+            print(f"ERRO: taxa de falha {fail_pct:.1f}% > 5% — exit 1", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -8,9 +8,17 @@ cp deploy/cruza-web.service /etc/systemd/system/
 cp deploy/cruza-warm-cache.service /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable cruza-web cruza-warm-cache
-systemctl start cruza-web cruza-warm-cache
 
-echo "Services instalados e iniciados:"
+# cruza-web roda como daemon continuo (Type=simple). Habilita e inicia.
+systemctl enable cruza-web
+systemctl start cruza-web
+
+# cruza-warm-cache eh oneshot (NAO tem [Install] section). Nao auto-inicia
+# nem eh enabled. Disparado on-demand via:
+#   sudo systemctl start cruza-warm-cache
+# Tipicamente eh disparado pelo workflow deploy.yml apos ETL.
+
+echo "Services instalados:"
 systemctl status cruza-web --no-pager -l
-systemctl status cruza-warm-cache --no-pager -l
+echo ""
+echo "cruza-warm-cache: instalado mas NAO iniciado (oneshot, on-demand)."
