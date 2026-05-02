@@ -14,7 +14,7 @@ import os
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 
 import psycopg2
@@ -309,19 +309,45 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
     total = len(municipios)
     ok = fail = 0
     timeouts = 0
+    failed_munis: list[tuple[str, str]] = []
     t0 = time.time()
 
+    # Reportar progresso a cada ~10% completado (minimo a cada 1 muni). Da
+    # heartbeat + ETA durante queries longas (PERFIL ~47min, TOP_FORN ~13min)
+    # ao inves de silencio total ate o sumario final.
+    progress_step = max(1, total // 10)
+    next_progress = progress_step
+    completed = 0
+
     def task(mun):
-        return _run_query_for_muni(query_id, sql, mun, extra_params, timeout)
+        return mun, _run_query_for_muni(query_id, sql, mun, extra_params, timeout)
 
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
-        for success, msg in ex.map(task, municipios):
+        futures = [ex.submit(task, mun) for mun in municipios]
+        # as_completed iterada apenas pela thread principal -> sem lock
+        # necessario nos contadores (ok/fail/completed sao mutados aqui).
+        for fut in as_completed(futures):
+            mun, (success, msg) = fut.result()
+            completed += 1
             if success:
                 ok += 1
             else:
                 fail += 1
                 if msg and "statement_timeout" in msg:
                     timeouts += 1
+                failed_munis.append((mun, msg or ""))
+
+            if verbose and completed >= next_progress and completed < total:
+                elapsed = time.time() - t0
+                rate = completed / elapsed if elapsed > 0 else 0
+                pct = 100.0 * completed / total
+                eta_sec = (total - completed) / rate if rate > 0 else 0
+                print(
+                    f"  {query_id}: {completed}/{total} ({pct:.0f}%) "
+                    f"[{rate:.1f}/s, ETA {eta_sec:.0f}s, {fail} fail]",
+                    flush=True,
+                )
+                next_progress += progress_step
 
     elapsed = time.time() - t0
     if verbose:
@@ -333,6 +359,15 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
             f"({elapsed:.0f}s, {rate:.1f}/s)",
             flush=True,
         )
+        # Lista munis que falharam (ate 10) com mensagem truncada — facilita
+        # diagnostico sem ter que ir ao journalctl filtrar por "ERROR".
+        if failed_munis:
+            shown = failed_munis[:10]
+            for mun_failed, msg in shown:
+                short_msg = (msg[:100] or "<no message>").replace("\n", " ")
+                print(f"    FAIL {query_id} {mun_failed}: {short_msg}", flush=True)
+            if len(failed_munis) > 10:
+                print(f"    ... +{len(failed_munis) - 10} outras falhas (ver journal)", flush=True)
     # Skipped contam como ok no agregado: ja estao cacheados.
     return ok + skipped, fail
 
@@ -350,23 +385,50 @@ def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose:
 
     total = len(municipios)
     ok = fail = 0
+    failed_munis: list[str] = []
     t0 = time.time()
+
+    progress_step = max(1, total // 10)
+    next_progress = progress_step
+    completed = 0
 
     def task(mun):
         conn = _thread_conn()
-        return _compute_and_cache_kpi_summary(conn, mun, periodo, verbose=False)
+        return mun, _compute_and_cache_kpi_summary(conn, mun, periodo, verbose=False)
 
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
-        for result in ex.map(task, municipios):
+        futures = [ex.submit(task, mun) for mun in municipios]
+        for fut in as_completed(futures):
+            mun, result = fut.result()
+            completed += 1
             if result:
                 ok += 1
             else:
                 fail += 1
+                failed_munis.append(mun)
+
+            if verbose and completed >= next_progress and completed < total:
+                elapsed = time.time() - t0
+                rate = completed / elapsed if elapsed > 0 else 0
+                pct = 100.0 * completed / total
+                eta_sec = (total - completed) / rate if rate > 0 else 0
+                print(
+                    f"  {qid}: {completed}/{total} ({pct:.0f}%) "
+                    f"[{rate:.1f}/s, ETA {eta_sec:.0f}s, {fail} fail]",
+                    flush=True,
+                )
+                next_progress += progress_step
 
     elapsed = time.time() - t0
     if verbose:
         skip_msg = f", {skipped} skipped" if skipped else ""
         print(f"  {qid}: {ok}/{total} ok, {fail} fail{skip_msg} ({elapsed:.0f}s)", flush=True)
+        if failed_munis:
+            shown = failed_munis[:10]
+            for mun_failed in shown:
+                print(f"    FAIL {qid} {mun_failed}", flush=True)
+            if len(failed_munis) > 10:
+                print(f"    ... +{len(failed_munis) - 10} outras falhas", flush=True)
     return ok + skipped, fail
 
 
