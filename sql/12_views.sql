@@ -257,6 +257,7 @@ servidor_mun AS (
     FROM tce_pb_servidor
     WHERE cpf_digitos_6 IS NOT NULL AND nome_upper IS NOT NULL
       AND ano_mes >= '2022-01'
+      AND municipio IS NOT NULL  -- evita falso flag de duplo vinculo via row sem atribuicao
       AND EXISTS (SELECT 1 FROM pf_base pf WHERE pf.cpf_digitos_6 = tce_pb_servidor.cpf_digitos_6)
     GROUP BY cpf_digitos_6, nome_upper
 ),
@@ -369,6 +370,7 @@ desp AS (
     JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
         AND e.natureza_juridica NOT LIKE '1%'
     WHERE d.cnpj_basico IS NOT NULL AND d.ano >= 2022
+      AND d.municipio IS NOT NULL  -- ~35k rows fantasma sem atribuicao municipal
     GROUP BY d.municipio
 ),
 lic_proponente AS (
@@ -376,6 +378,7 @@ lic_proponente AS (
            COUNT(DISTINCT cpf_cnpj_proponente) AS num_proponentes
     FROM tce_pb_licitacao
     WHERE ano_licitacao >= 2022
+      AND municipio IS NOT NULL
     GROUP BY municipio, numero_licitacao
 ),
 lic AS (
@@ -390,6 +393,7 @@ receita AS (
            SUM(valor) FILTER (WHERE tipo_atualizacao_receita ILIKE 'Lançamento de Receita') AS receita_arrecadada
     FROM tce_pb_receita
     WHERE ano >= 2022
+      AND municipio IS NOT NULL
     GROUP BY municipio
 ),
 folha AS (
@@ -397,6 +401,7 @@ folha AS (
            SUM(valor_vantagem) AS total_folha
     FROM tce_pb_servidor
     WHERE ano_mes >= '2022-01'
+      AND municipio IS NOT NULL
     GROUP BY municipio
 )
 SELECT
@@ -455,6 +460,7 @@ SELECT cpf_digitos_6,
 FROM tce_pb_servidor
 WHERE cpf_digitos_6 IS NOT NULL AND nome_upper IS NOT NULL
   AND ano_mes >= '2022-01'
+  AND municipio IS NOT NULL  -- evita NULL no array `municipios` que propaga para mv_servidor_pb_risco
 GROUP BY cpf_digitos_6, nome_upper;
 
 CREATE UNIQUE INDEX idx_mv_srvb_cpf_nome ON mv_servidor_pb_base(cpf_digitos_6, nome_upper);
@@ -515,11 +521,13 @@ DROP TABLE IF EXISTS _tmp_se_unnest;
 
 -- 3a. Pre-agrega tce_pb_despesa por (cnpj_basico, municipio) UMA vez.
 -- Sem index: a unica leitura subsequente eh um Hash Join, que constroi
--- sua propria hashmap.
+-- sua propria hashmap. Filtro municipio IS NOT NULL eh free e descarta
+-- ~35k rows fantasma sem atribuicao municipal.
 CREATE TABLE _tmp_d_agg AS
 SELECT cnpj_basico, municipio, SUM(valor_pago) AS total_pago
 FROM tce_pb_despesa
 WHERE valor_pago > 0
+  AND municipio IS NOT NULL
 GROUP BY cnpj_basico, municipio;
 
 ANALYZE _tmp_d_agg;
@@ -669,7 +677,8 @@ tce_agg AS (
            SUM(valor_empenhado) AS total_empenhado,
            COUNT(*) AS qtd_empenhos,
            COUNT(DISTINCT municipio) AS qtd_municipios,
-           ARRAY_AGG(DISTINCT municipio ORDER BY municipio) AS municipios,
+           ARRAY_AGG(DISTINCT municipio ORDER BY municipio)
+              FILTER (WHERE municipio IS NOT NULL) AS municipios,
            COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao
     FROM tce_pb_despesa
     WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
@@ -843,6 +852,7 @@ SELECT
 FROM tce_pb_despesa d
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
+  AND d.municipio IS NOT NULL  -- evita arestas com entidade NULL
 GROUP BY d.cnpj_basico, e.razao_social, d.municipio;
 
 -- Aresta 3: SERVIDOR_MUNICIPAL (pessoa → município)
@@ -857,7 +867,8 @@ SELECT DISTINCT
     srv.municipio, srv.municipio, srv.descricao_cargo
 FROM tce_pb_servidor srv
 WHERE srv.cpf_digitos_6 IS NOT NULL AND srv.nome_upper IS NOT NULL
-  AND srv.ano_mes >= '2022-01';
+  AND srv.ano_mes >= '2022-01'
+  AND srv.municipio IS NOT NULL;
 
 -- Aresta 4: CREDOR_ESTADUAL_PF (pessoa → estado)
 DROP TABLE IF EXISTS _tmp_rede_cred;
@@ -949,6 +960,7 @@ forn_mun AS MATERIALIZED (
     WHERE d.cnpj_basico IS NOT NULL
       AND d.ano >= 2022
       AND d.valor_pago > 0
+      AND d.municipio IS NOT NULL
     GROUP BY d.municipio, d.cnpj_basico
 ),
 top5 AS (
@@ -964,9 +976,13 @@ top5 AS (
     ) x
     GROUP BY municipio
 ),
--- Universo de sancoes vigentes nos ultimos 3 anos com escopo extraido.
--- Usado pelos dois KPIs de sancao abaixo. Filtro temporal aplicado depois
--- (na hora de joinar com data_empenho).
+-- Universo de sancoes vigentes em qualquer momento >= 2022-01-01.
+-- IMPORTANTE: alinhado com desp_eventos (ano >= 2022). Antes usava
+-- CURRENT_DATE - INTERVAL '3 years' como cutoff, o que excluia sancoes
+-- terminadas em 2022 mas cujos empenhos correspondentes ESTAVAM em
+-- desp_eventos (subcontagem de ~60 sancoes CEIS). Agora os dois lados
+-- usam a mesma janela temporal: tudo vigente em 2022+ e considerado.
+-- Filtro temporal por data_empenho aplicado depois (no join).
 sancoes_base AS MATERIALIZED (
     SELECT cnpj_basico, dt_inicio_sancao, dt_final_sancao,
            categoria_sancao, abrangencia_sancao,
@@ -978,7 +994,7 @@ sancoes_base AS MATERIALIZED (
                esfera_orgao_sancionador, orgao_sancionador
         FROM ceis_sancao
         WHERE LENGTH(cpf_cnpj_sancionado) = 14
-          AND (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE - INTERVAL '3 years')
+          AND (dt_final_sancao IS NULL OR dt_final_sancao >= '2022-01-01')
         UNION ALL
         SELECT LEFT(cpf_cnpj_sancionado, 8),
                dt_inicio_sancao, dt_final_sancao,
@@ -986,7 +1002,7 @@ sancoes_base AS MATERIALIZED (
                esfera_orgao_sancionador, orgao_sancionador
         FROM cnep_sancao
         WHERE LENGTH(cpf_cnpj_sancionado) = 14
-          AND (dt_final_sancao IS NULL OR dt_final_sancao >= CURRENT_DATE - INTERVAL '3 years')
+          AND (dt_final_sancao IS NULL OR dt_final_sancao >= '2022-01-01')
     ) u
 ),
 -- Empenhos brutos por (municipio, cnpj_basico, data_empenho) usados nos joins
@@ -998,6 +1014,7 @@ desp_eventos AS MATERIALIZED (
       AND d.ano >= 2022
       AND d.valor_pago > 0
       AND d.data_empenho IS NOT NULL
+      AND d.municipio IS NOT NULL
 ),
 -- Fornecedor com sancao APLICAVEL ao municipio na data do empenho.
 -- Aplicavel = inidoneidade OU acordo de leniencia (CNEP) OU abrangencia nacional
@@ -1198,6 +1215,7 @@ forn_mun AS MATERIALIZED (
     WHERE d.cnpj_basico IS NOT NULL
       AND d.ano >= 2022
       AND d.valor_pago > 0
+      AND d.municipio IS NOT NULL
     GROUP BY d.municipio, d.cnpj_basico
 ),
 hhi AS (
