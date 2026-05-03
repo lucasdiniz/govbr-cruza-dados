@@ -1,0 +1,24 @@
+/* === components/color-legend.css === */
+@layer components {
+.color-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem 1.1rem;
+    margin-top: .5rem;
+    font-size: .82rem;
+    color: #475569;
+}
+.color-legend-item {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+.color-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+
+}

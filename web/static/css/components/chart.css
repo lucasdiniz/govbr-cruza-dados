@@ -1,0 +1,99 @@
+/* === components/chart.css === */
+@layer components {
+.chart-progress,
+.chart-bar-track {
+    width: 100%;
+    height: 12px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+    margin: 0.85rem 0 0.65rem;
+}
+.chart-progress-fill,
+.chart-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+}
+.chart-progress-fill { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+.fill-blue { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+.fill-green { background: linear-gradient(90deg, #4ade80, #16a34a); }
+
+.chart-bars {
+    display: grid;
+    gap: 1rem;
+}
+.chart-bar-row {
+    display: grid;
+    grid-template-columns: 1.1fr 1.7fr auto;
+    gap: 1rem;
+    align-items: center;
+}
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+.two-col > * { min-width: 0; }
+
+/* Bar chart fill colors used by concentracao card */
+.fill-red { background: linear-gradient(90deg, #f87171, #dc2626); }
+
+/* Concentracao card layout tweaks */
+.city-concentracao { margin-top: 1.25rem; }
+.city-concentracao.concentracao-alerta {
+    border-left: 3px solid #dc2626;
+}
+.chart-bars-concentracao .chart-bar-row {
+    grid-template-columns: minmax(140px, 1.4fr) 2fr minmax(110px, auto);
+}
+.chart-bar-label {
+    font-size: .88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+.chart-bar-rank {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4rem;
+    font-size: 1rem;
+    line-height: 1;
+}
+.chart-bar-rank-medal {
+    font-size: 1.15rem;
+}
+.chart-bar-rank-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    color: var(--muted);
+    font-size: .78rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+body.dark-page .chart-bar-rank-num {
+    background: rgba(148, 163, 184, 0.18);
+    color: rgba(226, 232, 240, 0.85);
+}
+.chart-bar-meta {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.chart-bar-meta strong { display: block; font-size: .95rem; }
+.city-concentracao-cta { margin-top: 1rem; }
+.city-concentracao-cta a { color: inherit; text-decoration: underline; }
+.text-red { color: #dc2626; }
+body.dark-page .text-red { color: #fca5a5; }
+
+
+}

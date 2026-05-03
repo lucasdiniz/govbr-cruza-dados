@@ -1,0 +1,213 @@
+/* === components/_dark-overrides.css === */
+@layer components {
+/* ============================================================
+   DARK MODE overrides - aplicados quando body tem .dark-page
+   ============================================================ */
+body.dark-page {
+    --bg: #060a14;
+    --surface: rgba(18, 28, 48, 0.78);
+    --surface-soft: rgba(13, 22, 40, 0.6);
+    --surface-alt: rgba(30, 41, 66, 0.6);
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --line: rgba(96, 165, 250, 0.18);
+    --blue: #60a5fa;
+    --blue-soft: rgba(59, 130, 246, 0.18);
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    color: var(--text);
+}
+body.dark-page .container { color: var(--text); }
+body.dark-page h1,
+body.dark-page h2,
+body.dark-page h3,
+body.dark-page h4,
+body.dark-page .card-title,
+body.dark-page .finding-title,
+body.dark-page .result-block .card-title,
+body.dark-page .report-section > .section-head .card-title {
+    color: #f1f5f9;
+}
+body.dark-page .text-muted,
+body.dark-page .text-sm.text-muted { color: var(--muted); }
+body.dark-page a { color: #93c5fd; }
+
+body.dark-page .search-card,
+body.dark-page .card,
+body.dark-page .insight-card {
+    background: var(--surface);
+    border-color: var(--line);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+body.dark-page .dialog-history-note,
+body.dark-page .heatmap-period-badge {
+    background: rgba(37, 99, 235, 0.14);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: #dbeafe;
+}
+body.dark-page .city-hero {
+    background: linear-gradient(135deg, rgba(30, 58, 138, 0.45), rgba(15, 23, 42, 0.85));
+    border-color: rgba(96, 165, 250, 0.25);
+}
+body.dark-page .hero-stat {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: var(--line);
+}
+body.dark-page .finding-card {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: var(--line);
+}
+body.dark-page .finding-card.is-empty { background: rgba(15, 23, 42, 0.35); }
+body.dark-page .finding-card.is-timeout { background: rgba(133, 77, 14, 0.25); border-color: rgba(234, 179, 8, 0.35); }
+body.dark-page .report-index-link {
+    background: rgba(15, 23, 42, 0.52);
+    border-color: rgba(96, 165, 250, 0.12);
+}
+body.dark-page .report-index-link:hover,
+body.dark-page .report-index-link:focus-visible {
+    background: rgba(30, 41, 59, 0.92);
+    border-color: rgba(96, 165, 250, 0.35);
+}
+body.dark-page .report-index-title,
+body.dark-page .date-filter-current {
+    color: #e2e8f0;
+}
+body.dark-page .section-collapse-toggle {
+    background: rgba(15, 23, 42, 0.45);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #cbd5e1;
+}
+body.dark-page .section-collapse-toggle:hover,
+body.dark-page .section-collapse-toggle:focus-visible {
+    background: rgba(30, 41, 59, 0.92);
+    border-color: rgba(96, 165, 250, 0.38);
+    color: #dbeafe;
+}
+body.dark-page .date-filter-presets .btn.is-active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(96, 165, 250, 0.46);
+    color: #dbeafe;
+}
+body.dark-page .dialog-nav {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.94));
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+body.dark-page .dialog-nav-btn {
+    background: rgba(30, 41, 59, 0.92);
+    border-color: rgba(148, 163, 184, 0.18);
+    color: #cbd5e1;
+}
+body.dark-page .dialog-nav-btn:hover,
+body.dark-page .dialog-nav-btn:focus-visible,
+body.dark-page .dialog-nav-btn.is-active {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(96, 165, 250, 0.4);
+    color: #dbeafe;
+}
+body.dark-page .hero-fact {
+    background: rgba(15, 23, 42, 0.68);
+    border-color: rgba(96, 165, 250, 0.24);
+    color: #dbeafe;
+}
+body.dark-page .finding-title { color: #e2e8f0; }
+
+/* Tabelas */
+body.dark-page th {
+    background: rgba(15, 23, 42, 0.85);
+    color: #cbd5e1;
+    border-bottom: 1px solid var(--line);
+}
+body.dark-page td {
+    border-top: 1px solid rgba(96, 165, 250, 0.1);
+    color: var(--text);
+}
+body.dark-page tr:hover { background: rgba(59, 130, 246, 0.08); }
+body.dark-page .clickable-row:hover { background: rgba(59, 130, 246, 0.12); }
+body.dark-page .table-shell {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: var(--line);
+}
+
+/* Row-sancao (destaque vermelho) ajustado para dark */
+body.dark-page .row-sancao { background: rgba(220, 38, 38, 0.18); }
+body.dark-page .row-sancao:hover { background: rgba(220, 38, 38, 0.28); }
+body.dark-page .row-sancao-leve { background: rgba(234, 179, 8, 0.12); }
+body.dark-page .row-sancao-leve:hover { background: rgba(234, 179, 8, 0.2); }
+body.dark-page .row-detail-unavailable:hover { background: transparent; }
+body.dark-page .row-detail-unavailable.row-sancao:hover { background: rgba(220, 38, 38, 0.18); }
+body.dark-page .row-detail-unavailable.row-sancao-leve:hover { background: rgba(234, 179, 8, 0.12); }
+
+/* Badges */
+body.dark-page .badge-red { background: rgba(220, 38, 38, 0.18); color: #fca5a5; border-color: rgba(220, 38, 38, 0.35); }
+body.dark-page .badge-orange { background: rgba(234, 88, 12, 0.18); color: #fdba74; border-color: rgba(234, 88, 12, 0.35); }
+body.dark-page .badge-muted { background: rgba(100, 116, 139, 0.18); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.3); }
+body.dark-page .badge-yellow { background: rgba(217, 119, 6, 0.18); color: #fde68a; border-color: rgba(217, 119, 6, 0.35); }
+body.dark-page .badge-green { background: rgba(22, 163, 74, 0.18); color: #86efac; border-color: rgba(22, 163, 74, 0.35); }
+body.dark-page .badge-gray { background: rgba(100, 116, 139, 0.15); color: #94a3b8; border-color: rgba(148, 163, 184, 0.25); }
+body.dark-page .badge-blue { background: rgba(59, 130, 246, 0.18); color: #93c5fd; border-color: rgba(59, 130, 246, 0.35); }
+
+/* Inputs / botoes */
+body.dark-page input[type="text"],
+body.dark-page input[type="date"],
+body.dark-page input[type="search"],
+body.dark-page select,
+body.dark-page .table-filter {
+    background: rgba(15, 23, 42, 0.7);
+    color: var(--text);
+    border-color: var(--line);
+}
+body.dark-page input::placeholder { color: #64748b; }
+body.dark-page input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+body.dark-page .btn-outline {
+    background: rgba(15, 23, 42, 0.6);
+    color: #cbd5e1;
+    border-color: var(--line);
+}
+body.dark-page .btn-outline:hover { background: rgba(59, 130, 246, 0.18); color: #fff; }
+
+/* Skeleton */
+body.dark-page .skeleton-line {
+    background: linear-gradient(90deg, rgba(51, 65, 85, 0.5), rgba(71, 85, 105, 0.6), rgba(51, 65, 85, 0.5));
+    background-size: 200% 100%;
+}
+
+/* Disclaimer / toggle-row */
+body.dark-page .disclaimer-box {
+    background: rgba(133, 77, 14, 0.2);
+    border-color: rgba(234, 179, 8, 0.35);
+    color: #fde68a;
+}
+
+/* Progress bar / chart */
+body.dark-page .chart-progress,
+body.dark-page .chart-bar-track { background: rgba(71, 85, 105, 0.5); }
+
+/* Heatmap legend (se tiver bg claro) */
+body.dark-page .heatmap-grid, body.dark-page .heatmap-wrap { color: var(--text); }
+
+/* Dialog (empresa-dialog) */
+body.dark-page .empresa-dialog,
+body.dark-page dialog {
+    background: #0f172a;
+    color: var(--text);
+    border: 1px solid var(--line);
+}
+body.dark-page .dialog-header { border-bottom-color: var(--line); }
+
+/* Autocomplete dropdown em pagina dark ja tratado em .ac-list acima */
+
+/* Date filter bar */
+body.dark-page .date-filter-bar { background: rgba(15, 23, 42, 0.55); border-color: rgba(255,255,255,0.1); }
+body.dark-page .date-filter-panel { border-top-color: rgba(148, 163, 184, 0.18); }
+body.dark-page .date-filter-action { color: #93c5fd; }
+body.dark-page .date-field span { color: var(--muted); }
+body.dark-page .date-filter-label { color: rgba(226, 232, 240, 0.78); }
+
+/* Section head eyebrow stays blue */
+body.dark-page .eyebrow { color: #60a5fa; }
+
+
+}

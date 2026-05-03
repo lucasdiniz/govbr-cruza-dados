@@ -1,0 +1,19 @@
+/* === tokens/legacy.css === */
+@layer tokens {
+:root {
+    --bg: #eef4f8;
+    --surface: #ffffff;
+    --surface-soft: #f8fbff;
+    --text: #102033;
+    --muted: #64748b;
+    --line: #dbe5ef;
+    --blue: #1d4ed8;
+    --blue-soft: #dbeafe;
+    --green: #15803d;
+    --yellow: #b45309;
+    --red: #b91c1c;
+    --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+
+}

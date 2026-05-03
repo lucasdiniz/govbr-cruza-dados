@@ -1,0 +1,30 @@
+/* === utilities.css === */
+@layer utilities {
+.eyebrow {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--blue);
+    font-weight: 700;
+    margin-bottom: 0.55rem;
+}
+
+/* Valores monetarios nao devem quebrar em varias linhas */
+.stat-value,
+.hero-stat-value,
+td.text-right,
+td.num {
+    white-space: nowrap;
+}
+
+.text-muted { color: var(--muted); }
+.text-sm { font-size: 0.82rem; }
+.text-right { text-align: right; }
+.mt-2 { margin-top: 1rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.gap-1 { gap: 0.5rem; }
+.flex { display: flex; }
+.flex-between { justify-content: space-between; }
+
+
+}

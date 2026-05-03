@@ -1,0 +1,53 @@
+/* === components/credibility-dialog.css === */
+@layer components {
+.credibility-dialog {
+    max-width: 560px;
+    width: 92%;
+    border: none;
+    border-radius: 14px;
+    padding: 0;
+    background: #fff;
+    color: #111827;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+.credibility-dialog::backdrop { background: rgba(15, 23, 42, 0.55); }
+.credibility-dialog .dialog-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.credibility-dialog .dialog-title { margin: 0; font-size: 18px; font-weight: 700; }
+.credibility-dialog .dialog-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 0 4px;
+}
+.credibility-dialog .dialog-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.55; }
+.credibility-dialog h4 { margin: 14px 0 6px; font-size: 14px; font-weight: 700; color: #111827; }
+.credibility-dialog .source-list { margin: 0 0 4px; padding-left: 20px; }
+.credibility-dialog .source-list li { margin-bottom: 4px; }
+.credibility-dialog .source-list a { color: #2563eb; font-weight: 600; }
+.credibility-dialog .text-sm { font-size: 13px; }
+.credibility-dialog .text-muted { color: #6b7280; }
+
+.dark-page .credibility-dialog { background: #0b1220; color: #e5e7eb; }
+.dark-page .credibility-dialog .dialog-header { border-bottom-color: rgba(255,255,255,0.08); }
+.dark-page .credibility-dialog h4 { color: #f3f4f6; }
+.dark-page .credibility-dialog .source-list a { color: #93c5fd; }
+.dark-page .credibility-dialog .text-muted { color: rgba(230,235,245,0.6); }
+.dark-page .credibility-dialog .dialog-close { color: #9ca3af; }
+
+@media (max-width: 640px) {
+    .site-footer { padding: 18px 16px; font-size: 12.5px; }
+    .credibility-dialog { width: 96%; max-height: 85vh; overflow-y: auto; }
+    .credibility-dialog .dialog-body { font-size: 14px; }
+}
+
+
+}

@@ -1,0 +1,100 @@
+/* === base/a11y.css === */
+@layer base {
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 8px;
+    z-index: 1000;
+    background: #1e293b;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: top 0.15s;
+}
+.skip-link:focus { top: 8px; outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+/* ============================================================
+   MOBILE RESPONSIVENESS (<=640px)
+   Safe-area insets, touch targets >=44px, tipografia e layouts
+   adequados a telefones e potencial webview.
+   ============================================================ */
+
+/* iOS prevents zoom-on-focus se input tiver >= 16px */
+input[type="text"],
+input[type="search"],
+input[type="date"],
+input[type="email"],
+input[type="number"],
+select,
+textarea {
+    font-size: 16px;
+}
+
+/* Momentum scroll para tabelas em iOS */
+.tbl-wrap,
+.heatmap-wrap,
+.dialog-body {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   Acessibilidade: respeitar preferencia de movimento reduzido
+   ──────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+    .hero-aurora, body.dark-page::before { animation: none !important; }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   Touch feedback global
+   - Remove highlight azul/cinza do tap no iOS/Android
+   - Adiciona :active com leve scale/opacity em elementos clicaveis
+   ──────────────────────────────────────────────────────────────────── */
+html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+}
+button, a, [role="button"], .clickable-row, .mt-btn,
+.finding-head, .hm-clickable, .ac-list li {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+@media (hover: none) and (pointer: coarse) {
+    /* Apenas em dispositivos toque: feedback de toque visivel */
+    .btn:active,
+    .btn-primary:active,
+    .btn-outline:active,
+    .btn-sm:active,
+    .share-btn:active,
+    .mt-btn:active,
+    .dialog-close:active,
+    .dialog-back:active,
+    .back-to-top:active {
+        transform: scale(0.96);
+        transition: transform 0.05s ease;
+    }
+    .clickable-row:active {
+        background: rgba(96, 165, 250, 0.18) !important;
+    }
+    .finding-head:active {
+        background: rgba(96, 165, 250, 0.10);
+    }
+    .ac-list li:active {
+        background: rgba(96, 165, 250, 0.25);
+    }
+}
+
+/* Acessibilidade: respeitar prefers-contrast */
+@media (prefers-contrast: more) {
+    html { font-weight: 500; }
+    .finding-card, .destaque-card { border-width: 2px; }
+}
+
+
+}

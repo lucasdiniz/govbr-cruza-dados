@@ -7,12 +7,12 @@
 //
 // Bump CACHE_VERSION para invalidar caches antigos.
 
-const CACHE_VERSION = 'tpb-v23';
+const CACHE_VERSION = 'tpb-v24';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 
 const CORE_ASSETS = [
-    '/static/style.css',
+    '/static/css/index.css',
     '/static/app.js',
     '/static/mapa.js',
     '/static/graph-animation.js',

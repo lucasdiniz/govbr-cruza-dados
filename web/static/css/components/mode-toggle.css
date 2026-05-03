@@ -1,0 +1,76 @@
+/* === components/mode-toggle.css === */
+@layer components {
+
+/* ==========================================================
+   Modo Cidadao / Modo Auditor
+   Padrao: cidadao. Toggle na topnav liga audit-mode em <html>.
+   ========================================================== */
+.auditor-only { display: none !important; }
+.citizen-only { display: initial; }
+
+html.audit-mode .auditor-only { display: revert !important; }
+html.audit-mode .citizen-only { display: none !important; }
+
+/* Toggle na topnav */
+.mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #cbd5e1;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.42rem 0.8rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    min-height: 40px;
+    -webkit-tap-highlight-color: transparent;
+}
+.mode-toggle:hover {
+    background: rgba(59, 92, 206, 0.25);
+    border-color: rgba(96, 165, 250, 0.5);
+    color: #fff;
+}
+.mode-toggle:focus-visible {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+}
+
+/* Estado cidadao (padrao): mostra icone/label cidadao, esconde auditor */
+.mode-icon-auditor,
+.mode-label-auditor { display: none; }
+
+html.audit-mode .mode-icon-citizen,
+html.audit-mode .mode-label-citizen { display: none; }
+html.audit-mode .mode-icon-auditor,
+html.audit-mode .mode-label-auditor { display: inline; }
+
+/* Em audit-mode, botao destaca */
+html.audit-mode .mode-toggle {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.6);
+    color: #dbeafe;
+}
+
+/* Mobile: icone compacto pra nao engrossar a topnav */
+@media (max-width: 640px) {
+    .mode-toggle {
+        padding: 0;
+        width: 38px;
+        height: 38px;
+        min-height: 38px;
+        justify-content: center;
+        gap: 0;
+        border-radius: 999px;
+    }
+    .mode-label-citizen,
+    .mode-label-auditor { display: none !important; }
+    /* Topnav mobile: toggle ao lado direito, logo do lado esquerdo */
+    .topnav { justify-content: space-between; }
+    .mode-toggle { margin-left: auto; }
+}
+
+
+}
