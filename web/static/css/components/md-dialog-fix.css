@@ -1,0 +1,28 @@
+/* === components/md-dialog-fix.css === */
+/*
+ * Fixes for <md-dialog> rendering on the vendored @material/web 2.0 bundle.
+ *
+ * Issue: when opened via showModal(), the inner <dialog> was rendering at
+ * (0, 0) and (in some cases) not painting at all. Two combined causes:
+ *
+ *   1. Bundle shadow CSS sets `:host { display: contents; margin: auto;
+ *      position: fixed; }`. With `display: contents`, the host has no
+ *      box and `position: fixed` + `margin: auto` cannot center it.
+ *      The inner `dialog` (which has `margin: inherit`) ends up
+ *      computing `margin: 0` and renders at the viewport top-left.
+ *
+ *   2. Even after restoring margin via author CSS, `display: contents` on
+ *      a host whose inner element is in the top layer (showModal) makes
+ *      the whole subtree skip painting in some rendering paths (Edge/
+ *      Chromium). Switching the host to `display: block` gives it a real
+ *      layout box and the inner dialog paints reliably.
+ *
+ * Both rules are unlayered so they win over the shadow CSS regardless of
+ * @layer cascade order. `[open]` qualifies the override to keep the host
+ * at `display: contents` while closed (avoiding any layout side effect).
+ */
+
+md-dialog[open] {
+    display: block !important;
+    margin: auto !important;
+}

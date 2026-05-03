@@ -1,53 +1,76 @@
 /* === components/credibility-dialog.css === */
 @layer components {
+/* M3 dialog (custom: <md-dialog>). md-dialog renders its own surface,
+   scrim, headline, content, and actions slots. Centering is restored by
+   components/md-dialog-fix.css (margin: auto on host).
+
+   The shadow CSS provides `slot[name=...]::slotted(*) { padding: ... }`
+   rules, but those lose against any light-tree author rule (per the
+   tree-of-trees cascade), and our universal reset (`* { padding:0 }`)
+   wipes them. So we re-apply the MD3 spec paddings here as light-tree
+   author rules. We also bump --md-divider-color above the very subtle
+   --md-sys-color-outline-variant default so the headline/actions
+   dividers are actually visible against the surface-container-high. */
 .credibility-dialog {
-    max-width: 560px;
-    width: 92%;
-    border: none;
-    border-radius: 14px;
-    padding: 0;
-    background: #fff;
-    color: #111827;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    max-width: 640px;
+    --md-dialog-container-color: var(--md-sys-color-surface-container-high);
+    --md-dialog-headline-color: var(--md-sys-color-on-surface);
+    --md-dialog-supporting-text-color: var(--md-sys-color-on-surface-variant);
+    --md-dialog-container-shape: var(--md-sys-shape-corner-extra-large);
+    --md-divider-color: rgba(255, 255, 255, 0.12);
 }
-.credibility-dialog::backdrop { background: rgba(15, 23, 42, 0.55); }
-.credibility-dialog .dialog-header {
-    padding: 18px 22px;
-    border-bottom: 1px solid #e5e7eb;
-    display: flex;
+
+/* MD3 slotted paddings (replacing what the shadow ::slotted rules would
+   have applied if the universal reset didn't outrank them). */
+.credibility-dialog [slot="headline"] {
     align-items: center;
-    justify-content: space-between;
+    align-self: stretch;
+    box-sizing: border-box;
+    display: flex;
+    gap: 8px;
+    padding: 24px 24px 0;
 }
-.credibility-dialog .dialog-title { margin: 0; font-size: 18px; font-weight: 700; }
-.credibility-dialog .dialog-close {
-    background: none;
-    border: none;
-    font-size: 28px;
-    line-height: 1;
-    cursor: pointer;
-    color: #6b7280;
-    padding: 0 4px;
+.credibility-dialog [slot="content"] {
+    box-sizing: border-box;
+    padding: 16px 24px 8px;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    color: var(--md-sys-color-on-surface);
 }
-.credibility-dialog .dialog-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.55; }
-.credibility-dialog h4 { margin: 14px 0 6px; font-size: 14px; font-weight: 700; color: #111827; }
+.credibility-dialog [slot="actions"] {
+    box-sizing: border-box;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 16px 24px 24px;
+}
+
+.credibility-dialog [slot="content"] p { margin: 0 0 12px; }
+.credibility-dialog [slot="content"] p:last-child { margin-bottom: 0; }
+.credibility-dialog h4 {
+    margin: 16px 0 6px;
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+    color: var(--md-sys-color-on-surface);
+}
 .credibility-dialog .source-list { margin: 0 0 4px; padding-left: 20px; }
 .credibility-dialog .source-list li { margin-bottom: 4px; }
-.credibility-dialog .source-list a { color: #2563eb; font-weight: 600; }
-.credibility-dialog .text-sm { font-size: 13px; }
-.credibility-dialog .text-muted { color: #6b7280; }
-
-.dark-page .credibility-dialog { background: #0b1220; color: #e5e7eb; }
-.dark-page .credibility-dialog .dialog-header { border-bottom-color: rgba(255,255,255,0.08); }
-.dark-page .credibility-dialog h4 { color: #f3f4f6; }
-.dark-page .credibility-dialog .source-list a { color: #93c5fd; }
-.dark-page .credibility-dialog .text-muted { color: rgba(230,235,245,0.6); }
-.dark-page .credibility-dialog .dialog-close { color: #9ca3af; }
+.credibility-dialog .source-list a {
+    color: var(--md-sys-color-primary);
+    font-weight: 600;
+}
+.credibility-dialog .text-sm {
+    font-size: var(--md-sys-typescale-body-small-size);
+}
+.credibility-dialog .text-muted { color: var(--md-sys-color-on-surface-variant); }
 
 @media (max-width: 640px) {
     .site-footer { padding: 18px 16px; font-size: 12.5px; }
-    .credibility-dialog { width: 96%; max-height: 85vh; overflow-y: auto; }
-    .credibility-dialog .dialog-body { font-size: 14px; }
+    .credibility-dialog [slot="content"] {
+        font-size: var(--md-sys-typescale-body-small-size);
+    }
 }
 
 
 }
+

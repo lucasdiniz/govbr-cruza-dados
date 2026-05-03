@@ -106,12 +106,9 @@
             </span>
         </div>
     </footer>
-    <dialog id="credibility-dialog" class="credibility-dialog" aria-labelledby="credibility-dialog-title">
-        <div class="dialog-header">
-            <h3 class="dialog-title" id="credibility-dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</h3>
-            <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
-        </div>
-        <div class="dialog-body">
+    <md-dialog id="credibility-dialog" class="credibility-dialog" aria-labelledby="credibility-dialog-title">
+        <div slot="headline" id="credibility-dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</div>
+        <div slot="content">
             <p>O <strong>TransparenciaPB</strong> cruza dados p&uacute;blicos de fontes oficiais para mostrar como cada prefeitura da Para&iacute;ba usa o dinheiro p&uacute;blico.</p>
             <h4>Fontes</h4>
             <ul class="source-list">
@@ -134,7 +131,10 @@
             <h4>Importante</h4>
             <p class="text-sm text-muted">Os cruzamentos apontam <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o. N&atilde;o s&atilde;o conclus&otilde;es jur&iacute;dicas. Sempre consulte a fonte original e, se necess&aacute;rio, os &oacute;rg&atilde;os de controle (MP-PB, TCE-PB, CGU).</p>
         </div>
-    </dialog>
+        <div slot="actions">
+            <md-text-button data-md-dialog-close>Fechar</md-text-button>
+        </div>
+    </md-dialog>
     <md-fab id="backToTop" class="back-to-top" size="small" variant="surface" aria-label="Voltar ao topo" hidden>
         <md-icon slot="icon" aria-hidden="true">arrow_upward</md-icon>
     </md-fab>

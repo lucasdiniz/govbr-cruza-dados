@@ -33,50 +33,75 @@
 .denuncia-btn:hover { background: #b91c1c; }
 
 .denuncia-dialog {
-    max-width: 560px;
-    width: 92%;
-    border: none;
-    border-radius: 14px;
-    padding: 0;
-    background: #0b1220;
-    color: #e5e7eb;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    max-width: 640px;
+    --md-dialog-container-color: var(--md-sys-color-surface-container-high);
+    --md-dialog-headline-color: var(--md-sys-color-on-surface);
+    --md-dialog-supporting-text-color: var(--md-sys-color-on-surface-variant);
+    --md-dialog-container-shape: var(--md-sys-shape-corner-extra-large);
+    --md-divider-color: rgba(255, 255, 255, 0.12);
 }
-.denuncia-dialog::backdrop { background: rgba(15, 23, 42, 0.65); }
-.denuncia-dialog .dialog-header {
-    padding: 18px 22px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    display: flex;
+
+/* MD3 slotted paddings (re-applied as light-tree author rules because the
+   universal reset clobbers the shadow ::slotted defaults). */
+.denuncia-dialog [slot="headline"] {
     align-items: center;
-    justify-content: space-between;
+    align-self: stretch;
+    box-sizing: border-box;
+    display: flex;
+    gap: 8px;
+    padding: 24px 24px 0;
 }
-.denuncia-dialog .dialog-title { margin: 0; font-size: 18px; font-weight: 700; color: #f3f4f6; }
-.denuncia-dialog .dialog-close {
-    background: none;
-    border: none;
-    font-size: 28px;
-    line-height: 1;
-    cursor: pointer;
-    color: #9ca3af;
-    padding: 0 4px;
+.denuncia-dialog [slot="content"] {
+    box-sizing: border-box;
+    padding: 16px 24px 8px;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    color: var(--md-sys-color-on-surface);
 }
-.denuncia-dialog .dialog-body { padding: 18px 22px 22px; font-size: 14.5px; line-height: 1.55; }
-.denuncia-dialog .text-muted { color: rgba(230,235,245,0.7); }
+.denuncia-dialog [slot="actions"] {
+    box-sizing: border-box;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 16px 24px 24px;
+}
+.denuncia-dialog [slot="content"] p { margin: 0 0 12px; }
+.denuncia-dialog [slot="content"] p:last-child { margin-bottom: 0; }
+.denuncia-dialog .text-muted { color: var(--md-sys-color-on-surface-variant); }
 .denuncia-options { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .denuncia-opt {
     display: block;
     padding: 14px 16px;
-    background: rgba(148, 163, 184, 0.08);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 12px;
+    background: var(--md-sys-color-surface-container);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
     text-decoration: none;
     color: inherit;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition:
+        background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+        border-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
-.denuncia-opt:hover { background: rgba(96, 165, 250, 0.12); border-color: rgba(96, 165, 250, 0.5); }
-.denuncia-opt-name { font-size: 15px; font-weight: 700; color: #f3f4f6; margin-bottom: 4px; }
-.denuncia-opt-when { font-size: 13.5px; color: rgba(230,235,245,0.75); line-height: 1.45; }
-.denuncia-opt-link { margin-top: 8px; font-size: 13px; font-weight: 700; color: #93c5fd; }
+.denuncia-opt:hover {
+    background: var(--md-sys-color-surface-container-highest);
+    border-color: var(--md-sys-color-primary);
+}
+.denuncia-opt-name {
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: 4px;
+}
+.denuncia-opt-when {
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1.45;
+}
+.denuncia-opt-link {
+    margin-top: 8px;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+}
 
 html.audit-mode .denuncia-cta { display: none; }
 
@@ -84,7 +109,6 @@ html.audit-mode .denuncia-cta { display: none; }
     .denuncia-cta { padding: 16px 14px; }
     .denuncia-cta-inner { gap: 12px; }
     .denuncia-btn { width: 100%; }
-    .denuncia-dialog { width: 96%; max-height: 85vh; overflow-y: auto; }
 }
 
 

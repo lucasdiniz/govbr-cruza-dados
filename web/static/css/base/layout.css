@@ -64,13 +64,6 @@ body.dark-page.mapa-page .container {
     max-width: 100%;
     padding: 1rem 2rem;
 }
-/* Cidade pages use the full viewport width too, with a slightly tighter
-   horizontal padding than the map (which is more decorative). */
-body.cidade-page .container,
-body.dark-page.cidade-page .container {
-    max-width: 100%;
-    padding: 1.6rem 2rem;
-}
 
 /* Safe-area (notches/dynamic island) */
 body {

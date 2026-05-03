@@ -10,7 +10,7 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
 {% endblock %}
-{% block body_class %}cidade-page{% endblock %}
+{% block body_class %}{% endblock %}
 {% block content %}
 
 {% if not perfil %}
@@ -373,12 +373,9 @@
     </div>
 </section>
 
-<dialog id="denuncia-dialog" class="denuncia-dialog" aria-labelledby="denuncia-dialog-title">
-    <div class="dialog-header">
-        <h3 class="dialog-title" id="denuncia-dialog-title">Como denunciar irregularidades</h3>
-        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
-    </div>
-    <div class="dialog-body">
+<md-dialog id="denuncia-dialog" class="denuncia-dialog" aria-labelledby="denuncia-dialog-title">
+    <div slot="headline" id="denuncia-dialog-title">Como denunciar irregularidades</div>
+    <div slot="content">
         <p class="text-sm text-muted">Escolha o canal mais adequado ao tipo de irregularidade. Em caso de d&uacute;vida, o MP-PB &eacute; um bom ponto de partida.</p>
         <div class="denuncia-options">
             <a href="https://ouvidoria.mppb.mp.br/" target="_blank" rel="noopener" class="denuncia-opt">
@@ -406,7 +403,10 @@
             &Eacute; poss&iacute;vel denunciar <strong>anonimamente</strong> em todos esses canais. Quanto mais evid&ecirc;ncias (datas, valores, CNPJs), melhor.
         </p>
     </div>
-</dialog>
+    <div slot="actions">
+        <md-text-button data-md-dialog-close>Fechar</md-text-button>
+    </div>
+</md-dialog>
 
 <section class="card" id="heatmapSection">
     <div class="section-head">
