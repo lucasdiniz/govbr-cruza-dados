@@ -18,7 +18,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     const body = dialog.querySelector('.dialog-body');
     title.textContent = fornecedorNome || 'Fornecedor';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const viewMunicipio = municipioOverride || _currentMunicipio;

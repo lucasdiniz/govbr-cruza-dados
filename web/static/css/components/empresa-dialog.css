@@ -1,51 +1,96 @@
 /* === components/empresa-dialog.css === */
 @layer components {
-/* Empresa dialog */
+/* Empresa drilldown dialog — md-dialog host with full-screen presentation
+   on mobile, large centered dialog on desktop. Used by all drilldown JS
+   (servidor/fornecedor/empenho/licitacao/heatmap) reusing the same shell. */
 .empresa-dialog {
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    max-width: 100vw;
-    width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
-    box-shadow: none;
-    margin: 0;
-    position: fixed;
-    top: 0;
-    left: 0;
-    transform: none;
+    --md-dialog-container-color: var(--md-sys-color-surface-container-high);
+    --md-dialog-headline-color: var(--md-sys-color-on-surface);
+    --md-dialog-supporting-text-color: var(--md-sys-color-on-surface);
+    --md-dialog-container-shape: var(--md-sys-shape-corner-large);
+    --md-divider-color: var(--md-sys-color-outline-variant);
+    /* Constrain so dialog can grow but stops at a comfortable width. */
+    max-width: min(960px, 100%);
+    width: min(960px, 100%);
 }
-.empresa-dialog::backdrop { background: rgba(0,0,0,.6); }
-.dialog-header {
+/* Mobile: full-screen presentation (no rounded corners, fills viewport).
+   The outer md-dialog-fix.css provides margin: auto for centering; here
+   we pin to the viewport edges instead. */
+@media (max-width: 640px) {
+    .empresa-dialog {
+        --md-dialog-container-shape: 0;
+        max-width: 100vw;
+        width: 100vw;
+        max-height: 100dvh;
+        height: 100dvh;
+    }
+    .empresa-dialog[open] {
+        margin: 0 !important;
+    }
+}
+
+/* Header (slot=headline). md-dialog applies its default 24/24/0 padding
+   via the dialog-decorate slotted rules; we override here to keep header
+   tighter on the drilldown (back-arrow + title + close in a single row). */
+.empresa-dialog [slot="headline"].dialog-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: max(1rem, env(safe-area-inset-top)) 2rem 1rem;
-    border-bottom: 1px solid var(--border, #dee2e6);
+    gap: 0.5rem;
+    padding: 1rem 1.25rem 0.75rem;
 }
-.dialog-title { font-size: 1.1rem; margin: 0; }
-.dialog-close {
-    background: none; border: none;
-    font-size: 1.4rem; cursor: pointer;
-    color: var(--text-muted, #6c757d);
-    padding: 0 .3rem;
-    line-height: 1;
+.empresa-dialog [slot="content"].dialog-body {
+    padding: 0 1.25rem 1.25rem;
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-medium-size);
 }
-.dialog-close:hover { color: var(--text, #212529); }
-.dialog-body {
-    padding: 1.5rem 2rem;
-    max-height: calc(100dvh - 60px);
-    overflow-y: auto;
-    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+@media (max-width: 640px) {
+    .empresa-dialog [slot="headline"].dialog-header {
+        padding: max(0.75rem, env(safe-area-inset-top)) 1rem 0.6rem;
+    }
+    .empresa-dialog [slot="content"].dialog-body {
+        padding: 0 1rem;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
 }
+
+.dialog-title {
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight, 600);
+    margin: 0;
+    color: var(--md-sys-color-on-surface);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: break-word;
+}
+/* dialog-close & dialog-back are <md-icon-button> hosts now. The :where()
+   in md-host-padding-fix doesn't match them, so they keep their MD3
+   default 40dp / no padding — perfect for inline header use. */
+.empresa-dialog .dialog-back,
+.empresa-dialog .dialog-close {
+    flex: 0 0 auto;
+}
+
+/* Generic empresa-card used inside dialog content. Tokenized to MD3
+   surface-container + outline-variant. Severity decoration via classes
+   instead of inline border-color hex. */
 .empresa-card {
-    padding: .7rem .8rem;
-    border: 1px solid var(--border, #dee2e6);
-    border-radius: 8px;
+    padding: .7rem .85rem;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
     margin-bottom: .6rem;
 }
 .empresa-card:last-child { margin-bottom: 0; }
+.empresa-card.empresa-missing { opacity: .65; border-style: dashed; }
+
+/* Severity left-bar variants (replace inline `style="border-left: 3px solid var(--red)"`) */
+.empresa-card.severity-red { border-left: 4px solid var(--md-sys-color-error); }
+.empresa-card.severity-yellow { border-left: 4px solid var(--md-comp-warning); }
+.empresa-card.severity-blue { border-left: 4px solid var(--md-sys-color-primary); }
+.empresa-card.severity-green { border-left: 4px solid var(--md-comp-success); }
+
 .empresa-header {
     display: flex;
     align-items: baseline;
@@ -54,83 +99,78 @@
     flex-wrap: wrap;
     margin-bottom: .35rem;
 }
-.empresa-header strong { font-size: .9rem; }
+.empresa-header strong {
+    font-size: var(--md-sys-typescale-body-large-size);
+    color: var(--md-sys-color-on-surface);
+}
 .empresa-header code {
-    font-size: .8rem;
-    background: var(--surface, #e9ecef);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
     padding: .1rem .4rem;
-    border-radius: 3px;
+    border-radius: var(--md-sys-shape-corner-extra-small);
     white-space: nowrap;
 }
 .empresa-details {
     display: flex;
     flex-wrap: wrap;
     gap: .3rem .8rem;
-    font-size: .82rem;
-    color: var(--text-muted, #6c757d);
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface-variant);
 }
-.empresa-missing { opacity: .6; border-style: dashed; }
 
-.dialog-section { margin-bottom: 1rem; }
+.dialog-section { margin-bottom: 1rem; scroll-margin-top: 4.75rem; }
 .dialog-section:last-child { margin-bottom: 0; }
-.dialog-section { scroll-margin-top: 4.75rem; }
 .dialog-section h4 {
-    font-size: .88rem;
+    font-size: var(--md-sys-typescale-label-large-size);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .06em;
-    color: #475569;
+    color: var(--md-sys-color-on-surface-variant);
     margin-bottom: .5rem;
     padding-bottom: .3rem;
-    border-bottom: 1px solid var(--line, #dee2e6);
-}
-.dialog-nav {
-    position: sticky;
-    top: -1.5rem;
-    z-index: 2;
-    display: flex;
-    gap: 0.45rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    margin: -1.5rem -2rem 1rem;
-    padding: 0.85rem 2rem 0.85rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.92));
-    border-bottom: 1px solid var(--line, #dee2e6);
-    scrollbar-width: thin;
-}
-.dialog-nav-btn {
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding: 0.4rem 0.8rem;
-    border-radius: 999px;
-    border: 1px solid var(--line, #dee2e6);
-    background: rgba(248, 250, 252, 0.95);
-    color: var(--text, #1e293b);
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-.dialog-nav-btn:hover,
-.dialog-nav-btn:focus-visible {
-    background: rgba(219, 234, 254, 0.9);
-    border-color: rgba(96, 165, 250, 0.45);
-    color: #1d4ed8;
-    outline: none;
-}
-.dialog-nav-btn.is-active {
-    background: rgba(37, 99, 235, 0.12);
-    border-color: rgba(37, 99, 235, 0.38);
-    color: #1d4ed8;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
-.dialog-table { font-size: .82rem; }
-.dialog-table th { font-size: .72rem; padding: .45rem .5rem; }
+/* dialog-nav: sticky wrapper for <md-tabs>. md-tabs handles its own
+   active indicator + keyboard nav. We only provide the sticky positioning
+   and surface backdrop so the tabs always remain visible at the top of the
+   dialog body during scroll. */
+.dialog-nav {
+    position: sticky;
+    top: -0.25rem;
+    z-index: 2;
+    margin: -0.5rem -1.25rem 1rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--md-sys-color-surface-container-high);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+@media (max-width: 640px) {
+    .dialog-nav {
+        margin: -0.25rem -1rem 0.85rem;
+        padding: 0.35rem 1rem;
+    }
+}
+.dialog-nav md-tabs {
+    --md-secondary-tab-container-color: transparent;
+    --md-secondary-tab-active-indicator-color: var(--md-sys-color-primary);
+    --md-secondary-tab-label-text-color: var(--md-sys-color-on-surface-variant);
+    --md-secondary-tab-active-label-text-color: var(--md-sys-color-on-surface);
+    --md-secondary-tab-hover-label-text-color: var(--md-sys-color-on-surface);
+}
+
+.dialog-table { font-size: var(--md-sys-typescale-body-small-size); }
+.dialog-table th { font-size: var(--md-sys-typescale-label-small-size); padding: .45rem .5rem; }
 .dialog-table td { padding: .45rem .5rem; }
-.dialog-back { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); padding: 0 .3rem; line-height: 1; min-width: 1.5rem; }
-.dialog-back:hover { color: var(--text); }
-.dialog-link { color: var(--accent); cursor: pointer; text-decoration: underline; background: none; border: none; font: inherit; padding: 0; }
+.dialog-link {
+    color: var(--md-sys-color-primary);
+    cursor: pointer;
+    text-decoration: underline;
+    background: none;
+    border: none;
+    font: inherit;
+    padding: 0;
+}
 
 @media print {
     .dialog-nav { display: none !important; }
@@ -147,50 +187,71 @@
 }
 .stat-cell {
     text-align: center;
-    padding: .5rem .3rem;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface-card);
+    padding: .55rem .35rem;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
 }
 .stat-value {
     display: block;
-    font-size: 1.05rem;
+    font-size: var(--md-sys-typescale-title-medium-size);
     font-weight: 700;
-    color: var(--text);
+    color: var(--md-sys-color-on-surface);
 }
 .stat-label {
     display: block;
-    font-size: .7rem;
-    color: var(--text-muted);
+    font-size: var(--md-sys-typescale-label-small-size);
+    color: var(--md-sys-color-on-surface-variant);
     margin-top: .15rem;
 }
+/* Stat severity variants — tinted bg + border using container colors.
+   Replaces inline style="border-color:#fecaca" / color:var(--red). */
+.stat-cell.stat-cell--red {
+    background: color-mix(in oklab, var(--md-sys-color-error-container) 50%, var(--md-sys-color-surface-container));
+    border-color: var(--md-sys-color-error);
+    color: var(--md-sys-color-on-error-container);
+}
+.stat-cell.stat-cell--red .stat-value { color: var(--md-sys-color-on-error-container); }
+.stat-cell.stat-cell--yellow {
+    background: color-mix(in oklab, var(--md-comp-warning-container) 50%, var(--md-sys-color-surface-container));
+    border-color: var(--md-comp-warning);
+    color: var(--md-comp-on-warning-container);
+}
+.stat-cell.stat-cell--yellow .stat-value { color: var(--md-comp-on-warning-container); }
+.stat-cell.stat-cell--orange {
+    background: color-mix(in oklab, var(--md-sys-color-tertiary-container) 50%, var(--md-sys-color-surface-container));
+    border-color: var(--md-sys-color-tertiary);
+    color: var(--md-sys-color-on-tertiary-container);
+}
+.stat-cell.stat-cell--orange .stat-value { color: var(--md-sys-color-on-tertiary-container); }
 
 /* External link button in dialog sections */
 .ext-link {
     display: inline-block;
     margin-top: .5rem;
-    padding: .3rem .6rem;
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    color: var(--accent);
+    padding: .4rem .8rem;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-full);
+    color: var(--md-sys-color-primary);
     text-decoration: none;
     font-weight: 600;
-    transition: background .15s ease;
+    transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .ext-link:hover {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    background: color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
     text-decoration: none;
 }
 
 /* Inline external link (next to section titles) */
 .ext-link-inline {
-    font-size: .75rem;
-    color: var(--blue, #2563eb);
+    font-size: var(--md-sys-typescale-label-small-size);
+    color: var(--md-sys-color-primary);
     text-decoration: none;
     margin-left: .4rem;
     vertical-align: middle;
-    opacity: .6;
-    transition: opacity .15s ease;
+    opacity: .8;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .ext-link-inline:hover {
     opacity: 1;

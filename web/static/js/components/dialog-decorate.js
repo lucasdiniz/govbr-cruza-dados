@@ -54,35 +54,41 @@ function _decorateDialogBody(body) {
         section.hidden = idx !== 0;
     });
 
+    // MD3 secondary tabs — sticky bar at top of dialog body. md-tabs handles
+    // keyboard navigation (arrow keys), focus, and the active indicator
+    // internally. We wrap in a div.dialog-nav so existing CSS sticky/padding
+    // overrides keep applying without touching the shadow root.
     const nav = document.createElement('div');
     nav.className = 'dialog-nav';
-    nav.setAttribute('role', 'tablist');
-    nav.setAttribute('aria-label', 'Secoes do dialogo');
-    nav.setAttribute('aria-orientation', 'horizontal');
-    nav.innerHTML = sections.map((section, idx) =>
-        `<button type="button" role="tab" id="${section.id}-tab" class="dialog-nav-btn${idx === 0 ? ' is-active' : ''}" aria-selected="${idx === 0 ? 'true' : 'false'}" aria-controls="${section.id}" tabindex="${idx === 0 ? '0' : '-1'}" data-dialog-target="${section.id}">${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</button>`
+    const tabs = document.createElement('md-tabs');
+    tabs.setAttribute('aria-label', 'Secoes do dialogo');
+    tabs.innerHTML = sections.map((section, idx) =>
+        `<md-secondary-tab id="${section.id}-tab" data-dialog-target="${section.id}" aria-controls="${section.id}"${idx === 0 ? ' active' : ''}>${_esc(section.dataset.dialogLabel || `Secao ${idx + 1}`)}</md-secondary-tab>`
     ).join('');
+    nav.appendChild(tabs);
     const introNote = body.querySelector(':scope > .dialog-history-note');
     if (introNote) introNote.insertAdjacentElement('afterend', nav);
     else body.prepend(nav);
 
-    const buttons = Array.from(nav.querySelectorAll('.dialog-nav-btn'));
+    const tabEls = Array.from(tabs.querySelectorAll('md-secondary-tab'));
     const setActive = (id, opts = {}) => {
-        const activeButton = buttons.find(btn => btn.dataset.dialogTarget === id);
-        if (!activeButton) return false;
-        buttons.forEach((btn) => {
-            const active = btn.dataset.dialogTarget === id;
-            btn.classList.toggle('is-active', active);
-            btn.setAttribute('aria-selected', active ? 'true' : 'false');
-            btn.tabIndex = active ? 0 : -1;
+        const activeTab = tabEls.find(t => t.dataset.dialogTarget === id);
+        if (!activeTab) return false;
+        tabEls.forEach((tab) => {
+            const isActive = tab.dataset.dialogTarget === id;
+            // md-tabs reads `active` (boolean) on each tab. Setting it
+            // imperatively keeps state in sync without relying on the
+            // tab-set's selectionChange event.
+            if (isActive) tab.setAttribute('active', '');
+            else tab.removeAttribute('active');
         });
         sections.forEach((section) => {
             section.hidden = section.id !== id;
         });
         body._activeDialogSectionId = id;
         if (opts.focus) {
-            activeButton.focus({ preventScroll: true });
-            activeButton.scrollIntoView({
+            activeTab.focus({ preventScroll: true });
+            activeTab.scrollIntoView({
                 block: 'nearest',
                 inline: 'nearest',
                 behavior: opts.smooth === false ? 'auto' : 'smooth',
@@ -93,22 +99,18 @@ function _decorateDialogBody(body) {
     };
     body._activateDialogSection = setActive;
 
-    buttons.forEach((btn, idx) => {
-        btn.addEventListener('click', () => {
-            setActive(btn.dataset.dialogTarget, { scroll: true });
-        });
-        btn.addEventListener('keydown', (event) => {
-            let nextIndex = -1;
-            if (event.key === 'ArrowRight') nextIndex = (idx + 1) % buttons.length;
-            else if (event.key === 'ArrowLeft') nextIndex = (idx - 1 + buttons.length) % buttons.length;
-            else if (event.key === 'Home') nextIndex = 0;
-            else if (event.key === 'End') nextIndex = buttons.length - 1;
-            else return;
-            event.preventDefault();
-            const next = buttons[nextIndex];
-            setActive(next.dataset.dialogTarget, { focus: true, scroll: false });
-        });
+    // md-tabs dispatches `change` when the user activates a different tab via
+    // click or keyboard. Read the new active tab from event.target.activeTab
+    // (provided by md-tabs once upgraded).
+    tabs.addEventListener('change', () => {
+        const active = tabs.activeTab || tabEls.find(t => t.hasAttribute('active'));
+        if (!active) return;
+        const id = active.dataset.dialogTarget;
+        if (id && id !== body._activeDialogSectionId) {
+            setActive(id, { scroll: true });
+        }
     });
+
     setActive(sections[0].id, { smooth: false });
 }
 

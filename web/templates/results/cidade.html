@@ -521,14 +521,18 @@
     {% endfor %}
 </section>
 
-<dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
-    <div class="dialog-header">
-        <button type="button" class="dialog-back" style="visibility:hidden" title="Voltar" aria-label="Voltar">&#8592;</button>
+<md-dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
+    <div slot="headline" class="dialog-header">
+        <md-icon-button class="dialog-back" data-dialog-back style="visibility:hidden" aria-label="Voltar">
+            <md-icon>arrow_back</md-icon>
+        </md-icon-button>
         <h3 class="dialog-title" id="empresa-dialog-title">Empresas vinculadas</h3>
-        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
+        <md-icon-button class="dialog-close" data-md-dialog-close aria-label="Fechar">
+            <md-icon>close</md-icon>
+        </md-icon-button>
     </div>
-    <div class="dialog-body"></div>
-</dialog>
+    <div slot="content" class="dialog-body"></div>
+</md-dialog>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -544,9 +548,11 @@ document.addEventListener("DOMContentLoaded", () => {
         {{ default_data_fim|tojson }}
     );
 });
-// Close dialog on backdrop click
-document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
-    if (e.target === this) this.close();
+// Close dialog on backdrop click. md-dialog auto-handles ESC and the
+// scrim click; this fallback covers the (rare) case where the click
+// reaches the host outside the inner dialog.
+document.getElementById('empresa-dialog')?.addEventListener('cancel', function() {
+    this.close();
 });
 </script>
 

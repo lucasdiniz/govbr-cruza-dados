@@ -10,7 +10,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const mesNome = mesesLabel[mes - 1] || mes;
     title.textContent = `${mesNome}/${ano} — ${municipio}`;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     let data;

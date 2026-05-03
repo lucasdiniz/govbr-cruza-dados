@@ -8,7 +8,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
     title.textContent = cpfMask ? `${servidorNome}  —  CPF: ${cpfMask}` : servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);

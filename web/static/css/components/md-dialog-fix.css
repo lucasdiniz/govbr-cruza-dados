@@ -25,4 +25,10 @@
 md-dialog[open] {
     display: block !important;
     margin: auto !important;
+    /* `position: fixed` from the shadow :host rule doesn't anchor the
+       element without explicit insets — without these, the host stays at
+       its static-flow position (after all content) and margin:auto can't
+       center it. inset:0 anchors all four sides; margin:auto then centers
+       a fixed-size dialog inside the viewport. */
+    inset: 0 !important;
 }
