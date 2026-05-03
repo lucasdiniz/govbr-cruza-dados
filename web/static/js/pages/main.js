@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initBackToTop();
     initShareButtons();
     initModeToggle();
+    initTopnavElevation();
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();

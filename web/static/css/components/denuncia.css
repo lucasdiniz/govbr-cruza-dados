@@ -16,21 +16,17 @@
 }
 .denuncia-cta-icon { font-size: 34px; line-height: 1; }
 .denuncia-cta-text { flex: 1; min-width: 200px; }
-.denuncia-cta-text h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; color: var(--text-primary, #f3f4f6); }
-.denuncia-cta-text p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-secondary, #cbd5e1); }
-.denuncia-btn {
-    min-height: 44px;
-    padding: 0 20px;
-    border-radius: 10px;
-    background: #dc2626;
-    color: #fff;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
-    font-size: 14.5px;
+.denuncia-cta-text h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; color: var(--md-sys-color-on-surface); }
+.denuncia-cta-text p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--md-sys-color-on-surface-variant); }
+.denuncia-md-btn {
+    /* MD3 filled button — usa cor de severidade (error-container) p/ alinhar
+       com o tom de "alerta" do CTA, em vez do primary azul. */
+    --md-filled-button-container-color: var(--md-sys-color-error);
+    --md-filled-button-label-text-color: var(--md-sys-color-on-error);
+    --md-filled-button-hover-container-color: var(--md-sys-color-error);
+    --md-filled-button-pressed-container-color: var(--md-sys-color-error);
     white-space: nowrap;
 }
-.denuncia-btn:hover { background: #b91c1c; }
 
 .denuncia-dialog {
     max-width: 640px;
@@ -108,7 +104,7 @@ html.audit-mode .denuncia-cta { display: none; }
 @media (max-width: 640px) {
     .denuncia-cta { padding: 16px 14px; }
     .denuncia-cta-inner { gap: 12px; }
-    .denuncia-btn { width: 100%; }
+    .denuncia-md-btn { width: 100%; }
 }
 
 
