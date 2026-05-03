@@ -495,22 +495,62 @@ FROM _tmp_socio_empresas se,
 JOIN tce_pb_despesa d ON d.cnpj_basico = cnpj.cnpj_basico AND d.valor_pago > 0;
 
 -- Step 3: Conflito de interesses (empresa do sócio fornece ao mesmo município)
+--
+-- ATENCAO: o predicado `d.municipio = ANY(srv.municipios)` NAO eh hashable
+-- nem mergeable. Em PG16, o planner sempre escolhe Nested Loop com a
+-- agregacao interna de `tce_pb_despesa` como inner — ou seja, agrega 15M
+-- rows ~17800 vezes (uma por sócio-servidor). Isso ja foi visto em
+-- producao rodando 24h+ sem terminar. Solucao: pre-expandir os arrays
+-- em rows antes do join (transforma em 2 hash joins puros, ~200ms).
+--
+-- INVARIANTE para equivalencia semantica:
+--   - mv_servidor_pb_base eh UNIQUE em (cpf_digitos_6, nome_upper)
+--     (linha 460: idx_mv_srvb_cpf_nome)
+--   - _tmp_socio_empresas.cnpjs vem de ARRAY_AGG(DISTINCT ...) (linha 477)
+--   - mv_servidor_pb_base.municipios vem de ARRAY_AGG(DISTINCT ...)
+-- Se qualquer uma dessas mudar, COUNT(DISTINCT)/SUM podem divergir.
 DROP TABLE IF EXISTS _tmp_conflito;
-CREATE TABLE _tmp_conflito AS
+DROP TABLE IF EXISTS _tmp_d_agg;
+DROP TABLE IF EXISTS _tmp_se_unnest;
+
+-- 3a. Pre-agrega tce_pb_despesa por (cnpj_basico, municipio) UMA vez.
+-- Sem index: a unica leitura subsequente eh um Hash Join, que constroi
+-- sua propria hashmap.
+CREATE TABLE _tmp_d_agg AS
+SELECT cnpj_basico, municipio, SUM(valor_pago) AS total_pago
+FROM tce_pb_despesa
+WHERE valor_pago > 0
+GROUP BY cnpj_basico, municipio;
+
+ANALYZE _tmp_d_agg;
+
+-- 3b. Expande arrays cnpjs[] e municipios[] em rows antes do join, pra
+-- trocar `ANY(...)` por igualdade hashable.
+CREATE TABLE _tmp_se_unnest AS
 SELECT se.cpf_digitos_6, se.nome_upper,
-       COUNT(DISTINCT d.cnpj_basico) AS qtd_conflitos,
-       SUM(d.total_pago) AS total_conflito
+       m AS municipio, cnpj.cnpj_basico
 FROM _tmp_socio_empresas se
-CROSS JOIN LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
-JOIN (
-    SELECT cnpj_basico, municipio, SUM(valor_pago) AS total_pago
-    FROM tce_pb_despesa WHERE valor_pago > 0
-    GROUP BY cnpj_basico, municipio
-) d ON d.cnpj_basico = cnpj.cnpj_basico
 JOIN mv_servidor_pb_base srv ON srv.cpf_digitos_6 = se.cpf_digitos_6
     AND srv.nome_upper = se.nome_upper
-    AND d.municipio = ANY(srv.municipios)
-GROUP BY se.cpf_digitos_6, se.nome_upper;
+CROSS JOIN LATERAL unnest(se.cnpjs) AS cnpj(cnpj_basico)
+CROSS JOIN LATERAL unnest(srv.municipios) AS m;
+
+ANALYZE _tmp_se_unnest;
+
+-- 3c. Hash Join puro contra _tmp_d_agg
+CREATE TABLE _tmp_conflito AS
+SELECT u.cpf_digitos_6, u.nome_upper,
+       COUNT(DISTINCT d.cnpj_basico) AS qtd_conflitos,
+       SUM(d.total_pago) AS total_conflito
+FROM _tmp_se_unnest u
+JOIN _tmp_d_agg d ON d.cnpj_basico = u.cnpj_basico
+    AND d.municipio = u.municipio
+GROUP BY u.cpf_digitos_6, u.nome_upper;
+
+-- _tmp_d_agg e _tmp_se_unnest podem ser dropadas pois mv_servidor_pb_risco
+-- nao depende delas (so de _tmp_conflito).
+DROP TABLE IF EXISTS _tmp_d_agg;
+DROP TABLE IF EXISTS _tmp_se_unnest;
 
 -- Step 4: Bolsa Família match (apenas durante vínculo ativo)
 DROP TABLE IF EXISTS _tmp_bf;
