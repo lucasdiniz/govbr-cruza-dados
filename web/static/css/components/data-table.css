@@ -39,12 +39,52 @@ tr:hover {
 
 .compact-table table { font-size: var(--md-sys-typescale-body-small-size); }
 
+/* Table shell: chassi unificado que agrupa legenda + filtro + tabela +
+   paginacao em um unico bloco MD3 (surface-container-low + 12dp shape). */
 .table-shell {
     border: 1px solid var(--md-sys-color-outline-variant);
     border-radius: var(--md-sys-shape-corner-medium);
-    padding: 0.9rem;
+    padding: 0;
     background: var(--md-sys-color-surface-container-low);
     color: var(--md-sys-color-on-surface);
+    overflow: hidden;
+}
+/* Legenda de cores (linha sancao etc): vai no topo do shell, antes do
+   filtro. Bordada embaixo p/ separar do filtro/tabela. */
+.table-shell-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.7rem 0.95rem;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    color: var(--md-sys-color-on-surface-variant);
+}
+.table-shell-legend .color-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.table-shell-legend .color-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+/* Filtro + meta (Mostrando 200/450). */
+.table-actions {
+    padding: 0.7rem 0.95rem;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.table-pagination {
+    padding: 0.6rem 0.7rem;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+/* tbl-wrap: nao tem padding p/ as colunas do header alinharem com o frame */
+.table-shell .tbl-wrap {
+    padding: 0;
 }
 .table-filter {
     width: min(340px, 100%);

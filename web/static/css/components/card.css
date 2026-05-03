@@ -49,9 +49,20 @@
     font-size: var(--md-sys-typescale-title-medium-size);
     font-weight: 700;
     color: var(--md-sys-color-on-surface);
-    border-bottom: 2px solid var(--md-sys-color-primary);
     padding-bottom: 0.4rem;
     display: inline-block;
+}
+
+/* Section header pattern — eyebrow + title + description compose a M3
+   "section header" (typography pattern). When a description paragraph
+   sits between the .section-head wrapper and the section's content
+   (.async-card / .result-block / .table-shell), we draw a divider
+   underneath it to clearly separate the heading from the data block. */
+.card > .section-head + .text-muted,
+.card > .section-head + p.text-muted {
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
 }
 
 

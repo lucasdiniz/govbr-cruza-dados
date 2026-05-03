@@ -1,32 +1,16 @@
 {% if fornecedores %}
 <section class="result-block">
-    <div class="result-toolbar">
-        <div>
-            <h3 class="card-title title-with-action">
-                <span class="title-text">
-                    <span class="citizen-only">Empresas que mais receberam da prefeitura</span>
-                    <span class="auditor-only">Maiores fornecedores do municipio</span>
-                </span>
-                <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
-            </h3>
-            <p class="text-muted text-sm mobile-collapsible-desc">
-                <span class="citizen-only">Concentra&ccedil;&atilde;o dos pagamentos e sinais de aten&ccedil;&atilde;o de cada empresa. Toque em uma empresa para detalhes.</span>
-                <span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span>
-            </p>
-            {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
-            {% set has_rec_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list %}
-            {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
-            {% if has_rec_inid or has_rec_sancao or has_acordo %}
-            <div class="color-legend">
-                {% if has_rec_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Recebeu enquanto proibida de contratar</span><span class="auditor-only">Recebeu durante Inidoneidade</span></span>{% endif %}
-                {% if has_rec_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">Recebeu durante puni&ccedil;&atilde;o aplic&aacute;vel</span><span class="auditor-only">Recebeu durante sancao aplicavel</span></span>{% endif %}
-                {% if has_acordo %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#3b82f6"></span> <span class="citizen-only">Acordo de leni&ecirc;ncia vigente (CGU)</span><span class="auditor-only">Acordo de leniencia vigente</span></span>{% endif %}
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
     <div class="table-shell js-data-table" data-page-size="10">
+        {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
+        {% set has_rec_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list %}
+        {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
+        {% if has_rec_inid or has_rec_sancao or has_acordo %}
+        <div class="table-shell-legend">
+            {% if has_rec_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Recebeu enquanto proibida de contratar</span><span class="auditor-only">Recebeu durante Inidoneidade</span></span>{% endif %}
+            {% if has_rec_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">Recebeu durante puni&ccedil;&atilde;o aplic&aacute;vel</span><span class="auditor-only">Recebeu durante sancao aplicavel</span></span>{% endif %}
+            {% if has_acordo %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#3b82f6"></span> <span class="citizen-only">Acordo de leni&ecirc;ncia vigente (CGU)</span><span class="auditor-only">Acordo de leniencia vigente</span></span>{% endif %}
+        </div>
+        {% endif %}
         <div class="table-actions">
             <input
                 type="search"

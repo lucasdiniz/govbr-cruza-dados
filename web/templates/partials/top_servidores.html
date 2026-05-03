@@ -1,32 +1,14 @@
 {% if servidores %}
 <section class="result-block">
-    <div class="result-toolbar">
-        <div>
-            <h3 class="card-title title-with-action">
-                <span class="title-text">
-                    <span class="citizen-only">Servidores com sinais de aten&ccedil;&atilde;o</span>
-                    <span class="auditor-only">Servidores com sinais de atencao</span>
-                </span>
-                <button type="button" class="mobile-desc-toggle" data-mobile-desc-next aria-expanded="false" aria-label="Ver descri&ccedil;&atilde;o" title="Ver descri&ccedil;&atilde;o">?</button>
-            </h3>
-            <p class="text-muted text-sm mobile-collapsible-desc">
-                <span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: s&oacute;cio de empresa, sal&aacute;rio em mais de um governo, beneficio social irregular, ou acumula&ccedil;&atilde;o at&iacute;pica. A Constitui&ccedil;&atilde;o permite dois v&iacute;nculos para profissionais de sa&uacute;de.</span>
-                <span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos:
-                vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social
-                ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span>
-            </p>
-            {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_durante_vinculo')|list %}
-            {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list %}
-            {% if has_red_serv or has_yellow_serv %}
-            <div class="color-legend">
-                {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Expulso do servi&ccedil;o federal, s&oacute;cio de empresa proibida de contratar, ou empresa recebeu pagamentos durante o v&iacute;nculo</span><span class="auditor-only">Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span></span>{% endif %}
-                {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa sancionada, ou recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span></span>{% endif %}
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
     <div class="table-shell js-data-table" data-page-size="10">
+        {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_durante_vinculo')|list %}
+        {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list %}
+        {% if has_red_serv or has_yellow_serv %}
+        <div class="table-shell-legend">
+            {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Expulso do servi&ccedil;o federal, s&oacute;cio de empresa proibida de contratar, ou empresa recebeu pagamentos durante o v&iacute;nculo</span><span class="auditor-only">Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span></span>{% endif %}
+            {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa sancionada, ou recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span></span>{% endif %}
+        </div>
+        {% endif %}
         <div class="table-actions">
             <input
                 type="search"
