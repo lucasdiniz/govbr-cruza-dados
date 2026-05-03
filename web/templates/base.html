@@ -35,6 +35,19 @@
             } catch(e) {}
         })();
     </script>
+    {# Material Web Components 2.x - import map para resolver bare specifiers
+       como "@material/web/all.js". Carregado de esm.sh (CDN com dedup correto
+       de @lit/reactive-element). esm.run nao deduplica corretamente quando
+       all.js re-exporta modulos individuais, causando "the name 'md-elevation'
+       has already been used" em CustomElementRegistry. Sem build step. #}
+    <script type="importmap">
+    {
+      "imports": {
+        "@material/web/": "https://esm.sh/@material/web@2.0.0/"
+      }
+    }
+    </script>
+    <script type="module" src="/static/js/md3/imports.js?v={{ ASSET_VERSION }}"></script>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="apple-touch-icon" href="/static/logo.svg">
