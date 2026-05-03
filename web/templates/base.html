@@ -35,15 +35,22 @@
             } catch(e) {}
         })();
     </script>
-    {# Material Web Components 2.x - import map para resolver bare specifiers
-       como "@material/web/all.js". Carregado de esm.sh (CDN com dedup correto
-       de @lit/reactive-element). esm.run nao deduplica corretamente quando
-       all.js re-exporta modulos individuais, causando "the name 'md-elevation'
-       has already been used" em CustomElementRegistry. Sem build step. #}
+    {# Material Web Components 2.x - bundle vendorado em
+       /static/vendor/material-web/material-web-bundle.js (~475 KB raw,
+       ~79 KB gzip). Inclui @material/web/all.js + lit + @lit/reactive-element +
+       tslib num unico arquivo ESM, gerado offline com esbuild. Ver
+       web/static/vendor/material-web/README.md para procedimento de update.
+
+       Usamos importmap para que o module imports.js consiga resolver
+       "@material/web/" e "@material/web/all.js" -> bundle local.
+       O bundle eh self-contained (todas as deps inlined), entao tecnicamente
+       so precisariamos importar o arquivo direto, mas o importmap permite
+       que codigo futuro use bare specifiers consistentemente. #}
     <script type="importmap">
     {
       "imports": {
-        "@material/web/": "https://esm.sh/@material/web@2.0.0/"
+        "@material/web/": "/static/vendor/material-web/",
+        "@material/web/all.js": "/static/vendor/material-web/material-web-bundle.js"
       }
     }
     </script>

@@ -24,8 +24,9 @@
 @import url("./base/typography.css");
 
 /* --- layer: components --- */
+/* _dark-overrides.css comes first so subsequent component files can refine
+   any dark-mode tweaks if needed. */
 @import url("./components/_dark-overrides.css");
-@import url("./components/_mobile.css");
 @import url("./components/autocomplete.css");
 @import url("./components/badge.css");
 @import url("./components/banner.css");
@@ -58,6 +59,12 @@
 @import url("./components/tooltip.css");
 @import url("./components/topnav.css");
 @import url("./components/tour.css");
+/* _mobile.css MUST come last within the components layer: it contains the
+   bundled @media (max-width:640px) blocks. Same layer + same specificity
+   means source order decides — and mobile rules need to override desktop
+   per-component rules. (cleanup-css will dissolve this back into per-
+   component files after MD3 primitives land.) */
+@import url("./components/_mobile.css");
 
 /* --- layer: pages --- */
 @import url("./pages/errors.css");

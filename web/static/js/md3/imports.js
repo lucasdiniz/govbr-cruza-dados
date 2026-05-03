@@ -1,23 +1,31 @@
 // === md3/imports.js ===
 //
-// Material Web Components - imports.
+// Material Web Components - registro dos custom elements <md-*>.
 //
-// IMPORTANTE: usamos `@material/web/all.js` (bundle unico) em vez de imports
-// individuais. Razao: ao importar componentes individuais via esm.run, cada
-// arquivo arrasta seu proprio chunk de @lit/reactive-element, gerando varias
-// instancias do registry de custom elements e causando NotSupportedError ao
-// definir nomes duplicados como "md-elevation". O bundle `all.js` resolve as
-// dependencias internamente, garantindo uma unica instancia de lit.
+// O bundle real (`material-web-bundle.js`) eh vendorado localmente em
+// /static/vendor/material-web/ e ja faz o registro + dispatch de "md3-ready".
+// Este arquivo existe somente para acionar o import via importmap, garantindo
+// que o bundle seja carregado quando este modulo for incluido em base.html.
 //
-// Trade-off: tamanho do bundle e maior (~250KB gzip vs ~30KB para subset),
-// mas eh servido com cache e Service Worker pre-cacheia em primeira visita.
-// Em fases futuras podemos otimizar hospedando @material/web localmente
-// (sem build step, apenas copiando o bundle do npm).
+// O bundle inclui:
+//   * @material/web@2.0.0/all.js (todos os componentes)
+//   * lit, lit-html, lit-element, @lit/reactive-element, tslib (deps)
+//
+// Tamanho: ~475 KB raw / ~79 KB gzip. Servido same-origin, cacheado pelo
+// Service Worker (CORE_ASSETS em sw.js) e pelo HTTP cache do browser.
+//
+// Para atualizar a versao do @material/web ou re-gerar o bundle, ver
+// web/static/vendor/material-web/README.md.
 
 import "@material/web/all.js";
 
-// Marca um flag global para que componentes nao-modulares (plain scripts)
-// possam consultar se MD3 ja carregou.
-window.__MD3_READY__ = true;
-window.dispatchEvent(new CustomEvent("md3-ready"));
+// O bundle ja seta __MD3_READY__ e dispara "md3-ready", entao aqui nao
+// precisamos repetir. Mas garantimos que o flag exista mesmo que o bundle
+// falhe ao carregar (debug-friendly: fica `false` em vez de `undefined`).
+if (typeof window !== "undefined" && window.__MD3_READY__ !== true) {
+  // Bundle nao carregou (ou ainda nao executou): deixa explicitamente como
+  // false para que whenMD3Ready() use o caminho de espera por evento.
+  window.__MD3_READY__ = false;
+}
+
 
