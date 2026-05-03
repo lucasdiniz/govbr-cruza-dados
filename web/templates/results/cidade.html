@@ -156,18 +156,22 @@
 </details>
 
 <section class="card priority-guide" aria-label="Por onde comecar">
-    <p class="eyebrow">
-        <span class="citizen-only">Comece por aqui</span>
-        <span class="auditor-only">Triagem rapida</span>
-    </p>
-    <h2 class="card-title">
-        <span class="citizen-only">Veja primeiro os achados que pedem atencao</span>
-        <span class="auditor-only">Principais alvos antes do relatorio completo</span>
-    </h2>
-    <p class="text-muted">
-        <span class="citizen-only">Para uma leitura rapida, comece pelas empresas e servidores abaixo. Depois use o mapa mensal, os graficos e o relatorio completo se quiser investigar mais.</span>
-        <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
-    </p>
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Comece por aqui</span>
+                <span class="auditor-only">Triagem rapida</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">Veja primeiro os achados que pedem atencao</span>
+                <span class="auditor-only">Principais alvos antes do relatorio completo</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Para uma leitura rapida, comece pelas empresas e servidores abaixo. Depois use o mapa mensal, os graficos e o relatorio completo se quiser investigar mais.</span>
+                <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
+            </p>
+        </div>
+    </div>
     <div class="priority-links">
         <md-filled-button href="#fornecedores">Ver empresas primeiro</md-filled-button>
         <md-outlined-button href="#servidores">Ver servidores com sinais</md-outlined-button>
@@ -186,13 +190,13 @@
                     <span class="citizen-only">Principais empresas contratadas</span>
                     <span class="auditor-only">Fornecedores que mais aparecem no municipio</span>
                 </h2>
+                <p class="text-muted mobile-duplicate-desc">
+                    <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
+                    <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
+                    Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
+                </p>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-duplicate-desc">
-            <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
-            <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
-            Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
-        </p>
         <div class="async-card" data-async-panel="fornecedores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>
@@ -210,14 +214,14 @@
                     <span class="citizen-only">Servidores que merecem uma segunda olhada</span>
                     <span class="auditor-only">Servidores que merecem verifica&ccedil;&atilde;o adicional</span>
                 </h2>
+                <p class="text-muted mobile-duplicate-desc">
+                    <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
+                    <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
+                    pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
+                    Clique em um servidor para ver detalhes.</span>
+                </p>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-duplicate-desc">
-            <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
-            <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
-            pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
-            Clique em um servidor para ver detalhes.</span>
-        </p>
         <div class="async-card" data-async-panel="servidores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>

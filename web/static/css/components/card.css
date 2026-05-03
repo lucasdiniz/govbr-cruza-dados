@@ -1,8 +1,10 @@
 /* === components/card.css === */
 @layer components {
-/* Cards bespoke retokenizados para MD3:
-   surface-container-low base + outline-variant border, 12dp shape, no shadow
-   (eleva via <md-elevation> ou hover state se interativo). */
+/* Cards bespoke retokenizados para MD3 com padrao "title bar":
+   - Card body = surface-container-low
+   - Section header = surface-container (1 step elevado), com divisor abaixo
+     que se estende ate as bordas do card (padrao desktop-app/window chrome).
+   - overflow:hidden no card pra clipar o header bg ao border-radius */
 .search-card,
 .card,
 .insight-card {
@@ -26,6 +28,7 @@
 .card {
     padding: 1.25rem;
     margin-bottom: 1rem;
+    overflow: hidden;
 }
 
 .card-title {
@@ -53,16 +56,24 @@
     display: inline-block;
 }
 
-/* Section header pattern — eyebrow + title + description compose a M3
-   "section header" (typography pattern). When a description paragraph
-   sits between the .section-head wrapper and the section's content
-   (.async-card / .result-block / .table-shell), we draw a divider
-   underneath it to clearly separate the heading from the data block. */
-.card > .section-head + .text-muted,
-.card > .section-head + p.text-muted {
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
+/* "Title bar" pattern para o header de cada secao do card:
+   - Bg surface-container (1 step elevado vs o body do card)
+   - Espraiado ate as bordas do card via negative inline margins (-1.25rem)
+     mais negative top margin (-1.25rem) p/ alinhar ao topo
+   - Divisor 1px branco-12% no fundo p/ separacao visual extra
+   - Padding generoso (1.25rem) interno
+   Isso lembra o "title bar" de apps desktop (header distinto do body). */
+.card > .section-head {
+    background: var(--md-sys-color-surface-container);
+    margin: -1.25rem -1.25rem 1.25rem;
+    padding: 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+@media (max-width: 640px) {
+    .card > .section-head {
+        margin: -0.95rem -0.95rem 0.95rem;
+        padding: 0.95rem;
+    }
 }
 
 
