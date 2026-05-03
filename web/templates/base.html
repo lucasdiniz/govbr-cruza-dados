@@ -56,22 +56,17 @@
     </script>
     <script type="module" src="/static/js/md3/imports.js?v={{ ASSET_VERSION }}"></script>
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
-    <link rel="apple-touch-icon" href="/static/logo.svg">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
     {% block head_extra %}{% endblock %}
 </head>
 <body class="dark-page {% block body_class %}{% endblock %}">
     <a href="#main-content" class="skip-link">Pular para o conteudo principal</a>
     <nav class="topnav">
         <a href="/" class="logo">
-            <svg class="logo-mark" width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <rect x="3" y="4" width="16" height="20" rx="3" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-width="2"/>
-                <line x1="7" y1="10" x2="15" y2="10" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="7" y1="14" x2="13" y2="14" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="7" y1="18" x2="15" y2="18" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <circle cx="22" cy="22" r="5.5" stroke="#60a5fa" stroke-width="2" fill="#060a14"/>
-                <line x1="26" y1="26" x2="29.5" y2="29.5" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round"/>
-            </svg>
+            <img class="logo-mark" src="/static/logo-nego.png" alt="" width="32" height="32" aria-hidden="true">
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>

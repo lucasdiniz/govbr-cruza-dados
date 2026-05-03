@@ -40,7 +40,13 @@
     gap: 0.55rem;
     text-decoration: none;
 }
-.logo-mark { flex-shrink: 0; }
+.logo-mark {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: block;
+    object-fit: contain;
+}
 .logo-text { letter-spacing: -0.01em; }
 .logo-text strong { color: var(--md-sys-color-primary); font-weight: 700; }
 .logo:hover { color: var(--md-sys-color-primary); text-decoration: none; }
