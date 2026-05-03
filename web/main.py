@@ -210,7 +210,7 @@ if _js_load_order.exists():
 else:
     JS_FILES = []
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "55"
+templates.env.globals["ASSET_VERSION"] = "56"
 
 
 app.include_router(cidade_router)

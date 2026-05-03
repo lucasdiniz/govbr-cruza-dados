@@ -1,0 +1,33 @@
+/* === tokens/shape.css === */
+/*
+ * Material Design 3 shape scale.
+ *
+ * MD3 define 7 níveis de corner-radius para gerar uma hierarquia visual
+ * de "cantos". Mapeamento típico:
+ *   - none           : 0       inputs sem borda arredondada (raros)
+ *   - extra-small    : 4dp     chips, snackbar, badges
+ *   - small          : 8dp     buttons, text fields
+ *   - medium         : 12dp    cards, list items
+ *   - large          : 16dp    cards proeminentes, dialogs
+ *   - extra-large    : 28dp    fab, hero containers
+ *   - full           : 9999    pills, search bar (totalmente arredondado)
+ *
+ * Estes tokens substituem os literais espalhados (border-radius: 8px/12px/16px/999px)
+ * conforme cada componente é migrado.
+ */
+
+@layer tokens {
+  :root {
+    --md-sys-shape-corner-none: 0;
+    --md-sys-shape-corner-extra-small: 4px;
+    --md-sys-shape-corner-extra-small-top: 4px 4px 0 0;
+    --md-sys-shape-corner-small: 8px;
+    --md-sys-shape-corner-medium: 12px;
+    --md-sys-shape-corner-large: 16px;
+    --md-sys-shape-corner-large-end: 0 16px 16px 0;
+    --md-sys-shape-corner-large-top: 16px 16px 0 0;
+    --md-sys-shape-corner-extra-large: 28px;
+    --md-sys-shape-corner-extra-large-top: 28px 28px 0 0;
+    --md-sys-shape-corner-full: 9999px;
+  }
+}

@@ -8,7 +8,14 @@
 @import url("./base/reset.css");
 
 /* --- layer: tokens --- */
-@import url("./tokens/legacy.css");
+/* MD3 system tokens. legacy-shim must come last so legacy vars
+   resolve to MD3 tokens (defined in color.css above it). */
+@import url("./tokens/color.css");
+@import url("./tokens/typography.css");
+@import url("./tokens/shape.css");
+@import url("./tokens/elevation.css");
+@import url("./tokens/motion.css");
+@import url("./tokens/legacy-shim.css");
 
 /* --- layer: base --- */
 @import url("./base/a11y.css");

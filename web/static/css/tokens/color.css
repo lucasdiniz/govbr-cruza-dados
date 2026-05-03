@@ -1,0 +1,112 @@
+/* === tokens/color.css === */
+/*
+ * Material Design 3 dark color scheme — TransparenciaPB.
+ *
+ * Palette inspiration: bandeira da Paraíba (preto + vermelho).
+ * Mapping decisions (confirmed in plan):
+ *   - PRIMARY  : azul calmo (semelhante ao --blue atual, #60a5fa). Não é o seed.
+ *                Razão: vermelho como primary diluiria a semântica de severidade
+ *                em um site de fraud-detection.
+ *   - TERTIARY : vermelho da bandeira da PB (seed visual). Usado em sotaques de
+ *                marca (eyebrow, hero highlights, logo).
+ *   - ERROR    : vermelho de severidade (MD3 error palette padrão). Independente
+ *                de tertiary; reservado para badges de sanção, atenção alta.
+ *   - SECONDARY: azul-cinza neutro para realces secundários (chips, accents
+ *                pacíficos, empty-state borders).
+ *
+ * Os valores foram escolhidos para minimizar regressão visual frente à paleta
+ * atual (`--bg #060a14`, `--surface rgba(18,28,48,0.78)`, `--blue #60a5fa`,
+ * `--text #e2e8f0`). A migração markup-by-markup (Fases 4+) gradualmente
+ * substitui os usos de --bg/--surface/--blue/--red/--green pelos tokens MD3
+ * via `tokens/legacy-shim.css`.
+ *
+ * Fonte das tonalidades: Material Theme Builder (HCT) com seed adaptado;
+ * arrendondamento manual para combinar com a paleta dark existente.
+ */
+
+@layer tokens {
+  :root {
+    /* ───────── Primary (azul calmo) ───────── */
+    --md-sys-color-primary: #93b1ff;             /* tone 80 — light variant for dark BG */
+    --md-sys-color-on-primary: #0a2780;          /* tone 20 — dark text on light primary */
+    --md-sys-color-primary-container: #243f9c;   /* tone 30 — muted bg */
+    --md-sys-color-on-primary-container: #dce1ff;/* tone 90 — light text */
+    --md-sys-color-primary-fixed: #dce1ff;
+    --md-sys-color-on-primary-fixed: #001257;
+    --md-sys-color-primary-fixed-dim: #b6c4ff;
+    --md-sys-color-on-primary-fixed-variant: #243f9c;
+
+    /* ───────── Secondary (azul-cinza neutro) ───────── */
+    --md-sys-color-secondary: #c2c5dd;
+    --md-sys-color-on-secondary: #2b3043;
+    --md-sys-color-secondary-container: #41475b;
+    --md-sys-color-on-secondary-container: #dee1f9;
+    --md-sys-color-secondary-fixed: #dee1f9;
+    --md-sys-color-on-secondary-fixed: #161b2c;
+    --md-sys-color-secondary-fixed-dim: #c2c5dd;
+    --md-sys-color-on-secondary-fixed-variant: #41475b;
+
+    /* ───────── Tertiary (vermelho da bandeira da PB — sotaque de marca) ───────── */
+    --md-sys-color-tertiary: #ffb3b0;            /* tone 80 */
+    --md-sys-color-on-tertiary: #680010;         /* tone 20 */
+    --md-sys-color-tertiary-container: #93002c;  /* tone 30 — derivado de #ce1126 */
+    --md-sys-color-on-tertiary-container: #ffdad9;/* tone 90 */
+    --md-sys-color-tertiary-fixed: #ffdad9;
+    --md-sys-color-on-tertiary-fixed: #410005;
+    --md-sys-color-tertiary-fixed-dim: #ffb3b0;
+    --md-sys-color-on-tertiary-fixed-variant: #93002c;
+
+    /* ───────── Error (paleta MD3 padrão — distinta de tertiary) ───────── */
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #93000a;
+    --md-sys-color-on-error-container: #ffdad6;
+
+    /* ───────── Surfaces (neutros escuros, alinhados ao --bg #060a14 atual) ───────── */
+    --md-sys-color-background: #0b1220;          /* slightly tinted (azul muito escuro) */
+    --md-sys-color-on-background: #e2e8f0;
+    --md-sys-color-surface: #0b1220;
+    --md-sys-color-on-surface: #e2e8f0;
+    --md-sys-color-surface-dim: #0b1220;
+    --md-sys-color-surface-bright: #2c333d;
+
+    --md-sys-color-surface-container-lowest: #060a14;  /* matches legacy --bg */
+    --md-sys-color-surface-container-low: #121c30;     /* matches legacy --surface (12 → 18,28,48) */
+    --md-sys-color-surface-container: #1a2540;
+    --md-sys-color-surface-container-high: #1f2c4a;
+    --md-sys-color-surface-container-highest: #243152;
+
+    --md-sys-color-surface-variant: #43474e;
+    --md-sys-color-on-surface-variant: #94a3b8;        /* matches legacy --muted */
+    --md-sys-color-outline: #8e9099;
+    --md-sys-color-outline-variant: rgba(96, 165, 250, 0.18);  /* matches legacy --line */
+
+    /* ───────── Inverse (snackbar, tooltip de fundo claro) ───────── */
+    --md-sys-color-inverse-surface: #e2e8f0;
+    --md-sys-color-inverse-on-surface: #1a2540;
+    --md-sys-color-inverse-primary: #3b5cce;
+
+    /* ───────── Surface tint (overlay de elevação sobre surface) ───────── */
+    --md-sys-color-surface-tint: var(--md-sys-color-primary);
+
+    /* ───────── Scrim (modal backdrop) ───────── */
+    --md-sys-color-scrim: #000000;
+
+    /* ───────── Shadow (box-shadow color base) ───────── */
+    --md-sys-color-shadow: #000000;
+
+    /* ───────── Compound aliases (não-padrão MD3 mas úteis no projeto) ───────── */
+    /* Verde para indicadores positivos (severidade neutra/ok). MD3 não define
+       success; usamos um green dim consistente com a paleta atual --green. */
+    --md-comp-success: #4ade80;
+    --md-comp-on-success: #052e0f;
+    --md-comp-success-container: rgba(22, 163, 74, 0.18);
+    --md-comp-on-success-container: #86efac;
+
+    /* Amarelo/âmbar para severidade média (warn). MD3 não define warning. */
+    --md-comp-warning: #fbbf24;
+    --md-comp-on-warning: #1c1300;
+    --md-comp-warning-container: rgba(217, 119, 6, 0.18);
+    --md-comp-on-warning-container: #fde68a;
+  }
+}
