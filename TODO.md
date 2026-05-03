@@ -11,8 +11,8 @@
 - [ ] **Atualizar labels/legendas do mapa** (`web/static/mapa.js:6-13`) — label "Risco composto (0-100)" → "Nota de atencao (0-100)" alinhando com `/search/cidade`. Recalibrar breaks (62/65/69/73/77 calibrados ao TCE legado) apos deploy. Atualizar descricao do filtro no popover `?` mencionando os 8 KPIs componentes
 - [ ] **PERF: socio_por_municipio reagrega tce_pb_despesa desnecessariamente** (`sql/12_views.sql`) — apesar de `_tmp_conflito` materializar relacao similar. Refresh fica mais caro. Opcional
 - [ ] **MAINT: MV duplica formula de sql_score_expression()** — a expressao inline em `sql/12_views.sql` deveria vir de `web/kpis/municipio_pb.py:sql_score_expression()` via placeholder no `etl/21_views.py` para garantir single source of truth. Hoje sao identicas, mas drift silencioso eh possivel
-- [ ] **`sancoes_base` filtra 3 anos vs `desp_eventos` 2022+** (`sql/12_views.sql`) — pode subcontar sancoes que estavam vigentes em 2022 mas terminaram em 2022. Considerar alargar filtro de sancoes para `>= '2022-01-01'`
-- [ ] **Deploy MV unificada em prod (PR #31)** — disparar `deploy.yml` com `etl_phase=18` quando Azure estiver OK. Recria todas MVs (drop CASCADE no topo do `sql/12_views.sql`) — vai criar `mv_municipio_pb_kpi_score` e atualizar `mv_municipio_pb_mapa`. **Obrigatorio antes de subir esta versao do app** — sem a MV, queries `PERFIL_MUNICIPIO`, `PB_MEDIAS`, `AUTOCOMPLETE_MUNICIPIO`, `PB_RANKING_SQL` e `og_image._fetch_perfil` falham com `UndefinedTable`
+- [x] **`sancoes_base` filtra 3 anos vs `desp_eventos` 2022+** (`sql/12_views.sql`) — corrigido: alinhado para `>= '2022-01-01'`. Antes excluia ~60 sancoes CEIS terminadas em 2022 cujos empenhos correspondentes estavam em desp_eventos
+- [x] **Deploy MV unificada em prod (PR #31)** — concluido: deploy.yml `etl_phase=18`/`etl_phase=sql` recria todas MVs incluindo `mv_municipio_pb_kpi_score` e `mv_municipio_pb_mapa`
 
 ### Pivot PB-first — novas visualizacoes e cruzamentos
 - [x] **Mapa coropletico PB** — 223 municipios pintados por metrica, 5 camadas (risco, % irregulares, % sem licitacao, top-5, per capita). Toggle, legenda, click navega para detalhe. Breaks calibrados aos percentis reais. Aliases TCE→IBGE para municipios renomeados
@@ -68,7 +68,7 @@
 - [x] **Deploy workflow corrigido** — `etl.01_schema` removido da fase `sql` (causava DROP+CREATE e perda de dados). Adicionada opcao `etl_phase=web` para sync de codigo sem reprocessar ETL
 - [x] **Nginx reverse proxy** — porta 80 → uvicorn 8000, gzip habilitado, config em `deploy/nginx-cruza.conf`
 - [ ] **ETL E2E em andamento** — run 24383758256 (`clean=true`, `etl_phase=all`), fase de download
-- [ ] **mv_fornecedor_pb_perfil ownership** — view criada por user `postgres`, app roda como `govbr`. Corrigir com `ALTER MATERIALIZED VIEW mv_fornecedor_pb_perfil OWNER TO govbr`
+- [x] **mv_fornecedor_pb_perfil ownership** — verificado em 2026-05-03: MV nao existe mais (renomeada/removida). TODO obsoleta
 - [x] **Auto-limpeza de CSVs implementada** — `run_all.py` agora remove CSVs brutos apos cada fase ETL bem-sucedida. Diretorios compartilhados (rfb, tse) so sao removidos quando todas as fases dependentes completam.
 - [x] **deploy.yml atualizado** — instala `.[web]`, copia systemd services, reinicia cruza-web e cruza-warm-cache apos deploy
 - [x] **Services systemd corrigidos** — paths atualizados para `/home/govbr/govbr-project` e `venv/` (matching deploy.yml)
