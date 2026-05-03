@@ -1,10 +1,19 @@
 /* === utilities.css === */
 @layer utilities {
+/* MD3 nao define um componente "section header" — o padrao recomendado e'
+   um typography pattern (overline + headline + supporting-text). As classes
+   .eyebrow / .card-title / .text-muted compoem esse padrao e sao usadas
+   conjuntamente nas secoes da pagina de cidade.
+   - .eyebrow  -> label-small + uppercase (overline na spec M3)
+   - .card-title -> title-large (definido em components/card.css)
+   - .text-muted -> body-medium + on-surface-variant (supporting-text)
+*/
 .eyebrow {
-    font-size: 0.76rem;
+    font-size: var(--md-sys-typescale-label-small-size);
+    line-height: var(--md-sys-typescale-label-small-line-height);
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    color: var(--blue);
+    color: var(--md-sys-color-primary);
     font-weight: 700;
     margin-bottom: 0.55rem;
 }
@@ -17,8 +26,8 @@ td.num {
     white-space: nowrap;
 }
 
-.text-muted { color: var(--muted); }
-.text-sm { font-size: 0.82rem; }
+.text-muted { color: var(--md-sys-color-on-surface-variant); }
+.text-sm { font-size: var(--md-sys-typescale-body-small-size); }
 .text-right { text-align: right; }
 .mt-2 { margin-top: 1rem; }
 .mb-1 { margin-bottom: 0.5rem; }

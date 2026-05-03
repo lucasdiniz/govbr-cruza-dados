@@ -272,7 +272,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "75"
+templates.env.globals["ASSET_VERSION"] = "76"
 
 
 app.include_router(cidade_router)
