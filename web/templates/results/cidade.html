@@ -283,14 +283,18 @@
 
 <section class="insight-grid">
     <article class="insight-card">
-        <h2 class="card-title">
-            <span class="citizen-only">Quanto do planejado j&aacute; foi pago</span>
-            <span class="auditor-only">Quanto do valor empenhado virou pagamento</span>
-        </h2>
-        <p class="text-muted">
-            <span class="citizen-only">A prefeitura primeiro reserva o dinheiro (<span class="term" data-tip="Empenho: reserva or&ccedil;ament&aacute;ria feita pela prefeitura para pagar uma despesa.">gasto previsto</span>), depois paga. Esta barra mostra quanto do planejado virou pagamento de verdade.</span>
-            <span class="auditor-only">O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">
+                    <span class="citizen-only">Quanto do planejado j&aacute; foi pago</span>
+                    <span class="auditor-only">Quanto do valor empenhado virou pagamento</span>
+                </h2>
+                <p class="text-muted">
+                    <span class="citizen-only">A prefeitura primeiro reserva o dinheiro (<span class="term" data-tip="Empenho: reserva or&ccedil;ament&aacute;ria feita pela prefeitura para pagar uma despesa.">gasto previsto</span>), depois paga. Esta barra mostra quanto do planejado virou pagamento de verdade.</span>
+                    <span class="auditor-only">O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.</span>
+                </p>
+            </div>
+        </div>
         <div class="chart-progress">
             <div class="chart-progress-fill" id="progressPctPago" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
         </div>
@@ -305,11 +309,15 @@
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">Compras sem licita&ccedil;&atilde;o</h2>
-        <p class="text-muted">
-            <span class="citizen-only">Fatia dos gastos em que a prefeitura contratou sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores para ver quem oferece melhor pre&ccedil;o. &Eacute; a regra na lei.">disputa entre fornecedores</span>. Valores altos exigem explica&ccedil;&atilde;o — o padr&atilde;o por lei &eacute; licitar.</span>
-            <span class="auditor-only">Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">Compras sem licita&ccedil;&atilde;o</h2>
+                <p class="text-muted">
+                    <span class="citizen-only">Fatia dos gastos em que a prefeitura contratou sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores para ver quem oferece melhor pre&ccedil;o. &Eacute; a regra na lei.">disputa entre fornecedores</span>. Valores altos exigem explica&ccedil;&atilde;o — o padr&atilde;o por lei &eacute; licitar.</span>
+                    <span class="auditor-only">Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.</span>
+                </p>
+            </div>
+        </div>
         <p class="insight-value" id="insightPctSemLicit">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
         <p class="text-sm text-muted">
             <span class="citizen-only">Quanto maior, mais importa verificar se as justificativas fazem sentido.</span>
@@ -318,14 +326,18 @@
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">
-            <span class="citizen-only">Peso da folha sobre o que a prefeitura arrecada</span>
-            <span class="auditor-only">Folha de pagamento sobre receita</span>
-        </h2>
-        <p class="text-muted">
-            <span class="citizen-only">Quanto da arrecada&ccedil;&atilde;o municipal est&aacute; comprometida s&oacute; em pagar sal&aacute;rios de servidores.</span>
-            <span class="auditor-only">Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">
+                    <span class="citizen-only">Peso da folha sobre o que a prefeitura arrecada</span>
+                    <span class="auditor-only">Folha de pagamento sobre receita</span>
+                </h2>
+                <p class="text-muted">
+                    <span class="citizen-only">Quanto da arrecada&ccedil;&atilde;o municipal est&aacute; comprometida s&oacute; em pagar sal&aacute;rios de servidores.</span>
+                    <span class="auditor-only">Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.</span>
+                </p>
+            </div>
+        </div>
         <p class="insight-value" id="insightPctFolha">{{ "%.1f"|format(perfil.pct_folha_receita|default(0)|float) }}%</p>
         <p class="text-sm text-muted">
             <span class="citizen-only">Acima de 60% costuma apertar o or&ccedil;amento para investimentos.</span>

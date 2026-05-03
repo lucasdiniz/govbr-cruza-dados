@@ -31,6 +31,13 @@
     overflow: hidden;
 }
 
+/* insight-cards são variantes menores de .card (padding 1rem, sem margin)
+   mas precisam do mesmo overflow:hidden para clip do title-bar bg ao
+   border-radius. */
+.insight-card {
+    overflow: hidden;
+}
+
 .card-title {
     font-size: var(--md-sys-typescale-title-large-size);
     font-weight: var(--md-sys-typescale-title-large-weight, 700);
@@ -69,10 +76,23 @@
     padding: 1.25rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
+/* insight-card uses padding: 1rem (vs .card's 1.25rem). Same pattern but
+   with adjusted negative margins so the header bar still spans the
+   full card width. */
+.insight-card > .section-head {
+    background: var(--md-sys-color-surface-container);
+    margin: -1rem -1rem 1rem;
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
 @media (max-width: 640px) {
     .card > .section-head {
         margin: -0.95rem -0.95rem 0.95rem;
         padding: 0.95rem;
+    }
+    .insight-card > .section-head {
+        margin: -0.85rem -0.85rem 0.85rem;
+        padding: 0.85rem;
     }
 }
 
