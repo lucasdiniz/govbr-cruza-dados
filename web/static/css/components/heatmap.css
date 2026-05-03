@@ -25,39 +25,37 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: var(--md-sys-shape-corner-extra-small);
     font-size: 0.65rem;
     font-weight: 600;
     overflow: hidden;
     cursor: default;
-    transition: transform 0.1s;
+    transition: transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .hm-cell:hover {
     transform: scale(1.06);
     z-index: 2;
     position: relative;
 }
-.hm-clickable {
-    cursor: pointer;
-}
+.hm-clickable { cursor: pointer; }
 .hm-clickable:hover {
-    box-shadow: 0 0 0 2px #60a5fa;
+    box-shadow: 0 0 0 2px var(--md-sys-color-primary);
 }
 .hm-year-label {
     min-width: 42px;
     max-width: 42px;
     flex: none;
     background: transparent !important;
-    color: #94a3b8;
-    font-size: 0.78rem;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-medium-size);
     font-weight: 600;
     justify-content: flex-end;
     padding-right: 6px;
 }
 .hm-month-label {
     background: transparent !important;
-    color: #64748b;
-    font-size: 0.7rem;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-small-size);
     font-weight: 500;
     height: 24px;
 }
@@ -67,7 +65,7 @@
     padding: 0 3px;
 }
 .hm-outlier {
-    outline: 2px solid #ef4444;
+    outline: 2px solid var(--md-sys-color-error);
     outline-offset: -2px;
 }
 .heatmap-legend {
@@ -78,17 +76,27 @@
     flex-wrap: wrap;
 }
 .heatmap-mobile-hint { display: none; }
-.hm-legend-label { color: #64748b; font-size: 0.72rem; }
+.hm-legend-label {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-small-size);
+}
 .hm-legend-ramp { display: flex; gap: 2px; }
-.hm-legend-step { width: 24px; height: 16px; border-radius: 2px; cursor: default; }
+.hm-legend-step {
+    width: 24px;
+    height: 16px;
+    border-radius: 2px;
+    cursor: default;
+}
 .hm-legend-sep { flex: 1; }
 .hm-legend-outlier {
     width: 14px;
     height: 14px;
     border-radius: 2px;
-    outline: 2px solid #ef4444;
+    outline: 2px solid var(--md-sys-color-error);
     outline-offset: -1px;
-    background: #4579cf;
+    /* JS escolhe cor de fundo do degrade da escala — esse fallback usa
+       primary tone (a JS overrides com background inline). */
+    background: var(--md-sys-color-primary);
     display: inline-block;
 }
 

@@ -10,9 +10,11 @@
 
 .insight-card { padding: 1rem; }
 .insight-value {
-    font-size: 1.4rem;
+    font-size: var(--md-sys-typescale-headline-small-size);
     font-weight: 700;
     margin: 0.95rem 0 0.35rem;
+    color: var(--md-sys-color-on-surface);
+    font-variant-numeric: tabular-nums;
 }
 
 
