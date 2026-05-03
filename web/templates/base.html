@@ -135,11 +135,9 @@
             <p class="text-sm text-muted">Os cruzamentos apontam <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o. N&atilde;o s&atilde;o conclus&otilde;es jur&iacute;dicas. Sempre consulte a fonte original e, se necess&aacute;rio, os &oacute;rg&atilde;os de controle (MP-PB, TCE-PB, CGU).</p>
         </div>
     </dialog>
-    <button type="button" id="backToTop" class="back-to-top" aria-label="Voltar ao topo" hidden>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-    </button>
+    <md-fab id="backToTop" class="back-to-top" size="small" variant="surface" aria-label="Voltar ao topo" hidden>
+        <md-icon slot="icon" aria-hidden="true">arrow_upward</md-icon>
+    </md-fab>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script>
         window.COLUMN_META = {{ COLUMN_META | tojson }};

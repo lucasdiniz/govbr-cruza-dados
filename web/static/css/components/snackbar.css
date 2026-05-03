@@ -1,28 +1,55 @@
 /* === components/snackbar.css === */
 @layer components {
 /* ────────────────────────────────────────────────────────────────────
-   Toast simples (Web Share fallback, etc)
+   M3 snackbar (formerly: legacy "toast").
+   - Inverse-surface bg + inverse-on-surface text (M3 spec: snackbar uses
+     the inverse roles to "pop" against the page surface).
+   - 4 dp corner (extra-small shape).
+   - body-medium typescale.
+   - Elevation 3.
+   - bottom-center on mobile, bottom-left aligned on tablet+ (M3 guidance:
+     snackbars sit on the same edge as primary navigation).
    ──────────────────────────────────────────────────────────────────── */
 .toast {
     position: fixed;
     left: 50%;
     bottom: max(4.5rem, calc(env(safe-area-inset-bottom) + 4rem));
     transform: translateX(-50%) translateY(8px);
-    background: rgba(15, 23, 42, 0.95);
-    color: #e2e8f0;
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    padding: 0.55rem 1rem;
-    border-radius: 999px;
-    font-size: 0.84rem;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    background: var(--md-sys-color-inverse-surface);
+    color: var(--md-sys-color-inverse-on-surface);
+    padding: 0.875rem 1rem;
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    border: none;
+    font-family: var(--md-sys-typescale-plain-font);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+    letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+    box-shadow: var(--md-sys-elevation-3);
     opacity: 0;
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    transition:
+        opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate),
+        transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
     z-index: 70;
     pointer-events: none;
-    max-width: calc(100vw - 2rem);
+    /* M3 snackbar width: min 344, max 672. We respect safe-area + mobile gutter. */
+    min-width: min(344px, calc(100vw - 2rem));
+    max-width: min(672px, calc(100vw - 2rem));
     white-space: normal;
 }
 .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Tablet+: align to bottom-left rather than centered, per M3 guidance.
+   Mobile keeps centered for thumb reach. */
+@media (min-width: 720px) {
+    .toast {
+        left: 1.5rem;
+        right: auto;
+        transform: translateY(8px);
+    }
+    .toast.visible { transform: translateY(0); }
+}
+
 
 }
+
