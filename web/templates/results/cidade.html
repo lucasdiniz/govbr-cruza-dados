@@ -111,6 +111,8 @@
     <div class="city-kpi-grid">
         {% for k in kpis %}
         <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link data-kpi-severity="{{ k.severity }}">
+            <md-elevation></md-elevation>
+            <md-ripple></md-ripple>
             <span class="kpi-card-label">
                 <span class="citizen-only">{{ k.label_citizen }}</span>
                 <span class="auditor-only">{{ k.label_auditor }}</span>

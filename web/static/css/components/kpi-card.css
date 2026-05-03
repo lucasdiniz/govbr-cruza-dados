@@ -1,8 +1,12 @@
 /* === components/kpi-card.css === */
 @layer components {
 /* ============================================================
-   City KPI strip — investigative hero (Fase 9)
-   Substitui o antigo rank-badge no topo da pagina /search/cidade.
+   City KPI strip — investigative hero (Fase 9 -> MD3)
+   Cards bespoke retokenizados como MD3 cards interativos:
+   - <md-elevation> slotado: sombra MD3 nivel 1 (eleva pra 2 no hover)
+   - <md-ripple> slotado: state layer + ripple no click
+   - Faixa lateral 4dp (border-left) na cor de container por severidade
+   - Surface base = surface-container-low; severidades usam *-container
    ============================================================ */
 .city-kpi-strip {
     margin: 0.8rem 0 0.9rem;
@@ -13,8 +17,9 @@
 }
 .city-kpi-title {
     margin: 0 0 .15rem 0;
-    font-size: 1.05rem;
-    color: var(--text-strong, #f8fafc);
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight, 600);
+    color: var(--md-sys-color-on-surface);
 }
 .city-kpi-sub { margin: 0; }
 
@@ -26,7 +31,7 @@
 
 .priority-guide {
     margin-top: 1rem;
-    border-left: 3px solid rgba(96, 165, 250, 0.7);
+    border-left: 4px solid var(--md-sys-color-primary);
 }
 .priority-guide .card-title {
     margin-bottom: .35rem;
@@ -41,67 +46,91 @@
     margin-top: 1rem;
 }
 
+/* MD3 KPI card. Layout idêntico mas chassi retokenizado.
+   --md-elevation-level e --md-elevation-shadow-color sao consumidos por
+   <md-elevation> que ficou slotado dentro do card. */
 .kpi-card {
     position: relative;
     display: flex;
     flex-direction: column;
     gap: .25rem;
     padding: .85rem .95rem;
-    border-radius: 10px;
-    border: 1px solid;
+    /* faixa lateral 4dp (cor sobrescrita por severidade abaixo) */
+    border-left: 4px solid var(--md-sys-color-primary);
+    border-radius: var(--md-sys-shape-corner-medium);
     text-decoration: none;
-    color: inherit;
-    background: rgba(255,255,255,0.04);
-    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface-container-low);
+    overflow: hidden;
+    isolation: isolate;
+    cursor: pointer;
+    --md-elevation-level: 1;
+    --md-elevation-shadow-color: var(--md-sys-color-shadow);
+    --md-ripple-hover-color: var(--md-sys-color-on-surface);
+    --md-ripple-pressed-color: var(--md-sys-color-on-surface);
+    transition: --md-elevation-level var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
     min-height: 96px;
 }
 .kpi-card:hover,
 .kpi-card:focus-visible {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+    --md-elevation-level: 2;
     outline: none;
 }
 
 .kpi-card-label {
-    font-size: .82rem;
+    font-size: var(--md-sys-typescale-label-medium-size);
     line-height: 1.25;
-    color: var(--text-muted, #cbd5e1);
+    color: var(--md-sys-color-on-surface-variant);
     /* clamp 2 lines so heights stay consistent */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    position: relative;
+    z-index: 1;
 }
 .kpi-card-value {
-    font-size: 1.55rem;
+    font-size: var(--md-sys-typescale-headline-small-size);
     font-weight: 700;
     line-height: 1.1;
     margin-top: auto;
     font-variant-numeric: tabular-nums;
+    color: var(--md-sys-color-on-surface);
+    position: relative;
+    z-index: 1;
 }
 .kpi-card-extra {
-    font-size: .72rem;
-    color: var(--text-muted, #94a3b8);
+    font-size: var(--md-sys-typescale-label-small-size);
+    color: var(--md-sys-color-on-surface-variant);
+    position: relative;
+    z-index: 1;
 }
-.kpi-card-suffix { font-size: 1rem; font-weight: 600; opacity: .8; margin-left: 2px; }
+.kpi-card-suffix {
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: 600;
+    opacity: .8;
+    margin-left: 2px;
+}
 
 .kpi-card-tip {
     position: absolute;
     top: .55rem;
     right: .6rem;
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    color: inherit;
-    font-size: .7rem;
-    font-weight: 600;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
+    border: 1px solid var(--md-sys-color-outline);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: .8rem;
+    font-weight: 700;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: help;
+    z-index: 2;
 }
+.kpi-card-tip:hover { background: color-mix(in oklab, var(--md-sys-color-on-surface) 14%, transparent); }
 .kpi-card-tip[data-tip]:hover::after,
 .kpi-card-tip[data-tip]:focus::after,
 .kpi-card-tip.tip-open::after {
@@ -111,54 +140,41 @@
     right: 0;
     width: max-content;
     max-width: min(300px, 80vw);
-    background: #0f172a;
-    color: #e2e8f0;
-    border: 1px solid rgba(96, 165, 250, 0.45);
+    background: var(--md-sys-color-inverse-surface);
+    color: var(--md-sys-color-inverse-on-surface);
     padding: 0.5rem 0.7rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    font-size: var(--md-sys-typescale-body-small-size);
     font-weight: 500;
     line-height: 1.35;
     z-index: 100;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    box-shadow: var(--md-sys-elevation-3);
     pointer-events: none;
 }
 
-/* Severity variants — use background tints + border accents */
+/* Severity variants — 4dp left bar in container color + tinted bg */
 .kpi-card.severity-red {
-    background: rgba(220, 38, 38, 0.14);
-    border-color: rgba(252, 165, 165, 0.45);
-    color: #fecaca;
+    background: color-mix(in oklab, var(--md-sys-color-error-container) 60%, var(--md-sys-color-surface-container-low));
+    border-left-color: var(--md-sys-color-error);
+    color: var(--md-sys-color-on-error-container);
 }
-.kpi-card.severity-red .kpi-card-value { color: #fca5a5; }
+.kpi-card.severity-red .kpi-card-value { color: var(--md-sys-color-on-error-container); }
+.kpi-card.severity-red .kpi-card-label { color: color-mix(in oklab, var(--md-sys-color-on-error-container) 80%, transparent); }
 
 .kpi-card.severity-yellow {
-    background: rgba(234, 179, 8, 0.14);
-    border-color: rgba(253, 224, 71, 0.4);
-    color: #fef3c7;
+    background: color-mix(in oklab, var(--md-comp-warning-container) 60%, var(--md-sys-color-surface-container-low));
+    border-left-color: var(--md-comp-warning);
+    color: var(--md-comp-on-warning-container);
 }
-.kpi-card.severity-yellow .kpi-card-value { color: #fde68a; }
+.kpi-card.severity-yellow .kpi-card-value { color: var(--md-comp-on-warning-container); }
+.kpi-card.severity-yellow .kpi-card-label { color: color-mix(in oklab, var(--md-comp-on-warning-container) 80%, transparent); }
 
 .kpi-card.severity-neutral {
-    background: rgba(148, 163, 184, 0.10);
-    border-color: rgba(148, 163, 184, 0.25);
-    color: #cbd5e1;
+    background: var(--md-sys-color-surface-container);
+    border-left-color: var(--md-sys-color-outline);
+    color: var(--md-sys-color-on-surface);
 }
-.kpi-card.severity-neutral .kpi-card-value { color: #e2e8f0; }
-
-/* Light page fallback (this page is dark-page by default; keep safety) */
-body:not(.dark-page) .kpi-card.severity-red {
-    background: #fef2f2; border-color: #fecaca; color: #991b1b;
-}
-body:not(.dark-page) .kpi-card.severity-red .kpi-card-value { color: #b91c1c; }
-body:not(.dark-page) .kpi-card.severity-yellow {
-    background: #fffbeb; border-color: #fde68a; color: #92400e;
-}
-body:not(.dark-page) .kpi-card.severity-yellow .kpi-card-value { color: #b45309; }
-body:not(.dark-page) .kpi-card.severity-neutral {
-    background: #f8fafc; border-color: #e2e8f0; color: #475569;
-}
-body:not(.dark-page) .kpi-card.severity-neutral .kpi-card-value { color: #1e293b; }
+.kpi-card.severity-neutral .kpi-card-value { color: var(--md-sys-color-on-surface); }
 
 @media (max-width: 640px) {
     .city-kpi-grid {

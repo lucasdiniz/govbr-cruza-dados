@@ -1,0 +1,44 @@
+/* === components/md-host-padding-fix.css === */
+/*
+ * Universal reset (@layer reset { * { padding: 0; margin: 0 } }) clobbers
+ * shadow-DOM `:host` padding rules on @material/web 2.0 components. The
+ * shadow CSS sets `padding-inline-start: var(--_leading-space)` etc on the
+ * host so the inner button has its leading/trailing space, but the light-
+ * tree `*` rule beats it (Chromium quirk: same-specificity tie can resolve
+ * in favor of the light tree even though :host has (0,1,0) > * (0,0,0)).
+ *
+ * Rather than tear apart the reset (which other components depend on), we
+ * restore the MD3 spec paddings as UNLAYERED author rules so they win over
+ * the layered `*` reset. `:where()` keeps specificity at (0,0,0) which is
+ * still high enough to beat `* { padding: 0 }` because unlayered rules
+ * always beat layered rules regardless of specificity.
+ *
+ * This is purely a host-padding restore — internal shadow tokens still
+ * drive the actual visual padding via --md-*-leading-space etc.
+ */
+
+:where(md-filled-button,
+       md-outlined-button,
+       md-text-button,
+       md-elevated-button,
+       md-filled-tonal-button) {
+    /* Default MD3: 24dp leading + trailing, container 40dp tall */
+    padding-inline: 24px;
+    padding-block: calc((40px - 1.25rem) / 2);
+}
+
+/* Compact variants: container-height override (e.g., .data-table-export at
+   32px) needs padding-block recalculated. Author CSS via :where() loses to
+   class-based rules, so the per-class overrides below restore the math. */
+:where(.data-table-export, .date-filter-submit) {
+    padding-block: calc((32px - 1.25rem) / 2);
+}
+
+/* Filter chips: 32dp container, 16dp leading/trailing per M3 spec */
+:where(md-filter-chip, md-assist-chip, md-input-chip, md-suggestion-chip) {
+    padding: 0;
+}
+
+/* Icon buttons / FAB / dialog / divider / chip-set / tabs / list / menu /
+   text-field / etc. handle their own internal layout via shadow CSS; no
+   light-tree padding needed (these don't have :host padding rules). */
