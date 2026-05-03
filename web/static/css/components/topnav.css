@@ -45,7 +45,8 @@
     width: 32px;
     height: 32px;
     display: block;
-    object-fit: contain;
+    object-fit: cover;
+    border-radius: var(--md-sys-shape-corner-small);
 }
 .logo-text { letter-spacing: -0.01em; }
 .logo-text strong { color: var(--md-sys-color-primary); font-weight: 700; }
