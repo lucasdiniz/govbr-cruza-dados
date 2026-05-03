@@ -7,15 +7,15 @@
 //
 // Bump CACHE_VERSION para invalidar caches antigos.
 
-const CACHE_VERSION = 'tpb-v24';
+const CACHE_VERSION = 'tpb-v25';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 
 const CORE_ASSETS = [
     '/static/css/index.css',
-    '/static/app.js',
-    '/static/mapa.js',
-    '/static/graph-animation.js',
+    '/static/js/pages/main.js',
+    '/static/js/pages/mapa.js',
+    '/static/js/graph-animation.js',
     '/static/vendor/leaflet/leaflet.css',
     '/static/vendor/leaflet/leaflet.js',
     '/static/vendor/leaflet/images/marker-icon.png',
