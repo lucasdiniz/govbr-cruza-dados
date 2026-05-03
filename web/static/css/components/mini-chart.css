@@ -1,6 +1,7 @@
 /* === components/mini-chart.css === */
 @layer components {
-/* Mini bar chart (CSS-only) */
+/* Mini bar chart (CSS-only). Retokenized para MD3 — barras usam token
+   gradients de primary / error / warning conforme severidade. */
 .charts-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -14,7 +15,7 @@
     height: 130px;
     margin: .4rem 0 0;
     padding: .4rem 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
     position: relative;
 }
 .mini-bar-col {
@@ -31,14 +32,22 @@
     width: 100%;
     min-width: 6px;
     border-radius: 3px 3px 0 0;
-    background: linear-gradient(180deg, #86efac, #16a34a);
-    transition: height 0.3s ease, opacity 0.15s;
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--md-comp-success) 80%, transparent),
+        var(--md-comp-success));
+    transition:
+        height var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard),
+        opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .mini-bar.bar-sancao {
-    background: linear-gradient(180deg, #fca5a5, #dc2626);
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--md-sys-color-error) 70%, transparent),
+        var(--md-sys-color-error));
 }
 .mini-bar.bar-sancao-leve {
-    background: linear-gradient(180deg, #fde68a, #f59e0b);
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--md-comp-warning) 70%, transparent),
+        var(--md-comp-warning));
 }
 .mini-bar-col:hover .mini-bar {
     opacity: .8;
@@ -52,18 +61,18 @@
     top: -6px;
     left: 50%;
     transform: translate(-50%, -100%);
-    background: var(--bg-dark, #1e293b);
-    color: #fff;
-    font-size: .68rem;
+    background: var(--md-sys-color-inverse-surface);
+    color: var(--md-sys-color-inverse-on-surface);
+    font-size: var(--md-sys-typescale-label-small-size);
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--md-sys-shape-corner-extra-small);
     white-space: nowrap;
     z-index: 5;
     pointer-events: none;
 }
 .mini-bar-label {
-    font-size: .58rem;
-    color: var(--text-muted);
+    font-size: 0.58rem;
+    color: var(--md-sys-color-on-surface-variant);
     margin-top: 3px;
     white-space: nowrap;
 }
@@ -77,29 +86,42 @@
     align-items: center;
     margin-bottom: .4rem;
 }
-.top-el-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
+.top-el-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    color: var(--md-sys-color-on-surface);
+}
 .top-el-track {
     height: 14px;
-    border-radius: 999px;
-    background: var(--line);
+    border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-surface-container-high);
     overflow: hidden;
     position: relative;
 }
 .top-el-fill {
     height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #4ade80, #16a34a);
+    border-radius: var(--md-sys-shape-corner-full);
+    background: linear-gradient(90deg,
+        color-mix(in oklab, var(--md-sys-color-primary) 70%, transparent),
+        var(--md-sys-color-primary));
 }
 .top-el-pct {
     position: absolute;
     right: 6px;
     top: 0;
     line-height: 14px;
-    font-size: .6rem;
+    font-size: 0.6rem;
     font-weight: 600;
-    color: #166534;
+    color: var(--md-sys-color-on-primary-container);
 }
-.top-el-value { white-space: nowrap; font-weight: 600; font-size: .8rem; }
+.top-el-value {
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    color: var(--md-sys-color-on-surface);
+}
 
 
 }
