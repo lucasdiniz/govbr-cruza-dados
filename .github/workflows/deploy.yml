@@ -695,20 +695,19 @@ jobs:
 
           SQL="DELETE FROM web_cache WHERE $WHERE_CLAUSE"
           echo "SQL: $SQL"
-          PGPASSWORD="$PASS" psql -U govbr -d govbr -c "
-            DO \$\$
-            DECLARE
-              n INTEGER;
-            BEGIN
-              IF to_regclass('public.web_cache') IS NOT NULL THEN
-                EXECUTE '$SQL';
-                GET DIAGNOSTICS n = ROW_COUNT;
-                RAISE NOTICE 'invalidated % web_cache rows', n;
-              ELSE
-                RAISE NOTICE 'web_cache nao existe — nada a invalidar';
-              END IF;
-            END \$\$;
-          "
+
+          # Check existencia da tabela ANTES (em conexao separada) pra
+          # nao precisar de wrapper PL/pgSQL com EXECUTE — que quebra
+          # com aspas simples dentro do LIKE pattern.
+          EXISTS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "SELECT to_regclass('public.web_cache')")
+          if [ -z "$EXISTS" ] || [ "$EXISTS" = " " ]; then
+            echo "web_cache nao existe — nada a invalidar"
+            exit 0
+          fi
+
+          # DELETE direto, sem wrapper. -v ON_ERROR_STOP=1 garante exit
+          # code 1 se SQL falhar.
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -c "$SQL"
 
       # ── Warm cache (oneshot, ~12-18h em B4 com fixes do PR de speedup) ──
       # Auto: roda apos etl_phase=all ou sql (dados mudaram, queries mudaram).
