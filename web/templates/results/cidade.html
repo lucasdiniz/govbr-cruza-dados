@@ -141,14 +141,14 @@
             <label class="date-field"><span>Ate</span>
                 <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
             </label>
-            <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+            <md-filled-button id="btnFiltrarData" class="date-filter-submit">Filtrar</md-filled-button>
             <p class="date-filter-status text-sm text-muted" id="dateFilterStatus" aria-live="polite"></p>
         </div>
         <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
-            <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
-            <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
+            <md-filter-chip label="Tudo" data-date-preset="all"></md-filter-chip>
+            <md-filter-chip label="Ano atual" selected data-date-preset="current-year"></md-filter-chip>
+            <md-filter-chip label="12 meses" data-date-preset="last-12m"></md-filter-chip>
+            <md-text-button id="btnLimparData" style="display:none">Limpar</md-text-button>
         </div>
     </div>
 </details>
@@ -167,8 +167,8 @@
         <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
     </p>
     <div class="priority-links">
-        <a href="#fornecedores" class="btn btn-primary btn-sm">Ver empresas primeiro</a>
-        <a href="#servidores" class="btn btn-outline btn-sm">Ver servidores com sinais</a>
+        <md-filled-button href="#fornecedores">Ver empresas primeiro</md-filled-button>
+        <md-outlined-button href="#servidores">Ver servidores com sinais</md-outlined-button>
     </div>
 </section>
 

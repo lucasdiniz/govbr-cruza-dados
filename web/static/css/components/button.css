@@ -1,31 +1,52 @@
 /* === components/button.css === */
 @layer components {
+/*
+ * Botoes legados (.btn, .btn-primary, .btn-outline, .btn-sm).
+ * Pos-MD3, a maioria dos consumidores migrou para <md-filled-button>,
+ * <md-outlined-button>, <md-text-button>. Esses estilos legados ficam como
+ * fallback p/ HTML antigo (sera removido na fase de cleanup).
+ */
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.68rem 1rem;
-    border-radius: 12px;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--md-sys-shape-corner-full);
     border: none;
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight, 500);
     cursor: pointer;
-    transition: 0.18s ease;
+    min-height: 40px;
+    transition:
+        background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+        color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .btn-primary {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    color: #fff;
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
 }
-.btn-primary:hover { filter: brightness(1.03); }
+.btn-primary:hover {
+    background: color-mix(in oklab, var(--md-sys-color-on-primary) 8%, var(--md-sys-color-primary));
+}
 .btn-outline {
-    background: #fff;
-    color: #334155;
-    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
 }
-.btn-outline:hover { background: #f8fafc; text-decoration: none; }
+.btn-outline:hover {
+    background: color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
+    text-decoration: none;
+}
 .btn-sm {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.82rem;
+    padding: 0.4rem 1rem;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    min-height: 32px;
+}
+
+/* Botoes MD3 estilizados como tabela export — outlined-button slim */
+.data-table-export {
+    --md-outlined-button-container-height: 32px;
+    --md-outlined-button-label-text-size: var(--md-sys-typescale-label-medium-size);
 }
 
 /* Fase 7 - Botao de geolocalizacao */
@@ -38,23 +59,31 @@
     min-height: 48px;
     width: 100%;
     padding: 0 18px;
-    border-radius: 12px;
-    border: 1px solid rgba(96, 165, 250, 0.4);
-    background: rgba(59, 130, 246, 0.08);
-    color: #93c5fd;
+    border-radius: var(--md-sys-shape-corner-full);
+    border: 1px solid var(--md-sys-color-outline);
+    background: color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
+    color: var(--md-sys-color-primary);
     font-family: inherit;
     font-weight: 600;
     font-size: 15px;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
-.geo-btn:hover:not(:disabled) { background: rgba(59, 130, 246, 0.18); }
+.geo-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
+}
 .geo-btn:disabled { opacity: 0.6; cursor: wait; }
 .geo-btn svg { stroke: currentColor; }
-.geo-status { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--text-muted, #9ca3af); text-align: center; }
-.geo-status.geo-ok { color: #86efac; }
-.geo-status.geo-warn { color: #fbbf24; }
-.geo-status.geo-loading { color: #93c5fd; }
+.geo-status {
+    margin: 8px 0 0;
+    font-size: 13.5px;
+    line-height: 1.4;
+    color: var(--md-sys-color-on-surface-variant);
+    text-align: center;
+}
+.geo-status.geo-ok { color: var(--md-comp-success); }
+.geo-status.geo-warn { color: var(--md-comp-warning); }
+.geo-status.geo-loading { color: var(--md-sys-color-primary); }
 
 @media (min-width: 768px) {
     .geo-btn { width: auto; min-width: 240px; }

@@ -27,7 +27,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
         data = await resp.json();
         if (data && data.error) throw new Error(data.error);
     } catch (err) {
-        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><button type="button" class="btn btn-outline btn-sm" data-retry-heatmap> Tentar novamente</button></div>`;
+        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><md-text-button data-retry-heatmap>Tentar novamente</md-text-button></div>`;
         body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes, { inPlace: true }));
         return;
     }

@@ -135,7 +135,7 @@ let _dateFilterBusy = false;
 function _setDateFilterButtonBusy(isBusy) {
     const btn = document.getElementById('btnFiltrarData');
     if (!btn) return;
-    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || 'Filtrar';
+    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = (btn.textContent || 'Filtrar').trim();
     btn.disabled = !!isBusy;
     btn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
     btn.textContent = isBusy ? 'Filtrando...' : btn.dataset.defaultLabel;

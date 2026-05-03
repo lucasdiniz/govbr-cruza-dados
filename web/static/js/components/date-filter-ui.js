@@ -20,8 +20,17 @@ function _syncDateFilterUI() {
     const copy = _getDateFilterCopy();
     if (btnLimpar) btnLimpar.style.display = copy.clear ? '' : 'none';
     if (current) current.textContent = copy.headline;
+    // Date presets sao md-filter-chip — usam atributo `selected` para
+    // marcar ativo, nao a classe legacy `is-active`. Mantemos a classe
+    // tambem por compat com qualquer CSS legado, mas o estado visual
+    // efetivo vem de [selected].
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
-        btn.classList.toggle('is-active', btn.dataset.datePreset === _getDatePreset());
+        const isActive = btn.dataset.datePreset === _getDatePreset();
+        btn.classList.toggle('is-active', isActive);
+        if (btn.tagName === 'MD-FILTER-CHIP') {
+            if (isActive) btn.setAttribute('selected', '');
+            else btn.removeAttribute('selected');
+        }
     });
     if (!_dateFilterBusy) _setDateFilterStatus('');
 }

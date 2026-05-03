@@ -153,7 +153,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     return `<div class="result-block">
         <div class="result-toolbar">
             <div>${legendHtml}</div>
-            <a href="${exportHref}" data-export-link class="btn btn-outline btn-sm"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></a>
+            <a href="${exportHref}" data-export-link class="data-table-export"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></a>
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">
@@ -167,9 +167,9 @@ function buildResultTable(queryId, columns, rows, municipio) {
                 </table>
             </div>
             <div class="table-pagination">
-                <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+                <md-text-button data-page-prev>Anterior</md-text-button>
                 <p class="text-sm text-muted" data-page-label></p>
-                <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+                <md-text-button data-page-next>Proxima</md-text-button>
             </div>
         </div>
     </div>`;
