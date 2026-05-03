@@ -1,12 +1,15 @@
 /* === components/card.css === */
 @layer components {
+/* Cards bespoke retokenizados para MD3:
+   surface-container-low base + outline-variant border, 12dp shape, no shadow
+   (eleva via <md-elevation> ou hover state se interativo). */
 .search-card,
 .card,
 .insight-card {
-    background: var(--surface);
-    border: 1px solid rgba(219, 229, 239, 0.95);
-    border-radius: 20px;
-    box-shadow: var(--shadow);
+    background: var(--md-sys-color-surface-container-low);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    color: var(--md-sys-color-on-surface);
 }
 
 .search-card {
@@ -14,13 +17,11 @@
     margin: 0 auto;
     padding: 1.5rem;
     text-align: left;
-    background: rgba(15, 23, 42, 0.65);
-    border-color: rgba(148, 163, 184, 0.15);
+    background: color-mix(in oklab, var(--md-sys-color-surface-container) 70%, transparent);
     backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
-.search-card .search-label { color: #cbd5e1; }
-
-/* .intro-grid removed — replaced by features-strip */
+.search-card .search-label { color: var(--md-sys-color-on-surface-variant); }
 
 .card {
     padding: 1.25rem;
@@ -28,27 +29,27 @@
 }
 
 .card-title {
-    font-size: 1.15rem;
-    font-weight: 700;
+    font-size: var(--md-sys-typescale-title-large-size);
+    font-weight: var(--md-sys-typescale-title-large-weight, 700);
     margin-bottom: 0.35rem;
-    color: #1e293b;
+    color: var(--md-sys-color-on-surface);
     letter-spacing: -0.01em;
 }
 
 .section-head .card-title {
-    font-size: 1.25rem;
+    font-size: var(--md-sys-typescale-headline-small-size);
 }
 
 .report-section > .section-head .card-title {
-    font-size: 1.3rem;
-    color: #0f172a;
+    font-size: var(--md-sys-typescale-headline-small-size);
+    color: var(--md-sys-color-on-surface);
 }
 
 .result-block .card-title {
-    font-size: 1.05rem;
+    font-size: var(--md-sys-typescale-title-medium-size);
     font-weight: 700;
-    color: #1e293b;
-    border-bottom: 2px solid var(--blue);
+    color: var(--md-sys-color-on-surface);
+    border-bottom: 2px solid var(--md-sys-color-primary);
     padding-bottom: 0.4rem;
     display: inline-block;
 }

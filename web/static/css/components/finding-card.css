@@ -2,21 +2,33 @@
 @layer components {
 .finding-list { display: grid; gap: 0.9rem; }
 .finding-list > * { min-width: 0; }
+/* Finding card retokenizado para MD3:
+   - surface-container-low base, outline-variant border 12dp shape
+   - Variantes is-empty / is-timeout sobrepoem cor de container apropriada
+   - "Explainer" mantem layout, mas tokenizado para primary-container */
 .finding-card {
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
     padding: 1rem;
-    background: #fcfdff;
+    background: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-on-surface);
     min-width: 0;
+    transition: border-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
-.finding-card.is-empty { background: #fafafa; }
-.finding-card.is-timeout { background: #fffbeb; }
+.finding-card.is-empty {
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface-variant);
+}
+.finding-card.is-timeout {
+    background: color-mix(in oklab, var(--md-comp-warning-container) 50%, var(--md-sys-color-surface-container-low));
+    border-color: var(--md-comp-warning);
+}
 .finding-card .finding-head { cursor: pointer; user-select: none; }
 .finding-card .finding-toggle {
     display: inline-block;
-    transition: transform 0.2s;
+    transition: transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--md-sys-color-on-surface-variant);
     margin-left: 0.5rem;
     flex-shrink: 0;
     align-self: center;
@@ -24,10 +36,10 @@
 .finding-card.collapsed .finding-toggle { transform: rotate(-90deg); }
 .finding-card.collapsed .finding-body { display: none; }
 .finding-title {
-    font-size: 1.02rem;
-    font-weight: 600;
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight, 600);
     margin-bottom: 0.25rem;
-    color: #334155;
+    color: var(--md-sys-color-on-surface);
 }
 
 .title-with-action {
@@ -55,103 +67,88 @@
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.5rem;
-    font-size: 0.88rem;
+    font-size: var(--md-sys-typescale-body-medium-size);
     cursor: pointer;
 }
 
 /* ============================================================
    Fase 4 - Explainer "O que isso significa?" (citizen mode)
+   Botao MD3 outlined-icon-button-look (mantemos como <button> p/
+   nao quebrar handlers existentes). Tokenizado para primary tones.
    ============================================================ */
 .explainer-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
     margin-left: .4rem;
     padding: 0;
-    border: 1px solid var(--border, #cbd5e1);
-    border-radius: 50%;
-    background: #f1f5f9;
-    color: var(--blue, #2563eb);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-full);
+    background: transparent;
+    color: var(--md-sys-color-primary);
     font-size: 0.85rem;
     font-weight: 700;
     line-height: 1;
     cursor: pointer;
     vertical-align: middle;
-    transition: background 0.15s, color 0.15s, transform 0.15s;
+    transition:
+        background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+        color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
     -webkit-tap-highlight-color: transparent;
 }
 .explainer-btn:hover,
 .explainer-btn:focus-visible {
-    background: var(--blue, #2563eb);
-    color: #fff;
-    border-color: var(--blue, #2563eb);
+    background: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
     outline: none;
 }
 .explainer-btn.is-open {
-    background: var(--blue, #2563eb);
-    color: #fff;
-    border-color: var(--blue, #2563eb);
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    border-color: transparent;
 }
 
 .finding-explainer {
     margin: .75rem 0 .25rem 0;
     padding: .85rem 1rem;
-    background: #eff6ff;
-    border-left: 3px solid var(--blue, #2563eb);
-    border-radius: 6px;
-    animation: explainer-slide 0.22s ease-out;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-left: 4px solid var(--md-sys-color-primary);
+    border-radius: var(--md-sys-shape-corner-small);
+    animation: explainer-slide var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-decelerate);
 }
 .finding-explainer[hidden] {
     display: none !important;
 }
 .finding-explainer p {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: var(--md-sys-typescale-body-medium-size);
     line-height: 1.55;
-    color: #0f172a;
+    color: var(--md-sys-color-on-primary-container);
 }
 @keyframes explainer-slide {
     from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-body.dark-page .finding-explainer {
-    background: rgba(37, 99, 235, 0.12);
-    border-left-color: #60a5fa;
-}
-body.dark-page .finding-explainer p {
-    color: #e2e8f0;
-}
-body.dark-page .explainer-btn {
-    background: rgba(15, 23, 42, 0.55);
-    border-color: rgba(148, 163, 184, 0.35);
-    color: #93c5fd;
-}
-body.dark-page .explainer-btn:hover,
-body.dark-page .explainer-btn:focus-visible,
-body.dark-page .explainer-btn.is-open {
-    background: #2563eb;
-    color: #fff;
-    border-color: #3b82f6;
-}
-
 /* Em modo auditor, esconde o botao via citizen-only padrao. */
 
 @media (max-width: 640px) {
     .explainer-btn {
-        width: 44px;
-        height: 44px;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
         font-size: 0.85rem;
     }
     .finding-explainer {
         padding: .7rem .8rem;
     }
     .finding-explainer p {
-        font-size: 0.9rem;
+        font-size: var(--md-sys-typescale-body-small-size);
     }
 }
 
