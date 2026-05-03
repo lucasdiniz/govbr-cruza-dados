@@ -177,12 +177,27 @@
 .kpi-card.severity-neutral .kpi-card-value { color: var(--md-sys-color-on-surface); }
 
 @media (max-width: 640px) {
+    /* 2-col grid em mobile p/ KPI cards (vez de stack vertical infinito).
+       Cards com label clamped a 2 linhas + valor compacto cabem bem
+       lado a lado em telas >=380px. Em telas <380px ainda 2 cols, mas
+       valor pode quebrar. */
     .city-kpi-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
         gap: .55rem;
     }
     .kpi-card {
         min-height: auto;
+        padding: .7rem .8rem;
+    }
+    .kpi-card-value {
+        font-size: var(--md-sys-typescale-title-large-size);
+    }
+    .kpi-card-tip {
+        top: .35rem;
+        right: .4rem;
+        width: 26px;
+        height: 26px;
+        font-size: .7rem;
     }
     .priority-links { display: grid; }
 }

@@ -1,76 +1,117 @@
 /* === components/data-table.css === */
 @layer components {
+/* MD3 retokenized data tables. Bespoke (no MD3 component) but uses MD3
+   tokens p/ surface/text/border/state-layer. Row-sancao variantes mapeiam
+   p/ error-container / warning-container.
+
+   Hover state usa color-mix com on-surface 8% (state layer level 1). */
 .tbl-wrap { overflow-x: auto; }
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.86rem;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface);
 }
 th {
     text-align: left;
-    background: #f8fafc;
-    color: #475569;
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface-variant);
     padding: 0.7rem 0.65rem;
     position: sticky;
     top: 0;
-    font-size: 0.78rem;
+    font-size: var(--md-sys-typescale-label-small-size);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    font-weight: 600;
     user-select: none;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
-th.sort-asc::after { content: ' \25B2'; font-size: 0.6rem; }
-th.sort-desc::after { content: ' \25BC'; font-size: 0.6rem; }
+th.sort-asc::after { content: ' \25B2'; font-size: 0.6rem; opacity: 0.85; }
+th.sort-desc::after { content: ' \25BC'; font-size: 0.6rem; opacity: 0.85; }
 td {
     padding: 0.7rem 0.65rem;
-    border-top: 1px solid #edf2f7;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
     vertical-align: top;
 }
-tr:hover { background: #fbfdff; }
+tr:hover {
+    background: color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
+}
 
-.compact-table table { font-size: 0.83rem; }
+.compact-table table { font-size: var(--md-sys-typescale-body-small-size); }
 
 .table-shell {
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
     padding: 0.9rem;
-    background: #fff;
+    background: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-on-surface);
 }
 .table-filter {
     width: min(340px, 100%);
-    padding: 0.65rem 0.82rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 12px;
-    font-size: 0.92rem;
+    padding: 0.6rem 0.85rem;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    font-family: inherit;
 }
+.table-filter::placeholder { color: var(--md-sys-color-on-surface-variant); }
 .table-filter:focus {
-    outline: none;
-    border-color: var(--blue);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 1px;
+    border-color: var(--md-sys-color-primary);
 }
 
 /* Clickable rows */
 .clickable-row { cursor: pointer; }
-.clickable-row:hover { background: var(--surface-alt, #f8f9fa); }
-.row-sancao { background: #fef2f2; }
-.row-sancao:hover { background: #fee2e2; }
-.row-sancao-leve { background: #fffbeb; }
-.row-sancao-leve:hover { background: #fef3c7; }
+.clickable-row:hover {
+    background: color-mix(in oklab, var(--md-sys-color-primary) 12%, transparent);
+}
+/* Severity row tints (M3 container colors).
+   Container colors are tinted by the page surface so we keep them visible
+   on the navy bg. Hover layer is the on-container at 12% opacity. */
+.row-sancao {
+    background: color-mix(in oklab, var(--md-sys-color-error-container) 50%, transparent);
+}
+.row-sancao:hover {
+    background: color-mix(in oklab, var(--md-sys-color-error-container) 75%, transparent);
+}
+.row-sancao-leve {
+    background: color-mix(in oklab, var(--md-comp-warning-container) 50%, transparent);
+}
+.row-sancao-leve:hover {
+    background: color-mix(in oklab, var(--md-comp-warning-container) 75%, transparent);
+}
 .row-detail-unavailable {
     cursor: default;
 }
 .row-detail-unavailable:hover { background: transparent; }
-.row-detail-unavailable.row-sancao:hover { background: #fef2f2; }
-.row-detail-unavailable.row-sancao-leve:hover { background: #fffbeb; }
-.mun-selector { font-size: .85rem; padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); vertical-align: middle; max-width: 260px; }
+.row-detail-unavailable.row-sancao:hover {
+    background: color-mix(in oklab, var(--md-sys-color-error-container) 50%, transparent);
+}
+.row-detail-unavailable.row-sancao-leve:hover {
+    background: color-mix(in oklab, var(--md-comp-warning-container) 50%, transparent);
+}
+.mun-selector {
+    font-size: var(--md-sys-typescale-label-medium-size);
+    padding: .25rem .5rem;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    vertical-align: middle;
+    max-width: 260px;
+}
 
 .detail-unavailable-hint {
     display: inline-flex;
     margin-left: 0.35rem;
-    padding: 0.08rem 0.38rem;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.16);
-    color: var(--muted);
-    font-size: 0.72rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: color-mix(in oklab, var(--md-sys-color-on-surface) 12%, transparent);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-small-size);
     font-weight: 600;
     vertical-align: middle;
 }
