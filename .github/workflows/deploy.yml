@@ -53,6 +53,11 @@ on:
         required: false
         type: boolean
         default: false
+      invalidate_cache_keys:
+        description: 'Lista CSV de prefixos/substrings de query_id para DELETE cirurgico no web_cache (ex: "PERFIL,KPI_SUMMARY,TOP_SERVIDORES"). Aplica DELETE WHERE query_id LIKE "%term%" para cada termo. Usado quando uma fix afeta so algumas queries — evita drop_cache=true full. Apenas [a-zA-Z0-9_:] permitidos por seguranca.'
+        required: false
+        type: string
+        default: ''
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -644,6 +649,66 @@ jobs:
           EOF
           sudo systemctl daemon-reload
           echo "WARM_SKIP_RECENT_HOURS=$SKIP_HRS configurado"
+
+      # ── Invalidate selected cache keys ──
+      # DELETE cirurgico no web_cache para queries afetadas por uma fix
+      # especifica. Mais cirurgico que drop_cache=true (que apaga TUDO).
+      # Aceita CSV de termos: para cada termo T, executa
+      # DELETE FROM web_cache WHERE query_id LIKE '%T%'.
+      # Sanitiza input: apenas [a-zA-Z0-9_:] permitidos por termo, para
+      # evitar SQL injection via patterns LIKE arbitrarios.
+      # Roda APOS Configure resume mode (que ja deixou skip=24h em modo
+      # nao-drop), porque queremos que o warm subsequente retrate as
+      # chaves deletadas (sem skip).
+      - name: Invalidate selected cache keys
+        if: inputs.invalidate_cache_keys != ''
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          KEYS_RAW="${{ inputs.invalidate_cache_keys }}"
+          echo "=== Invalidate cache keys: $KEYS_RAW ==="
+
+          # Constroi clausula WHERE com OR LIKE para cada termo. Sanitiza
+          # cada termo via grep -E '^[A-Za-z0-9_:]+$' — qualquer caractere
+          # fora desse conjunto FAZ falhar (pra evitar surpresa silenciosa).
+          WHERE_CLAUSE=""
+          IFS=',' read -ra TERMS <<< "$KEYS_RAW"
+          for term in "${TERMS[@]}"; do
+            term=$(echo "$term" | tr -d ' ')
+            if [ -z "$term" ]; then continue; fi
+            if ! echo "$term" | grep -qE '^[A-Za-z0-9_:]+$'; then
+              echo "::error::invalidate_cache_keys term invalido: '$term' (apenas [A-Za-z0-9_:] permitidos)"
+              exit 1
+            fi
+            if [ -n "$WHERE_CLAUSE" ]; then
+              WHERE_CLAUSE="$WHERE_CLAUSE OR "
+            fi
+            WHERE_CLAUSE="${WHERE_CLAUSE}query_id LIKE '%${term}%'"
+          done
+
+          if [ -z "$WHERE_CLAUSE" ]; then
+            echo "Nenhum termo valido — nada a invalidar."
+            exit 0
+          fi
+
+          SQL="DELETE FROM web_cache WHERE $WHERE_CLAUSE"
+          echo "SQL: $SQL"
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -c "
+            DO \$\$
+            DECLARE
+              n INTEGER;
+            BEGIN
+              IF to_regclass('public.web_cache') IS NOT NULL THEN
+                EXECUTE '$SQL';
+                GET DIAGNOSTICS n = ROW_COUNT;
+                RAISE NOTICE 'invalidated % web_cache rows', n;
+              ELSE
+                RAISE NOTICE 'web_cache nao existe — nada a invalidar';
+              END IF;
+            END \$\$;
+          "
 
       # ── Warm cache (oneshot, ~12-18h em B4 com fixes do PR de speedup) ──
       # Auto: roda apos etl_phase=all ou sql (dados mudaram, queries mudaram).
