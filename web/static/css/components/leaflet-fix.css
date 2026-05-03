@@ -1,0 +1,22 @@
+/* === components/leaflet-fix.css === */
+/*
+ * Vendor leaflet.css ships unlayered and sets `.leaflet-container { background: #ddd }`
+ * as the default (light gray) map canvas color. Per CSS Cascade Layers spec,
+ * unlayered rules beat any layered rule regardless of specificity — so even
+ * our `#mapa-pb { background: transparent }` rule (in `@layer components`,
+ * specificity 1,0,0) loses to leaflet's `.leaflet-container` rule
+ * (specificity 0,1,0, but unlayered).
+ *
+ * Result before fix: the map area renders as a gray-white block against the
+ * site's dark navy bg, breaking the dark-only theme.
+ *
+ * Fix: re-declare the background override here as UNLAYERED CSS so it
+ * competes on equal cascade-layer footing with leaflet.css. ID specificity
+ * still wins as a tie-breaker. Same pattern as md-dialog-fix.css and
+ * md-host-padding-fix.css.
+ */
+
+#mapa-pb,
+#mapa-pb.leaflet-container {
+    background: transparent;
+}
