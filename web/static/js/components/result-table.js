@@ -153,7 +153,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     return `<div class="result-block">
         <div class="result-toolbar">
             <div>${legendHtml}</div>
-            <a href="${exportHref}" data-export-link class="data-table-export"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></a>
+            <md-outlined-button href="${exportHref}" data-export-link class="data-table-export"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></md-outlined-button>
         </div>
         <div class="table-shell js-data-table" data-page-size="10">
             <div class="table-actions">

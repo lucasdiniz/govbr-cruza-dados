@@ -42,7 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 wasOpen = isOpen;
             });
             obs.observe(dialog, { attributes: true, attributeFilter: ['open'] });
-            dialog.addEventListener('close', () => { _dialogOnClose(); });
+            // Use the `closed` event (post-animation, after open=false has been
+            // applied) instead of `close` — md-dialog dispatches `close` as a
+            // cancelable PRE-close event; reacting on `close` would call
+            // history.back() while the dialog is still open and trigger a
+            // duplicate close via the popstate handler in dialog-history-swipe.js.
+            dialog.addEventListener('closed', () => { _dialogOnClose(); });
             // Back button (slot=headline) -> pop the dialog stack.
             const backBtn = dialog.querySelector('[data-dialog-back], .dialog-back');
             if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
