@@ -1,0 +1,63 @@
+/* === pages/errors.css === */
+@layer pages {
+/* Fase 12 - paginas de erro */
+.error-page {
+    max-width: 640px;
+    margin: 48px auto;
+    padding: 20px;
+}
+.error-hero {
+    background: var(--md-sys-color-surface-container);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-large);
+    padding: 36px 28px;
+    text-align: center;
+}
+.error-icon { font-size: 56px; line-height: 1; margin-bottom: 12px; }
+.error-title { font-size: 26px; font-weight: 700; margin: 0 0 12px; color: var(--md-sys-color-on-surface); }
+.error-lead { font-size: 16px; line-height: 1.55; color: var(--md-sys-color-on-surface-variant); margin: 0 0 12px; }
+.error-path { margin: 14px 0; }
+.error-path code {
+    display: inline-block;
+    background: var(--md-sys-color-surface-container-high);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--md-sys-color-on-surface-variant);
+    word-break: break-all;
+}
+.error-search { display: flex; gap: 8px; margin: 22px 0 18px; }
+.error-search input[type="search"] {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 16px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface);
+}
+.error-search .btn-primary {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: var(--md-sys-shape-corner-small);
+    border: none;
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    font-weight: 600;
+    cursor: pointer;
+}
+.error-actions { margin: 8px 0 0; font-size: 15px; }
+.error-actions .btn-link { color: var(--md-sys-color-primary); text-decoration: none; font-weight: 600; }
+.error-actions .btn-link:hover { text-decoration: underline; }
+.error-actions .sep { color: var(--md-sys-color-on-surface-variant); margin: 0 8px; }
+
+@media (max-width: 640px) {
+    .error-page { margin: 24px auto; padding: 12px; }
+    .error-hero { padding: 28px 18px; }
+    .error-title { font-size: 22px; }
+    .error-search { flex-direction: column; }
+}
+
+
+}

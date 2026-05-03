@@ -1,0 +1,45 @@
+/* === pages/glossario.css === */
+@layer pages {
+/* Fase 10 - Glossario */
+.glossario-page { max-width: 820px; margin: 24px auto; padding: 0 18px; }
+.glossario-head { margin-bottom: 20px; }
+.glossario-head h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+.glossario-head .text-muted { margin: 0 0 16px; font-size: 15px; line-height: 1.5; }
+.glossario-search {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 16px;
+    font-size: 16px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+}
+.glossario-count { margin-top: 0.5rem; }
+.glossario-search:focus { outline: 2px solid var(--md-sys-color-primary); outline-offset: -1px; }
+.glossario-list { display: grid; gap: 12px; }
+.glossario-item {
+    padding: 18px 20px;
+    background: var(--md-sys-color-surface-container);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+}
+.glossario-term { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: var(--md-sys-color-primary); }
+.glossario-citizen { margin: 0 0 8px; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
+.glossario-citizen strong { color: var(--md-sys-color-on-surface); }
+.glossario-def { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--md-sys-color-on-surface); }
+
+.footer-link { color: inherit; text-decoration: underline; }
+.footer-link:hover { text-decoration: none; }
+
+@media (min-width: 768px) {
+    .glossario-list { grid-template-columns: 1fr 1fr; gap: 14px; }
+}
+@media (max-width: 640px) {
+    .glossario-page { padding: 0 14px; margin: 16px auto; }
+    .glossario-head h1 { font-size: 24px; }
+    .glossario-item { padding: 14px 16px; }
+}
+
+
+}

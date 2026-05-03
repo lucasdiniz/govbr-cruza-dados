@@ -1,0 +1,57 @@
+/* === components/card.css === */
+@layer components {
+.search-card,
+.card,
+.insight-card {
+    background: var(--surface);
+    border: 1px solid rgba(219, 229, 239, 0.95);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+}
+
+.search-card {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    text-align: left;
+    background: rgba(15, 23, 42, 0.65);
+    border-color: rgba(148, 163, 184, 0.15);
+    backdrop-filter: blur(12px);
+}
+.search-card .search-label { color: #cbd5e1; }
+
+/* .intro-grid removed — replaced by features-strip */
+
+.card {
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    color: #1e293b;
+    letter-spacing: -0.01em;
+}
+
+.section-head .card-title {
+    font-size: 1.25rem;
+}
+
+.report-section > .section-head .card-title {
+    font-size: 1.3rem;
+    color: #0f172a;
+}
+
+.result-block .card-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+    border-bottom: 2px solid var(--blue);
+    padding-bottom: 0.4rem;
+    display: inline-block;
+}
+
+
+}

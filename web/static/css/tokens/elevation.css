@@ -1,0 +1,56 @@
+/* === tokens/elevation.css === */
+/*
+ * Material Design 3 elevation tokens.
+ *
+ * MD3 define 6 níveis de elevação (0..5) representados via box-shadow.
+ * Em dark themes, MD3 também aplica um surface-tint overlay que clareia
+ * superfícies elevadas (o overlay é a opacidade da primary aplicada sobre
+ * a surface — porque vidros têm tom da luz que reflete).
+ *
+ * Convenção neste projeto:
+ *   - level0 : sem sombra (top app bar parado, body)
+ *   - level1 : cards de informação (insight, finding, kpi)
+ *   - level2 : cards no hover, top app bar com scroll, dropdowns
+ *   - level3 : FAB, modal scrim
+ *   - level4 : navigation drawer, raised menu
+ *   - level5 : modal dialogs (raramente usado)
+ *
+ * Para aplicar elevação, use o token `--md-sys-elevation-N`. Para
+ * tinting (clareamento da surface por overlay), aplique também a
+ * variável `--md-sys-elevation-tint-N` como background-image.
+ */
+
+@layer tokens {
+  :root {
+    --md-sys-elevation-0: none;
+
+    --md-sys-elevation-1:
+      0 1px 2px 0 rgba(0, 0, 0, 0.30),
+      0 1px 3px 1px rgba(0, 0, 0, 0.15);
+
+    --md-sys-elevation-2:
+      0 1px 2px 0 rgba(0, 0, 0, 0.30),
+      0 2px 6px 2px rgba(0, 0, 0, 0.15);
+
+    --md-sys-elevation-3:
+      0 1px 3px 0 rgba(0, 0, 0, 0.30),
+      0 4px 8px 3px rgba(0, 0, 0, 0.15);
+
+    --md-sys-elevation-4:
+      0 2px 3px 0 rgba(0, 0, 0, 0.30),
+      0 6px 10px 4px rgba(0, 0, 0, 0.15);
+
+    --md-sys-elevation-5:
+      0 4px 4px 0 rgba(0, 0, 0, 0.30),
+      0 8px 12px 6px rgba(0, 0, 0, 0.15);
+
+    /* Overlays de surface-tint (dark theme). A opacidade aumenta com a
+       elevação para simular a "iluminação" da primary refletida na surface.
+       Aplicar como linear-gradient sobre o background do elemento. */
+    --md-sys-elevation-tint-1: rgba(147, 177, 255, 0.05);  /* primary @ 5% */
+    --md-sys-elevation-tint-2: rgba(147, 177, 255, 0.08);
+    --md-sys-elevation-tint-3: rgba(147, 177, 255, 0.11);
+    --md-sys-elevation-tint-4: rgba(147, 177, 255, 0.12);
+    --md-sys-elevation-tint-5: rgba(147, 177, 255, 0.14);
+  }
+}

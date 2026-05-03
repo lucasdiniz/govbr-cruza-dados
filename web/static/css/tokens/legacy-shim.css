@@ -1,0 +1,59 @@
+/* === tokens/legacy-shim.css === */
+/*
+ * Mapeia variáveis legadas (do antigo style.css) para tokens MD3.
+ *
+ * Permite que componentes não-migrados continuem funcionando usando as
+ * variáveis antigas (--bg, --surface, --blue, etc.), mas resolvendo agora
+ * para os tokens MD3 sob o capô. Conforme cada componente migra para usar
+ * tokens MD3 diretamente (Fases 4+), os blocos correspondentes deste shim
+ * podem ser removidos no cleanup-css.
+ *
+ * Importante: este shim sobrescreve o bloco `:root` original que vinha
+ * de tokens/legacy.css. O arquivo original (que tinha valores hex literais)
+ * foi removido — agora todas as variáveis legadas resolvem via MD3 tokens.
+ */
+
+@layer tokens {
+  :root {
+    /* ───────── Surfaces ───────── */
+    --bg: var(--md-sys-color-surface-container-lowest);
+    --surface: var(--md-sys-color-surface-container-low);
+    --surface-soft: var(--md-sys-color-surface);
+    --surface-alt: var(--md-sys-color-surface-container);
+    --surface-card: var(--md-sys-color-surface-container);
+    --surface-2: var(--md-sys-color-surface-container-high);
+    --card-bg: var(--md-sys-color-surface-container-low);
+
+    /* ───────── Texto ───────── */
+    --text: var(--md-sys-color-on-surface);
+    --text-strong: var(--md-sys-color-on-surface);
+    --text-primary: var(--md-sys-color-on-surface);
+    --text-secondary: var(--md-sys-color-on-surface-variant);
+    --text-muted: var(--md-sys-color-on-surface-variant);
+    --muted: var(--md-sys-color-on-surface-variant);
+
+    /* ───────── Acentos ───────── */
+    --blue: var(--md-sys-color-primary);
+    --blue-soft: var(--md-sys-color-primary-container);
+    --primary: var(--md-sys-color-primary);
+    --link-color: var(--md-sys-color-primary);
+    --accent: var(--md-sys-color-primary);
+    --accent-muted: var(--md-sys-color-secondary);
+
+    /* ───────── Cores semânticas (severidade) ───────── */
+    --red: var(--md-sys-color-error);
+    --green: var(--md-comp-success);
+    --yellow: var(--md-comp-warning);
+
+    /* ───────── Bordas ───────── */
+    --line: var(--md-sys-color-outline-variant);
+    --border: var(--md-sys-color-outline-variant);
+    --border-color: var(--md-sys-color-outline-variant);
+
+    /* ───────── Sombras ───────── */
+    --shadow: var(--md-sys-elevation-2);
+
+    /* ───────── Background do body em pages dark (legacy) ───────── */
+    --bg-dark: var(--md-sys-color-surface-container-lowest);
+  }
+}

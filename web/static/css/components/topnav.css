@@ -1,0 +1,41 @@
+/* === components/topnav.css === */
+@layer components {
+.topnav {
+    background: rgba(15, 23, 42, 0.95);
+    color: #fff;
+    padding: 0.8rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(16px);
+}
+
+.logo {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #bfdbfe;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    text-decoration: none;
+}
+.logo-mark { flex-shrink: 0; }
+.logo-text { letter-spacing: -0.01em; }
+.logo-text strong { color: #60a5fa; font-weight: 800; }
+.logo:hover { color: #dbeafe; text-decoration: none; }
+.nav-link {
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+.nav-link:hover { color: #fff; background: rgba(59, 92, 206, 0.2); }
+.nav-desc { font-size: 0.82rem; color: #cbd5e1; margin-left: auto; }
+
+
+}

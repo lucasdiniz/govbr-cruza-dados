@@ -1,0 +1,10 @@
+/* === base/animations.css === */
+@layer base {
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+    from { background-position: 0 0; }
+    to { background-position: 200% 0; }
+}
+
+
+}

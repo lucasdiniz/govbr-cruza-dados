@@ -1,0 +1,175 @@
+/* === components/kpi-card.css === */
+@layer components {
+/* ============================================================
+   City KPI strip — investigative hero (Fase 9)
+   Substitui o antigo rank-badge no topo da pagina /search/cidade.
+   ============================================================ */
+.city-kpi-strip {
+    margin: 0.8rem 0 0.9rem;
+}
+.city-kpi-head {
+    margin-bottom: .75rem;
+    padding: 0 .25rem;
+}
+.city-kpi-title {
+    margin: 0 0 .15rem 0;
+    font-size: 1.05rem;
+    color: var(--text-strong, #f8fafc);
+}
+.city-kpi-sub { margin: 0; }
+
+.city-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: .65rem;
+}
+
+.priority-guide {
+    margin-top: 1rem;
+    border-left: 3px solid rgba(96, 165, 250, 0.7);
+}
+.priority-guide .card-title {
+    margin-bottom: .35rem;
+}
+.priority-links {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin-top: .8rem;
+}
+.priority-panels {
+    margin-top: 1rem;
+}
+
+.kpi-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    padding: .85rem .95rem;
+    border-radius: 10px;
+    border: 1px solid;
+    text-decoration: none;
+    color: inherit;
+    background: rgba(255,255,255,0.04);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    min-height: 96px;
+}
+.kpi-card:hover,
+.kpi-card:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+    outline: none;
+}
+
+.kpi-card-label {
+    font-size: .82rem;
+    line-height: 1.25;
+    color: var(--text-muted, #cbd5e1);
+    /* clamp 2 lines so heights stay consistent */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.kpi-card-value {
+    font-size: 1.55rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-top: auto;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-card-extra {
+    font-size: .72rem;
+    color: var(--text-muted, #94a3b8);
+}
+.kpi-card-suffix { font-size: 1rem; font-weight: 600; opacity: .8; margin-left: 2px; }
+
+.kpi-card-tip {
+    position: absolute;
+    top: .55rem;
+    right: .6rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: inherit;
+    font-size: .7rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+}
+.kpi-card-tip[data-tip]:hover::after,
+.kpi-card-tip[data-tip]:focus::after,
+.kpi-card-tip.tip-open::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: max-content;
+    max-width: min(300px, 80vw);
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.35;
+    z-index: 100;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    pointer-events: none;
+}
+
+/* Severity variants — use background tints + border accents */
+.kpi-card.severity-red {
+    background: rgba(220, 38, 38, 0.14);
+    border-color: rgba(252, 165, 165, 0.45);
+    color: #fecaca;
+}
+.kpi-card.severity-red .kpi-card-value { color: #fca5a5; }
+
+.kpi-card.severity-yellow {
+    background: rgba(234, 179, 8, 0.14);
+    border-color: rgba(253, 224, 71, 0.4);
+    color: #fef3c7;
+}
+.kpi-card.severity-yellow .kpi-card-value { color: #fde68a; }
+
+.kpi-card.severity-neutral {
+    background: rgba(148, 163, 184, 0.10);
+    border-color: rgba(148, 163, 184, 0.25);
+    color: #cbd5e1;
+}
+.kpi-card.severity-neutral .kpi-card-value { color: #e2e8f0; }
+
+/* Light page fallback (this page is dark-page by default; keep safety) */
+body:not(.dark-page) .kpi-card.severity-red {
+    background: #fef2f2; border-color: #fecaca; color: #991b1b;
+}
+body:not(.dark-page) .kpi-card.severity-red .kpi-card-value { color: #b91c1c; }
+body:not(.dark-page) .kpi-card.severity-yellow {
+    background: #fffbeb; border-color: #fde68a; color: #92400e;
+}
+body:not(.dark-page) .kpi-card.severity-yellow .kpi-card-value { color: #b45309; }
+body:not(.dark-page) .kpi-card.severity-neutral {
+    background: #f8fafc; border-color: #e2e8f0; color: #475569;
+}
+body:not(.dark-page) .kpi-card.severity-neutral .kpi-card-value { color: #1e293b; }
+
+@media (max-width: 640px) {
+    .city-kpi-grid {
+        grid-template-columns: 1fr;
+        gap: .55rem;
+    }
+    .kpi-card {
+        min-height: auto;
+    }
+    .priority-links { display: grid; }
+}
+
+
+}

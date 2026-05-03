@@ -1,0 +1,78 @@
+/* === tokens/motion.css === */
+/*
+ * Material Design 3 motion tokens.
+ *
+ * MD3 separa motion em easing curves e durations.
+ * Curvas:
+ *   - emphasized       : transições de destaque (entrada/saída de cards, FAB)
+ *   - emphasized-decel : entrada (objeto se acomodando)
+ *   - emphasized-accel : saída (objeto sumindo)
+ *   - standard         : padrão para hover/focus/state changes
+ *   - standard-decel   : entrada padrão
+ *   - standard-accel   : saída padrão
+ *   - linear           : progresso, indicadores
+ *   - legacy           : compat com Material 2
+ *
+ * Durations (ms):
+ *   - short1..4   : 50, 100, 150, 200    (micro-interações)
+ *   - medium1..4  : 250, 300, 350, 400   (entrada/saída de elementos)
+ *   - long1..4    : 450, 500, 550, 600   (transições de página)
+ *   - extra-long1..4 : 700, 800, 900, 1000 (raras, cinemáticas)
+ *
+ * Usar tokens em vez de magic numbers para garantir consistência de ritmo
+ * em toda a UI.
+ */
+
+@layer tokens {
+  :root {
+    /* ───────── Easing curves ───────── */
+    --md-sys-motion-easing-linear: cubic-bezier(0, 0, 1, 1);
+    --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+    --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+    --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    --md-sys-motion-easing-legacy: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* ───────── Durations ───────── */
+    --md-sys-motion-duration-short1: 50ms;
+    --md-sys-motion-duration-short2: 100ms;
+    --md-sys-motion-duration-short3: 150ms;
+    --md-sys-motion-duration-short4: 200ms;
+
+    --md-sys-motion-duration-medium1: 250ms;
+    --md-sys-motion-duration-medium2: 300ms;
+    --md-sys-motion-duration-medium3: 350ms;
+    --md-sys-motion-duration-medium4: 400ms;
+
+    --md-sys-motion-duration-long1: 450ms;
+    --md-sys-motion-duration-long2: 500ms;
+    --md-sys-motion-duration-long3: 550ms;
+    --md-sys-motion-duration-long4: 600ms;
+
+    --md-sys-motion-duration-extra-long1: 700ms;
+    --md-sys-motion-duration-extra-long2: 800ms;
+    --md-sys-motion-duration-extra-long3: 900ms;
+    --md-sys-motion-duration-extra-long4: 1000ms;
+  }
+
+  /* Respeitar prefers-reduced-motion: zerar durações para 1ms (não 0 para
+     evitar mudanças de listener `transitionend` que dependem de fire). */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --md-sys-motion-duration-short1: 1ms;
+      --md-sys-motion-duration-short2: 1ms;
+      --md-sys-motion-duration-short3: 1ms;
+      --md-sys-motion-duration-short4: 1ms;
+      --md-sys-motion-duration-medium1: 1ms;
+      --md-sys-motion-duration-medium2: 1ms;
+      --md-sys-motion-duration-medium3: 1ms;
+      --md-sys-motion-duration-medium4: 1ms;
+      --md-sys-motion-duration-long1: 1ms;
+      --md-sys-motion-duration-long2: 1ms;
+      --md-sys-motion-duration-long3: 1ms;
+      --md-sys-motion-duration-long4: 1ms;
+    }
+  }
+}

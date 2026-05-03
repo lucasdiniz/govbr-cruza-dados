@@ -1,0 +1,28 @@
+/* === components/snackbar.css === */
+@layer components {
+/* ────────────────────────────────────────────────────────────────────
+   Toast simples (Web Share fallback, etc)
+   ──────────────────────────────────────────────────────────────────── */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: max(4.5rem, calc(env(safe-area-inset-bottom) + 4rem));
+    transform: translateX(-50%) translateY(8px);
+    background: rgba(15, 23, 42, 0.95);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    padding: 0.55rem 1rem;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 70;
+    pointer-events: none;
+    max-width: calc(100vw - 2rem);
+    white-space: normal;
+}
+.toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+
+}

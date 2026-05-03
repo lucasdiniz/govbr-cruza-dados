@@ -1,0 +1,59 @@
+/* === components/font-toggle.css === */
+@layer components {
+/* Fase 13 - Toggle de tamanho de fonte */
+html.font-lg { font-size: 17.5px; }
+html.font-xl { font-size: 19px; }
+
+.font-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.08);
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    margin-right: 6px;
+}
+.font-toggle:hover { background: rgba(148, 163, 184, 0.18); border-color: rgba(148, 163, 184, 0.6); }
+.font-toggle:active { transform: scale(0.96); }
+.font-toggle .font-toggle-label { display: inline-flex; align-items: baseline; gap: 0; }
+.font-toggle .font-plus { font-size: 10px; font-weight: 700; opacity: 0.8; margin-left: 1px; }
+.font-toggle[data-level="lg"] { border-color: rgba(96, 165, 250, 0.6); color: #93c5fd; }
+.font-toggle[data-level="xl"] { border-color: rgba(96, 165, 250, 0.9); background: rgba(59, 130, 246, 0.2); color: #bfdbfe; }
+
+@media (max-width: 640px) {
+    .font-toggle { min-width: 44px; padding: 0 8px; font-size: 13px; }
+    .font-toggle .font-plus { font-size: 9px; }
+}
+
+/* Fase 5 - Tour de primeira visita */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.08);
+    color: inherit;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 17px;
+    font-family: inherit;
+    margin-right: 6px;
+}
+.icon-btn:hover { background: rgba(148, 163, 184, 0.18); }
+.icon-btn:active { transform: scale(0.96); }
+
+
+}

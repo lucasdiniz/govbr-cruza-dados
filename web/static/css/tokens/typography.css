@@ -1,0 +1,141 @@
+/* === tokens/typography.css === */
+/*
+ * Material Design 3 type scale.
+ *
+ * MD3 defines 5 type scales (display / headline / title / body / label),
+ * each in 3 sizes (small / medium / large), totaling 15 styles. Each style
+ * has font / weight / size / line-height / tracking.
+ *
+ * Family default: Roboto (importada via tokens/typography.css). Roboto Flex
+ * é o variável recomendada por MD3, mas usar Roboto estática mantém o asset
+ * mais leve e evita render-blocking adicional.
+ *
+ * Os valores reproduzem a especificação MD3 dark, com pequenas adaptações
+ * para o português (line-height ligeiramente maior por causa de acentos).
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap");
+
+@layer tokens {
+  :root {
+    /* ───────── Famílias ───────── */
+    --md-sys-typescale-plain-font: Roboto, "Segoe UI", system-ui, -apple-system, sans-serif;
+    --md-sys-typescale-brand-font: Roboto, "Segoe UI", system-ui, -apple-system, sans-serif;
+    --md-sys-typescale-mono-font: "Roboto Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+
+    /* ───────── Display ───────── */
+    --md-sys-typescale-display-large-font: var(--md-sys-typescale-brand-font);
+    --md-sys-typescale-display-large-size: 3.5625rem;       /* 57px */
+    --md-sys-typescale-display-large-line-height: 4rem;     /* 64px */
+    --md-sys-typescale-display-large-weight: 400;
+    --md-sys-typescale-display-large-tracking: -0.015625rem;
+
+    --md-sys-typescale-display-medium-size: 2.8125rem;      /* 45px */
+    --md-sys-typescale-display-medium-line-height: 3.25rem; /* 52px */
+    --md-sys-typescale-display-medium-weight: 400;
+    --md-sys-typescale-display-medium-tracking: 0;
+
+    --md-sys-typescale-display-small-size: 2.25rem;         /* 36px */
+    --md-sys-typescale-display-small-line-height: 2.75rem;  /* 44px */
+    --md-sys-typescale-display-small-weight: 400;
+    --md-sys-typescale-display-small-tracking: 0;
+
+    /* ───────── Headline ───────── */
+    --md-sys-typescale-headline-large-size: 2rem;           /* 32px */
+    --md-sys-typescale-headline-large-line-height: 2.5rem;  /* 40px */
+    --md-sys-typescale-headline-large-weight: 400;
+    --md-sys-typescale-headline-large-tracking: 0;
+
+    --md-sys-typescale-headline-medium-size: 1.75rem;       /* 28px */
+    --md-sys-typescale-headline-medium-line-height: 2.25rem;/* 36px */
+    --md-sys-typescale-headline-medium-weight: 400;
+    --md-sys-typescale-headline-medium-tracking: 0;
+
+    --md-sys-typescale-headline-small-size: 1.5rem;         /* 24px */
+    --md-sys-typescale-headline-small-line-height: 2rem;    /* 32px */
+    --md-sys-typescale-headline-small-weight: 400;
+    --md-sys-typescale-headline-small-tracking: 0;
+
+    /* ───────── Title ───────── */
+    --md-sys-typescale-title-large-size: 1.375rem;          /* 22px */
+    --md-sys-typescale-title-large-line-height: 1.75rem;    /* 28px */
+    --md-sys-typescale-title-large-weight: 400;
+    --md-sys-typescale-title-large-tracking: 0;
+
+    --md-sys-typescale-title-medium-size: 1rem;             /* 16px */
+    --md-sys-typescale-title-medium-line-height: 1.5rem;    /* 24px */
+    --md-sys-typescale-title-medium-weight: 500;
+    --md-sys-typescale-title-medium-tracking: 0.009375rem;  /* 0.15px */
+
+    --md-sys-typescale-title-small-size: 0.875rem;          /* 14px */
+    --md-sys-typescale-title-small-line-height: 1.25rem;    /* 20px */
+    --md-sys-typescale-title-small-weight: 500;
+    --md-sys-typescale-title-small-tracking: 0.00625rem;    /* 0.1px */
+
+    /* ───────── Body ───────── */
+    --md-sys-typescale-body-large-size: 1rem;               /* 16px */
+    --md-sys-typescale-body-large-line-height: 1.5rem;      /* 24px */
+    --md-sys-typescale-body-large-weight: 400;
+    --md-sys-typescale-body-large-tracking: 0.03125rem;     /* 0.5px */
+
+    --md-sys-typescale-body-medium-size: 0.875rem;          /* 14px */
+    --md-sys-typescale-body-medium-line-height: 1.25rem;    /* 20px */
+    --md-sys-typescale-body-medium-weight: 400;
+    --md-sys-typescale-body-medium-tracking: 0.015625rem;   /* 0.25px */
+
+    --md-sys-typescale-body-small-size: 0.75rem;            /* 12px */
+    --md-sys-typescale-body-small-line-height: 1rem;        /* 16px */
+    --md-sys-typescale-body-small-weight: 400;
+    --md-sys-typescale-body-small-tracking: 0.025rem;       /* 0.4px */
+
+    /* ───────── Label (botões, chips, navigation, eyebrow) ───────── */
+    --md-sys-typescale-label-large-size: 0.875rem;          /* 14px */
+    --md-sys-typescale-label-large-line-height: 1.25rem;    /* 20px */
+    --md-sys-typescale-label-large-weight: 500;
+    --md-sys-typescale-label-large-tracking: 0.00625rem;    /* 0.1px */
+
+    --md-sys-typescale-label-medium-size: 0.75rem;          /* 12px */
+    --md-sys-typescale-label-medium-line-height: 1rem;      /* 16px */
+    --md-sys-typescale-label-medium-weight: 500;
+    --md-sys-typescale-label-medium-tracking: 0.03125rem;   /* 0.5px */
+
+    --md-sys-typescale-label-small-size: 0.6875rem;         /* 11px */
+    --md-sys-typescale-label-small-line-height: 1rem;       /* 16px */
+    --md-sys-typescale-label-small-weight: 500;
+    --md-sys-typescale-label-small-tracking: 0.03125rem;    /* 0.5px */
+  }
+
+  /* Material Symbols (icone fonte). Tamanho default 24px em line-height 1
+     para alinhar com tap targets MD3. Variation settings: opsz 24, fill 0
+     (outlined), wght 400, grad 0. */
+  .md-icon,
+  .material-symbols-outlined {
+    font-family: "Material Symbols Outlined";
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: "liga";
+    font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings:
+      "FILL" 0,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+  }
+  .md-icon--filled,
+  .material-symbols-outlined.md-icon--filled {
+    font-variation-settings:
+      "FILL" 1,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+  }
+}

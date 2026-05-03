@@ -197,6 +197,82 @@ except Exception:
 templates.env.globals["DATA_REFRESH_DATE"] = _data_refresh_br
 templates.env.globals["DATA_REFRESH_DATE_ISO"] = _data_refresh
 
+# JS load order. Each entry is a path relative to /static/js/, emitted as
+# an individual <script> tag in base.html. Order matters because the scripts
+# are plain (non-module) and rely on cross-file globals — files are loaded
+# in the same order they appeared in the original app.js.
+#
+# This is intentionally hard-coded here (versioned with code) rather than
+# read from a manifest file at startup, because:
+#   * .gitignore excludes *.txt at the repo root, so an external manifest
+#     would silently disappear from a fresh clone.
+#   * Adding/removing a script is a code change and deserves a code review.
+#   * No file I/O at startup; less fragility.
+#
+# When adding a new component, append it here in the position that respects
+# any cross-file references (most files don't have hard ordering needs).
+JS_FILES: list[str] = [
+    "components/search-tabs.js",
+    "components/mode-toggle.js",
+    # md3-ready helper. Must load early so any later script can register
+    # readiness callbacks for <md-*> elements (full bundle is in the deferred
+    # ES module web/static/js/md3/imports.js).
+    "lib/md3-ready.js",
+    "lib/dual-label.js",
+    "lib/column-meta.js",
+    "components/term-tooltip.js",
+    "lib/expand-context.js",
+    "components/narrative-anchors.js",
+    "components/anchor-auto-expand.js",
+    "components/explainers.js",
+    "components/mobile-descriptions.js",
+    "components/credibility-dialog.js",
+    "components/font-toggle.js",
+    "components/tour.js",
+    "components/denuncia-dialog.js",
+    "components/snackbar.js",
+    "components/back-to-top.js",
+    "components/share.js",
+    "components/autocomplete.js",
+    "pages/cidade-bootstrap.js",
+    "components/finding-card.js",
+    "components/result-table.js",
+    "lib/format.js",
+    "components/top-fornecedores.js",
+    "lib/cnpj-format.js",
+    "components/date-filter.js",
+    "components/date-filter-ui.js",
+    "components/hero-stats.js",
+    "components/kpi-strip.js",
+    "components/concentracao-card.js",
+    "pages/cidade-refresh-kpis.js",
+    "components/heatmap.js",
+    "pages/cidade-refresh-perfil.js",
+    "components/dialog-nav.js",
+    "components/dialog-history-swipe.js",
+    "lib/skeleton.js",
+    "components/dialog-links.js",
+    "components/dialog-table-sort.js",
+    "components/dialog-decorate.js",
+    "lib/api.js",
+    "components/empenho-table.js",
+    "components/empresa-card.js",
+    "components/servidor-dialog.js",
+    "components/fornecedor-dialog.js",
+    "components/heatmap-dialog.js",
+    "components/empenho-dialog.js",
+    "components/licitacao-dialog.js",
+    "components/top-servidores.js",
+    "pages/cidade-async-panels.js",
+    "components/report-sections.js",
+    "lib/run-limited.js",
+    "components/data-table.js",
+    "components/clickable-rows.js",
+    "pages/main.js",
+]
+templates.env.globals["JS_FILES"] = JS_FILES
+templates.env.globals["ASSET_VERSION"] = "59"
+
 
 app.include_router(cidade_router)
 app.include_router(mapa_router)

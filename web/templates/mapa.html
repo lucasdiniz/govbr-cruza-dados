@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Mapa da Paraiba{% endblock %}
-{% block body_class %}dark-page mapa-page{% endblock %}
+{% block body_class %}mapa-page{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
 
@@ -25,5 +25,5 @@
 </section>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
-<script src="/static/mapa.js?v=10"></script>
+<script src="/static/js/pages/mapa.js?v={{ ASSET_VERSION }}"></script>
 {% endblock %}

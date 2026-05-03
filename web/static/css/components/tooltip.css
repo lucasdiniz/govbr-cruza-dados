@@ -1,0 +1,42 @@
+/* === components/tooltip.css === */
+@layer components {
+/* Tooltip em termos traduzidos (hover/focus/tap) */
+.term {
+    border-bottom: 1px dotted rgba(148, 163, 184, 0.6);
+    cursor: help;
+    position: relative;
+}
+.term[data-tip]:hover::after,
+.term[data-tip]:focus::after,
+.term.tip-open::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: normal;
+    width: max-content;
+    max-width: 260px;
+    z-index: 100;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    pointer-events: none;
+}
+/* Mobile: tooltip ocupa largura razoavel, nao sai da tela */
+@media (max-width: 640px) {
+    .term[data-tip]:hover::after,
+    .term.tip-open::after {
+        max-width: 88vw;
+        left: 0;
+        transform: translateX(0);
+    }
+}
+
+
+}

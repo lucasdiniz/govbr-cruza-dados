@@ -1,0 +1,19 @@
+/* === components/insight-card.css === */
+@layer components {
+.insight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.insight-grid > * { min-width: 0; }
+
+.insight-card { padding: 1rem; }
+.insight-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0.95rem 0 0.35rem;
+}
+
+
+}

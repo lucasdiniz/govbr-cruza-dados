@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
-    <link rel="stylesheet" href="/static/style.css?v=54">
+    <link rel="stylesheet" href="/static/css/index.css?v={{ ASSET_VERSION }}">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -35,12 +35,32 @@
             } catch(e) {}
         })();
     </script>
+    {# Material Web Components 2.x - bundle vendorado em
+       /static/vendor/material-web/material-web-bundle.js (~475 KB raw,
+       ~79 KB gzip). Inclui @material/web/all.js + lit + @lit/reactive-element +
+       tslib num unico arquivo ESM, gerado offline com esbuild. Ver
+       web/static/vendor/material-web/README.md para procedimento de update.
+
+       Usamos importmap para que o module imports.js consiga resolver
+       "@material/web/" e "@material/web/all.js" -> bundle local.
+       O bundle eh self-contained (todas as deps inlined), entao tecnicamente
+       so precisariamos importar o arquivo direto, mas o importmap permite
+       que codigo futuro use bare specifiers consistentemente. #}
+    <script type="importmap">
+    {
+      "imports": {
+        "@material/web/": "/static/vendor/material-web/",
+        "@material/web/all.js": "/static/vendor/material-web/material-web-bundle.js"
+      }
+    }
+    </script>
+    <script type="module" src="/static/js/md3/imports.js?v={{ ASSET_VERSION }}"></script>
     <link rel="manifest" href="/static/manifest.webmanifest">
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="apple-touch-icon" href="/static/logo.svg">
     {% block head_extra %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="dark-page {% block body_class %}{% endblock %}">
     <a href="#main-content" class="skip-link">Pular para o conteudo principal</a>
     <nav class="topnav">
         <a href="/" class="logo">
@@ -124,7 +144,8 @@
     <script>
         window.COLUMN_META = {{ COLUMN_META | tojson }};
     </script>
-    <script src="/static/app.js?v=47"></script>
+    {% for src in JS_FILES %}<script src="/static/js/{{ src }}?v={{ ASSET_VERSION }}"></script>
+    {% endfor %}
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
