@@ -67,7 +67,33 @@
 .nav-desc {
     font-size: var(--md-sys-typescale-body-medium-size);
     color: var(--md-sys-color-on-surface-variant);
-    margin-left: auto;
+}
+/* Right-align the toggle cluster (mode + font) by pushing the first toggle
+   to the far right; nav-desc stays left next to the logo. */
+.topnav #modeToggle { margin-left: auto; }
+
+/* Overflow menu (mobile only). Replaces the two stacked toggles with a single
+   md-icon-button that opens an md-menu of options. The wrapper is the menu
+   anchor; md-menu uses positioning="popover" so the floating menu renders
+   in the top layer. Desktop hides the wrapper entirely. */
+.overflow-menu-wrap {
+    position: relative;
+    display: none;
+    align-items: center;
+}
+.overflow-menu-wrap md-icon-button {
+    --md-icon-button-icon-color: var(--md-sys-color-on-surface);
+    --md-icon-button-hover-icon-color: var(--md-sys-color-on-surface);
+}
+@media (max-width: 640px) {
+    .topnav .font-toggle,
+    .topnav .mode-toggle {
+        display: none !important;
+    }
+    .overflow-menu-wrap {
+        display: inline-flex;
+        margin-left: auto;
+    }
 }
 
 

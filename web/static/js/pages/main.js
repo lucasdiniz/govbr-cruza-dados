@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initExplainers();
     initCredibilityDialog();
     initFontSizeToggle();
+    initOverflowMenu();
     initTour();
     initDenunciaDialog();
     initReportSections();

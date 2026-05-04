@@ -70,9 +70,6 @@
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>
-        <button type="button" id="fontSizeToggle" class="font-toggle" aria-label="Ajustar tamanho da fonte" title="Tamanho da fonte">
-            <span class="font-toggle-label">A<span class="font-plus">+</span></span>
-        </button>
         <button type="button" id="modeToggle" class="mode-toggle" aria-pressed="false" aria-label="Alternar modo" title="Alternar entre modo cidadao e modo auditor">
             <svg class="mode-icon mode-icon-citizen" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
@@ -86,6 +83,36 @@
             <span class="mode-label mode-label-citizen">Modo cidad&atilde;o</span>
             <span class="mode-label mode-label-auditor">Modo auditor</span>
         </button>
+        <button type="button" id="fontSizeToggle" class="font-toggle" aria-label="Ajustar tamanho da fonte" title="Tamanho da fonte">
+            <span class="font-toggle-label">A<span class="font-plus">+</span></span>
+        </button>
+        <div class="overflow-menu-wrap">
+            <md-icon-button id="overflowMenuBtn" aria-label="Mais op&ccedil;&otilde;es" aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+                    <circle cx="12" cy="5" r="2"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <circle cx="12" cy="19" r="2"/>
+                </svg>
+            </md-icon-button>
+            <md-menu id="overflowMenu" anchor="overflowMenuBtn" positioning="popover" menu-corner="end-end" anchor-corner="start-end">
+                <md-menu-item data-mode="citizen">
+                    <div slot="headline">Modo cidad&atilde;o</div>
+                </md-menu-item>
+                <md-menu-item data-mode="auditor">
+                    <div slot="headline">Modo auditor</div>
+                </md-menu-item>
+                <md-divider role="separator"></md-divider>
+                <md-menu-item data-fontlevel="normal">
+                    <div slot="headline">Fonte normal</div>
+                </md-menu-item>
+                <md-menu-item data-fontlevel="lg">
+                    <div slot="headline">Fonte grande</div>
+                </md-menu-item>
+                <md-menu-item data-fontlevel="xl">
+                    <div slot="headline">Fonte extra grande</div>
+                </md-menu-item>
+            </md-menu>
+        </div>
     </nav>
     <main id="main-content" class="container" tabindex="-1">
         {% block content %}{% endblock %}

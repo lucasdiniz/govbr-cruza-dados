@@ -36,6 +36,14 @@ function initFontSizeToggle() {
         applyLevel(next);
         if (navigator.vibrate) navigator.vibrate(8);
     });
+
+    // Exposto p/ overflow-menu.js (mobile) reutilizar a logica.
+    window.__getFontLevel = currentLevel;
+    window.__setFontLevel = (level) => {
+        if (!LEVELS.includes(level)) return;
+        applyLevel(level);
+        document.dispatchEvent(new CustomEvent('fontlevelchange', { detail: { level } }));
+    };
 }
 
 

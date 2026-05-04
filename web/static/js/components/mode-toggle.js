@@ -27,6 +27,9 @@ function setMode(mode) {
 function initModeToggle() {
     // Garante consistencia entre html.audit-mode (setado no head) e localStorage
     setMode(getMode());
+    // Exposto p/ overflow-menu.js (mobile) reutilizar.
+    window.__getAppMode = getMode;
+    window.__setAppMode = setMode;
     const btn = document.getElementById('modeToggle');
     if (!btn) return;
     btn.addEventListener('click', () => {

@@ -229,6 +229,7 @@ JS_FILES: list[str] = [
     "components/mobile-descriptions.js",
     "components/credibility-dialog.js",
     "components/font-toggle.js",
+    "components/overflow-menu.js",
     "components/tour.js",
     "components/denuncia-dialog.js",
     "components/snackbar.js",
@@ -273,7 +274,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "92"
+templates.env.globals["ASSET_VERSION"] = "94"
 
 
 app.include_router(cidade_router)
