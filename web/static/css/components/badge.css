@@ -1,21 +1,43 @@
 /* === components/badge.css === */
 @layer components {
+/* MD3 retokenized badges. Each variant maps to a *-container / on-*-container
+   pair so badges work on both light & dark surfaces and stay accessible. */
 .badge {
     display: inline-block;
-    padding: 0.18rem 0.52rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
+    padding: 0.18rem 0.6rem;
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: var(--md-sys-typescale-label-small-size);
     font-weight: 700;
     margin-right: 0.25rem;
     margin-bottom: 0.22rem;
+    border: 1px solid transparent;
 }
-.badge-red { background: #fef2f2; color: var(--red); border: 1px solid #fecaca; }
-.badge-orange { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
-.badge-muted { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
-.badge-yellow { background: #fff7ed; color: var(--yellow); border: 1px solid #fed7aa; }
-.badge-green { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
-.badge-gray { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
-.badge-blue { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
+.badge-red {
+    background: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+}
+.badge-orange {
+    background: var(--md-sys-color-tertiary-container);
+    color: var(--md-sys-color-on-tertiary-container);
+}
+.badge-yellow {
+    background: var(--md-comp-warning-container);
+    color: var(--md-comp-on-warning-container);
+}
+.badge-green {
+    background: var(--md-comp-success-container);
+    color: var(--md-comp-on-success-container);
+}
+.badge-blue {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+}
+.badge-gray,
+.badge-muted {
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+    border-color: var(--md-sys-color-outline-variant);
+}
 
 /* Evita badges estourarem coluna "Sinais" em mobile: uma badge por linha,
    com truncamento por ellipsis e texto completo disponivel via title/data-tip. */

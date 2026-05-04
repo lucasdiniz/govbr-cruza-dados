@@ -6,7 +6,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
     const panelUf = uf || panel.dataset.uf || '';
     const showPanelError = (message) => {
         panel.setAttribute('aria-busy', 'false');
-        panel.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${message}</p><button type="button" class="btn btn-outline btn-sm" data-retry-panel="${panelName}">Tentar novamente</button></div>`;
+        panel.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${message}</p><md-text-button data-retry-panel="${panelName}">Tentar novamente</md-text-button></div>`;
         panel.querySelector('[data-retry-panel]')?.addEventListener('click', () => {
             panel.setAttribute('aria-busy', 'true');
             panel.innerHTML = skeletonTableHtml(4, 3);

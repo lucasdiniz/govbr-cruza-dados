@@ -10,7 +10,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const mesNome = mesesLabel[mes - 1] || mes;
     title.textContent = `${mesNome}/${ano} — ${municipio}`;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     let data;
@@ -27,7 +27,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
         data = await resp.json();
         if (data && data.error) throw new Error(data.error);
     } catch (err) {
-        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><button type="button" class="btn btn-outline btn-sm" data-retry-heatmap> Tentar novamente</button></div>`;
+        body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><md-text-button data-retry-heatmap>Tentar novamente</md-text-button></div>`;
         body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes, { inPlace: true }));
         return;
     }

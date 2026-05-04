@@ -84,8 +84,8 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-.search-hero .eyebrow { color: #60a5fa; }
-.search-hero p { color: #94a3b8; }
+.search-hero .eyebrow { color: var(--md-sys-color-primary); }
+.search-hero p { color: var(--md-sys-color-on-surface-variant); }
 .hero-copy {
     max-width: 620px;
     margin: 0 auto 1.5rem;

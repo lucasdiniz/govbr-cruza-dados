@@ -1,34 +1,31 @@
 /* === components/fab.css === */
 @layer components {
 /* ────────────────────────────────────────────────────────────────────
-   Back-to-top flutuante (mostrado via JS quando scrollY > 400)
+   Back-to-top: <md-fab size="small" variant="surface">
+   - Position fixed bottom-right (M3 spec; FABs anchor bottom-end on LTR)
+   - Hidden by default (JS adds .visible when scrollY > 400)
+   - md-fab handles its own ripple + state layers + elevation internally
    ──────────────────────────────────────────────────────────────────── */
-.back-to-top {
+md-fab.back-to-top {
     position: fixed;
-    right: max(0.9rem, env(safe-area-inset-right));
-    bottom: max(0.9rem, env(safe-area-inset-bottom));
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    border: 1px solid rgba(96, 165, 250, 0.35);
-    background: rgba(6, 10, 20, 0.85);
-    color: #bfdbfe;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    z-index: 60;
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    z-index: 60;
+    transition:
+        opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-decelerate),
+        transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-decelerate);
 }
-.back-to-top[hidden] { display: none; }
-.back-to-top.visible { opacity: 1; transform: translateY(0); }
-.back-to-top:hover { background: rgba(59, 130, 246, 0.25); color: #fff; }
-.back-to-top:active { transform: scale(0.95); }
+md-fab.back-to-top[hidden] { display: none; }
+/* Defense in depth: hide the unstyled element if @material/web hasn't
+   upgraded yet. Once defined, normal layout/transitions take over. */
+md-fab.back-to-top:not(:defined) { display: none !important; }
+md-fab.back-to-top.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
 
 
 }
+

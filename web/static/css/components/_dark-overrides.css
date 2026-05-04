@@ -213,8 +213,8 @@ body.dark-page .date-filter-action { color: #93c5fd; }
 body.dark-page .date-field span { color: var(--muted); }
 body.dark-page .date-filter-label { color: rgba(226, 232, 240, 0.78); }
 
-/* Section head eyebrow stays blue */
-body.dark-page .eyebrow { color: #60a5fa; }
+/* eyebrow color comes from utilities.css (uses primary token). No
+   dark-mode override needed — primary already adapts to the dark scheme. */
 
 
 }

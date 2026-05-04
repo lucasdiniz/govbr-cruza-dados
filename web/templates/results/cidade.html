@@ -111,6 +111,8 @@
     <div class="city-kpi-grid">
         {% for k in kpis %}
         <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link data-kpi-severity="{{ k.severity }}">
+            <md-elevation></md-elevation>
+            <md-ripple></md-ripple>
             <span class="kpi-card-label">
                 <span class="citizen-only">{{ k.label_citizen }}</span>
                 <span class="auditor-only">{{ k.label_auditor }}</span>
@@ -141,34 +143,38 @@
             <label class="date-field"><span>Ate</span>
                 <input type="text" id="dateFim" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off" data-iso-value="{{ default_data_fim }}">
             </label>
-            <button class="btn btn-primary btn-sm" id="btnFiltrarData">Filtrar</button>
+            <md-filled-button id="btnFiltrarData" class="date-filter-submit">Filtrar</md-filled-button>
             <p class="date-filter-status text-sm text-muted" id="dateFilterStatus" aria-live="polite"></p>
         </div>
         <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="all">Tudo</button>
-            <button type="button" class="btn btn-outline btn-sm is-active" data-date-preset="current-year">Ano atual</button>
-            <button type="button" class="btn btn-outline btn-sm" data-date-preset="last-12m">12 meses</button>
-            <button type="button" class="btn btn-link btn-sm" id="btnLimparData" style="display:none">Limpar</button>
+            <md-filter-chip label="Tudo" data-date-preset="all"></md-filter-chip>
+            <md-filter-chip label="Ano atual" selected data-date-preset="current-year"></md-filter-chip>
+            <md-filter-chip label="12 meses" data-date-preset="last-12m"></md-filter-chip>
+            <md-text-button id="btnLimparData" style="display:none">Limpar</md-text-button>
         </div>
     </div>
 </details>
 
 <section class="card priority-guide" aria-label="Por onde comecar">
-    <p class="eyebrow">
-        <span class="citizen-only">Comece por aqui</span>
-        <span class="auditor-only">Triagem rapida</span>
-    </p>
-    <h2 class="card-title">
-        <span class="citizen-only">Veja primeiro os achados que pedem atencao</span>
-        <span class="auditor-only">Principais alvos antes do relatorio completo</span>
-    </h2>
-    <p class="text-muted">
-        <span class="citizen-only">Para uma leitura rapida, comece pelas empresas e servidores abaixo. Depois use o mapa mensal, os graficos e o relatorio completo se quiser investigar mais.</span>
-        <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
-    </p>
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">
+                <span class="citizen-only">Comece por aqui</span>
+                <span class="auditor-only">Triagem rapida</span>
+            </p>
+            <h2 class="card-title">
+                <span class="citizen-only">Veja primeiro os achados que pedem atencao</span>
+                <span class="auditor-only">Principais alvos antes do relatorio completo</span>
+            </h2>
+            <p class="text-muted">
+                <span class="citizen-only">Para uma leitura rapida, comece pelas empresas e servidores abaixo. Depois use o mapa mensal, os graficos e o relatorio completo se quiser investigar mais.</span>
+                <span class="auditor-only">Os paineis abaixo trazem listas acionaveis antes dos blocos analiticos longos.</span>
+            </p>
+        </div>
+    </div>
     <div class="priority-links">
-        <a href="#fornecedores" class="btn btn-primary btn-sm">Ver empresas primeiro</a>
-        <a href="#servidores" class="btn btn-outline btn-sm">Ver servidores com sinais</a>
+        <md-filled-button href="#fornecedores">Ver empresas primeiro</md-filled-button>
+        <md-outlined-button href="#servidores">Ver servidores com sinais</md-outlined-button>
     </div>
 </section>
 
@@ -184,13 +190,13 @@
                     <span class="citizen-only">Principais empresas contratadas</span>
                     <span class="auditor-only">Fornecedores que mais aparecem no municipio</span>
                 </h2>
+                <p class="text-muted mobile-duplicate-desc">
+                    <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
+                    <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
+                    Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
+                </p>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-duplicate-desc">
-            <span class="citizen-only">Empresas que mais recebem dinheiro p&uacute;blico aqui. Toque em uma empresa para ver detalhes e se ela tem alguma <span class="term" data-tip="Problema cadastral: d&iacute;vida ativa com a Uni&atilde;o, situa&ccedil;&atilde;o irregular na Receita Federal, ou san&ccedil;&atilde;o ativa do governo federal (CEIS, CNEP ou Inidoneidade).">irregularidade</span>.</span>
-            <span class="auditor-only">Esta lista ajuda a identificar concentracao de pagamentos e checar se os nomes mais frequentes fazem sentido no contexto local.
-            Clique em um fornecedor para ver detalhes dos empenhos e situacao cadastral.</span>
-        </p>
         <div class="async-card" data-async-panel="fornecedores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>
@@ -208,14 +214,14 @@
                     <span class="citizen-only">Servidores que merecem uma segunda olhada</span>
                     <span class="auditor-only">Servidores que merecem verifica&ccedil;&atilde;o adicional</span>
                 </h2>
+                <p class="text-muted mobile-duplicate-desc">
+                    <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
+                    <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
+                    pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
+                    Clique em um servidor para ver detalhes.</span>
+                </p>
             </div>
         </div>
-        <p class="text-muted mb-1 mobile-duplicate-desc">
-            <span class="citizen-only">Servidores da prefeitura com ind&iacute;cios cruzados — por exemplo, <span class="term" data-tip="Quando o servidor aparece como s&oacute;cio ou administrador de empresa, algo que a lei restringe.">v&iacute;nculo com empresas</span>, sal&aacute;rio em mais de um governo ao mesmo tempo, ou outro sinal incomum.</span>
-            <span class="auditor-only">Servidores municipais com sinais nos cruzamentos automaticos — vinculos societarios,
-            pagamentos estaduais simultaneos, beneficios sociais ou acumulacao atipica de indicadores.
-            Clique em um servidor para ver detalhes.</span>
-        </p>
         <div class="async-card" data-async-panel="servidores" role="status" aria-live="polite" aria-busy="true">
             <div class="skeleton-line"></div>
             <div class="skeleton-line short"></div>
@@ -277,14 +283,18 @@
 
 <section class="insight-grid">
     <article class="insight-card">
-        <h2 class="card-title">
-            <span class="citizen-only">Quanto do planejado j&aacute; foi pago</span>
-            <span class="auditor-only">Quanto do valor empenhado virou pagamento</span>
-        </h2>
-        <p class="text-muted">
-            <span class="citizen-only">A prefeitura primeiro reserva o dinheiro (<span class="term" data-tip="Empenho: reserva or&ccedil;ament&aacute;ria feita pela prefeitura para pagar uma despesa.">gasto previsto</span>), depois paga. Esta barra mostra quanto do planejado virou pagamento de verdade.</span>
-            <span class="auditor-only">O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">
+                    <span class="citizen-only">Quanto do planejado j&aacute; foi pago</span>
+                    <span class="auditor-only">Quanto do valor empenhado virou pagamento</span>
+                </h2>
+                <p class="text-muted">
+                    <span class="citizen-only">A prefeitura primeiro reserva o dinheiro (<span class="term" data-tip="Empenho: reserva or&ccedil;ament&aacute;ria feita pela prefeitura para pagar uma despesa.">gasto previsto</span>), depois paga. Esta barra mostra quanto do planejado virou pagamento de verdade.</span>
+                    <span class="auditor-only">O empenho representa a reserva orcamentaria. O pagamento mostra o que realmente saiu do caixa.</span>
+                </p>
+            </div>
+        </div>
         <div class="chart-progress">
             <div class="chart-progress-fill" id="progressPctPago" style="width: {{ '%.1f'|format(pct_pago) }}%"></div>
         </div>
@@ -299,11 +309,15 @@
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">Compras sem licita&ccedil;&atilde;o</h2>
-        <p class="text-muted">
-            <span class="citizen-only">Fatia dos gastos em que a prefeitura contratou sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores para ver quem oferece melhor pre&ccedil;o. &Eacute; a regra na lei.">disputa entre fornecedores</span>. Valores altos exigem explica&ccedil;&atilde;o — o padr&atilde;o por lei &eacute; licitar.</span>
-            <span class="auditor-only">Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">Compras sem licita&ccedil;&atilde;o</h2>
+                <p class="text-muted">
+                    <span class="citizen-only">Fatia dos gastos em que a prefeitura contratou sem <span class="term" data-tip="Licita&ccedil;&atilde;o: disputa formal entre fornecedores para ver quem oferece melhor pre&ccedil;o. &Eacute; a regra na lei.">disputa entre fornecedores</span>. Valores altos exigem explica&ccedil;&atilde;o — o padr&atilde;o por lei &eacute; licitar.</span>
+                    <span class="auditor-only">Mostra a parcela das despesas em que nao houve disputa formal entre fornecedores.</span>
+                </p>
+            </div>
+        </div>
         <p class="insight-value" id="insightPctSemLicit">{{ "%.1f"|format(perfil.pct_sem_licitacao|default(0)|float) }}%</p>
         <p class="text-sm text-muted">
             <span class="citizen-only">Quanto maior, mais importa verificar se as justificativas fazem sentido.</span>
@@ -312,14 +326,18 @@
     </article>
 
     <article class="insight-card">
-        <h2 class="card-title">
-            <span class="citizen-only">Peso da folha sobre o que a prefeitura arrecada</span>
-            <span class="auditor-only">Folha de pagamento sobre receita</span>
-        </h2>
-        <p class="text-muted">
-            <span class="citizen-only">Quanto da arrecada&ccedil;&atilde;o municipal est&aacute; comprometida s&oacute; em pagar sal&aacute;rios de servidores.</span>
-            <span class="auditor-only">Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.</span>
-        </p>
+        <div class="section-head">
+            <div>
+                <h2 class="card-title">
+                    <span class="citizen-only">Peso da folha sobre o que a prefeitura arrecada</span>
+                    <span class="auditor-only">Folha de pagamento sobre receita</span>
+                </h2>
+                <p class="text-muted">
+                    <span class="citizen-only">Quanto da arrecada&ccedil;&atilde;o municipal est&aacute; comprometida s&oacute; em pagar sal&aacute;rios de servidores.</span>
+                    <span class="auditor-only">Proporcao da receita arrecadada comprometida com a folha de pagamento de servidores.</span>
+                </p>
+            </div>
+        </div>
         <p class="insight-value" id="insightPctFolha">{{ "%.1f"|format(perfil.pct_folha_receita|default(0)|float) }}%</p>
         <p class="text-sm text-muted">
             <span class="citizen-only">Acima de 60% costuma apertar o or&ccedil;amento para investimentos.</span>
@@ -369,16 +387,13 @@
             <h3>Encontrou algo estranho?</h3>
             <p>Denuncias feitas por cidadaos j&aacute; recuperaram bilh&otilde;es para os cofres p&uacute;blicos. Veja como reportar aos &oacute;rg&atilde;os competentes.</p>
         </div>
-        <button type="button" id="denunciaOpen" class="btn-primary denuncia-btn">Como denunciar</button>
+        <md-filled-button type="button" id="denunciaOpen" class="denuncia-md-btn">Como denunciar</md-filled-button>
     </div>
 </section>
 
-<dialog id="denuncia-dialog" class="denuncia-dialog" aria-labelledby="denuncia-dialog-title">
-    <div class="dialog-header">
-        <h3 class="dialog-title" id="denuncia-dialog-title">Como denunciar irregularidades</h3>
-        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
-    </div>
-    <div class="dialog-body">
+<md-dialog id="denuncia-dialog" class="denuncia-dialog" aria-labelledby="denuncia-dialog-title">
+    <div slot="headline" id="denuncia-dialog-title">Como denunciar irregularidades</div>
+    <div slot="content">
         <p class="text-sm text-muted">Escolha o canal mais adequado ao tipo de irregularidade. Em caso de d&uacute;vida, o MP-PB &eacute; um bom ponto de partida.</p>
         <div class="denuncia-options">
             <a href="https://ouvidoria.mppb.mp.br/" target="_blank" rel="noopener" class="denuncia-opt">
@@ -406,7 +421,10 @@
             &Eacute; poss&iacute;vel denunciar <strong>anonimamente</strong> em todos esses canais. Quanto mais evid&ecirc;ncias (datas, valores, CNPJs), melhor.
         </p>
     </div>
-</dialog>
+    <div slot="actions">
+        <md-text-button data-md-dialog-close>Fechar</md-text-button>
+    </div>
+</md-dialog>
 
 <section class="card" id="heatmapSection">
     <div class="section-head">
@@ -519,14 +537,18 @@
     {% endfor %}
 </section>
 
-<dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
-    <div class="dialog-header">
-        <button type="button" class="dialog-back" style="visibility:hidden" title="Voltar" aria-label="Voltar">&#8592;</button>
+<md-dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
+    <div slot="headline" class="dialog-header">
+        <md-icon-button class="dialog-back" data-dialog-back style="visibility:hidden" aria-label="Voltar">
+            <md-icon>arrow_back</md-icon>
+        </md-icon-button>
         <h3 class="dialog-title" id="empresa-dialog-title">Empresas vinculadas</h3>
-        <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
+        <md-icon-button class="dialog-close" data-md-dialog-close aria-label="Fechar">
+            <md-icon>close</md-icon>
+        </md-icon-button>
     </div>
-    <div class="dialog-body"></div>
-</dialog>
+    <div slot="content" class="dialog-body"></div>
+</md-dialog>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -542,9 +564,11 @@ document.addEventListener("DOMContentLoaded", () => {
         {{ default_data_fim|tojson }}
     );
 });
-// Close dialog on backdrop click
-document.getElementById('empresa-dialog')?.addEventListener('click', function(e) {
-    if (e.target === this) this.close();
+// Close dialog on backdrop click. md-dialog auto-handles ESC and the
+// scrim click; this fallback covers the (rare) case where the click
+// reaches the host outside the inner dialog.
+document.getElementById('empresa-dialog')?.addEventListener('cancel', function() {
+    this.close();
 });
 </script>
 

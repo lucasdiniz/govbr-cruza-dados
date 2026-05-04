@@ -1,26 +1,28 @@
 /* === components/footer.css === */
 @layer components {
-/* Fase 8 - Footer de credibilidade */
+/* Fase 8 - Footer de credibilidade. Retokenizado p/ MD3 mas mantemos os
+   <button class="link-btn"> inline-text (md-text-button nao se mistura
+   bem com texto corrido — tem container-height proprio). */
 .site-footer {
     max-width: 1100px;
     margin: 48px auto 24px;
     padding: 20px 24px;
-    border-top: 1px solid var(--border-color, #e5e7eb);
-    color: var(--text-muted, #6b7280);
-    font-size: 13px;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-small-size);
     line-height: 1.55;
 }
 .site-footer .credibility {
     text-align: center;
 }
 .site-footer .credibility strong {
-    color: var(--text-primary, #111827);
+    color: var(--md-sys-color-on-surface);
     font-weight: 600;
 }
 .site-footer .link-btn {
     background: none;
     border: none;
-    color: var(--link-color, #2563eb);
+    color: var(--md-sys-color-primary);
     text-decoration: underline;
     cursor: pointer;
     font-size: inherit;
@@ -28,13 +30,6 @@
     font-family: inherit;
 }
 .site-footer .link-btn:hover { text-decoration: none; }
-
-.dark-page .site-footer {
-    border-top-color: rgba(255,255,255,0.08);
-    color: rgba(230, 235, 245, 0.6);
-}
-.dark-page .site-footer .credibility strong { color: #f3f4f6; }
-.dark-page .site-footer .link-btn { color: #93c5fd; }
 
 
 }

@@ -8,7 +8,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
     title.textContent = cpfMask ? `${servidorNome}  —  CPF: ${cpfMask}` : servidorNome;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
@@ -40,12 +40,12 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     html += '<div class="stats-grid">';
     if (maiorSalario > 0) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(maiorSalario)}</span><span class="stat-label">Maior salario</span></div>`;
     html += `<div class="stat-cell"><span class="stat-value">${qtdEmpresas}</span><span class="stat-label">${dualLabel('Empresas onde atua','Empresas vinculadas')}</span></div>`;
-    if (totalDuranteVinc > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${_shortBrl(totalDuranteVinc)}</span><span class="stat-label">${dualLabel('Pago as empresas enquanto era servidor','Pago as empresas durante vinculo')}</span></div>`;
+    if (totalDuranteVinc > 0) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(totalDuranteVinc)}</span><span class="stat-label">${dualLabel('Pago as empresas enquanto era servidor','Pago as empresas durante vinculo')}</span></div>`;
     if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
-    if (qtdSancionadas > 0) html += `<div class="stat-cell" style="border-color:#fecaca"><span class="stat-value" style="color:var(--red)">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
-    if (qtdPgfn > 0) html += `<div class="stat-cell" style="border-color:#fdba74"><span class="stat-value" style="color:#c2410c">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
-    if (bf.length > 0) html += `<div class="stat-cell" style="border-color:#fed7aa"><span class="stat-value" style="color:var(--yellow)">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
-    if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell" style="border-color:var(--red)"><span class="stat-value" style="color:var(--red)">${data.ceaf.length}</span><span class="stat-label">${dualLabel('Expulso do servico publico federal','Expulsao federal')}</span></div>`;
+    if (qtdSancionadas > 0) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
+    if (qtdPgfn > 0) html += `<div class="stat-cell stat-cell--orange"><span class="stat-value">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
+    if (bf.length > 0) html += `<div class="stat-cell stat-cell--yellow"><span class="stat-value">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
+    if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${data.ceaf.length}</span><span class="stat-label">${dualLabel('Expulso do servico publico federal','Expulsao federal')}</span></div>`;
     html += '</div>';
 
     // Vinculos como servidor (first)
@@ -158,7 +158,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     if (data.ceaf && data.ceaf.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Expulsoes do servico publico federal','Expulsoes da Administracao Federal (CEAF)')}</h4>`;
         html += data.ceaf.map(c => {
-            return `<div class="empresa-card" style="border-left: 3px solid var(--red)">
+            return `<div class="empresa-card severity-red">
                 <div class="empresa-header">
                     <strong>${_esc(c.categoria_sancao || 'Sancao')}</strong>
                     <span class="badge badge-red" title="CEAF - Cadastro de Expulsoes da Administracao Federal"><span class="citizen-only">Expulso do servico publico federal</span><span class="auditor-only">CEAF</span></span>
@@ -200,7 +200,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         html += '<div style="margin-bottom:.8rem">';
         html += empresasSorted.map(([cnpj, val]) => {
             const name = empresaNames[cnpj] || cnpj;
-            return `<div class="empresa-card" style="border-left: 3px solid var(--red)">
+            return `<div class="empresa-card severity-red">
                 <div class="empresa-header">
                     <strong>${_esc(name)}</strong>
                     <span class="badge badge-red">${_shortBrl(val)}</span>

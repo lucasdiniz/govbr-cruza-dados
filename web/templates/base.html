@@ -56,22 +56,17 @@
     </script>
     <script type="module" src="/static/js/md3/imports.js?v={{ ASSET_VERSION }}"></script>
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
-    <link rel="apple-touch-icon" href="/static/logo.svg">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
     {% block head_extra %}{% endblock %}
 </head>
 <body class="dark-page {% block body_class %}{% endblock %}">
     <a href="#main-content" class="skip-link">Pular para o conteudo principal</a>
     <nav class="topnav">
         <a href="/" class="logo">
-            <svg class="logo-mark" width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <rect x="3" y="4" width="16" height="20" rx="3" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-width="2"/>
-                <line x1="7" y1="10" x2="15" y2="10" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="7" y1="14" x2="13" y2="14" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="7" y1="18" x2="15" y2="18" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
-                <circle cx="22" cy="22" r="5.5" stroke="#60a5fa" stroke-width="2" fill="#060a14"/>
-                <line x1="26" y1="26" x2="29.5" y2="29.5" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round"/>
-            </svg>
+            <img class="logo-mark" src="/static/logo-nego.png" alt="" width="44" height="44" aria-hidden="true">
             <span class="logo-text">Transparencia<strong>PB</strong></span>
         </a>
         <span class="nav-desc">Transparencia e cruzamento de dados publicos &mdash; Paraiba</span>
@@ -106,12 +101,9 @@
             </span>
         </div>
     </footer>
-    <dialog id="credibility-dialog" class="credibility-dialog" aria-labelledby="credibility-dialog-title">
-        <div class="dialog-header">
-            <h3 class="dialog-title" id="credibility-dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</h3>
-            <button type="button" class="dialog-close" aria-label="Fechar">&times;</button>
-        </div>
-        <div class="dialog-body">
+    <md-dialog id="credibility-dialog" class="credibility-dialog" aria-labelledby="credibility-dialog-title">
+        <div slot="headline" id="credibility-dialog-title">Fontes e atualiza&ccedil;&atilde;o dos dados</div>
+        <div slot="content">
             <p>O <strong>TransparenciaPB</strong> cruza dados p&uacute;blicos de fontes oficiais para mostrar como cada prefeitura da Para&iacute;ba usa o dinheiro p&uacute;blico.</p>
             <h4>Fontes</h4>
             <ul class="source-list">
@@ -134,12 +126,13 @@
             <h4>Importante</h4>
             <p class="text-sm text-muted">Os cruzamentos apontam <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o. N&atilde;o s&atilde;o conclus&otilde;es jur&iacute;dicas. Sempre consulte a fonte original e, se necess&aacute;rio, os &oacute;rg&atilde;os de controle (MP-PB, TCE-PB, CGU).</p>
         </div>
-    </dialog>
-    <button type="button" id="backToTop" class="back-to-top" aria-label="Voltar ao topo" hidden>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-    </button>
+        <div slot="actions">
+            <md-text-button data-md-dialog-close>Fechar</md-text-button>
+        </div>
+    </md-dialog>
+    <md-fab id="backToTop" class="back-to-top" size="small" variant="surface" aria-label="Voltar ao topo" hidden>
+        <md-icon slot="icon" aria-hidden="true">arrow_upward</md-icon>
+    </md-fab>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script>
         window.COLUMN_META = {{ COLUMN_META | tojson }};

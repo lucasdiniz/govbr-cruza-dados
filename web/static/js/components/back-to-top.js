@@ -12,9 +12,13 @@ function initBackToTop() {
         shown = shouldShow;
         if (shouldShow) {
             btn.hidden = false;
+            // Defer one frame so the .visible transition triggers from
+            // hidden=>visible state.
             requestAnimationFrame(() => btn.classList.add('visible'));
         } else {
             btn.classList.remove('visible');
+            // Match CSS transition duration for the fade-out before hiding
+            // the element entirely (so it's removed from focus order).
             setTimeout(() => { if (!shown) btn.hidden = true; }, 220);
         }
     };

@@ -7,7 +7,7 @@ async function openEmpenhoDialog(empenhoId) {
     const body = dialog.querySelector('.dialog-body');
     title.textContent = 'Detalhes do empenho';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });

@@ -12,7 +12,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     const body = dialog.querySelector('.dialog-body');
     title.textContent = label || `Licitacao ${numeroLicitacao}`;
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);

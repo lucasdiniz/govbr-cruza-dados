@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initBackToTop();
     initShareButtons();
     initModeToggle();
+    initTopnavElevation();
     initTermTooltips();
     initCityNarrativeToggle();
     initNarrativeAnchors();
@@ -28,20 +29,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const dialog = document.getElementById('empresa-dialog');
     if (dialog) {
-        // Observa abertura/fechamento do dialog via atributo [open]
-        // (funciona para qualquer caminho que chame showModal/close).
-        let wasOpen = dialog.open;
-        const obs = new MutationObserver(() => {
-            const isOpen = dialog.open;
-            if (isOpen && !wasOpen) _dialogOnOpen();
-            wasOpen = isOpen;
-        });
-        obs.observe(dialog, { attributes: true, attributeFilter: ['open'] });
-        dialog.addEventListener('close', () => { _dialogOnClose(); });
-        const backBtn = dialog.querySelector('.dialog-back');
-        if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
-        dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close());
-        _initDialogSwipeToClose();
+        // Wait for md-dialog upgrade before wiring handlers — the slotted
+        // back/close <md-icon-button> elements need their click events to
+        // bubble and the [open] attribute observation to behave reliably.
+        const initEmpresaDialog = () => {
+            // Observa abertura/fechamento do dialog via atributo [open]
+            // (md-dialog reflete `open` no host, igual ao <dialog> nativo).
+            let wasOpen = dialog.open;
+            const obs = new MutationObserver(() => {
+                const isOpen = dialog.open;
+                if (isOpen && !wasOpen) _dialogOnOpen();
+                wasOpen = isOpen;
+            });
+            obs.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+            // Use the `closed` event (post-animation, after open=false has been
+            // applied) instead of `close` — md-dialog dispatches `close` as a
+            // cancelable PRE-close event; reacting on `close` would call
+            // history.back() while the dialog is still open and trigger a
+            // duplicate close via the popstate handler in dialog-history-swipe.js.
+            dialog.addEventListener('closed', () => { _dialogOnClose(); });
+            // Back button (slot=headline) -> pop the dialog stack.
+            const backBtn = dialog.querySelector('[data-dialog-back], .dialog-back');
+            if (backBtn) backBtn.addEventListener('click', () => { _dialogPop(); });
+            // Close button (data-md-dialog-close, also class=dialog-close).
+            dialog.querySelectorAll('[data-md-dialog-close], .dialog-close').forEach(b => {
+                b.addEventListener('click', () => dialog.close());
+            });
+            _initDialogSwipeToClose();
+        };
+        if (typeof window.whenMD3Ready === 'function') {
+            window.whenMD3Ready(initEmpresaDialog);
+        } else {
+            initEmpresaDialog();
+        }
     }
 
     // Date filter handlers

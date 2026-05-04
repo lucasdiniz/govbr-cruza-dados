@@ -18,7 +18,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     const body = dialog.querySelector('.dialog-body');
     title.textContent = fornecedorNome || 'Fornecedor';
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
@@ -255,7 +255,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             const efeitos = (a.efeitos || []).map(e =>
                 `<li><strong>${_esc(e.efeito)}</strong>${e.complemento ? ': ' + _esc(e.complemento).slice(0, 150) : ''}</li>`
             ).join('');
-            return `<div class="empresa-card" style="border-left: 3px solid #3b82f6">
+            return `<div class="empresa-card severity-blue">
                 <div class="empresa-header">
                     <strong>Acordo de Leniencia</strong> ${statusBadge}
                 </div>

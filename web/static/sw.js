@@ -7,7 +7,7 @@
 //
 // Bump CACHE_VERSION para invalidar caches antigos.
 
-const CACHE_VERSION = 'tpb-v28';
+const CACHE_VERSION = 'tpb-v37';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 
@@ -23,7 +23,10 @@ const CORE_ASSETS = [
     '/static/vendor/leaflet/images/marker-icon.png',
     '/static/vendor/leaflet/images/marker-icon-2x.png',
     '/static/vendor/leaflet/images/marker-shadow.png',
-    '/static/logo.svg',
+    '/static/logo-nego.png',
+    '/static/favicon.ico',
+    '/static/icon-32.png',
+    '/static/icon-192.png',
     '/static/manifest.webmanifest',
 ];
 

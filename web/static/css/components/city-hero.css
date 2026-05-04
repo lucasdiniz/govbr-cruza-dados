@@ -1,10 +1,14 @@
 /* === components/city-hero.css === */
 @layer components {
+/* MD3 retokenized hero: subtle gradient using surface-container tints
+   (no more bright white). Uses on-surface tokens for text. */
 .city-hero {
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.85rem;
-    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239, 246, 255, 0.95));
+    background: linear-gradient(135deg,
+        var(--md-sys-color-surface-container) 0%,
+        var(--md-sys-color-surface-container-low) 100%);
 }
 .city-title-row {
     display: flex;
@@ -14,11 +18,15 @@
 }
 .city-title-row > div:first-child { min-width: 0; }
 .city-title {
-    font-size: 2.15rem;
-    line-height: 1.08;
+    font-size: var(--md-sys-typescale-display-small-size);
+    line-height: var(--md-sys-typescale-display-small-line-height);
+    color: var(--md-sys-color-on-surface);
     margin-bottom: 0.5rem;
 }
-.city-subtitle { max-width: 760px; }
+.city-subtitle {
+    max-width: 760px;
+    color: var(--md-sys-color-on-surface-variant);
+}
 .city-hero-copy { min-width: 0; }
 .city-hero-actions {
     display: flex;
@@ -28,19 +36,39 @@
     gap: 0.5rem;
     margin: 0;
 }
+/* MD3 assist-chip style for city-risk-badge (severidade) */
 .city-risk-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    min-height: 36px;
-    padding: 0.38rem 0.7rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
+    gap: 0.45rem;
+    min-height: 32px;
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--md-sys-shape-corner-small);
+    font-size: var(--md-sys-typescale-label-medium-size);
     font-weight: 700;
     white-space: nowrap;
+    border: 1px solid var(--md-sys-color-outline);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+}
+.city-risk-badge.badge-red {
+    background: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+    border-color: transparent;
+}
+.city-risk-badge.badge-yellow {
+    background: var(--md-comp-warning-container);
+    color: var(--md-comp-on-warning-container);
+    border-color: transparent;
+}
+.city-risk-badge.badge-green {
+    background: var(--md-comp-success-container);
+    color: var(--md-comp-on-success-container);
+    border-color: transparent;
 }
 .city-risk-score {
     font-variant-numeric: tabular-nums;
+    opacity: 0.92;
 }
 
 .hero-stats {
@@ -49,20 +77,21 @@
 }
 .hero-stat {
     padding: 0.95rem;
-    border-radius: 16px;
-    background: rgba(248, 250, 252, 0.95);
-    border: 1px solid var(--line);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background: var(--md-sys-color-surface-container);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    color: var(--md-sys-color-on-surface);
 }
 .hero-stat-value {
     display: block;
-    font-size: 1.28rem;
+    font-size: var(--md-sys-typescale-title-large-size);
     font-weight: 700;
 }
 .hero-stat-label {
     display: block;
     margin-top: 0.2rem;
-    font-size: 0.84rem;
-    color: var(--muted);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    color: var(--md-sys-color-on-surface-variant);
 }
 
 /* Narrativa alinhada a esquerda mesmo dentro de parents centralizados */
@@ -73,7 +102,9 @@
 .city-kpi-strip.is-refreshing {
     opacity: 0.64;
     filter: saturate(0.75);
-    transition: opacity 0.15s ease, filter 0.15s ease;
+    transition:
+        opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+        filter var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 
 /* ========== Fase 2: narrativa hero ========== */
@@ -83,68 +114,58 @@
 .city-narrative {
     margin: 1rem 0 0.5rem;
     padding: 0.875rem 1rem;
-    background: var(--surface-alt, #f7fafc);
-    border-left: 3px solid var(--primary, #2563eb);
-    border-radius: 0 10px 10px 0;
-    font-size: 1.0625rem;
-    line-height: 1.55;
-    color: var(--text, #1a202c);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+    border-left: 4px solid var(--md-sys-color-primary);
+    border-radius: 0 var(--md-sys-shape-corner-small) var(--md-sys-shape-corner-small) 0;
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
 }
 .city-narrative a {
     color: inherit;
     text-decoration: underline;
     text-decoration-style: dotted;
     text-underline-offset: 3px;
-    transition: color 0.15s ease;
+    transition: color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .city-narrative a:hover,
 .city-narrative a:focus-visible {
-    color: var(--primary, #2563eb);
+    color: var(--md-sys-color-primary);
     text-decoration-style: solid;
 }
 .city-narrative strong {
     font-weight: 700;
-    color: var(--primary, #2563eb);
+    color: var(--md-sys-color-primary);
 }
 html.audit-mode .city-narrative {
-    font-size: 0.9375rem;
-    background: var(--surface-2, #1a202c);
-    color: var(--text-muted, #a0aec0);
-    border-left-color: var(--accent-muted, #4a5568);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    background: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-on-surface-variant);
+    border-left-color: var(--md-sys-color-outline);
 }
 html.audit-mode .city-narrative strong {
-    color: var(--text, #e2e8f0);
+    color: var(--md-sys-color-on-surface);
 }
 .city-narrative-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
-    padding: 0.42rem 0.8rem;
-    border-radius: 999px;
-    border: 1px solid rgba(37, 99, 235, 0.18);
-    background: rgba(37, 99, 235, 0.08);
-    color: #1d4ed8;
+    padding: 0.42rem 0.9rem;
+    border-radius: var(--md-sys-shape-corner-full);
+    border: 1px solid var(--md-sys-color-outline);
+    background: transparent;
+    color: var(--md-sys-color-primary);
     font: inherit;
-    font-size: 0.82rem;
+    font-size: var(--md-sys-typescale-label-medium-size);
     font-weight: 600;
     cursor: pointer;
+    transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
 .city-narrative-toggle:hover,
 .city-narrative-toggle:focus-visible {
-    background: rgba(37, 99, 235, 0.14);
-    border-color: rgba(37, 99, 235, 0.3);
+    background: color-mix(in oklab, var(--md-sys-color-primary) 8%, transparent);
     outline: none;
-}
-body.dark-page .city-narrative-toggle {
-    background: rgba(59, 130, 246, 0.12);
-    border-color: rgba(96, 165, 250, 0.22);
-    color: #bfdbfe;
-}
-body.dark-page .city-narrative-toggle:hover,
-body.dark-page .city-narrative-toggle:focus-visible {
-    background: rgba(59, 130, 246, 0.2);
-    border-color: rgba(96, 165, 250, 0.36);
 }
 
 /* Anchor highlight quando entra em foco via link da narrativa */
@@ -152,8 +173,8 @@ body.dark-page .city-narrative-toggle:focus-visible {
     animation: anchorFlash 1.6s ease-out;
 }
 @keyframes anchorFlash {
-    0% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.9); }
-    100% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0); }
+    0% { box-shadow: 0 0 0 3px var(--md-comp-warning); }
+    100% { box-shadow: 0 0 0 3px transparent; }
 }
 
 

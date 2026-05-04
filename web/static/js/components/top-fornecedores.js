@@ -76,9 +76,9 @@ function buildFornecedoresPanel(data) {
                 <tbody>${bodyRows}</tbody>
             </table></div>
             <div class="table-pagination">
-                <button type="button" class="btn btn-outline btn-sm" data-page-prev>Anterior</button>
+                <md-text-button data-page-prev>Anterior</md-text-button>
                 <p class="text-sm text-muted" data-page-label></p>
-                <button type="button" class="btn btn-outline btn-sm" data-page-next>Proxima</button>
+                <md-text-button data-page-next>Proxima</md-text-button>
             </div>
         </div>
     </section>`;
