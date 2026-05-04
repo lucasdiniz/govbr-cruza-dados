@@ -112,46 +112,6 @@
     margin-left: 2px;
 }
 
-.kpi-card-tip {
-    position: absolute;
-    top: .55rem;
-    right: .6rem;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--md-sys-shape-corner-full);
-    background: color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
-    border: 1px solid var(--md-sys-color-outline);
-    color: var(--md-sys-color-on-surface-variant);
-    font-size: .8rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: help;
-    z-index: 2;
-}
-.kpi-card-tip:hover { background: color-mix(in oklab, var(--md-sys-color-on-surface) 14%, transparent); }
-.kpi-card-tip[data-tip]:hover::after,
-.kpi-card-tip[data-tip]:focus::after,
-.kpi-card-tip.tip-open::after {
-    content: attr(data-tip);
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    width: max-content;
-    max-width: min(300px, 80vw);
-    background: var(--md-sys-color-inverse-surface);
-    color: var(--md-sys-color-inverse-on-surface);
-    padding: 0.5rem 0.7rem;
-    border-radius: var(--md-sys-shape-corner-extra-small);
-    font-size: var(--md-sys-typescale-body-small-size);
-    font-weight: 500;
-    line-height: 1.35;
-    z-index: 100;
-    box-shadow: var(--md-sys-elevation-3);
-    pointer-events: none;
-}
-
 /* Severity variants — 4dp left bar in container color + tinted bg */
 .kpi-card.severity-red {
     background: color-mix(in oklab, var(--md-sys-color-error-container) 60%, var(--md-sys-color-surface-container-low));
@@ -191,13 +151,6 @@
     }
     .kpi-card-value {
         font-size: var(--md-sys-typescale-title-large-size);
-    }
-    .kpi-card-tip {
-        top: .35rem;
-        right: .4rem;
-        width: 26px;
-        height: 26px;
-        font-size: .7rem;
     }
     .priority-links { display: grid; }
 }

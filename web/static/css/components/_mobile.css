@@ -553,21 +553,14 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   Swipe handle + transicao do dialog fullscreen (mobile)
+   Swipe-down close pull tab (mobile)
    Apenas aplicado em <=640px; desktop continua com dialog centralizado.
+   A animacao do drag/fechamento e' feita em JS via WAAPI direto na
+   shadow root do md-dialog (host transforms nao propagam de forma
+   confiavel para top-layer descendants). Aqui so renderizamos o
+   "puxador" visual no topo do header.
    ──────────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-    .empresa-dialog {
-        /* Transicao suave ao arrastar/fechar */
-        transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease;
-    }
-    .empresa-dialog.dragging {
-        transition: none;
-    }
-    .empresa-dialog.closing {
-        transform: translateY(100%);
-        opacity: 0.4;
-    }
     .dialog-header {
         position: relative;
         padding-top: 1.4rem;

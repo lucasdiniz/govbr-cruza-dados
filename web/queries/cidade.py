@@ -275,6 +275,19 @@ WITH top_forn AS (
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
+),
+cnpjs_pagos_apos_inativa AS MATERIALIZED (
+    -- CNPJs do municipio que receberam pagamento APOS o estabelecimento ficar
+    -- com situacao_cadastral != '2'. Alimenta flag_inativa_irregular para
+    -- alinhar com o conceito da Q70 (so contar pagamento durante a inatividade,
+    -- nao todo empenho de empresa que ficou inativa apos pagar).
+    SELECT DISTINCT d2.cpf_cnpj
+    FROM tce_pb_despesa d2
+    JOIN estabelecimento est_x ON est_x.cnpj_completo = d2.cpf_cnpj
+    WHERE d2.municipio = %(municipio)s
+      AND d2.valor_pago > 0
+      AND est_x.situacao_cadastral != '2'
+      AND d2.data_empenho > est_x.dt_situacao
 )
 SELECT * FROM (
     SELECT tf.cnpj_basico, tf.nome_credor,
@@ -292,6 +305,7 @@ SELECT * FROM (
        ) AS flag_inidoneidade,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
+       (ci.cpf_cnpj IS NOT NULL) AS flag_inativa_irregular,
        EXISTS(
            SELECT 1 FROM acordo_leniencia al
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
@@ -344,6 +358,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
+LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
@@ -364,6 +379,15 @@ WITH top_forn AS (
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
+),
+cnpjs_pagos_apos_inativa AS MATERIALIZED (
+    SELECT DISTINCT d2.cpf_cnpj
+    FROM tce_pb_despesa d2
+    JOIN estabelecimento est_x ON est_x.cnpj_completo = d2.cpf_cnpj
+    WHERE d2.municipio = %(municipio)s
+      AND d2.valor_pago > 0
+      AND est_x.situacao_cadastral != '2'
+      AND d2.data_empenho > est_x.dt_situacao
 )
 SELECT * FROM (
     SELECT tf.cnpj_basico, tf.nome_credor,
@@ -398,6 +422,7 @@ SELECT * FROM (
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       (ci.cpf_cnpj IS NOT NULL) AS flag_inativa_irregular,
        EXISTS(
            SELECT 1 FROM acordo_leniencia al
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
@@ -449,6 +474,7 @@ SELECT * FROM (
 FROM top_forn tf
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
+LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
@@ -472,6 +498,16 @@ WITH top_forn AS (
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
+),
+cnpjs_pagos_apos_inativa AS MATERIALIZED (
+    SELECT DISTINCT d2.cpf_cnpj
+    FROM tce_pb_despesa d2
+    JOIN estabelecimento est_x ON est_x.cnpj_completo = d2.cpf_cnpj
+    WHERE d2.municipio = %(municipio)s
+      AND d2.valor_pago > 0
+      AND est_x.situacao_cadastral != '2'
+      AND d2.data_empenho > est_x.dt_situacao
+      AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
 )
 SELECT * FROM (
     SELECT tf.cnpj_basico, tf.nome_credor,
@@ -489,6 +525,7 @@ SELECT * FROM (
        ) AS flag_inidoneidade,
        COALESCE(meg.flag_divida_pgfn, FALSE) AS flag_pgfn,
        COALESCE(meg.flag_inativa, FALSE) AS flag_inativa,
+       (ci.cpf_cnpj IS NOT NULL) AS flag_inativa_irregular,
        EXISTS(
            SELECT 1 FROM acordo_leniencia al
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
@@ -541,6 +578,7 @@ FROM top_forn tf
 LEFT JOIN mv_empresa_governo meg ON meg.cnpj_basico = tf.cnpj_basico
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
+LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """
@@ -562,6 +600,16 @@ WITH top_forn AS (
     GROUP BY d.cnpj_basico, d.nome_credor
     ORDER BY SUM(d.valor_pago) DESC
     LIMIT 200
+),
+cnpjs_pagos_apos_inativa AS MATERIALIZED (
+    SELECT DISTINCT d2.cpf_cnpj
+    FROM tce_pb_despesa d2
+    JOIN estabelecimento est_x ON est_x.cnpj_completo = d2.cpf_cnpj
+    WHERE d2.municipio = %(municipio)s
+      AND d2.valor_pago > 0
+      AND est_x.situacao_cadastral != '2'
+      AND d2.data_empenho > est_x.dt_situacao
+      AND d2.data_empenho >= %(data_inicio)s AND d2.data_empenho <= %(data_fim)s
 )
 SELECT * FROM (
     SELECT tf.cnpj_basico, tf.nome_credor,
@@ -593,6 +641,7 @@ SELECT * FROM (
              AND LENGTH(pg.cpf_cnpj_norm) = 14
        ) AS flag_pgfn,
        COALESCE(est.situacao_cadastral != '2', FALSE) AS flag_inativa,
+       (ci.cpf_cnpj IS NOT NULL) AS flag_inativa_irregular,
        EXISTS(
            SELECT 1 FROM acordo_leniencia al
            WHERE LEFT(al.cnpj_norm, 8) = tf.cnpj_basico
@@ -644,6 +693,7 @@ SELECT * FROM (
 FROM top_forn tf
 LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
+LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
 ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
 """

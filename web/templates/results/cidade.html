@@ -110,7 +110,7 @@
     </header>
     <div class="city-kpi-grid">
         {% for k in kpis %}
-        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link data-kpi-severity="{{ k.severity }}">
+        <a href="{{ k.href }}" class="kpi-card severity-{{ k.severity }}" id="{{ k.id }}" data-kpi-link data-kpi-severity="{{ k.severity }}" title="{{ k.tooltip }}">
             <md-elevation></md-elevation>
             <md-ripple></md-ripple>
             <span class="kpi-card-label">
@@ -123,7 +123,6 @@
             {% if k.value_extra %}
             <span class="kpi-card-extra">{{ k.value_extra }}</span>
             {% endif %}
-            <span class="kpi-card-tip" data-tip="{{ k.tooltip }}" tabindex="0" role="button" aria-label="Saiba mais sobre {{ k.label_citizen }}">?</span>
         </a>
         {% endfor %}
     </div>

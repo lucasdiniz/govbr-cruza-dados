@@ -43,13 +43,14 @@ function _updateKpiHeroStrip(kpis) {
             if (!extraEl) {
                 extraEl = document.createElement('span');
                 extraEl.className = 'kpi-card-extra';
-                const tip = card.querySelector('.kpi-card-tip');
-                card.insertBefore(extraEl, tip);
+                card.appendChild(extraEl);
             }
             extraEl.textContent = kpi.value_extra;
         } else if (extraEl) {
             extraEl.remove();
         }
+        // tooltip on the card itself (no more separate ? button)
+        if (kpi.tooltip) card.setAttribute('title', kpi.tooltip);
         orderedCards.push(card);
     });
     const grid = document.querySelector('.city-kpi-grid');

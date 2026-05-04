@@ -59,6 +59,65 @@ function _initDialogSwipeToClose() {
 
     const header = () => dialog.querySelector('.dialog-header');
     const body = () => dialog.querySelector('.dialog-body');
+    // md-dialog renders its visible content as a <dialog> inside its
+    // shadowRoot. Host transforms don't reliably propagate to top-layer
+    // descendants across browsers, so we animate the inner dialog (and
+    // scrim) directly via inline styles for drag tracking, then hand off
+    // to md-dialog's WAAPI close animation via getCloseAnimation override
+    // for the final commit. shadowRoot is null until md-dialog upgrades —
+    // resolve lazily on each touch.
+    const innerDialog = () => dialog.shadowRoot?.querySelector('dialog');
+    const scrim = () => dialog.shadowRoot?.querySelector('.scrim');
+
+    const setDragVisuals = (dy) => {
+        const inner = innerDialog();
+        const sc = scrim();
+        if (inner) {
+            inner.style.transition = 'none';
+            inner.style.transform = `translateY(${dy}px)`;
+        }
+        if (sc) {
+            sc.style.transition = 'none';
+            sc.style.opacity = String(Math.max(0, 0.32 * (1 - dy / 600)));
+        }
+    };
+    const clearDragVisuals = () => {
+        const inner = innerDialog();
+        const sc = scrim();
+        if (inner) {
+            inner.style.transform = '';
+            inner.style.transition = '';
+        }
+        if (sc) {
+            sc.style.opacity = '';
+            sc.style.transition = '';
+        }
+    };
+    const animateSnapBack = () => {
+        // User released before threshold — animate inner dialog + scrim
+        // back to rest position. Uses WAAPI so it composes cleanly with
+        // md-dialog's own animations and auto-cleans up.
+        const inner = innerDialog();
+        const sc = scrim();
+        if (inner) {
+            inner.style.transition = '';
+            const cur = inner.style.transform;
+            inner.style.transform = '';
+            inner.animate(
+                [{ transform: cur || 'translateY(0)' }, { transform: 'translateY(0)' }],
+                { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+            );
+        }
+        if (sc) {
+            const curOp = sc.style.opacity;
+            sc.style.transition = '';
+            sc.style.opacity = '';
+            sc.animate(
+                [{ opacity: curOp || '0.32' }, { opacity: '0.32' }],
+                { duration: 220, easing: 'linear' }
+            );
+        }
+    };
 
     dialog.addEventListener('touchstart', (e) => {
         if (!isTouchMobile()) return;
@@ -89,7 +148,7 @@ function _initDialogSwipeToClose() {
         if (dy <= 0) {
             dragging = false;
             dialog.classList.remove('dragging');
-            dialog.style.transform = '';
+            clearDragVisuals();
             return;
         }
         // Se o body esta rolado, nao arrasta o dialog
@@ -98,7 +157,7 @@ function _initDialogSwipeToClose() {
         if (!inHeader && b && b.scrollTop > 0) {
             allowDrag = false;
             dialog.classList.remove('dragging');
-            dialog.style.transform = '';
+            clearDragVisuals();
             return;
         }
         dragging = true;
@@ -107,16 +166,17 @@ function _initDialogSwipeToClose() {
         if (dt > 0) velocity = (touch.clientY - lastY) / dt;
         lastY = touch.clientY;
         lastTime = e.timeStamp;
-        // Aplica translate com resistencia leve
-        dialog.style.transform = `translateY(${dy}px)`;
-        dialog.style.opacity = String(Math.max(0.5, 1 - dy / 600));
+        // Aplica translate na shadow-internal dialog (top-layer-safe).
+        // Resistencia: divisor cresce com o dy para o usuario sentir
+        // que "esticou" se for muito longe.
+        const tracked = dy < 200 ? dy : 200 + (dy - 200) * 0.5;
+        setDragVisuals(tracked);
     }, { passive: true });
 
     const finishDrag = (cancelled) => {
         if (!dragging) {
             dialog.classList.remove('dragging');
-            dialog.style.transform = '';
-            dialog.style.opacity = '';
+            clearDragVisuals();
             return;
         }
         dragging = false;
@@ -124,17 +184,37 @@ function _initDialogSwipeToClose() {
         const shouldClose = !cancelled && (dy > CLOSE_DIST || velocity > CLOSE_VELOCITY);
         dialog.classList.remove('dragging');
         if (shouldClose) {
-            dialog.classList.add('closing');
-            dialog.style.transform = '';
-            dialog.style.opacity = '';
-            setTimeout(() => {
-                dialog.classList.remove('closing');
-                dialog.close();
-            }, 220);
+            // Hand off to md-dialog's close animation pipeline. We override
+            // getCloseAnimation just for this close so the slide-down picks
+            // up where the drag left off (translateY(dy)) and continues to
+            // 100% off-screen. md-dialog calls dialog.animate(...) on the
+            // inner shadow elements with our keyframes, then closes the
+            // top-layer dialog when the animation finishes.
+            const tracked = dy < 200 ? dy : 200 + (dy - 200) * 0.5;
+            const origGetClose = dialog.getCloseAnimation;
+            dialog.getCloseAnimation = () => ({
+                dialog: [[
+                    [{ transform: `translateY(${tracked}px)` }, { transform: 'translateY(100%)' }],
+                    { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' }
+                ]],
+                scrim: [[
+                    [{ opacity: String(Math.max(0, 0.32 * (1 - tracked / 600))) }, { opacity: '0' }],
+                    { duration: 220, easing: 'linear', fill: 'forwards' }
+                ]],
+                container: [], headline: [], content: [], actions: []
+            });
+            // Restore default close animation after the dialog finishes
+            // closing; otherwise the next non-swipe close would also use
+            // our slide-down keyframes.
+            dialog.addEventListener('closed', () => {
+                dialog.getCloseAnimation = origGetClose;
+                clearDragVisuals();
+            }, { once: true });
+            dialog.close();
             if ('vibrate' in navigator) { try { navigator.vibrate(10); } catch {} }
         } else {
-            dialog.style.transform = '';
-            dialog.style.opacity = '';
+            // Snap back to rest position.
+            animateSnapBack();
         }
     };
 
