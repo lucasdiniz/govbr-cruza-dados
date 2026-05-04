@@ -48,6 +48,7 @@ function _initDialogSwipeToClose() {
         window.matchMedia('(hover: none) and (pointer: coarse)').matches &&
         window.innerWidth <= 640;
 
+    let startX = 0;
     let startY = 0;
     let lastY = 0;
     let lastTime = 0;
@@ -133,6 +134,7 @@ function _initDialogSwipeToClose() {
             return;
         }
         allowDrag = true;
+        startX = touch.clientX;
         startY = touch.clientY;
         lastY = startY;
         lastTime = e.timeStamp;
@@ -143,7 +145,23 @@ function _initDialogSwipeToClose() {
     dialog.addEventListener('touchmove', (e) => {
         if (!allowDrag || !isTouchMobile()) return;
         const touch = e.touches[0];
+        const dx = touch.clientX - startX;
         const dy = touch.clientY - startY;
+        // Cross-handler coordination: if the tab-swipe handler in
+        // dialog-decorate.js has taken over (horizontal swipe on the
+        // body), abort any vertical drag in progress and ignore further
+        // moves until the user lifts their finger. Also guard with a
+        // pure-motion check so we bail on horizontal-dominant gestures
+        // even before the tab handler has set its flag (defense in depth).
+        const b = body();
+        const tabSwiping = b && b.dataset.tabSwiping === '1';
+        if (tabSwiping || (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8)) {
+            allowDrag = false;
+            dragging = false;
+            dialog.classList.remove('dragging');
+            clearDragVisuals();
+            return;
+        }
         // So arrasta pra baixo
         if (dy <= 0) {
             dragging = false;
@@ -152,7 +170,6 @@ function _initDialogSwipeToClose() {
             return;
         }
         // Se o body esta rolado, nao arrasta o dialog
-        const b = body();
         const inHeader = header() && header().contains(e.target);
         if (!inHeader && b && b.scrollTop > 0) {
             allowDrag = false;

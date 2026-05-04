@@ -115,22 +115,143 @@ function _decorateDialogBody(body) {
 
     // ─── Horizontal swipe to change tabs (mobile / touch) ──────────────
     // On touch devices, swiping the dialog body left/right moves to the
-    // adjacent tab. Skips touches that start inside a horizontally
-    // scrollable container (.tbl-wrap with overflow) so native table
-    // scrolling still works, and aborts if vertical motion dominates
-    // (lets the swipe-to-close handler in dialog-history-swipe.js own
-    // vertical gestures).
+    // adjacent tab with a smooth follow-finger animation. The current
+    // section translates with the touch (with rubber-band resistance at
+    // tab boundaries); on release, it either commits with a slide-out +
+    // slide-in (page-turn feel) or snaps back to its original position.
+    //
+    // Skips touches that start inside a horizontally scrollable container
+    // (.tbl-wrap with overflow) so native table scrolling still works,
+    // and aborts if vertical motion dominates (lets the swipe-to-close
+    // handler in dialog-history-swipe.js own vertical gestures).
     if (body._swipeTabsBound) return;
     body._swipeTabsBound = true;
     const SWIPE_DIST = 60;        // px of horizontal motion to commit
     const SWIPE_VELOCITY = 0.5;   // px/ms — fast flick also commits
     const SWIPE_RATIO = 1.3;      // |dx| must beat |dy| by this factor
+    const DRAG_THRESHOLD = 8;     // px before drag becomes "active" (visual)
+    const SWAP_DURATION = 200;    // ms — slide-out + slide-in segments
+    const SNAP_DURATION = 180;    // ms — snap-back when not committed
+    const SWAP_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
+    const BOUNDARY_RESIST = 0.3;  // multiplier when dragging past first/last
 
     const isTouchMobile = () =>
         window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
     let sx = 0, sy = 0, lx = 0, ly = 0, st = 0, vx = 0;
     let active = false;
+    // Drag visual state. Created lazily once horizontal motion passes the
+    // DRAG_THRESHOLD so taps + vertical scrolls don't move anything.
+    let drag = null;
+
+    function getCurrentSection() {
+        const id = body._activeDialogSectionId;
+        return sections.find((s) => s.id === id) || null;
+    }
+    function getNeighbor(direction) {
+        // direction: +1 = next (swipe left), -1 = prev (swipe right)
+        const idx = sections.indexOf(getCurrentSection());
+        const nidx = idx + direction;
+        return (nidx >= 0 && nidx < sections.length) ? sections[nidx] : null;
+    }
+    function setupDrag() {
+        const current = getCurrentSection();
+        if (!current) return null;
+        // Pin styles so transforms apply cleanly. Saves originals so we
+        // can restore them after the animation (or snap-back).
+        const prevTransform = current.style.transform;
+        const prevTransition = current.style.transition;
+        const prevWillChange = current.style.willChange;
+        current.style.transition = 'none';
+        current.style.willChange = 'transform';
+        // Signal to the vertical swipe-to-close handler (dialog-history-swipe.js)
+        // that a horizontal tab swipe has taken over; it must abort any
+        // in-flight vertical drag and ignore further moves until cleared.
+        body.dataset.tabSwiping = '1';
+        return { current, prevTransform, prevTransition, prevWillChange };
+    }
+    function applyDragTransform(dx) {
+        if (!drag) return;
+        // Rubber-band resistance when dragging past the first/last tab in
+        // the unavailable direction. The user gets visual feedback that
+        // they've reached the edge but the section doesn't run away with
+        // the finger.
+        let visible = dx;
+        const targetDir = dx < 0 ? 1 : -1;
+        if (!getNeighbor(targetDir)) {
+            visible = dx * BOUNDARY_RESIST;
+        }
+        drag.current.style.transform = `translateX(${visible}px)`;
+        drag.lastVisibleDx = visible;
+    }
+    function restoreSectionStyles(section, snapshot) {
+        section.style.transform = snapshot.prevTransform || '';
+        section.style.transition = snapshot.prevTransition || '';
+        section.style.willChange = snapshot.prevWillChange || '';
+        // Once the section is settled, drop the cross-handler signal so
+        // future vertical swipes (e.g., to close) can engage normally.
+        delete body.dataset.tabSwiping;
+    }
+    function snapBack() {
+        if (!drag) return;
+        const { current } = drag;
+        const startX = drag.lastVisibleDx || 0;
+        const snapshot = drag;
+        drag = null;
+        const anim = current.animate(
+            [{ transform: `translateX(${startX}px)` }, { transform: 'translateX(0)' }],
+            { duration: SNAP_DURATION, easing: SWAP_EASING, fill: 'none' }
+        );
+        anim.onfinish = () => restoreSectionStyles(current, snapshot);
+        anim.oncancel = () => restoreSectionStyles(current, snapshot);
+    }
+    function commitSwap(direction) {
+        if (!drag) return;
+        const target = getNeighbor(direction);
+        if (!target) { snapBack(); return; }
+        const { current } = drag;
+        const startX = drag.lastVisibleDx || 0;
+        const width = body.clientWidth || window.innerWidth || 360;
+        const exitX = direction > 0 ? -width : width;
+        const enterFromX = direction > 0 ? width : -width;
+        const snapshot = drag;
+        drag = null;
+
+        // Phase 1: current slides out to the exit side.
+        const out = current.animate(
+            [{ transform: `translateX(${startX}px)`, opacity: 1 },
+             { transform: `translateX(${exitX}px)`, opacity: 0.3 }],
+            { duration: SWAP_DURATION, easing: SWAP_EASING, fill: 'forwards' }
+        );
+        out.onfinish = () => {
+            restoreSectionStyles(current, snapshot);
+            // Now formally activate the target (this hides current, shows
+            // target via setActive's `section.hidden = ...` loop).
+            setActive(target.id, { scroll: false });
+            // Phase 2: target slides in from the opposite side.
+            const targetSnapshot = {
+                prevTransform: target.style.transform,
+                prevTransition: target.style.transition,
+                prevWillChange: target.style.willChange,
+            };
+            target.style.transition = 'none';
+            target.style.willChange = 'transform';
+            const enter = target.animate(
+                [{ transform: `translateX(${enterFromX}px)`, opacity: 0.3 },
+                 { transform: 'translateX(0)', opacity: 1 }],
+                { duration: SWAP_DURATION, easing: SWAP_EASING, fill: 'none' }
+            );
+            enter.onfinish = () => restoreSectionStyles(target, targetSnapshot);
+            enter.oncancel = () => restoreSectionStyles(target, targetSnapshot);
+            // Light haptic on commit (post-handover for stable feel).
+            if ('vibrate' in navigator) {
+                try { navigator.vibrate(8); } catch { /* ignore */ }
+            }
+        };
+        out.oncancel = () => {
+            restoreSectionStyles(current, snapshot);
+        };
+    }
 
     body.addEventListener('touchstart', (e) => {
         if (!isTouchMobile() || e.touches.length !== 1) return;
@@ -148,6 +269,7 @@ function _decorateDialogBody(body) {
         st = e.timeStamp;
         vx = 0;
         active = true;
+        drag = null; // lazy init when motion passes the threshold
     }, { passive: true });
 
     body.addEventListener('touchmove', (e) => {
@@ -157,40 +279,42 @@ function _decorateDialogBody(body) {
         if (dt > 0) vx = (t.clientX - lx) / Math.max(1, e.timeStamp - st);
         lx = t.clientX;
         ly = t.clientY;
-    }, { passive: true });
-
-    const commitSwipe = () => {
-        if (!active) return;
-        active = false;
         const dx = lx - sx;
         const dy = ly - sy;
         const adx = Math.abs(dx);
         const ady = Math.abs(dy);
-        // Vertical motion dominates → leave it for the swipe-to-close path
-        if (ady > adx * 0.8) return;
-        // A fast flick can commit at a shorter distance, but still needs
-        // at least ~30px to count (avoids accidental taps + jitter).
+        // Initialize drag visuals once we have meaningful horizontal
+        // motion that's clearly horizontal (not a vertical scroll start).
+        if (!drag && adx > DRAG_THRESHOLD && adx > ady) {
+            drag = setupDrag();
+        }
+        if (drag) applyDragTransform(dx);
+    }, { passive: true });
+
+    const finishGesture = () => {
+        if (!active) return;
+        active = false;
+        if (!drag) return;
+        const dx = lx - sx;
+        const dy = ly - sy;
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        // Vertical motion dominated → snap back, leave vertical to the
+        // swipe-to-close handler (which also fires touchend on the dialog
+        // host, not the body).
+        if (ady > adx * 0.8) { snapBack(); return; }
         const fastFlick = Math.abs(vx) >= SWIPE_VELOCITY;
         const minDist = fastFlick ? 30 : SWIPE_DIST;
-        if (adx < minDist) return;
-        if (adx < ady * SWIPE_RATIO) return;
-        const currentId = body._activeDialogSectionId;
-        const idx = tabEls.findIndex(t => t.dataset.dialogTarget === currentId);
-        if (idx < 0) return;
-        // dx < 0 (swipe left)  → next tab
-        // dx > 0 (swipe right) → previous tab
+        if (adx < minDist || adx < ady * SWIPE_RATIO) { snapBack(); return; }
         const dir = dx < 0 ? 1 : -1;
-        const nextIdx = idx + dir;
-        if (nextIdx < 0 || nextIdx >= tabEls.length) return;
-        const next = tabEls[nextIdx];
-        setActive(next.dataset.dialogTarget, { scroll: true });
-        // Light haptic feedback on supported devices
-        if ('vibrate' in navigator) {
-            try { navigator.vibrate(8); } catch { /* ignore */ }
-        }
+        if (!getNeighbor(dir)) { snapBack(); return; }
+        commitSwap(dir);
     };
-    body.addEventListener('touchend', commitSwipe, { passive: true });
-    body.addEventListener('touchcancel', () => { active = false; }, { passive: true });
+    body.addEventListener('touchend', finishGesture, { passive: true });
+    body.addEventListener('touchcancel', () => {
+        if (drag) snapBack();
+        active = false;
+    }, { passive: true });
 }
 
 // Unified detail cache — evicts on fetch error
