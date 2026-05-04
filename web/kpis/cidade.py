@@ -109,7 +109,11 @@ def _build_context(
             sancao_qualquer += 1
         if is_municipio or has_idn or has_acordo:
             sancao_municipio += 1
-        if f.get("flag_inativa"):
+        # Conta apenas empresas inativas que efetivamente RECEBERAM pagamento
+        # APOS a data de mudanca de situacao cadastral (alinhado com Q70).
+        # Fallback p/ flag_inativa_atual=True quando o cache for de versao
+        # antiga sem a coluna nova; nesse caso, serao recalculados no proximo warm.
+        if f.get("flag_inativa_irregular"):
             inativas_recebendo += 1
 
     # ---- Concentracao top fornecedores --------------------------------------
@@ -250,7 +254,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-sancao-municipio",
         label_citizen="Empresas com sancao que afeta este municipio",
         label_auditor="Sancionadas com efeito sobre o municipio",
-        href="#fornecedores-irregulares",
+        href="#q-Q65",
         tooltip=(
             "Empresas que receberam dinheiro da prefeitura no periodo selecionado "
             "e que tinham sancao com efeito legal sobre este municipio: inidoneidade "
@@ -264,7 +268,7 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-sancao-qualquer",
         label_citizen="Empresas com sancao ativa fornecendo a prefeitura",
         label_auditor="Fornecedores em CEIS/CNEP (qualquer abrangencia)",
-        href="#fornecedores-irregulares",
+        href="#q-Q65",
         tooltip=(
             "Inclui sancoes federais, estaduais e de outros municipios. Pode nao "
             "impedir contratacao aqui, mas merece verificacao."
@@ -275,11 +279,12 @@ CIDADE_KPIS: list[KPIDef] = [
         id="kpi-inativas",
         label_citizen="Empresas inativas / baixadas recebendo dinheiro",
         label_auditor="Fornecedores com situacao cadastral irregular",
-        href="#fornecedores-irregulares",
+        href="#q-Q70",
         tooltip=(
-            "Empresas que nao constam como ativas na Receita Federal mas mesmo "
-            "assim aparecem recebendo da prefeitura. Pode indicar fraude ou erro "
-            "cadastral grave."
+            "Empresas que receberam pagamento da prefeitura DEPOIS de ficarem "
+            "com situacao cadastral irregular na Receita Federal (suspensa, "
+            "inapta, baixada ou nula). Pode indicar fraude, empresa de fachada "
+            "ou erro cadastral grave."
         ),
         compute=_compute_inativas,
     ),

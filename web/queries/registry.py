@@ -289,17 +289,16 @@ SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
        est.dt_situacao, e.razao_social,
        SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
 FROM tce_pb_despesa d
-JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
-    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral != '2'
+JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
+    AND est.situacao_cadastral != '2'
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%%'
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.data_empenho > est.dt_situacao
   AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
-  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
          est.situacao_cadastral, est.dt_situacao, e.razao_social
-HAVING SUM(d.valor_pago) > 10000
 ORDER BY total_pago DESC
 LIMIT 500
 """, timeout=15, sql_dated="""
@@ -312,18 +311,17 @@ SELECT d.municipio, d.cpf_cnpj, d.nome_credor,
        est.dt_situacao, e.razao_social,
        SUM(d.valor_pago) AS total_pago, COUNT(*) AS qtd_empenhos
 FROM tce_pb_despesa d
-JOIN estabelecimento est ON est.cnpj_basico = d.cnpj_basico
-    AND est.cnpj_ordem = '0001' AND est.situacao_cadastral != '2'
+JOIN estabelecimento est ON est.cnpj_completo = d.cpf_cnpj
+    AND est.situacao_cadastral != '2'
 JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%%'
 WHERE d.cnpj_basico IS NOT NULL AND d.valor_pago > 0
   AND d.data_empenho > est.dt_situacao
   AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
   AND LENGTH(REPLACE(d.cpf_cnpj, '.', '')) >= 14
-  AND EXISTS (SELECT 1 FROM estabelecimento est2 WHERE est2.cnpj_completo = d.cpf_cnpj)
   AND d.municipio = %(municipio)s
 GROUP BY d.municipio, d.cpf_cnpj, d.nome_credor,
          est.situacao_cadastral, est.dt_situacao, e.razao_social
-HAVING SUM(d.valor_pago) > 10000
 ORDER BY total_pago DESC
 LIMIT 500
 """)

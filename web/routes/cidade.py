@@ -200,12 +200,12 @@ def _load_top_fornecedores(municipio: str, uf: str = ""):
             timeout_sec=TIMEOUT_QUERY_MEDIUM,
         )
     except QueryCanceled:
-        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
+        return ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "flag_inativa_irregular", "abrangencia_sancao_info", "desc_situacao"], []
 
 
 def _load_top_fornecedores_dated(params: dict):
     """Carrega top fornecedores com filtro de data (live, sem cache in-memory)."""
-    empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "abrangencia_sancao_info", "desc_situacao"], []
+    empty = ["cnpj_basico", "nome_credor", "razao_social", "cnpj_completo", "total_pago", "qtd_empenhos", "flag_ceis", "flag_pgfn", "flag_inativa", "flag_inativa_irregular", "abrangencia_sancao_info", "desc_situacao"], []
     try:
         return execute_query(TOP_FORNECEDORES_DATED, params, timeout_sec=TIMEOUT_QUERY_MEDIUM)
     except (UndefinedTable, UndefinedColumn, QueryCanceled):
@@ -1703,15 +1703,32 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                         mun_list.append(r)
                     result["municipios_ativos"] = mun_list
 
-                # Situacao cadastral (inatividade)
+                # Situacao cadastral + dados cadastrais detalhados
+                # Retorna estabelecimento exato + matriz (cnpj_ordem='0001') para
+                # endereco/contato + dados da empresa (capital, porte, natureza).
                 est_where = "est.cnpj_completo = %s"
                 est_params = (cpf_cnpj,)
                 cur.execute(f"""
-                    SELECT situacao_cadastral, dt_situacao,
-                           cnpj_completo, cnae_principal, uf,
-                           COALESCE(dm.descricao, est.municipio) AS municipio
+                    SELECT
+                        est.situacao_cadastral, est.dt_situacao,
+                        est.cnpj_completo, est.cnae_principal,
+                        dcnae.descricao AS desc_cnae_principal,
+                        est.uf,
+                        COALESCE(dm.descricao, est.municipio) AS municipio,
+                        est.matriz_filial, est.nome_fantasia,
+                        est.dt_inicio_atividade,
+                        est.tipo_logradouro, est.logradouro, est.numero,
+                        est.complemento, est.bairro, est.cep,
+                        est.ddd1, est.telefone1, est.email,
+                        e.razao_social, e.capital_social, e.porte,
+                        e.natureza_juridica,
+                        dnj.descricao AS desc_natureza_juridica,
+                        e.ente_federativo
                     FROM estabelecimento est
+                    LEFT JOIN empresa e ON e.cnpj_basico = est.cnpj_basico
                     LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
+                    LEFT JOIN dom_cnae dcnae ON dcnae.codigo = est.cnae_principal
+                    LEFT JOIN dom_natureza_juridica dnj ON dnj.codigo = e.natureza_juridica
                     WHERE {est_where}
                 """, est_params)
                 sit_cols = [d[0] for d in cur.description]
@@ -1721,7 +1738,63 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     for k, v in sit.items():
                         if hasattr(v, 'isoformat'):
                             sit[k] = v.isoformat()
+                        elif hasattr(v, 'as_tuple'):
+                            sit[k] = float(v)
                     result["estabelecimento"] = sit
+
+                # Se a entidade pagada nao for a matriz (cnpj_ordem != '0001'),
+                # busca tambem dados da matriz para enderecar contato/sede da
+                # empresa (a filial pode nao ter telefone/email cadastrados).
+                cnpj_basico_int = cpf_cnpj[:8]
+                cnpj_ordem_int = cpf_cnpj[8:12]
+                if cnpj_ordem_int != '0001':
+                    cur.execute("""
+                        SELECT est.cnpj_completo,
+                               est.tipo_logradouro, est.logradouro, est.numero,
+                               est.complemento, est.bairro, est.cep,
+                               est.ddd1, est.telefone1, est.email,
+                               COALESCE(dm.descricao, est.municipio) AS municipio,
+                               est.uf, est.nome_fantasia,
+                               est.dt_inicio_atividade
+                        FROM estabelecimento est
+                        LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
+                        WHERE est.cnpj_basico = %s AND est.cnpj_ordem = '0001'
+                    """, (cnpj_basico_int,))
+                    mat_cols = [d[0] for d in cur.description]
+                    mat_row = cur.fetchone()
+                    if mat_row:
+                        matriz = _row_to_dict(mat_cols, mat_row)
+                        for k, v in matriz.items():
+                            if hasattr(v, 'isoformat'):
+                                matriz[k] = v.isoformat()
+                        result["matriz"] = matriz
+
+                # Socios (CPFs vem mascarados pela RFB — seguro expor).
+                cur.execute("""
+                    SELECT s.tipo_socio, s.nome, s.cpf_cnpj_socio,
+                           s.qualificacao,
+                           dq.descricao AS desc_qualificacao,
+                           s.dt_entrada, s.pais, s.faixa_etaria,
+                           s.nome_representante, s.cpf_representante,
+                           s.qualif_representante,
+                           dqr.descricao AS desc_qualif_representante
+                    FROM socio s
+                    LEFT JOIN dom_qualificacao dq ON dq.codigo = s.qualificacao
+                    LEFT JOIN dom_qualificacao dqr ON dqr.codigo = s.qualif_representante
+                    WHERE s.cnpj_basico = %s
+                    ORDER BY s.tipo_socio, s.dt_entrada DESC
+                """, (cnpj_basico_int,))
+                soc_cols = [d[0] for d in cur.description]
+                soc_rows = cur.fetchall()
+                if soc_rows:
+                    socios = []
+                    for row in soc_rows:
+                        s = _row_to_dict(soc_cols, row)
+                        for k, v in s.items():
+                            if hasattr(v, 'isoformat'):
+                                s[k] = v.isoformat()
+                        socios.append(s)
+                    result["socios"] = socios
 
                 # Divida PGFN
                 cur.execute("""

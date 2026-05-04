@@ -51,26 +51,98 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         };
     }).filter(r => r.inicio);
 
-    // Situacao cadastral
+    // Situacao cadastral + dados cadastrais detalhados
     if (data.estabelecimento) {
         const est = data.estabelecimento;
         const sit = _situacaoLabel(est.situacao_cadastral);
         const sitClass = String(est.situacao_cadastral) === '2' ? '' : 'badge badge-red';
         const cnpjFmt = _formatCnpj(cnpjBasico, est.cnpj_completo);
         const local = [est.municipio, est.uf].filter(Boolean).join(' - ') || '-';
+        const isFilial = String(est.matriz_filial || '') === '2';
+        const tipoFilial = isFilial ? 'Filial' : 'Matriz';
+        // Endereco preferencial: se filial, prioriza dados da matriz;
+        // fallback para o estabelecimento exato.
+        const enderecoSrc = (data.matriz && (data.matriz.logradouro || data.matriz.cep)) ? data.matriz : est;
+        const enderecoLinha1 = [
+            enderecoSrc.tipo_logradouro,
+            enderecoSrc.logradouro,
+            enderecoSrc.numero,
+            enderecoSrc.complemento,
+        ].filter(Boolean).map(_esc).join(' ').trim();
+        const enderecoLinha2 = [
+            enderecoSrc.bairro ? `${_esc(enderecoSrc.bairro)}` : null,
+            enderecoSrc.cep ? `CEP ${_fmtCep(enderecoSrc.cep)}` : null,
+            [enderecoSrc.municipio, enderecoSrc.uf].filter(Boolean).map(_esc).join(' - '),
+        ].filter(Boolean).join(' &middot; ');
+        const telefone = (enderecoSrc.ddd1 && enderecoSrc.telefone1)
+            ? `(${_esc(enderecoSrc.ddd1)}) ${_esc(enderecoSrc.telefone1)}` : '';
+        const email = enderecoSrc.email ? _esc(enderecoSrc.email) : '';
+        const dtInicio = est.dt_inicio_atividade ? _fmtDate(est.dt_inicio_atividade) : '';
+        const capital = (typeof est.capital_social === 'number' && est.capital_social > 0)
+            ? _shortBrl(est.capital_social) : '';
+        const porteLabel = _porteLabel(est.porte);
+        const naturezaTxt = est.desc_natureza_juridica
+            ? `${_esc(est.desc_natureza_juridica)}${est.natureza_juridica ? ' (' + _esc(est.natureza_juridica) + ')' : ''}`
+            : (est.natureza_juridica ? _esc(est.natureza_juridica) : '');
+        const cnaeTxt = est.desc_cnae_principal
+            ? `${_esc(est.desc_cnae_principal)}${est.cnae_principal ? ' (' + _esc(est.cnae_principal) + ')' : ''}`
+            : (est.cnae_principal ? _esc(est.cnae_principal) : '');
+        const nomeFantasia = est.nome_fantasia ? _esc(est.nome_fantasia) : '';
+
         html += `<div class="dialog-section"><h4>${dualLabel('Dados da empresa','Dados cadastrais')}</h4>`;
         html += `<div class="empresa-card">
             <div class="empresa-header">
-                <strong>${_esc(fornecedorNome)}</strong>
+                <strong>${_esc(est.razao_social || fornecedorNome)}</strong>
                 <code class="auditor-only">${cnpjFmt}</code>
             </div>
             <div class="empresa-details">
-                <span>${dualLabel('Cadastro:','Situacao:')} <span class="${sitClass}">${sit}</span></span>
+                <span>${dualLabel('Cadastro:','Situacao:')} <span class="${sitClass}">${sit}</span>${isFilial ? ` <span class="badge badge-gray">${tipoFilial}</span>` : ''}</span>
                 ${est.dt_situacao ? `<span class="auditor-only">Data situacao: ${_fmtDate(est.dt_situacao)}</span>` : ''}
-                <span>Sede: ${_esc(local)}</span>
-                ${est.cnae_principal ? `<span class="auditor-only">CNAE: ${_esc(est.cnae_principal)}</span>` : ''}
+                ${nomeFantasia ? `<span>${dualLabel('Nome fantasia','Nome fantasia')}: ${nomeFantasia}</span>` : ''}
+                ${dtInicio ? `<span>${dualLabel('Aberta em','Inicio de atividade')}: ${dtInicio}</span>` : ''}
+                ${naturezaTxt ? `<span>${dualLabel('Tipo','Natureza juridica')}: ${naturezaTxt}</span>` : ''}
+                ${porteLabel ? `<span>${dualLabel('Porte','Porte')}: ${porteLabel}</span>` : ''}
+                ${capital ? `<span>${dualLabel('Capital social','Capital social')}: ${capital}</span>` : ''}
+                ${cnaeTxt ? `<span>${dualLabel('Atividade principal','CNAE principal')}: ${cnaeTxt}</span>` : ''}
             </div>
         </div>`;
+        if (enderecoLinha1 || enderecoLinha2 || telefone || email) {
+            html += `<div class="empresa-card" style="margin-top:0.5rem">
+                <div class="empresa-header">
+                    <strong>${dualLabel('Onde fica','Endereco e contato')}</strong>
+                </div>
+                <div class="empresa-details">
+                    ${enderecoLinha1 ? `<span>${enderecoLinha1}</span>` : ''}
+                    ${enderecoLinha2 ? `<span>${enderecoLinha2}</span>` : ''}
+                    ${telefone ? `<span>${dualLabel('Telefone','Telefone')}: ${telefone}</span>` : ''}
+                    ${email ? `<span>${dualLabel('Email','Email')}: ${email}</span>` : ''}
+                </div>
+            </div>`;
+        }
+        if (data.socios && data.socios.length) {
+            html += `<div class="empresa-card" style="margin-top:0.5rem">
+                <div class="empresa-header">
+                    <strong>${dualLabel('Donos da empresa','Socios')}</strong>
+                    <span class="text-sm text-muted">${data.socios.length}</span>
+                </div>
+                <div class="empresa-details" style="display:block">`;
+            html += data.socios.map(s => {
+                const tipoLabel = String(s.tipo_socio) === '1'
+                    ? 'PJ' : (String(s.tipo_socio) === '3' ? 'Estrangeiro' : 'PF');
+                const docMask = s.cpf_cnpj_socio ? _esc(s.cpf_cnpj_socio) : '';
+                const qualif = s.desc_qualificacao ? _esc(s.desc_qualificacao) : (s.qualificacao || '');
+                const dtEntr = s.dt_entrada ? _fmtDate(s.dt_entrada) : '';
+                const repr = s.nome_representante
+                    ? `<div class="text-sm text-muted" style="margin-left:0.5rem">Representante: ${_esc(s.nome_representante)}${s.desc_qualif_representante ? ' (' + _esc(s.desc_qualif_representante) + ')' : ''}</div>`
+                    : '';
+                return `<div style="padding:0.35rem 0;border-bottom:1px solid var(--md-sys-color-outline-variant, rgba(255,255,255,0.08))">
+                    <div><strong>${_esc(s.nome || '-')}</strong>${docMask ? ` <code class="auditor-only">${docMask}</code>` : ''} <span class="badge badge-gray">${tipoLabel}</span></div>
+                    <div class="text-sm text-muted">${qualif}${dtEntr ? ' &middot; entrou em ' + dtEntr : ''}</div>
+                    ${repr}
+                </div>`;
+            }).join('');
+            html += `</div></div>`;
+        }
         html += '</div>';
     } else {
         const cnpjFmt = _formatCnpj(cnpjBasico, exactDoc);
