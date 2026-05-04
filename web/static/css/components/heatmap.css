@@ -42,8 +42,8 @@
     box-shadow: 0 0 0 2px var(--md-sys-color-primary);
 }
 .hm-year-label {
-    min-width: 42px;
-    max-width: 42px;
+    min-width: 44px;
+    max-width: 44px;
     flex: none;
     background: transparent !important;
     color: var(--md-sys-color-on-surface-variant);
@@ -51,6 +51,7 @@
     font-weight: 600;
     justify-content: flex-end;
     padding-right: 6px;
+    overflow: visible;
 }
 .hm-month-label {
     background: transparent !important;
