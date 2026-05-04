@@ -465,6 +465,18 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
                         f"<a href=\"#fornecedores\"><strong>{_fmt_brl_narrative(total_pago)}</strong></a> "
                         f"a <a href=\"#fornecedores\"><strong>{qtd_forn_fmt}</strong> empresas</a>."]
 
+    # Quanto do planejado (empenhado) ja virou pagamento de verdade.
+    if float(total_empenhado or 0) > 0:
+        gap = max(float(total_empenhado) - float(total_pago or 0), 0)
+        pago_txt = (
+            f" Isso equivale a <strong>{_fmt_pct(pct_pago)}</strong> do que havia sido "
+            f"reservado em or&ccedil;amento"
+        )
+        if gap > 0:
+            pago_txt += f" (faltam {_fmt_brl_narrative(gap)} por pagar)"
+        pago_txt += "."
+        frag_citizen.append(pago_txt)
+
     if pct_sem_licitacao:
         sl_txt = (
             f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_sem_licitacao)}</strong> "
@@ -477,6 +489,14 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
                 sl_txt += f" — {cmp_sl} (mediana: {_fmt_pct(mediana_pct_sem_licitacao)})"
         sl_txt += "."
         frag_citizen.append(sl_txt)
+
+    # Peso da folha sobre a arrecadacao municipal (so faz sentido all-time, ja que
+    # receita_arrecadada e total_folha vem da MV anual e nao seguem o filtro de periodo).
+    if pct_folha and not is_filtered:
+        frag_citizen.append(
+            f" A folha de servidores consome <strong>{_fmt_pct(pct_folha)}</strong> "
+            f"do que a prefeitura arrecada."
+        )
 
     # risco_score vem da MV mv_municipio_pb_risco (all-time). Omitir quando
     # filtrado para nao confundir o usuario com uma metrica fora de escala.
