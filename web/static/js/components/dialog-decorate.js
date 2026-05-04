@@ -124,8 +124,26 @@ function _decorateDialogBody(body) {
     // (.tbl-wrap with overflow) so native table scrolling still works,
     // and aborts if vertical motion dominates (lets the swipe-to-close
     // handler in dialog-history-swipe.js own vertical gestures).
-    if (body._swipeTabsBound) return;
-    body._swipeTabsBound = true;
+    //
+    // Re-decoration: the dialog body is reused across every drilldown
+    // open with NEW children each time. Listeners attached to it close
+    // over the previous `sections`/`setActive`/`tabEls`. We keep a
+    // _swipeTabsCleanup hook on the body so each decoration call detaches
+    // its predecessor's handlers and binds fresh ones with up-to-date
+    // closures. Any leftover transform/animation on the new sections is
+    // also flushed so a stale "off-screen" hold from a previous dialog
+    // can't make tabs invisible.
+    if (typeof body._swipeTabsCleanup === 'function') {
+        body._swipeTabsCleanup();
+    }
+    sections.forEach((s) => {
+        s.getAnimations().forEach((a) => a.cancel());
+        s.style.transform = '';
+        s.style.transition = '';
+        s.style.willChange = '';
+    });
+    delete body.dataset.tabSwiping;
+
     const SWIPE_DIST = 60;        // px of horizontal motion to commit
     const SWIPE_VELOCITY = 0.5;   // px/ms — fast flick also commits
     const SWIPE_RATIO = 1.3;      // |dx| must beat |dy| by this factor
@@ -157,6 +175,11 @@ function _decorateDialogBody(body) {
     function setupDrag() {
         const current = getCurrentSection();
         if (!current) return null;
+        // Cancel any animation currently running on the section (e.g.,
+        // a slide-in still finishing from the previous swap) so the new
+        // drag starts from a clean transform baseline. Without this the
+        // user could see the section "snap" mid-animation.
+        current.getAnimations().forEach((a) => a.cancel());
         // Pin styles so transforms apply cleanly. Saves originals so we
         // can restore them after the animation (or snap-back).
         const prevTransform = current.style.transform;
@@ -217,17 +240,24 @@ function _decorateDialogBody(body) {
         const snapshot = drag;
         drag = null;
 
-        // Phase 1: current slides out to the exit side.
+        // Phase 1: current slides out to the exit side. Note: NO
+        // fill: 'forwards' — that would freeze the transform on the now-
+        // hidden current section, and when the user later swipes back
+        // and that section becomes visible again, it would still be off
+        // screen. We hide it via setActive first (display:none, no paint
+        // during the brief snap-back to the inline style), then cancel
+        // the animation and clear inline styles for next time.
         const out = current.animate(
             [{ transform: `translateX(${startX}px)`, opacity: 1 },
              { transform: `translateX(${exitX}px)`, opacity: 0.3 }],
-            { duration: SWAP_DURATION, easing: SWAP_EASING, fill: 'forwards' }
+            { duration: SWAP_DURATION, easing: SWAP_EASING, fill: 'none' }
         );
-        out.onfinish = () => {
-            restoreSectionStyles(current, snapshot);
-            // Now formally activate the target (this hides current, shows
-            // target via setActive's `section.hidden = ...` loop).
+        const finishOut = () => {
+            // Hide outgoing FIRST (display:none) so any single-frame snap
+            // to the underlying transform during cancel() isn't visible.
             setActive(target.id, { scroll: false });
+            try { out.cancel(); } catch { /* already finished */ }
+            restoreSectionStyles(current, snapshot);
             // Phase 2: target slides in from the opposite side.
             const targetSnapshot = {
                 prevTransform: target.style.transform,
@@ -248,12 +278,15 @@ function _decorateDialogBody(body) {
                 try { navigator.vibrate(8); } catch { /* ignore */ }
             }
         };
+        out.onfinish = finishOut;
+        // If the animation is canceled mid-way (e.g., dialog closes), we
+        // must still restore inline styles so the section isn't stuck.
         out.oncancel = () => {
             restoreSectionStyles(current, snapshot);
         };
     }
 
-    body.addEventListener('touchstart', (e) => {
+    const onTouchStart = (e) => {
         if (!isTouchMobile() || e.touches.length !== 1) return;
         // Bail if the touch starts inside a horizontally scrollable
         // container that actually has overflow. Lets the user pan tables
@@ -270,9 +303,9 @@ function _decorateDialogBody(body) {
         vx = 0;
         active = true;
         drag = null; // lazy init when motion passes the threshold
-    }, { passive: true });
+    };
 
-    body.addEventListener('touchmove', (e) => {
+    const onTouchMove = (e) => {
         if (!active || e.touches.length !== 1) return;
         const t = e.touches[0];
         const dt = e.timeStamp - st;
@@ -289,9 +322,9 @@ function _decorateDialogBody(body) {
             drag = setupDrag();
         }
         if (drag) applyDragTransform(dx);
-    }, { passive: true });
+    };
 
-    const finishGesture = () => {
+    const onTouchEnd = () => {
         if (!active) return;
         active = false;
         if (!drag) return;
@@ -310,11 +343,24 @@ function _decorateDialogBody(body) {
         if (!getNeighbor(dir)) { snapBack(); return; }
         commitSwap(dir);
     };
-    body.addEventListener('touchend', finishGesture, { passive: true });
-    body.addEventListener('touchcancel', () => {
+
+    const onTouchCancel = () => {
         if (drag) snapBack();
         active = false;
-    }, { passive: true });
+    };
+
+    body.addEventListener('touchstart', onTouchStart, { passive: true });
+    body.addEventListener('touchmove', onTouchMove, { passive: true });
+    body.addEventListener('touchend', onTouchEnd, { passive: true });
+    body.addEventListener('touchcancel', onTouchCancel, { passive: true });
+
+    body._swipeTabsCleanup = () => {
+        body.removeEventListener('touchstart', onTouchStart);
+        body.removeEventListener('touchmove', onTouchMove);
+        body.removeEventListener('touchend', onTouchEnd);
+        body.removeEventListener('touchcancel', onTouchCancel);
+        body._swipeTabsCleanup = null;
+    };
 }
 
 // Unified detail cache — evicts on fetch error
