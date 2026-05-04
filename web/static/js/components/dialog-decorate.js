@@ -112,6 +112,85 @@ function _decorateDialogBody(body) {
     });
 
     setActive(sections[0].id, { smooth: false });
+
+    // ─── Horizontal swipe to change tabs (mobile / touch) ──────────────
+    // On touch devices, swiping the dialog body left/right moves to the
+    // adjacent tab. Skips touches that start inside a horizontally
+    // scrollable container (.tbl-wrap with overflow) so native table
+    // scrolling still works, and aborts if vertical motion dominates
+    // (lets the swipe-to-close handler in dialog-history-swipe.js own
+    // vertical gestures).
+    if (body._swipeTabsBound) return;
+    body._swipeTabsBound = true;
+    const SWIPE_DIST = 60;        // px of horizontal motion to commit
+    const SWIPE_VELOCITY = 0.5;   // px/ms — fast flick also commits
+    const SWIPE_RATIO = 1.3;      // |dx| must beat |dy| by this factor
+
+    const isTouchMobile = () =>
+        window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+    let sx = 0, sy = 0, lx = 0, ly = 0, st = 0, vx = 0;
+    let active = false;
+
+    body.addEventListener('touchstart', (e) => {
+        if (!isTouchMobile() || e.touches.length !== 1) return;
+        // Bail if the touch starts inside a horizontally scrollable
+        // container that actually has overflow. Lets the user pan tables
+        // with both fingers without accidentally swapping tabs.
+        let el = e.target;
+        while (el && el !== body) {
+            if (el.scrollWidth > el.clientWidth + 4) return;
+            el = el.parentElement;
+        }
+        const t = e.touches[0];
+        sx = lx = t.clientX;
+        sy = ly = t.clientY;
+        st = e.timeStamp;
+        vx = 0;
+        active = true;
+    }, { passive: true });
+
+    body.addEventListener('touchmove', (e) => {
+        if (!active || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const dt = e.timeStamp - st;
+        if (dt > 0) vx = (t.clientX - lx) / Math.max(1, e.timeStamp - st);
+        lx = t.clientX;
+        ly = t.clientY;
+    }, { passive: true });
+
+    const commitSwipe = () => {
+        if (!active) return;
+        active = false;
+        const dx = lx - sx;
+        const dy = ly - sy;
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        // Vertical motion dominates → leave it for the swipe-to-close path
+        if (ady > adx * 0.8) return;
+        // A fast flick can commit at a shorter distance, but still needs
+        // at least ~30px to count (avoids accidental taps + jitter).
+        const fastFlick = Math.abs(vx) >= SWIPE_VELOCITY;
+        const minDist = fastFlick ? 30 : SWIPE_DIST;
+        if (adx < minDist) return;
+        if (adx < ady * SWIPE_RATIO) return;
+        const currentId = body._activeDialogSectionId;
+        const idx = tabEls.findIndex(t => t.dataset.dialogTarget === currentId);
+        if (idx < 0) return;
+        // dx < 0 (swipe left)  → next tab
+        // dx > 0 (swipe right) → previous tab
+        const dir = dx < 0 ? 1 : -1;
+        const nextIdx = idx + dir;
+        if (nextIdx < 0 || nextIdx >= tabEls.length) return;
+        const next = tabEls[nextIdx];
+        setActive(next.dataset.dialogTarget, { scroll: true });
+        // Light haptic feedback on supported devices
+        if ('vibrate' in navigator) {
+            try { navigator.vibrate(8); } catch { /* ignore */ }
+        }
+    };
+    body.addEventListener('touchend', commitSwipe, { passive: true });
+    body.addEventListener('touchcancel', () => { active = false; }, { passive: true });
 }
 
 // Unified detail cache — evicts on fetch error

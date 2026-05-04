@@ -159,6 +159,7 @@ COLUMN_META: dict[str, dict[str, Any]] = {
     "flag_cnep":            {"citizen": "Punida (CNEP)",       "auditor": "Flag CNEP",           "auditor_only": True},
     "flag_pgfn":            {"citizen": "Deve impostos",       "auditor": "Flag PGFN",           "auditor_only": True},
     "flag_inativa":         {"citizen": "Empresa inativa",     "auditor": "Flag Inativa",        "auditor_only": True},
+    "flag_inativa_irregular": {"citizen": "Recebeu apos baixa", "auditor": "Recebeu Pos-Inativa", "auditor_only": True},
     "flag_inidoneidade":    {"citizen": "Proibida contratar",  "auditor": "Flag Inidoneidade",   "auditor_only": True},
     "flag_acordo_leniencia": {"citizen": "Acordo leniencia",   "auditor": "Flag Acordo Leniencia", "auditor_only": True},
 }
@@ -272,7 +273,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "89"
+templates.env.globals["ASSET_VERSION"] = "92"
 
 
 app.include_router(cidade_router)
