@@ -405,10 +405,11 @@
     .hm-cell.hm-value span { display: none; }
     .hm-year-label,
     .hm-year-label.hm-cell {
-        min-width: 32px;
-        max-width: 32px;
+        min-width: 44px;
+        max-width: 44px;
         font-size: 0.68rem;
         padding-right: 4px;
+        overflow: visible;
     }
     .hm-month-label { height: 20px; font-size: 0.62rem; }
     .hm-outlier { outline-width: 1.5px; outline-offset: -1.5px; }
