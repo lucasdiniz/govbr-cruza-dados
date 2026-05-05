@@ -109,6 +109,127 @@ bottleneck.
   - Risco medio: PG suporta nativamente, mas migration eh all-or-nothing.
     Atualizar `etl/03_rfb` ou loaders TCE-PB para escrever na tabela particionada.
 
+### ETL Incremental — atualizar dados sem full reload (~2-4 dias)
+
+**Motivacao**: Full ETL leva 2-4 dias e custa ~$15 USD em VM B4. Mas as fontes
+publicam updates frequentes (CPGF/PNCP/sancoes/dados.pb diarias; SIAPE/Bolsa
+mensais; RFB mensal). Fazer "delta ETL" mensal/semanal evita drift de dados.
+
+**Status atual**: dos 18 phases de ETL com I/O, apenas 4 sao incrementais
+hoje (PNCP contratacoes, SIAPE cadastro, mv_pessoa, mv_views). O resto faz
+TRUNCATE+reload OU append-only sem dedupe (re-rodar sem reset duplica linhas).
+
+**Estrategia geral por phase**:
+1. Adicionar tabela de controle `etl_watermark(source TEXT, table_name TEXT,
+   last_value TEXT, last_run_at TIMESTAMPTZ)` para rastrear o que ja foi carregado.
+2. Refatorar cada loader pra usar staging table + `INSERT ... ON CONFLICT` com
+   chave natural definida por phase (vide tabela abaixo).
+3. Download incremental apenas dos arquivos novos/modificados (HEAD + Last-Modified
+   ou checkpoint de mes/ano).
+4. Apos load, `15_normalizar` roda apenas em rows com `cpf_cnpj_norm IS NULL`
+   (ja eh esse padrao). MVs em `21_views` recriadas inteiras (DROP+CREATE)
+   porque dependem de toda a tabela; refresh seletivo eh viavel mas mais complexo.
+
+**Ondas de implementacao**:
+
+#### Onda 1 — quick wins (alta frequencia + baixa complexidade)
+- [ ] **#i1 04b PNCP itens incremental** (~baixo esforco)
+  - Hoje: `TRUNCATE pncp_item` + reload total (~9.3M rows).
+  - Schema ja tem composite PK `(numero_controle_pncp, numero_item)`.
+  - Fix: trocar TRUNCATE por staging + UPSERT. Watermark = max(dt_atualizacao).
+  - Speedup esperado: 2-4h → ~10min/run.
+
+- [ ] **#i2 12 SIAPE incremental completo** (~baixo esforco)
+  - Hoje: `cadastro` ja usa `ON CONFLICT (id_servidor_portal) DO NOTHING`,
+    mas pega "ultimo arquivo" sem rastrear watermark.
+  - Fix: usar `etl_watermark` pra saber qual ano_mes ja foi processado.
+    `siape_remuneracao` precisa chave natural (id_servidor_portal, ano, mes)
+    + UPSERT.
+  - Speedup: incremental real, 1 mes em ~5min vs reload total ~30min.
+
+- [ ] **#i3 13 Sancoes (CEIS/CNEP/CEAF/Acordos) incremental** (~baixo esforco)
+  - Fonte: snapshot diario (substitui o anterior).
+  - Estrategia: TRUNCATE+reload do snapshot mais recente — fonte ja eh
+    "estado atual" das sancoes vigentes. Manter logica atual mas adicionar
+    watermark de "ultimo snapshot baixado" pra nao re-baixar mesmo dia.
+  - Speedup: skip se ja baixou hoje. Util pra runs frequentes.
+
+- [ ] **#i4 06 CPGF incremental** (~medio esforco)
+  - Hoje: append por arquivo `{ym}_CPGF.zip`. Sem chave natural, re-rodar
+    duplica.
+  - Fix: definir chave (orgao + unidade_gestora + cpf_portador + dt_transacao
+    + valor + favorecido) → UPSERT. Watermark = (ano_extrato, mes_extrato).
+  - Bonus: arquivo do mes corrente cresce diariamente (Banco do Brasil envia
+    diariamente). Re-rodar mes corrente da pra fazer diff via UPSERT.
+
+- [ ] **#i5 17 Bolsa Familia incremental** (~medio esforco)
+  - Hoje: append por arquivo mensal sem dedupe.
+  - Fix: chave (cpf_favorecido, mes_competencia) + UPSERT. Watermark = mes_competencia.
+
+#### Onda 2 — fontes com keys naturais claras
+- [ ] **#i6 14 Viagens incremental** (~medio esforco)
+  - Hoje: append por ano sem dedupe (VM atrasada 16+ meses).
+  - Fix: chave (codigo_viagem, cpf_viajante) + UPSERT. Watermark = ano.
+
+- [ ] **#i7 04 PNCP contratos/contratacoes UPSERT formal** (~medio esforco)
+  - Hoje: append-only mas tabelas tem PKs.
+  - Fix: trocar `INSERT` por `ON CONFLICT (numero_controle_pncp) DO UPDATE
+    SET dt_atualizacao = EXCLUDED.dt_atualizacao` (PNCP rows sao mutaveis —
+    aditivos, retificacoes, etc).
+  - Usar API `/contratacoes/atualizacao?dataInicial=watermark` pra pegar so
+    o que mudou desde a ultima run.
+
+- [ ] **#i8 19 TCE-PB incremental** (~medio/alto esforco)
+  - Hoje: full reload.
+  - Despesa: chave (exercicio, codigo_ug, numero_empenho) + UPSERT. Watermark = ano.
+  - Receita: chave (ano, codigo_ug, numero_lancamento) + UPSERT.
+  - Servidor: chave (cpf, ano_mes, codigo_ug) + UPSERT.
+  - Licitacao: chave (ano_licitacao, codigo_ug, numero_licitacao) + UPSERT.
+
+- [ ] **#i9 20 dados.pb.gov.br incremental** (~medio/alto esforco)
+  - Multiplos datasets (empenho, contrato, pagamento, servidor, etc) — cada
+    um precisa chave propria.
+  - Fonte eh "diaria" (FAQ oficial), entao incremental tem alto valor.
+  - Estrategia: 1 PR por dataset, comecando pelos mais usados no frontend
+    (pb_empenho, pb_pagamento, pb_contrato, pb_servidor).
+
+#### Onda 3 — fontes com keys complicadas
+- [ ] **#i10 05 Emendas incremental** (~alto esforco)
+  - Multiplas sub-tabelas (emenda_pagamento, emenda_favorecido, etc).
+  - Definir chaves por sub-tabela; algumas fontes sao snapshots consolidados.
+
+- [ ] **#i11 07 PGFN incremental** (~alto esforco)
+  - Chave natural: `numero_inscricao` (mesma divida tem 1 numero unico).
+  - Watermark = max(dt_inscricao).
+
+- [ ] **#i12 08 Renuncias incremental** (~alto esforco)
+  - 4 sub-tabelas; algumas anuais, outras snapshots.
+
+- [ ] **#i13 09 Complementar (BNDES/Holdings/ComprasNet) incremental** (~alto esforco)
+  - Fonte mista; cada dataset precisa estrategia propria.
+
+#### Phases que NAO viram incrementais (full reload mantido)
+- **03 RFB CNPJ**: Receita publica dump full mensal (7GB/mes). Sem delta
+  publico. Strategy: reload mensal completo, ~30min em B4.
+- **16/18 TSE**: snapshots por ciclo eleitoral; reload anual em ano de eleicao.
+- **02 Dominio, 01 Schema, 10 Indices**: estaticos.
+
+#### Infraestrutura compartilhada (uma vez antes da Onda 1)
+- [ ] **#i0 Tabela `etl_watermark` + helpers** (~baixo esforco)
+  - Schema: `(source TEXT, table_name TEXT, last_value TEXT, last_run_at
+    TIMESTAMPTZ, rows_loaded BIGINT, PRIMARY KEY (source, table_name))`.
+  - Helpers em `etl/db.py`: `get_watermark(source, table)`, `set_watermark(...)`.
+  - `etl/run_all.py`: novo flag `--incremental` que pula phases nao-incrementais
+    e usa watermark nas que sao.
+  - Doc em `etl/README.md` sobre como adicionar incremental a um novo loader.
+
+#### Workflow novo no deploy.yml
+- [ ] **#i14 etl_phase=incremental no deploy.yml**
+  - Roda apenas phases incrementais + 15_normalizar (filtra por novas rows) +
+    21_views (refresh).
+  - Dispatch mensal manual ou agendado via cron (`schedule: cron: '0 6 1 * *'`).
+  - ETA esperado pos-Ondas 1+2: ~30min-2h vs 2-4 dias do full ETL.
+
 ### Catalogo de relatorios - revisao de validade
 
 #### Relatorios validos
