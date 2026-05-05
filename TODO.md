@@ -130,6 +130,133 @@ TRUNCATE+reload OU append-only sem dedupe (re-rodar sem reset duplica linhas).
    (ja eh esse padrao). MVs em `21_views` recriadas inteiras (DROP+CREATE)
    porque dependem de toda a tabela; refresh seletivo eh viavel mas mais complexo.
 
+#### Framework reutilizavel — `etl/incremental.py`
+
+Pra evitar reimplementar a mesma logica em cada loader (e pra que **fontes
+NOVAS** ja nasçam incrementais), criar um modulo `etl/incremental.py` com
+abstracoes declarativas. Loaders declaram metadata; o framework cuida do
+boilerplate (watermark, staging, UPSERT, skip-if-loaded).
+
+**Componentes**:
+
+1. **`LoaderSpec`** (dataclass declarativo) — descreve UM loader incremental:
+   ```python
+   @dataclass
+   class LoaderSpec:
+       source: str                    # "cpgf", "siape_remuneracao", ...
+       table: str                     # "cpgf_transacao"
+       natural_key: list[str]         # ["codigo_orgao_superior", "cpf_portador", "dt_transacao", "valor"]
+       watermark_col: str | None      # "ano_extrato_mes_extrato" (NULL = use last_run_at)
+       cursor_strategy: CursorStrategy  # MONTH_WINDOW | YEAR_WINDOW | DAILY_SNAPSHOT | API_SINCE | UNIQUE_ID
+       dedupe_strategy: DedupeStrategy  # UPSERT | REPLACE_SNAPSHOT | APPEND_UNIQUE
+       on_conflict_action: str        # "DO NOTHING" | "DO UPDATE SET col1=EXCLUDED.col1, ..."
+       columns: list[str]             # nome explicito das colunas do COPY
+       transform: callable | None     # opcional: row -> row antes do COPY
+   ```
+
+2. **`incremental_load(spec, file_iter, conn)`** — orquestra:
+   - Le `etl_watermark` pra saber `last_value` (ex: ultimo ano_mes processado).
+   - Chama `file_iter` apenas para arquivos novos (>= last_value).
+   - Cria staging table com schema espelhando target.
+   - Streama CSV → staging via `copy_from_stream` (preserva contrato sem-pandas).
+   - `INSERT ... ON CONFLICT` com `natural_key` no target.
+   - `DROP TABLE staging`.
+   - Atualiza `etl_watermark` com novo `last_value` + `last_run_at`.
+   - Retorna `LoadResult(rows_inserted, rows_updated, rows_skipped, errors)`.
+
+3. **Cursor strategies** (helpers comuns):
+   - `MONTH_WINDOW`: itera `YYYYMM` desde watermark+1 ate hoje. Usado por
+     CPGF, SIAPE, Bolsa Familia.
+   - `YEAR_WINDOW`: itera `YYYY` desde watermark ate hoje. Usado por Viagens,
+     Renuncias, dados.pb por ano.
+   - `DAILY_SNAPSHOT`: baixa apenas snapshot de hoje (skip se LastMod nao
+     mudou). Usado por Sancoes (CEIS/CNEP/CEAF/Acordos).
+   - `API_SINCE`: faz request a API com `?since=watermark`. Usado por PNCP
+     (`/contratacoes/atualizacao?dataInicial=...`).
+   - `UNIQUE_ID`: nao tem watermark temporal, usa apenas natural_key + UPSERT.
+     Usado por dom_*, Q-derived tables.
+
+4. **Dedupe strategies**:
+   - `UPSERT`: padrao. Insert + ON CONFLICT.
+   - `REPLACE_SNAPSHOT`: TRUNCATE target antes do load (Sancoes — fonte ja
+     vem como "estado atual").
+   - `APPEND_UNIQUE`: insert + DELETE pre-existing rows com mesma chave
+     (raramente necessario).
+
+5. **`etl_watermark` schema** (em `sql/01_schema.sql` ou novo `sql/22_watermark.sql`):
+   ```sql
+   CREATE TABLE IF NOT EXISTS etl_watermark (
+       source       TEXT NOT NULL,
+       table_name   TEXT NOT NULL,
+       last_value   TEXT,                  -- '202604' / '2026' / '2026-04-30T18:00:00Z'
+       last_run_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+       rows_loaded  BIGINT DEFAULT 0,
+       error_count  INT DEFAULT 0,
+       last_error   TEXT,
+       PRIMARY KEY (source, table_name)
+   );
+   ```
+
+6. **`run_all.py` --incremental flag**:
+   - Por default segue comportamento atual (full reload).
+   - Com `--incremental`: cada phase consulta sua `LoaderSpec`. Se tiver uma
+     definida, usa o framework. Se nao tiver, **pula a phase** (e loga aviso).
+   - Phases sem spec (RFB, TSE) so rodam em full reload.
+
+**Como adicionar uma nova fonte ao ETL**:
+
+Cada novo loader (existente ou futuro) que queira incremental segue:
+
+1. Definir o schema em `sql/NN_schema_{source}.sql` com PRIMARY KEY ou UNIQUE
+   index na chave natural.
+2. Criar `etl/NN_{source}.py` com:
+   ```python
+   from etl.incremental import LoaderSpec, CursorStrategy, DedupeStrategy, incremental_load
+
+   SPEC = LoaderSpec(
+       source="cpgf",
+       table="cpgf_transacao",
+       natural_key=["codigo_orgao_superior", "cpf_portador", "dt_transacao", "valor"],
+       watermark_col="ano_extrato_mes_extrato",
+       cursor_strategy=CursorStrategy.MONTH_WINDOW,
+       dedupe_strategy=DedupeStrategy.UPSERT,
+       columns=[...],  # mesma ordem do CSV
+   )
+
+   def run(conn, mode="full"):
+       if mode == "incremental":
+           return incremental_load(SPEC, conn, file_iter=iter_cpgf_files)
+       else:
+           return _full_reload(conn)  # comportamento legado preservado
+   ```
+3. Adicionar a phase em `etl/run_all.py:_PHASES` com `mode` propagado.
+4. Documentar a chave natural em `etl/README.md` (seção "Incremental ETL —
+   chaves naturais por fonte").
+
+**Beneficios do framework**:
+- Fontes novas ja nascem incrementais com ~5 linhas de declaracao.
+- Watermark, retry, dedupe ficam em um lugar so (DRY).
+- Refactors futuros (ex: trocar UPSERT por MERGE quando PG17) afetam um arquivo so.
+- Test harness compartilhado: cada loader testa via mock do `file_iter`.
+
+#### Infraestrutura compartilhada (uma vez antes da Onda 1)
+- [ ] **#i0a Tabela `etl_watermark` + helpers minimos** (~baixo esforco)
+  - Schema em `sql/22_watermark.sql`.
+  - Helpers em `etl/db.py`: `get_watermark(conn, source, table) -> str | None`,
+    `set_watermark(conn, source, table, last_value, rows_loaded)`.
+- [ ] **#i0b Modulo `etl/incremental.py` (framework declarativo)** (~medio esforco)
+  - `LoaderSpec` dataclass + enums `CursorStrategy` / `DedupeStrategy`.
+  - `incremental_load(spec, conn, file_iter)` orchestrator.
+  - 4 cursor helpers (MONTH/YEAR/DAILY/API_SINCE).
+  - Suite de testes em `tests/etl/test_incremental.py` com mock de file_iter.
+- [ ] **#i0c Migration de UM loader como prova de conceito** (~baixo esforco)
+  - Escolher PNCP itens (ja tem PK + 9M rows = bom stress test).
+  - Refatorar pra usar `LoaderSpec`.
+  - Validar: drop+full reload da mesmos rows que incremental + UPSERT.
+- [ ] **#i0d Documentar pattern em `etl/README.md`** (~baixo esforco)
+  - Seção "How to make a loader incremental" com checklist.
+  - Tabela "natural key por fonte" (ground truth pra evitar drift).
+
 **Ondas de implementacao**:
 
 #### Onda 1 — quick wins (alta frequencia + baixa complexidade)
@@ -215,13 +342,7 @@ TRUNCATE+reload OU append-only sem dedupe (re-rodar sem reset duplica linhas).
 - **02 Dominio, 01 Schema, 10 Indices**: estaticos.
 
 #### Infraestrutura compartilhada (uma vez antes da Onda 1)
-- [ ] **#i0 Tabela `etl_watermark` + helpers** (~baixo esforco)
-  - Schema: `(source TEXT, table_name TEXT, last_value TEXT, last_run_at
-    TIMESTAMPTZ, rows_loaded BIGINT, PRIMARY KEY (source, table_name))`.
-  - Helpers em `etl/db.py`: `get_watermark(source, table)`, `set_watermark(...)`.
-  - `etl/run_all.py`: novo flag `--incremental` que pula phases nao-incrementais
-    e usa watermark nas que sao.
-  - Doc em `etl/README.md` sobre como adicionar incremental a um novo loader.
+Items #i0a-#i0d listados acima na seção "Framework reutilizavel".
 
 #### Workflow novo no deploy.yml
 - [ ] **#i14 etl_phase=incremental no deploy.yml**
