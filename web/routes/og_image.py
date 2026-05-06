@@ -203,3 +203,96 @@ async def og_cidade(slug: str):
     except Exception:
         pass
     return Response(content=png, media_type="image/png")
+
+
+def _render_home_png() -> bytes:
+    """OG card da home: marca + tagline + numero de municipios.
+
+    Aspect 1200x630 (recomendado pra Open Graph / Twitter Card large image).
+    """
+    W, H = 1200, 630
+    bg = (6, 10, 20)
+    accent = (96, 165, 250)
+    text_main = (243, 244, 246)
+    text_muted = (156, 163, 175)
+    text_strong = (255, 255, 255)
+
+    img = Image.new("RGB", (W, H), bg)
+    draw = ImageDraw.Draw(img)
+
+    # Gradiente sutil topo -> base (mesma vibe da hero da home)
+    for y in range(H):
+        a = int(30 * (1 - y / H))
+        r = max(0, min(255, 6 + a // 6))
+        g = max(0, min(255, 10 + a // 4))
+        b = max(0, min(255, 20 + a))
+        draw.rectangle([(0, y), (W, y + 1)], fill=(r, g, b))
+
+    # Barra lateral azul (consistente com /og/cidade/*.png em estado "neutro")
+    draw.rectangle([(0, 0), (14, H)], fill=accent)
+
+    # Marca topo
+    f_brand = _font(36)
+    draw.text((48, 56), "TransparenciaPB", font=f_brand, fill=accent)
+
+    # Headline (3 linhas pra evitar wrap)
+    f_h1_big = _font(72)
+    f_h1_small = _font(48)
+    draw.text((48, 130), "Como sua prefeitura", font=f_h1_big, fill=text_strong)
+    draw.text((48, 220), "gasta o dinheiro publico", font=f_h1_big, fill=text_strong)
+
+    # Subheadline
+    f_sub = _font(34)
+    draw.text(
+        (48, 330),
+        "223 municipios da Paraiba, cidade por cidade",
+        font=f_sub,
+        fill=text_main,
+    )
+
+    # Linha divisoria
+    draw.line([(48, 400), (W - 48, 400)], fill=(75, 85, 99), width=2)
+
+    # Tres pilares (fontes oficiais)
+    f_label = _font(22)
+    f_value = _font(26)
+    cols = [
+        ("Fontes oficiais", "TCE-PB, RFB, CGU"),
+        ("Cruzamentos", "Empresas e servidores"),
+        ("Cobertura", "223 prefeituras PB"),
+    ]
+    col_w = (W - 96) // 3
+    for i, (label, value) in enumerate(cols):
+        x = 48 + i * col_w
+        draw.text((x, 440), label, font=f_label, fill=text_muted)
+        draw.text((x, 470), value, font=f_value, fill=text_main)
+
+    # Footer
+    f_foot = _font(22)
+    draw.text(
+        (48, H - 56),
+        "transparenciapb.org  -  Dados abertos cruzados",
+        font=f_foot,
+        fill=text_muted,
+    )
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+@router.get("/og/home.png")
+async def og_home():
+    """OG image generica da home — usada como fallback em qualquer pagina
+    que nao sobrescreva o bloco og_image."""
+    if not _PIL_OK:
+        return Response(status_code=501, content="Pillow nao instalado")
+    cache_path = _CACHE_DIR / "_home.png"
+    if cache_path.exists() and (time.time() - cache_path.stat().st_mtime) < _TTL:
+        return FileResponse(cache_path, media_type="image/png")
+    png = _render_home_png()
+    try:
+        cache_path.write_bytes(png)
+    except Exception:
+        pass
+    return Response(content=png, media_type="image/png")

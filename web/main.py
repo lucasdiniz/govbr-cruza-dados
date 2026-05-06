@@ -253,6 +253,17 @@ except Exception:
 templates.env.globals["DATA_REFRESH_DATE"] = _data_refresh_br
 templates.env.globals["DATA_REFRESH_DATE_ISO"] = _data_refresh
 
+# SEO: verification meta tags (Search Console / Bing Webmaster Tools).
+# Codigos vem do dashboard de cada provedor; basta colar a string token.
+# Setar GOOGLE_SITE_VERIFICATION / BING_SITE_VERIFICATION no ENV_FILE
+# secret do GitHub Actions (e .env local pra dev). Ver SEO ops checklist.
+templates.env.globals["GOOGLE_SITE_VERIFICATION"] = os.environ.get(
+    "GOOGLE_SITE_VERIFICATION", ""
+).strip()
+templates.env.globals["BING_SITE_VERIFICATION"] = os.environ.get(
+    "BING_SITE_VERIFICATION", ""
+).strip()
+
 # JS load order. Each entry is a path relative to /static/js/, emitted as
 # an individual <script> tag in base.html. Order matters because the scripts
 # are plain (non-module) and rely on cross-file globals — files are loaded
