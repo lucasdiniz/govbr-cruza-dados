@@ -45,7 +45,13 @@
 {% set display_uf = 'PB' %}
 
 {# ── PB full profile ── #}
-{% set score_value = score_unificado if score_unificado is not none else perfil.risco_score %}
+{# Score canonico vem de perfil.risco_score (MV mv_municipio_pb_kpi_score —
+   mesma fonte do mapa coropletico), pra que SSR e mapa batam exatamente.
+   O JS faz override pelo score_unificado calculado live SOMENTE quando
+   ha filtro de data ativo (cidade-refresh-kpis.js). Score_unificado pre-
+   computado pelo SSR (top-N counts) tende a sub-contar vs aggregation
+   completa da MV — usar aqui criava divergencia mapa vs cidade. #}
+{% set score_value = perfil.risco_score if perfil.risco_score is not none else score_unificado %}
 {% if score_value is not none %}
     {% set score_num = score_value|float %}
     {% if score_num >= 70 %}

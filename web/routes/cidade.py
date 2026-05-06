@@ -1066,6 +1066,12 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
     Tenta usar o cache pre-computado (KPI_SUMMARY ou ANO:KPI_SUMMARY) primeiro;
     se nao houver cache, recarrega perfil/fornecedores/servidores e roda
     compute_cidade_kpis em runtime. Em CUSTOM range, sempre recomputa live.
+
+    Adiciona `score_canonical` (= perfil.risco_score = MV mv_municipio_pb_kpi_score
+    = mesmo valor do mapa coropletico). Frontend usa quando filtro de data
+    NAO esta ativo, pra alinhar a 'Nota de atencao' da pagina cidade com o
+    score do mapa. Quando filtro ativo, usa score_unificado computed live
+    (que reflete o periodo).
     """
     periodo = _get_periodo(payload)
     if periodo in ("", "ANO", "12M"):
@@ -1076,14 +1082,28 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
                 blob = rows[0][0]
                 if isinstance(blob, str):
                     import json as _json
-                    return _json.loads(blob)
-                if isinstance(blob, dict):
-                    return blob
+                    summary = _json.loads(blob)
+                elif isinstance(blob, dict):
+                    summary = blob
+                else:
+                    summary = None
+                if summary is not None:
+                    # Cache pode ter sido populado antes do score_canonical ser
+                    # introduzido. Se faltar, busca do perfil.
+                    if "score_canonical" not in summary:
+                        try:
+                            perfil_canonical = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+                            summary["score_canonical"] = perfil_canonical.get("risco_score")
+                        except Exception:
+                            summary["score_canonical"] = None
+                    return summary
     perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
     canonical_mun = str(perfil.get("municipio") or municipio)
     fornecedores = _load_fornecedores_for_kpis(canonical_mun, payload, periodo)
     servidores = _load_servidores_for_kpis(canonical_mun, payload, periodo)
-    return compute_cidade_kpis(perfil, fornecedores, servidores)
+    summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+    summary["score_canonical"] = perfil.get("risco_score")
+    return summary
 
 
 @router.post("/api/kpis/{municipio_path}")
