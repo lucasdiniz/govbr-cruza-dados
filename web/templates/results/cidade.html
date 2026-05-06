@@ -472,6 +472,9 @@
             <md-icon>arrow_back</md-icon>
         </md-icon-button>
         <h3 class="dialog-title" id="empresa-dialog-title">Empresas vinculadas</h3>
+        <md-icon-button class="dialog-share" data-share data-share-text="Detalhe compartilhado da TransparenciaPB" aria-label="Compartilhar este detalhe">
+            <md-icon>share</md-icon>
+        </md-icon-button>
         <md-icon-button class="dialog-close" data-md-dialog-close aria-label="Fechar">
             <md-icon>close</md-icon>
         </md-icon-button>
@@ -491,7 +494,13 @@ document.addEventListener("DOMContentLoaded", () => {
         {{ (display_uf or 'PB')|tojson }},
         {{ default_data_inicio|tojson }},
         {{ default_data_fim|tojson }}
-    );
+    ).finally(() => {
+        // Após bootstrap (mesmo se algum painel falhou), tenta abrir dialog
+        // a partir de ?d=...&d_*=... na URL (deep-link compartilhavel).
+        if (typeof restoreDialogFromUrl === 'function') {
+            restoreDialogFromUrl();
+        }
+    });
 });
 // Close dialog on backdrop click. md-dialog auto-handles ESC and the
 // scrim click; this fallback covers the (rare) case where the click

@@ -1,7 +1,7 @@
 // === components/dialog-nav.js ===
 // ── Dialog navigation stack ─────────────────────────────────────
 let _currentMunicipio = '';
-const _dialogStack = []; // [{title, html, activePanelId}]
+const _dialogStack = []; // [{title, html, activePanelId, urlState}]
 
 function _dialogPush() {
     const dialog = document.getElementById('empresa-dialog');
@@ -10,7 +10,10 @@ function _dialogPush() {
     const body = dialog.querySelector('.dialog-body');
     const html = body.innerHTML;
     const activePanelId = body._activeDialogSectionId || body.querySelector('.dialog-tab-panel:not([hidden])')?.id || '';
-    _dialogStack.push({ title, html, activePanelId });
+    // Salva snapshot do URL state atual (antes de a próxima open()
+    // chamar _dialogStateApply replaceState com o novo state).
+    const urlState = (history.state && history.state.dialogState) ? { ...history.state.dialogState } : null;
+    _dialogStack.push({ title, html, activePanelId, urlState });
     dialog.querySelector('.dialog-back').style.visibility = 'visible';
 }
 
@@ -25,6 +28,16 @@ function _dialogPop() {
     _decorateDialogBody(body);
     if (prev.activePanelId) _activateDialogSection(body, prev.activePanelId, { focus: false, scroll: false });
     if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
+    // Atualiza URL pro state do nivel anterior (sem nova history entry).
+    // Race guard: bumpa seq pra cancelar fetches inflight da camada que
+    // estamos saindo.
+    if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
+    if (prev.urlState && typeof _dialogUrlReplace === 'function') {
+        _dialogUrlReplace(prev.urlState);
+    } else if (typeof _dialogUrlClear === 'function' && !_dialogStack.length) {
+        // Stack vazio sem state salvo (caso edge) — limpa params dialog.
+        _dialogUrlClear();
+    }
 }
 
 function _activateDialogSection(body, id, opts = {}) {

@@ -1,8 +1,14 @@
 // === components/empenho-dialog.js ===
-async function openEmpenhoDialog(empenhoId) {
+async function openEmpenhoDialog(empenhoId, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const fromUrl = !!options.fromUrl;
+    const isInitialOpen = !dialog.open;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    if (typeof _dialogStateApply === 'function') {
+        _dialogStateApply({ d: 'empenho', id: String(empenhoId || '') }, fromUrl, isInitialOpen);
+    }
+    const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = 'Detalhes do empenho';
@@ -11,6 +17,7 @@ async function openEmpenhoDialog(empenhoId) {
     document.body.classList.add('dialog-open');
 
     const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });
+    if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
     if (!data || !data.numero_empenho) {
         body.innerHTML = '<p class="text-sm text-muted">Empenho nao encontrado.</p>';
         return;

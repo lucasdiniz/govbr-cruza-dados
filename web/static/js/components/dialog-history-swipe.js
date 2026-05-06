@@ -3,12 +3,38 @@
 // Objetivo: botao voltar do Android/gesto iOS fecha o dialog em vez de
 // sair da pagina. Ao abrir o dialog empilhamos um state; se o usuario
 // voltar, o popstate fecha o dialog.
+//
+// Coordena com dialog-url-state.js de duas formas distintas:
+//
+//   1. Open via clique normal: _dialogStateApply faz pushState com
+//      state.tpbDialog=true E adiciona uma nova history entry.
+//      _dialogOnOpen detecta e NAO faz push duplicado.
+//      Close: history.back() consome a entrada empurrada.
+//
+//   2. Open via deep-link (?d=...): _restoreDialogFromUrl faz
+//      replaceState com tpbDialog=true E restoredFromUrl=true (sem
+//      adicionar nova entrada). _dialogOnOpen detecta restoredFromUrl
+//      e NAO seta _dialogHistoryState — assim _dialogOnClose limpa via
+//      _dialogUrlClear() em vez de tentar history.back() (que sairia
+//      da pagina).
 let _dialogHistoryState = false;
 
 function _dialogOnOpen() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     document.body.classList.add('dialog-open');
+    const state = history.state;
+    if (state && state.tpbDialog) {
+        // tpbDialog ja esta no current entry — nao push novamente.
+        // MAS so marca _dialogHistoryState=true se foi pushState de
+        // verdade (clique normal). Restored-from-URL usa replaceState
+        // sem nova entrada, entao history.back() no close levaria o
+        // user pra pagina anterior em vez de fechar o dialog.
+        if (!state.restoredFromUrl) {
+            _dialogHistoryState = true;
+        }
+        return;
+    }
     if (!_dialogHistoryState) {
         try {
             history.pushState({ tpbDialog: true }, '', '');
@@ -19,12 +45,17 @@ function _dialogOnOpen() {
 
 function _dialogOnClose() {
     _dialogReset();
+    if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
     if (_dialogHistoryState) {
         _dialogHistoryState = false;
         if (history.state && history.state.tpbDialog) {
             // Removemos nosso state do historico sem disparar navegacao
             try { history.back(); } catch { /* ignore */ }
         }
+    } else if (typeof _dialogUrlClear === 'function') {
+        // Edge case: dialog foi restaurado via URL (sem pushState próprio).
+        // Limpa só os params dialog mantendo page params.
+        _dialogUrlClear();
     }
 }
 
@@ -36,6 +67,7 @@ window.addEventListener('popstate', () => {
     }
     // Popstate com dialog aberto -> fechamos o dialog (state ja foi consumido)
     _dialogHistoryState = false;
+    if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
     dialog.close();
 });
 
