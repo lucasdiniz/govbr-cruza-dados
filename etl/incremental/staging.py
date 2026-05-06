@@ -199,17 +199,22 @@ def build_upsert_sql(spec: "LoaderSpec", stg_typed: str, *, bucket_id: str = Non
 
     # NK list (apply column_renames + nk_coalesce_cols wrapping)
     # PG normaliza varchar→text em expression indexes; usamos `(col)::text` para casar.
-    coalesce_set = set(spec.nk_coalesce_cols)
-    nk_list_raw = [spec.column_renames.get(c, c) for c in spec.natural_key]
-    nk_list_for_conflict = []
-    for c in nk_list_raw:
-        if c in coalesce_set:
-            nk_list_for_conflict.append(
-                f"COALESCE(NULLIF(({c})::text, ''::text), '__NULL__'::text)"
-            )
-        else:
-            nk_list_for_conflict.append(c)
-    nk_str = ", ".join(nk_list_for_conflict)
+    # Se nk_synthetic_md5=True, ON CONFLICT usa apenas (_nk_md5).
+    if spec.nk_synthetic_md5:
+        nk_str = "_nk_md5"
+        nk_list_raw = ["_nk_md5"]
+    else:
+        coalesce_set = set(spec.nk_coalesce_cols)
+        nk_list_raw = [spec.column_renames.get(c, c) for c in spec.natural_key]
+        nk_list_for_conflict = []
+        for c in nk_list_raw:
+            if c in coalesce_set:
+                nk_list_for_conflict.append(
+                    f"COALESCE(NULLIF(({c})::text, ''::text), '__NULL__'::text)"
+                )
+            else:
+                nk_list_for_conflict.append(c)
+        nk_str = ", ".join(nk_list_for_conflict)
 
     if spec.dedupe_strategy == DedupeStrategy.APPEND:
         sql = f"""WITH ins AS (

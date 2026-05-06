@@ -153,6 +153,20 @@ def _incremental_load(
             staging_tables=[],
         )
 
+    # Step 0b: skip HTML placeholder pages ("Arquivo Sendo Processado")
+    try:
+        with open(csv_path, "rb") as _fchk:
+            _head = _fchk.read(64)
+        if _head.lstrip().startswith(b"<!DOCTYPE") or _head.lstrip().startswith(b"<html"):
+            return LoadResult(
+                status="success",
+                rows_streamed=0,
+                csv_header_hash="",
+                staging_tables=[],
+            )
+    except Exception:
+        pass
+
     # Step 1+2: validate header + fence
     try:
         csv_hash = validate_csv_header(csv_path, spec)

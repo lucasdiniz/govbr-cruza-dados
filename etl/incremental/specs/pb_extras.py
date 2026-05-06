@@ -34,6 +34,7 @@ SAUDE = make_month_window_spec(
         "VALOR_LANCAMENTO", "OBSERVACAO_LANCAMENTO",
     ],
     natural_key=["CODIGO_ENVIO", "CODIGO_LANCAMENTO"],
+    nk_coalesce_cols=("codigo_envio", "codigo_lancamento"),
     column_types_override={"VALOR_LANCAMENTO": "NUMERIC", "DATA_LANCAMENTO": "DATE"},
     watermark_col_csv="DATA_LANCAMENTO",
 )
@@ -54,8 +55,9 @@ PAGAMENTO_ANULACAO = make_month_window_spec(
     natural_key=[
         "EXERCICIO", "CODIGO_UNIDADE_GESTORA",
         "NUMERO_EMPENHO", "NUMERO_GUIA_DEVOLUCAO",
+        "NUMERO_AUTORIZACAO_PAGAMENTO",
     ],
-    nk_coalesce_cols=("numero_guia_devolucao",),
+    nk_coalesce_cols=("codigo_unidade_gestora", "numero_empenho", "numero_guia_devolucao", "numero_autorizacao_pagamento"),
     column_types_override={
         "EXERCICIO": "SMALLINT", "VALOR_DOCUMENTO": "NUMERIC",
         "DATA_DOCUMENTO": "DATE",
@@ -77,36 +79,39 @@ LIQUIDACAODESPESA = make_month_window_spec(
         "CD_INSC_RP", "ANO_INSC_RP", "CD_ORGAO_EXTINTO", "VALOR",
     ],
     natural_key=["NU_EXERCICIO", "CD_ORGAO", "NU_EMPENHO", "DOCUMENTO", "DATA_MOV"],
-    nk_coalesce_cols=("documento",),
+    nk_coalesce_cols=("codigo_orgao", "numero_empenho", "documento"),
     column_renames_override={
         "NU_EXERCICIO": "exercicio",
-        "DATA_MOV": "data_mov",
-        "CD_ORGAO": "codigo_unidade_gestora",
+        "DATA_MOV": "data_movimentacao",
+        "CD_ORGAO": "codigo_orgao",
         "NU_EMPENHO": "numero_empenho",
         "DOCUMENTO": "documento",
         "DOCUMENTO_ORIGEM": "documento_origem",
-        "ANO_DOC_ORIGEM_LD": "ano_doc_origem_ld",
+        "ANO_DOC_ORIGEM_LD": "ano_documento_origem",
         "TIPO_LIQUIDACAO": "tipo_liquidacao",
         "CD_CREDOR": "codigo_credor",
-        "CPF_CNPJ": "cpf_cnpj",
-        "TIPO_DOC_FISCAL": "tipo_doc_fiscal",
+        "CPF_CNPJ": "cpfcnpj_credor",
+        "TIPO_DOC_FISCAL": "tipo_documento_fiscal",
         "NUM_NOTAFISCAL": "numero_nota_fiscal",
-        "DATA_NF": "data_nf",
-        "CD_INSC_RP": "codigo_insc_rp",
-        "ANO_INSC_RP": "ano_insc_rp",
+        "DATA_NF": "data_nota_fiscal",
+        "CD_INSC_RP": "codigo_inscricao_rp",
+        "ANO_INSC_RP": "ano_inscricao_rp",
         "CD_ORGAO_EXTINTO": "codigo_orgao_extinto",
-        "VALOR": "valor",
+        "VALOR": "valor_liquidacao",
     },
     column_types_override={
         "NU_EXERCICIO": "SMALLINT",
         "DATA_MOV": "DATE", "DATA_NF": "DATE",
         "VALOR": "NUMERIC",
+        "ANO_DOC_ORIGEM_LD": "SMALLINT",
+        "ANO_INSC_RP": "SMALLINT",
     },
     watermark_col_csv="DATA_MOV",
 )
 
 
 # ─── pb_liquidacao_desconto (schema mixed case) ─────────────────────
+# USES SYNTHETIC NK (md5) - has 2.1M legacy duplicates after dedupe
 LIQUIDACAODESPESADESCONTOS = make_month_window_spec(
     table="pb_liquidacao_desconto",
     api_name="liquidacaodespesadescontos",
@@ -117,17 +122,16 @@ LIQUIDACAODESPESADESCONTOS = make_month_window_spec(
         "COD_ORGAO_PGT", "VL_Desconto",
     ],
     natural_key=["Exercicio", "CD_Orgao", "Num_Empenho", "Num_Doc", "Cod_Desconto"],
-    nk_coalesce_cols=("num_doc", "codigo_desconto"),
     column_renames_override={
         "Exercicio": "exercicio",
-        "CD_Orgao": "codigo_unidade_gestora",
+        "CD_Orgao": "codigo_orgao",
         "Num_Empenho": "numero_empenho",
-        "Num_Doc": "num_doc",
+        "Num_Doc": "numero_documento",
         "DAT_PAGAMENTO": "data_pagamento",
         "TP_PG": "tipo_pagamento",
         "Cod_Desconto": "codigo_desconto",
-        "Desconto": "desconto",
-        "COD_ORGAO_PGT": "codigo_orgao_pgt",
+        "Desconto": "descricao_desconto",
+        "COD_ORGAO_PGT": "codigo_orgao_pagamento",
         "VL_Desconto": "valor_desconto",
     },
     column_types_override={
@@ -136,6 +140,9 @@ LIQUIDACAODESPESADESCONTOS = make_month_window_spec(
     },
     watermark_col_csv="DAT_PAGAMENTO",
 )
+# Force synthetic NK
+import dataclasses as _dc
+LIQUIDACAODESPESADESCONTOS = _dc.replace(LIQUIDACAODESPESADESCONTOS, nk_synthetic_md5=True)
 
 
 # ─── pb_empenho_anulacao / suplementacao / diarias (37 cols, mesmo schema empenho) ──
@@ -178,6 +185,7 @@ EMPENHO_ANULACAO = make_month_window_spec(
     column_types_override=_EMPENHO_VAR_TYPES,
     watermark_col_csv="DATA_EMPENHO",
 )
+EMPENHO_ANULACAO = _dc.replace(EMPENHO_ANULACAO, nk_synthetic_md5=True)
 
 EMPENHO_SUPLEMENTACAO = make_month_window_spec(
     table="pb_empenho_suplementacao",
@@ -189,6 +197,7 @@ EMPENHO_SUPLEMENTACAO = make_month_window_spec(
     column_types_override=_EMPENHO_VAR_TYPES,
     watermark_col_csv="DATA_EMPENHO",
 )
+EMPENHO_SUPLEMENTACAO = _dc.replace(EMPENHO_SUPLEMENTACAO, nk_synthetic_md5=True)
 
 DIARIAS = make_month_window_spec(
     table="pb_diaria",
@@ -200,9 +209,11 @@ DIARIAS = make_month_window_spec(
     column_types_override=_EMPENHO_VAR_TYPES,
     watermark_col_csv="DATA_EMPENHO",
 )
+DIARIAS = _dc.replace(DIARIAS, nk_synthetic_md5=True)
 
 
 # ─── pb_dotacao (lowercase cols) ────────────────────────────────────
+# USES SYNTHETIC NK (md5)
 DOTACAO = make_month_window_spec(
     table="pb_dotacao",
     api_name="dotacao",
@@ -227,11 +238,11 @@ DOTACAO = make_month_window_spec(
         "acao": "codigo_acao",
         "meta": "meta",
         "localidade": "localidade",
-        "categoria": "codigo_categoria_economica_despesa",
-        "grupo_despesa": "codigo_grupo_natureza_despesa",
-        "modalidade": "codigo_modalidade_aplicacao_despesa",
-        "elemento_despesa": "codigo_elemento_despesa",
-        "fonte_recurso": "codigo_fonte_recurso",
+        "categoria": "categoria",
+        "grupo_despesa": "grupo_despesa",
+        "modalidade": "modalidade",
+        "elemento_despesa": "elemento_despesa",
+        "fonte_recurso": "fonte_recurso",
         "valor_orcado": "valor_orcado",
     },
     column_types_override={
@@ -240,6 +251,7 @@ DOTACAO = make_month_window_spec(
     watermark_col_csv="exercicio",
     watermark_type="integer",
 )
+DOTACAO = _dc.replace(DOTACAO, nk_synthetic_md5=True)
 
 
 # ─── pb_liquidacao_cge (schema NU_/CD_) ─────────────────────────────
@@ -257,16 +269,16 @@ LIQUIDACAO_CGE = make_month_window_spec(
         "DOCUMENTO_ORIGEM", "CD_INSC_RP", "ANO_INSC_RP", "ANO_DOC_ORIGEM_LD",
     ],
     natural_key=["NU_EXERCICIO", "CD_ORGAO", "NU_EMPENHO", "DOCUMENTO", "DATA_MOV"],
-    nk_coalesce_cols=("documento",),
+    nk_coalesce_cols=("codigo_orgao", "numero_empenho", "documento"),
     column_renames_override={
         "NU_EXERCICIO": "exercicio",
-        "CD_ORGAO": "codigo_unidade_gestora",
-        "NU_CLASSIFICACAO": "classificacao",
+        "CD_ORGAO": "codigo_orgao",
+        "NU_CLASSIFICACAO": "numero_classificacao",
         "CD_UNIDADE": "codigo_unidade",
         "CD_FUNCAO": "codigo_funcao",
         "CD_SUBFUNCAO": "codigo_subfuncao",
         "CD_PROGRAMA": "codigo_programa",
-        "CD_PROJETO_ATIV": "codigo_projeto_ativ",
+        "CD_PROJETO_ATIV": "codigo_projeto_atividade",
         "META": "meta",
         "LOCALIDADE": "localidade",
         "CD_NATUREZA": "codigo_natureza",
@@ -275,23 +287,24 @@ LIQUIDACAO_CGE = make_month_window_spec(
         "NU_EMPENHO": "numero_empenho",
         "DOCUMENTO": "documento",
         "TIPO_LIQUIDACAO": "tipo_liquidacao",
-        "TIPO_DOC_FISCAL": "tipo_doc_fiscal",
+        "TIPO_DOC_FISCAL": "tipo_documento_fiscal",
         "NUM_NOTAFISCAL": "numero_nota_fiscal",
-        "DATA_NF": "data_nf",
-        "DATA_MOV": "data_mov",
-        "DATA_PROC": "data_proc",
+        "DATA_NF": "data_nota_fiscal",
+        "DATA_MOV": "data_movimentacao",
+        "DATA_PROC": "data_processo",
         "DATA_ATUALIZACAO": "data_atualizacao",
-        "USUARIO": "usuario",
+        "USUARIO": "usuario_atualizacao",
         "DOCUMENTO_ORIGEM": "documento_origem",
-        "CD_INSC_RP": "codigo_insc_rp",
-        "ANO_INSC_RP": "ano_insc_rp",
-        "ANO_DOC_ORIGEM_LD": "ano_doc_origem_ld",
+        "CD_INSC_RP": "codigo_inscricao_rp",
+        "ANO_INSC_RP": "ano_inscricao_rp",
+        "ANO_DOC_ORIGEM_LD": "ano_documento_origem",
     },
     column_types_override={
         "NU_EXERCICIO": "SMALLINT",
         "VALOR": "NUMERIC",
         "DATA_MOV": "DATE", "DATA_NF": "DATE",
         "DATA_PROC": "DATE", "DATA_ATUALIZACAO": "DATE",
+        "ANO_INSC_RP": "SMALLINT", "ANO_DOC_ORIGEM_LD": "SMALLINT",
     },
     watermark_col_csv="DATA_MOV",
 )
@@ -319,6 +332,7 @@ ADITIVO_CONTRATO = make_month_window_spec(
     },
     watermark_col_csv="DATA_CELEBRACAO_ADITIVO",
 )
+ADITIVO_CONTRATO = _dc.replace(ADITIVO_CONTRATO, nk_synthetic_md5=True)
 
 
 # ─── pb_aditivo_convenio (mensal) ───────────────────────────────────
@@ -343,6 +357,7 @@ ADITIVO_CONVENIO = make_month_window_spec(
     },
     watermark_col_csv="DATA_CELEBRACAO_ADITIVO",
 )
+ADITIVO_CONVENIO = _dc.replace(ADITIVO_CONVENIO, nk_synthetic_md5=True)
 
 
 # ─── pb_convenio (anual) ────────────────────────────────────────────
@@ -359,7 +374,7 @@ CONVENIO = make_year_window_spec(
         "DATA_INICIO_VIGENCIA", "DATA_TERMINO_VIGENCIA", "URL_CONVENIO",
     ],
     natural_key=["CODIGO_CONVENIO", "NUMERO_REGISTRO_CGE"],
-    nk_coalesce_cols=("numero_registro_cge",),
+    nk_coalesce_cols=("codigo_convenio", "numero_registro_cge"),
     column_types_override={
         "VALOR_CONCEDENTE": "NUMERIC", "VALOR_CONTRAPARTIDA": "NUMERIC",
         "DATA_CELEBRACAO_CONVENIO": "DATE", "DATA_PUBLICACAO": "DATE",
@@ -380,6 +395,14 @@ UNIDADE_GESTORA = make_year_window_spec(
         "TIPO_ADMINISTRACAO_UNIDADE_GESTORA",
     ],
     natural_key=["EXERCICIO", "CODIGO_UNIDADE_GESTORA"],
+    nk_coalesce_cols=("codigo_unidade_gestora",),
+    column_renames_override={
+        "EXERCICIO": "exercicio",
+        "CODIGO_UNIDADE_GESTORA": "codigo_unidade_gestora",
+        "SIGLA_UNIDADE_GESTORA": "sigla_unidade_gestora",
+        "NOME_UNIDADE_GESTORA": "nome_unidade_gestora",
+        "TIPO_ADMINISTRACAO_UNIDADE_GESTORA": "tipo_administracao",
+    },
     column_types_override={"EXERCICIO": "SMALLINT"},
     watermark_col_csv="EXERCICIO",
     watermark_type="integer",

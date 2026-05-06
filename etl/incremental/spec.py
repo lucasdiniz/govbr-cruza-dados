@@ -104,6 +104,11 @@ class LoaderSpec:
     # ter inserido '') e incremental (que converte '' para NULL via sentinel).
     # Use TARGET col names (after column_renames). Apenas cols que estao na NK.
     nk_coalesce_cols: tuple[str, ...] = field(default_factory=tuple)
+    # Synthetic NK via _nk_md5 column (BEFORE INSERT trigger calculates).
+    # Quando True, build_upsert_sql emits ON CONFLICT (_nk_md5). Use para tabelas
+    # com dups exatos no legacy data onde NK simples não funciona.
+    # Requires _nk_md5 column + UNIQUE INDEX + trigger (sql/35_pb_extras_synthetic_nk.sql).
+    nk_synthetic_md5: bool = False
     # Schema versioning per-bucket: callable que dado bucket_id retorna
     # (columns, column_renames) override. Se None, usa columns/column_renames default.
     # Permite suporte a schema drift histórico (e.g., TCE-PB 2018-2019 usa cols

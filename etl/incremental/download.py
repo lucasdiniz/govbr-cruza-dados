@@ -175,6 +175,29 @@ def conditional_download(
                 dest_path.unlink()
             partial_path.rename(dest_path)
 
+            # Detect "Arquivo Sendo Processado" HTML page (server returns 200 OK
+            # with HTML stub instead of CSV). Don't rename to final, mark as failed.
+            # Re-read first bytes of dest_path:
+            try:
+                with open(dest_path, "rb") as fchk:
+                    head = fchk.read(64)
+                if head.lstrip().startswith(b"<!DOCTYPE") or head.lstrip().startswith(b"<html"):
+                    logger.warning(
+                        "server returned HTML placeholder for %s (likely 'Arquivo Sendo Processado'); skipping",
+                        dest_path.name,
+                    )
+                    # Remove the file so loader doesn't try to parse HTML as CSV
+                    dest_path.unlink()
+                    return DownloadResult(
+                        status="failed",
+                        content_changed=False,
+                        content_sha256=None,
+                        bytes_downloaded=0,
+                        error="server returned HTML placeholder (Arquivo Sendo Processado)",
+                    )
+            except Exception:
+                pass
+
             content_changed = (prev_sha != content_sha)
             logger.info(
                 "downloaded %s (%.1f MB, sha256=%s..., changed=%s)",
