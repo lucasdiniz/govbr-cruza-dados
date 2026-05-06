@@ -16,14 +16,15 @@ async function _refreshKpisLive(municipio, uf) {
         if (data && data.top_concentracao) {
             _updateConcentracaoCard(data.top_concentracao, data.pct_top5, data.concentracao_red);
         }
-        // Nota de atencao: quando filtro de data NAO esta ativo, prefere o
-        // score canonico (= mv_municipio_pb_kpi_score.risco_score_unificado
-        // = mesmo valor exibido no mapa coropletico). Garante que a nota
-        // bata 1:1 entre /mapa e /search/cidade quando ambos sao all-time.
-        // Quando filtro ativo, usa score_unificado computed live (refleta
-        // o periodo selecionado).
-        const useCanonical = !_isDateFiltered() && data && data.score_canonical != null;
-        const scoreToShow = useCanonical ? data.score_canonical : (data ? data.score_unificado : null);
+        // "Nota de atencao" do hero = score_canonical (= mv_municipio_pb_kpi_score
+        // = mesmo valor do mapa coropletico, period-independent). Eh metrica de
+        // reputacao geral do municipio; nao varia conforme filtro temporal por
+        // contrato (mapa e cidade exibem o mesmo numero). Os KPIs cards
+        // continuam refletindo o periodo. Fallback pra score_unificado live
+        // apenas quando score_canonical estiver ausente (cidade fora da MV).
+        const scoreToShow = (data && data.score_canonical != null)
+            ? data.score_canonical
+            : (data ? data.score_unificado : null);
         if (scoreToShow != null) {
             document.querySelectorAll('[data-score-unificado]').forEach(el => {
                 el.textContent = scoreToShow;

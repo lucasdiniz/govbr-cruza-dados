@@ -226,6 +226,19 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
             scols, srows = serv_cache
             servidores = [_row_to_dict(scols, r) for r in srows]
         summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+        # score_canonical = mv_municipio_pb_kpi_score.risco_score_unificado, mesmo
+        # valor exibido no mapa coropletico. Eh uma metrica all-time da reputacao
+        # do municipio, period-independent. Para periodos ANO/12M, o PERFIL local
+        # tem risco_score=NULL (PERFIL_MUNICIPIO_LIVE forca NULL), entao buscamos
+        # do PERFIL all-time (cache sem prefix). Garante que a "Nota de atencao"
+        # bate 1:1 com o mapa em todos os filtros temporais.
+        score_canonical = perfil.get("risco_score") if not prefix else None
+        if score_canonical is None and prefix:
+            alltime_perfil_cache = _read_cache(conn, "PERFIL", mun)
+            if alltime_perfil_cache and alltime_perfil_cache[1]:
+                alltime_perfil = _row_to_dict(alltime_perfil_cache[0], alltime_perfil_cache[1][0])
+                score_canonical = alltime_perfil.get("risco_score")
+        summary["score_canonical"] = score_canonical
         with conn.cursor() as cur:
             _upsert(cur, qid, mun, ["payload"], [[json.dumps(summary, default=str)]])
         conn.commit()
