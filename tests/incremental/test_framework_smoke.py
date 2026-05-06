@@ -132,7 +132,8 @@ def test_build_upsert_sql_uses_coalesce_for_nk_coalesce_cols():
         bucket_from_filename=lambda n: "snapshot",
     )
     sql = build_upsert_sql(spec, "etl_staging.test_typed")
-    assert "ON CONFLICT (nk1, COALESCE(NULLIF(nk2, ''), '__NULL__'))" in sql
+    # PG normalizes varchar→text in expression indexes; use (col)::text to match
+    assert "ON CONFLICT (nk1, COALESCE(NULLIF((nk2)::text, ''::text), '__NULL__'::text))" in sql
 
 
 def test_build_upsert_sql_applies_renames():

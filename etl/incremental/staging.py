@@ -198,12 +198,15 @@ def build_upsert_sql(spec: "LoaderSpec", stg_typed: str, *, bucket_id: str = Non
     target_cols_str = ", ".join(target_cols)
 
     # NK list (apply column_renames + nk_coalesce_cols wrapping)
+    # PG normaliza varchar→text em expression indexes; usamos `(col)::text` para casar.
     coalesce_set = set(spec.nk_coalesce_cols)
     nk_list_raw = [spec.column_renames.get(c, c) for c in spec.natural_key]
     nk_list_for_conflict = []
     for c in nk_list_raw:
         if c in coalesce_set:
-            nk_list_for_conflict.append(f"COALESCE(NULLIF({c}, ''), '__NULL__')")
+            nk_list_for_conflict.append(
+                f"COALESCE(NULLIF(({c})::text, ''::text), '__NULL__'::text)"
+            )
         else:
             nk_list_for_conflict.append(c)
     nk_str = ", ".join(nk_list_for_conflict)

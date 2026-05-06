@@ -144,10 +144,34 @@ def _incremental_load(
     # Resolve spec para bucket (suporta schema drift histórico)
     spec = _resolve_spec_for_bucket(spec, bucket_id)
 
+    # Step 0: skip empty files (source publica 0-byte placeholders em alguns meses)
+    if csv_path.stat().st_size == 0:
+        return LoadResult(
+            status="success",
+            rows_streamed=0,
+            csv_header_hash="",
+            staging_tables=[],
+        )
+
     # Step 1+2: validate header + fence
     try:
         csv_hash = validate_csv_header(csv_path, spec)
     except SchemaDriftError as e:
+        # Se arquivo só tem header com whitespace/garbage e zero rows,
+        # ainda contam como "soft skip" — vamos checar se ele tem só header line
+        try:
+            with open(csv_path, "rb") as f:
+                content = f.read(2048)
+            if not content.strip() or content.count(b"\n") <= 1:
+                # File tem só header (ou nada) — não é dados reais
+                return LoadResult(
+                    status="success",
+                    rows_streamed=0,
+                    csv_header_hash="",
+                    staging_tables=[],
+                )
+        except Exception:
+            pass
         return LoadResult(status="failed", error=str(e))
     _check_fence(ctx)
 
