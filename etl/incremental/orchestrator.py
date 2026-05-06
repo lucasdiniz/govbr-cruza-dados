@@ -174,6 +174,7 @@ def run_incremental_for_source(
                 bucket_id = bucket_info["bucket_id"]
                 files = bucket_info["files"]
                 bucket_skip_reason = bucket_info.get("skip_reason")
+                bucket_download_failed = bucket_info.get("download_failed", False)
                 if fence_event.is_set():
                     raise RunFencedError(f"run {run_id} fenced mid-bucket")
 
@@ -250,9 +251,16 @@ def run_incremental_for_source(
                     bucket_run.total_updated += file_result.rows_updated
                     bucket_run.total_failed += file_result.rows_failed
 
-                bucket_run.all_success = all(
-                    r.status == "success" for _, r in bucket_run.files
+                bucket_run.all_success = (
+                    bool(bucket_run.files)
+                    and not bucket_download_failed
+                    and all(r.status == "success" for _, r in bucket_run.files)
                 )
+                # If download failed and no cache, record an explicit failed
+                # phase entry so the run summary reflects the failure (instead
+                # of silently advancing past a missing source file).
+                if bucket_download_failed and not bucket_run.files:
+                    bucket_run.total_failed = max(bucket_run.total_failed, 1)
                 summary["buckets"].append(bucket_run)
                 summary["total_inserted"] += bucket_run.total_inserted
                 summary["total_updated"] += bucket_run.total_updated
@@ -527,6 +535,10 @@ def _build_buckets(
             "bucket_id": bid,
             "files": files_on_disk_now,
             "skip_reason": skip_reason,
+            # If any expected download failed AND no cached file is usable,
+            # signal to the loader that this bucket should be marked failed
+            # (not silent-success via empty file list / all([])=True).
+            "download_failed": download_failed_count > 0 and not files_on_disk_now,
         })
 
     summary["downloads"] = download_summary

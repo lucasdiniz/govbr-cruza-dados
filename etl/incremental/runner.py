@@ -74,14 +74,17 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
         with conn.cursor() as cur:
             for key, spec in specs_to_run.items():
                 cur.execute(
-                    """SELECT bootstrap_target_max, bootstrapped_at
+                    """SELECT bootstrapped_at
                        FROM etl_watermark
                        WHERE source=%s AND table_name=%s""",
                     (spec.source, spec.table),
                 )
                 row = cur.fetchone()
-                # needs bootstrap if: row absent, OR row exists with bootstrap fields NULL
-                if row is None or row[0] is None or row[1] is None:
+                # bootstrapped_at IS NOT NULL is the canonical completion marker.
+                # bootstrap_target_max can legitimately be NULL (empty target,
+                # all-NULL watermark column), so we don't gate on it. Trigger
+                # in sql/22 makes bootstrapped_at immutable once set.
+                if row is None or row[0] is None:
                     needs_bootstrap.append((key, spec))
 
     if not needs_bootstrap:
@@ -89,17 +92,19 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
 
     logger.info("Auto-bootstrap: %d spec(s) needing bootstrap", len(needs_bootstrap))
     failed_keys = []
-    with psycopg2.connect(govbr_dsn) as conn:
-        for key, spec in needs_bootstrap:
-            try:
-                applied = _bootstrap_one(conn, spec, force=False)
+    # Per-spec connection: if one bootstrap fails, transaction abort doesn't
+    # poison subsequent specs. Each spec gets its own clean connection.
+    for key, spec in needs_bootstrap:
+        try:
+            with psycopg2.connect(govbr_dsn) as spec_conn:
+                applied = _bootstrap_one(spec_conn, spec, force=False)
                 if applied:
                     logger.info("Auto-bootstrap: %s applied", key)
                 else:
                     logger.info("Auto-bootstrap: %s skipped (already bootstrapped)", key)
-            except Exception as e:
-                logger.exception("Auto-bootstrap: %s FAILED: %s", key, e)
-                failed_keys.append(key)
+        except Exception as e:
+            logger.exception("Auto-bootstrap: %s FAILED: %s", key, e)
+            failed_keys.append(key)
     return failed_keys
 
 

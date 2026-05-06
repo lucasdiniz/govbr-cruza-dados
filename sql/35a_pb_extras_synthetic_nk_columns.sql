@@ -12,14 +12,31 @@
 -- Idempotent: ADD COLUMN IF NOT EXISTS, CREATE OR REPLACE FUNCTION.
 --
 -- Run order: 35a → 35b (populate) → 35c (dedupe) → 35d (indexes).
+--
+-- ⚠️  MIGRATION NOTE (FOR DBs THAT RAN OLD HASH FUNCTION):
+-- A previous version of this file used `md5(array_to_string(vals, '|'))` which
+-- was vulnerable to delimiter collisions: ['a|b','c'] and ['a','b|c'] hashed
+-- identically, causing distinct rows to be deduplicated as if equal.
+-- The fix uses `md5(array_to_json(vals)::text)` (JSON escapes delimiters).
+--
+-- If you ran the OLD version of sql/35 in any environment, _nk_md5 values are
+-- stored from old hash. Recovery procedure:
+--   1. DROP INDEX IF EXISTS ix_pb_X_nk_md5;  -- 7 indexes
+--   2. UPDATE pb_X SET _nk_md5 = NULL;       -- 7 tables; resets stale hashes
+--   3. Re-run sql/35b (re-populates with new hash via WHERE _nk_md5 IS NULL)
+--   4. Re-run sql/35c (dedupe with new hash; should find 0 dups if 35c
+--      already ran on old hash because new hash is strictly more conservative)
+--   5. Re-run sql/35d (creates indexes)
+-- For first-time deployments to clean DB (e.g., production never ran old
+-- version), no recovery needed — ADD COLUMN IF NOT EXISTS is idempotent.
 
 CREATE OR REPLACE FUNCTION etl_admin.row_hash_md5(VARIADIC vals text[])
 RETURNS text AS $func$
-  -- Use JSON serialization to avoid delimiter collision: '|'.join(['a|b','c'])
-  -- vs '|'.join(['a','b|c']) both produce 'a|b|c' (different inputs, same hash).
-  -- array_to_json escapes embedded quotes/separators, ensuring injectivity.
+  -- JSON serialization is injective: array_to_json escapes embedded quotes
+  -- and special chars, so distinct inputs produce distinct outputs.
+  -- (The previous 'array_to_string(vals, ''|'')' impl had collisions.)
   SELECT md5(array_to_json(vals)::text)
-$func$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog, public;
+$func$ LANGUAGE SQL STABLE PARALLEL SAFE SET search_path = pg_catalog, public;
 
 GRANT EXECUTE ON FUNCTION etl_admin.row_hash_md5(VARIADIC text[]) TO PUBLIC;
 

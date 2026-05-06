@@ -54,15 +54,20 @@ def _bootstrap_one(govbr_conn, spec, *, force: bool = False) -> bool:
     # Check existing
     with govbr_conn.cursor() as cur:
         cur.execute(
-            "SELECT bootstrap_target_max, bootstrap_target_count FROM etl_watermark WHERE source=%s AND table_name=%s",
+            """SELECT bootstrap_target_max, bootstrap_target_count, bootstrapped_at
+               FROM etl_watermark WHERE source=%s AND table_name=%s""",
             (spec.source, spec.table),
         )
         existing = cur.fetchone()
 
-    if existing and existing[0] is not None and not force:
+    # `bootstrapped_at IS NOT NULL` is the canonical completion marker, since
+    # `bootstrap_target_max` can legitimately be NULL (empty target/all-NULL
+    # watermark column). Don't re-bootstrap if completion marker is set unless
+    # operator explicitly forces.
+    if existing and existing[2] is not None and not force:
         logger.warning(
-            "  [skip] %s.%s already bootstrapped (max=%s, count=%s). Use --force to overwrite.",
-            spec.source, spec.table, existing[0], existing[1],
+            "  [skip] %s.%s already bootstrapped (max=%s, count=%s, at=%s). Use --force to overwrite.",
+            spec.source, spec.table, existing[0], existing[1], existing[2],
         )
         return False
 
