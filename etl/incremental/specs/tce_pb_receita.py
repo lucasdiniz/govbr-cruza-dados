@@ -61,13 +61,17 @@ SPEC = LoaderSpec(
     natural_key=[
         "municipio", "codigo_unidade_gestora",
         "mes_ano", "codigo_receita", "codigo_fonte_recurso",
+        "tipo_atualizacao_receita", "valor", "ano", "co",
     ],
     cursor_strategy=CursorStrategy.YEAR_WINDOW,
     dedupe_strategy=DedupeStrategy.UPSERT_DO_NOTHING,
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,
-    nk_coalesce_cols=("codigo_fonte_recurso",),
+    nk_coalesce_cols=(
+        "codigo_fonte_recurso", "tipo_atualizacao_receita",
+        "mes_ano", "codigo_receita", "co",
+    ),
     csv_delimiter=";",
     csv_quotechar='"',
     derived_columns={},

@@ -81,9 +81,11 @@ def _resolve_spec_for_bucket(spec: "LoaderSpec", bucket_id: str) -> "LoaderSpec"
     """Returns spec ajustada para bucket_id (columns/renames/NK podem variar
     por bucket conforme spec.columns_per_bucket).
 
-    Auto-translates spec.natural_key based on column_renames inversion: se uma
-    NK col existe nas COLUMNS atuais (CSV), mantém; caso contrário, busca em
-    column_renames TARGET → CSV e usa o CSV name correspondente.
+    Auto-translates spec.natural_key:
+    1. Se nk col já está nas new_columns, mantém (CSV name match).
+    2. Se nk col é target name, busca em new_renames inverse para CSV name.
+    3. Se nk col é CSV name do schema antigo, mantém também.
+    4. Procura em renames original spec → traduz target name → new CSV name.
     """
     if spec.columns_per_bucket is None:
         return spec
@@ -91,17 +93,29 @@ def _resolve_spec_for_bucket(spec: "LoaderSpec", bucket_id: str) -> "LoaderSpec"
     if override is None:
         return spec
     new_columns, new_renames = override
-    # Build new column_types
     new_types = {c: spec.column_types.get(c, "TEXT") for c in new_columns}
-    # Recompute NK: traduzir target names → CSV names usando new_renames
-    target_to_csv = {v: k for k, v in new_renames.items()}
+    # Build mapping: target_col -> new_csv_col (inverse of new_renames)
+    target_to_new_csv = {target: csv for csv, target in new_renames.items()}
+    # Build mapping: original_csv_col -> target_col (using original spec.column_renames)
+    original_csv_to_target = dict(spec.column_renames)
+
     new_nk = []
     for nk in spec.natural_key:
         if nk in new_columns or nk in spec.derived_columns:
             new_nk.append(nk)
-        elif nk in target_to_csv:
-            # nk é um target name; converte para CSV name no schema atual
-            new_nk.append(target_to_csv[nk])
+        elif nk in original_csv_to_target:
+            # nk era CSV name do spec original; converte para target name, depois
+            # busca CSV name no schema novo via target_to_new_csv
+            target_name = original_csv_to_target[nk]
+            new_csv = target_to_new_csv.get(target_name, target_name)
+            if new_csv in new_columns:
+                new_nk.append(new_csv)
+            else:
+                # Fallback: nk col target == CSV col em schema novo
+                new_nk.append(target_name if target_name in new_columns else nk)
+        elif nk in target_to_new_csv:
+            # nk é target name; converte direto para CSV name
+            new_nk.append(target_to_new_csv[nk])
         else:
             # Fallback: mantém — vai falhar validation explicitamente
             new_nk.append(nk)
@@ -192,18 +206,24 @@ def _incremental_load(
         cur.execute(f"ANALYZE {stg_final}")
 
     # Step 10+11: count failures
-    total_failed = rows_failed_streaming + rows_rejected_null_key
-    if total_failed > 0:
-        # Target NÃO foi modificado, return partial
+    # Hard failures (streaming): col_count_mismatch, encoding_error, csv_parse_error.
+    #   Estes indicam dados corrompidos, abort run.
+    # Soft failures (NK NULL): row tem NK insuficiente para target uniquidade.
+    #   Estes são esperados em prod (legacy data quality issues); enviam pra DLQ
+    #   mas NÃO abortam load — UPSERT continua com rows válidos.
+    if rows_failed_streaming > 0:
         return LoadResult(
             status="partial",
             rows_streamed=rows_streamed,
-            rows_failed=total_failed,
+            rows_failed=rows_failed_streaming,
             rows_rejected_null_key=rows_rejected_null_key,
             csv_header_hash=csv_hash,
             staging_tables=staging_tables,
-            error=f"total_failed={total_failed} > 0; target not modified",
+            error=f"streaming failures={rows_failed_streaming} > 0; target not modified",
         )
+
+    # NK NULL rejections: log mas continue UPSERT
+    total_failed = rows_rejected_null_key
 
     # Step 12: fence check 2
     _check_fence(ctx)
