@@ -1088,21 +1088,52 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
                 else:
                     summary = None
                 if summary is not None:
-                    # Cache pode ter sido populado antes do score_canonical ser
-                    # introduzido. Se faltar, busca do perfil.
-                    if "score_canonical" not in summary:
+                    # score_canonical = mv_municipio_pb_kpi_score.risco_score_unificado,
+                    # period-independent (mesmo valor exibido no mapa). Sempre
+                    # carregar do PERFIL all-time, pois ANO/12M PERFIL tem
+                    # risco_score=NULL (PERFIL_MUNICIPIO_LIVE forca NULL). Falta
+                    # de score_canonical no cache pode acontecer em entries
+                    # legados (warm_cache antigo) ou se o all-time ainda nao
+                    # foi warmed. Refresh em runtime corrige sem precisar de
+                    # cache invalidate.
+                    if not summary.get("score_canonical"):
                         try:
-                            perfil_canonical = _load_perfil_for_kpis(municipio, payload, periodo) or {}
-                            summary["score_canonical"] = perfil_canonical.get("risco_score")
+                            alltime_cached = read_web_cache("PERFIL", municipio)
+                            if alltime_cached and alltime_cached[1]:
+                                alltime_cols, alltime_rows = alltime_cached
+                                alltime_dict = _row_to_json_dict(alltime_cols, alltime_rows[0])
+                                summary["score_canonical"] = alltime_dict.get("risco_score")
                         except Exception:
-                            summary["score_canonical"] = None
+                            pass
                     return summary
     perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
     canonical_mun = str(perfil.get("municipio") or municipio)
     fornecedores = _load_fornecedores_for_kpis(canonical_mun, payload, periodo)
     servidores = _load_servidores_for_kpis(canonical_mun, payload, periodo)
     summary = compute_cidade_kpis(perfil, fornecedores, servidores)
-    summary["score_canonical"] = perfil.get("risco_score")
+    # score_canonical = period-independent. Quando periodo != '', perfil local
+    # vem de PERFIL_MUNICIPIO_LIVE com risco_score=NULL. Buscar do PERFIL
+    # all-time (cache ou query) para manter consistencia com mapa.
+    score_canonical = perfil.get("risco_score") if periodo == "" else None
+    if score_canonical is None:
+        try:
+            alltime_cached = read_web_cache("PERFIL", canonical_mun)
+            if alltime_cached and alltime_cached[1]:
+                alltime_cols, alltime_rows = alltime_cached
+                alltime_dict = _row_to_json_dict(alltime_cols, alltime_rows[0])
+                score_canonical = alltime_dict.get("risco_score")
+            if score_canonical is None:
+                cols, rows = cached_query(
+                    f"perfil:{canonical_mun.casefold()}",
+                    PERFIL_MUNICIPIO,
+                    {"municipio": canonical_mun},
+                    timeout_sec=TIMEOUT_PROFILE,
+                )
+                if rows:
+                    score_canonical = _row_to_json_dict(cols, rows[0]).get("risco_score")
+        except Exception:
+            pass
+    summary["score_canonical"] = score_canonical
     return summary
 
 
