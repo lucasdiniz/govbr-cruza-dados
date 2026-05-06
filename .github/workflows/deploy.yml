@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       etl_phase:
-        description: 'ETL phase: "web" (code sync + web deploy only), "sql" (schema+views), phase number (e.g. "18"), or "all" (full ETL)'
+        description: 'ETL phase: "web" (code sync + web deploy only), "sql" (schema+views), "incremental" (incremental ETL framework — TCE-PB + Dados-PB), phase number (e.g. "18"), or "all" (full ETL)'
         required: false
         default: 'all'
       clean:
@@ -48,6 +48,10 @@ on:
         required: false
         type: boolean
         default: false
+      incremental_only:
+        description: 'CSV de specs incremental (e.g. "tce_pb.tce_pb_despesa,dados_pb.pb_pagamento"). Vazio = todas. So aplica quando etl_phase=incremental.'
+        required: false
+        default: ''
       drop_cache:
         description: 'TRUNCATE web_cache antes do warm. Use APENAS em mudancas de schema. Por padrao (false), cache antigo eh preservado e UPSERT-ado (evita 12-18h sem cache).'
         required: false
@@ -506,9 +510,24 @@ jobs:
           # para que o postflight NAO faca downsize da VM (deixa em 16GB para retomar).
           python -m etl.21_views 2>&1
 
+      # ── Incremental ETL (framework PB POC) ──
+      - name: "ETL: Incremental"
+        if: inputs.etl_phase == 'incremental'
+        run: |
+          set -e
+          sudo systemctl restart tor 2>/dev/null || true
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          echo "=== Incremental ETL framework ==="
+          if [ -n "${{ inputs.incremental_only }}" ]; then
+            python -m etl.incremental.runner --only "${{ inputs.incremental_only }}" 2>&1
+          else
+            python -m etl.incremental.runner 2>&1
+          fi
+
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
-        if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all' && inputs.etl_phase != 'web'
+        if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all' && inputs.etl_phase != 'web' && inputs.etl_phase != 'incremental'
         run: |
           set -e
           sudo systemctl restart tor 2>/dev/null || true

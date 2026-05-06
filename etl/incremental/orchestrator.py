@@ -277,6 +277,23 @@ def run_incremental_for_source(
                         except psycopg2.Error as e:
                             logger.warning("set_watermark failed: %s", e)
 
+                # 8. Enqueue cache invalidation if rows changed (D17 hook)
+                if bucket_run.all_success and (
+                    bucket_run.total_inserted + bucket_run.total_updated > 0
+                ):
+                    try:
+                        with lock_raw.cursor() as cur:
+                            cur.execute(
+                                "SELECT etl_admin.enqueue_cache_invalidation(%s,%s,%s,%s,%s,%s,%s)",
+                                (
+                                    str(run_id), spec.source, spec.table, bucket_id,
+                                    bucket_run.total_inserted, bucket_run.total_updated,
+                                    None,  # pattern: futuro hint para warm_cache
+                                ),
+                            )
+                    except psycopg2.Error as e:
+                        logger.warning("enqueue_cache_invalidation failed: %s", e)
+
             # All buckets processed
             partial_buckets = [b for b in summary["buckets"] if not b.all_success]
             if not partial_buckets:
