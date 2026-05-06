@@ -1,0 +1,57 @@
+/* pages/contato.css — pagina /contato (form pra mensagem) */
+
+.contato-page {
+    max-width: 640px;
+    margin: 32px auto;
+    padding: 0 16px;
+}
+
+.contato-head {
+    margin-bottom: 32px;
+}
+
+.contato-head h1 {
+    margin-bottom: 12px;
+}
+
+.contato-head p {
+    margin-bottom: 12px;
+    line-height: 1.55;
+}
+
+.contato-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-top: 16px;
+}
+
+/* md-outlined-text-field full-width por default no form */
+.contato-form md-outlined-text-field {
+    width: 100%;
+}
+
+.contato-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.contato-status[data-kind="ok"] {
+    color: var(--md-sys-color-tertiary, #4ade80);
+}
+
+.contato-status[data-kind="err"] {
+    color: var(--md-sys-color-error, #f87171);
+}
+
+@media (max-width: 640px) {
+    .contato-page {
+        margin-top: 16px;
+    }
+    .contato-actions md-filled-button {
+        width: 100%;
+    }
+}
