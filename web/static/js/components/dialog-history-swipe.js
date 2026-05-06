@@ -4,22 +4,35 @@
 // sair da pagina. Ao abrir o dialog empilhamos um state; se o usuario
 // voltar, o popstate fecha o dialog.
 //
-// Coordena com dialog-url-state.js: quando _dialogStateApply() ja fez
-// pushState com state.tpbDialog=true, _dialogOnOpen NAO duplica a
-// entrada (verifica history.state.tpbDialog primeiro).
+// Coordena com dialog-url-state.js de duas formas distintas:
+//
+//   1. Open via clique normal: _dialogStateApply faz pushState com
+//      state.tpbDialog=true E adiciona uma nova history entry.
+//      _dialogOnOpen detecta e NAO faz push duplicado.
+//      Close: history.back() consome a entrada empurrada.
+//
+//   2. Open via deep-link (?d=...): _restoreDialogFromUrl faz
+//      replaceState com tpbDialog=true E restoredFromUrl=true (sem
+//      adicionar nova entrada). _dialogOnOpen detecta restoredFromUrl
+//      e NAO seta _dialogHistoryState — assim _dialogOnClose limpa via
+//      _dialogUrlClear() em vez de tentar history.back() (que sairia
+//      da pagina).
 let _dialogHistoryState = false;
 
 function _dialogOnOpen() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     document.body.classList.add('dialog-open');
-    // Nao push state se _dialogStateApply (de dialog-url-state.js) ja
-    // empurrou um state com tpbDialog=true. Isso evita double-push (que
-    // deixava ?d=... na URL apos close porque history.back() consumia
-    // so a entrada generica, nao a com URL params).
-    const alreadyPushed = !!(history.state && history.state.tpbDialog);
-    if (alreadyPushed) {
-        _dialogHistoryState = true;
+    const state = history.state;
+    if (state && state.tpbDialog) {
+        // tpbDialog ja esta no current entry — nao push novamente.
+        // MAS so marca _dialogHistoryState=true se foi pushState de
+        // verdade (clique normal). Restored-from-URL usa replaceState
+        // sem nova entrada, entao history.back() no close levaria o
+        // user pra pagina anterior em vez de fechar o dialog.
+        if (!state.restoredFromUrl) {
+            _dialogHistoryState = true;
+        }
         return;
     }
     if (!_dialogHistoryState) {
