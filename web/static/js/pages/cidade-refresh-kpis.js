@@ -16,12 +16,19 @@ async function _refreshKpisLive(municipio, uf) {
         if (data && data.top_concentracao) {
             _updateConcentracaoCard(data.top_concentracao, data.pct_top5, data.concentracao_red);
         }
-        // Atualiza a nota de atencao na narrativa, se houver elemento expondo o score.
-        if (data && data.score_unificado != null) {
+        // Nota de atencao: quando filtro de data NAO esta ativo, prefere o
+        // score canonico (= mv_municipio_pb_kpi_score.risco_score_unificado
+        // = mesmo valor exibido no mapa coropletico). Garante que a nota
+        // bata 1:1 entre /mapa e /search/cidade quando ambos sao all-time.
+        // Quando filtro ativo, usa score_unificado computed live (refleta
+        // o periodo selecionado).
+        const useCanonical = !_isDateFiltered() && data && data.score_canonical != null;
+        const scoreToShow = useCanonical ? data.score_canonical : (data ? data.score_unificado : null);
+        if (scoreToShow != null) {
             document.querySelectorAll('[data-score-unificado]').forEach(el => {
-                el.textContent = data.score_unificado;
+                el.textContent = scoreToShow;
             });
-            _updateRiskSummary(data.score_unificado);
+            _updateRiskSummary(scoreToShow);
         }
     } catch (e) {
         console.warn('kpis fetch failed', e);

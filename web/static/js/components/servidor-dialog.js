@@ -173,7 +173,17 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
 
     // CEAF - Expulsoes da Administracao Federal
     if (data.ceaf && data.ceaf.length) {
-        html += `<div class="dialog-section"><h4>${dualLabel('Expulsoes do servico publico federal','Expulsoes da Administracao Federal (CEAF)')}</h4>`;
+        // Link pro Portal da Transparencia (busca por nome — CPF mascarado
+        // nao serve pra deep-link). Mesmo padrao que CEIS/CNEP em
+        // fornecedor-dialog.js linha ~248.
+        const nomeBusca = (servidorNome || nome || '').trim();
+        const ceafUrl = nomeBusca
+            ? `https://portaldatransparencia.gov.br/sancoes/consulta?cadastro=ceaf&nomeSancionado=${encodeURIComponent(nomeBusca)}`
+            : '';
+        const ceafLink = ceafUrl
+            ? ` <a href="${ceafUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>`
+            : '';
+        html += `<div class="dialog-section"><h4>${dualLabel('Expulsoes do servico publico federal','Expulsoes da Administracao Federal (CEAF)')}${ceafLink}</h4>`;
         html += data.ceaf.map(c => {
             return `<div class="empresa-card severity-red">
                 <div class="empresa-header">
