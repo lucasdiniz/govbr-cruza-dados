@@ -5,12 +5,13 @@
 {% block og_description %}Panorama dos {{ municipio_total_pb | default(223, true) }} municipios da Paraiba colorido por indicador.{% endblock %}
 {% block json_ld_extra %}
 {% set origin = request_origin(request) if request else '' %}
+{% set _muni_total = municipio_total_pb | default(223, true) %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Dataset",
   "name": "Mapa de transparência da Paraíba",
-  "description": "{{ municipio_total_pb | default(223, true) }} municípios da Paraíba indexados por risco composto, % de fornecedores irregulares, % sem licitação, concentração top-5 e pagamento per capita.",
+  "description": {{ ((_muni_total | string) ~ " municípios da Paraíba indexados por risco composto, % de fornecedores irregulares, % sem licitação, concentração top-5 e pagamento per capita.") | tojson }},
   "url": "{{ origin }}/mapa",
   "isAccessibleForFree": true,
   "inLanguage": "pt-BR",

@@ -21,10 +21,10 @@
   "@graph": [
     {
       "@type": "GovernmentOrganization",
-      "name": "Prefeitura de {{ municipio }}",
+      "name": {{ ("Prefeitura de " ~ municipio) | tojson }},
       "areaServed": {
         "@type": "AdministrativeArea",
-        "name": "{{ municipio }}",
+        "name": {{ municipio | tojson }},
         "containedInPlace": {
           "@type": "State",
           "name": "Paraíba",
@@ -34,16 +34,16 @@
     },
     {
       "@type": "Dataset",
-      "name": "Panorama de transparência de {{ municipio }} - PB",
-      "description": "Cruzamento de despesas, fornecedores e servidores municipais de {{ municipio }} contra bases públicas (Receita Federal, CEIS, CNEP, PGFN, TCE-PB, TSE).",
-      "url": "{{ page_url }}",
+      "name": {{ ("Panorama de transparência de " ~ municipio ~ " - PB") | tojson }},
+      "description": {{ ("Cruzamento de despesas, fornecedores e servidores municipais de " ~ municipio ~ " contra bases públicas (Receita Federal, CEIS, CNEP, PGFN, TCE-PB, TSE).") | tojson }},
+      "url": {{ page_url | tojson }},
       "isAccessibleForFree": true,
       "inLanguage": "pt-BR",
       "creator": {"@id": "{{ origin }}/#organization"},
       "license": "https://creativecommons.org/licenses/by/4.0/",
       "spatialCoverage": {
         "@type": "AdministrativeArea",
-        "name": "{{ municipio }}, Paraíba, Brasil"
+        "name": {{ (municipio ~ ", Paraíba, Brasil") | tojson }}
       }
     },
     {
@@ -64,7 +64,7 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "{{ municipio }}"
+          "name": {{ municipio | tojson }}
         }
       ]
     }
