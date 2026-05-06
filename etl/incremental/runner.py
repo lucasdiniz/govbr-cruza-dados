@@ -50,6 +50,54 @@ def _data_dir_for_source(source: str, base: Path) -> Path:
     return base / source
 
 
+def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> None:
+    """Bootstrap automatico de specs ainda sem etl_watermark row.
+
+    Idempotent: se watermark ja existe (mesmo que com bootstrap_target_max NULL
+    de versao antiga), skip. Evita re-bootstrap acidental que perderia o
+    baseline original.
+
+    Em prod: garante que primeira run apos deploy tenha 'foto inicial' do
+    target capturada antes de qualquer mutacao.
+    """
+    import psycopg2
+
+    try:
+        from etl.incremental.bootstrap_watermark import _bootstrap_one
+    except ImportError:
+        logger.warning("bootstrap_watermark module not available; skipping auto-bootstrap")
+        return
+
+    needs_bootstrap = []
+    with psycopg2.connect(govbr_dsn) as conn:
+        with conn.cursor() as cur:
+            for key, spec in specs_to_run.items():
+                cur.execute(
+                    "SELECT 1 FROM etl_watermark WHERE source=%s AND table_name=%s",
+                    (spec.source, spec.table),
+                )
+                if cur.fetchone() is None:
+                    needs_bootstrap.append((key, spec))
+
+    if not needs_bootstrap:
+        return
+
+    logger.info("Auto-bootstrap: %d spec(s) without watermark row → bootstrapping",
+                len(needs_bootstrap))
+    with psycopg2.connect(govbr_dsn) as conn:
+        for key, spec in needs_bootstrap:
+            try:
+                applied = _bootstrap_one(conn, spec, force=False)
+                if applied:
+                    logger.info("Auto-bootstrap: %s applied", key)
+                else:
+                    logger.info("Auto-bootstrap: %s skipped (already bootstrapped)", key)
+            except Exception as e:
+                logger.exception("Auto-bootstrap: %s FAILED: %s", key, e)
+                # Don't abort — let the run continue; spec without bootstrap
+                # will still work, just without baseline checks.
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", default="", help='CSV "source.table,source.table"')
@@ -87,6 +135,10 @@ def main():
         specs_to_run = all_specs
 
     logger.info("Running %d specs: %s", len(specs_to_run), list(specs_to_run.keys()))
+
+    # Auto-bootstrap: any spec sem watermark row recebe bootstrap automatico.
+    # Skip se ja foi feito (idempotent). Evita esquecimento operacional.
+    _auto_bootstrap_if_needed(specs_to_run, args.govbr_dsn)
 
     from etl.incremental.orchestrator import run_incremental_for_source
 
