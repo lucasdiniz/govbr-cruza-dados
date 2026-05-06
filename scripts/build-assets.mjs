@@ -20,13 +20,18 @@
  * Saída: web/static/dist/{core,mapa}.<hash>.min.js + index.<hash>.min.css
  *        + manifest.json.
  *
+ * Atomicidade: toda a build acontece em web/static/dist.new/. Apenas se
+ * tudo concluir com sucesso, o diretório atual `dist/` é substituido
+ * atomicamente (rename). Isso garante que a app rodando NUNCA encontra
+ * dist/ vazio durante uma build em andamento ou após uma build que falhou.
+ *
  * Uso: `node scripts/build-assets.mjs` (ou `npm run build`).
  *      `--check` valida saída pós-build.
  */
 
 import { build as esbuild } from "esbuild";
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir, rm, readdir, stat, copyFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, readdir, stat, copyFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +42,10 @@ const STATIC_DIR = path.join(REPO_ROOT, "web", "static");
 const JS_DIR = path.join(STATIC_DIR, "js");
 const CSS_DIR = path.join(STATIC_DIR, "css");
 const DIST_DIR = path.join(STATIC_DIR, "dist");
+// Build acontece aqui; só promove pra DIST_DIR ao terminar com sucesso.
+// Garante que app rodando nunca pega dist/ vazio durante build inflight.
+const DIST_STAGING_DIR = path.join(STATIC_DIR, "dist.new");
+const DIST_OLD_DIR = path.join(STATIC_DIR, "dist.old");
 const MAIN_PY = path.join(REPO_ROOT, "web", "main.py");
 
 const HASH_LEN = 8;
@@ -142,7 +151,7 @@ async function buildJsBundle({ name, sources, manifest }) {
         format: undefined,
         bundle: false,
         minify: true,
-        outfile: path.join(DIST_DIR, `${name}.tmp.js`),
+        outfile: path.join(DIST_STAGING_DIR, `${name}.tmp.js`),
         target: "es2020",
         sourcemap: false,
         write: false,
@@ -165,7 +174,7 @@ async function buildJsBundle({ name, sources, manifest }) {
     const hash = contentHash(code);
     const filename = `${name}.${hash}.min.js`;
 
-    await writeFile(path.join(DIST_DIR, filename), code);
+    await writeFile(path.join(DIST_STAGING_DIR, filename), code);
 
     manifest[`${name}.js`] = filename;
     log(`  -> ${filename} (${(code.length / 1024).toFixed(1)} KB)`);
@@ -184,7 +193,7 @@ async function buildCssBundle({ name, entry, manifest }) {
         loader: { ".css": "css" },
         // outdir necessário pra esbuild gerar sourcemap external.
         // write: false impede gravação real (capturamos em memória).
-        outdir: DIST_DIR,
+        outdir: DIST_STAGING_DIR,
         sourcemap: "external",
         sourcesContent: false,
         write: false,
@@ -209,9 +218,9 @@ async function buildCssBundle({ name, entry, manifest }) {
     const mapName = `${filename}.map`;
     const finalCode = `${codeNoMap}\n/*# sourceMappingURL=${mapName} */\n`;
 
-    await writeFile(path.join(DIST_DIR, filename), finalCode);
+    await writeFile(path.join(DIST_STAGING_DIR, filename), finalCode);
     if (mapOut) {
-        await writeFile(path.join(DIST_DIR, mapName), mapOut.contents);
+        await writeFile(path.join(DIST_STAGING_DIR, mapName), mapOut.contents);
     }
 
     manifest[`${name}.css`] = filename;
@@ -222,16 +231,16 @@ async function buildCssBundle({ name, entry, manifest }) {
 // Validation pos-build
 // ─────────────────────────────────────────────────────────────────────────
 
-async function validate(manifest) {
+async function validate(manifest, dir = DIST_DIR) {
     const required = ["core.js", "mapa.js", "index.css"];
     for (const key of required) {
         if (!manifest[key]) throw new Error(`Manifest faltando chave: ${key}`);
-        const filepath = path.join(DIST_DIR, manifest[key]);
+        const filepath = path.join(dir, manifest[key]);
         if (!existsSync(filepath)) throw new Error(`Arquivo ausente: ${filepath}`);
         const st = await stat(filepath);
         if (st.size === 0) throw new Error(`Arquivo vazio: ${filepath}`);
     }
-    log(`Validation OK (${required.length} bundles).`);
+    log(`Validation OK (${required.length} bundles em ${dir}).`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -248,13 +257,19 @@ async function main() {
             process.exit(1);
         }
         const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-        await validate(manifest);
+        await validate(manifest, DIST_DIR);
         return;
     }
 
-    log(`REPO_ROOT: ${REPO_ROOT}`);
-    log(`DIST_DIR : ${DIST_DIR}`);
-    await ensureCleanDir(DIST_DIR);
+    log(`REPO_ROOT     : ${REPO_ROOT}`);
+    log(`DIST_DIR      : ${DIST_DIR} (current, served by nginx)`);
+    log(`STAGING_DIR   : ${DIST_STAGING_DIR} (build target — promove ao final)`);
+
+    // Build pipeline acontece TODO em DIST_STAGING_DIR. So promove pra
+    // DIST_DIR ao concluir todos os steps + validacao com sucesso. Garante
+    // que app rodando nunca encontra dist/ vazio durante build inflight ou
+    // pos-falha.
+    await ensureCleanDir(DIST_STAGING_DIR);
 
     const jsFiles = await extractJsFiles();
     log(`JS_FILES extraídos de web/main.py: ${jsFiles.length} arquivos`);
@@ -281,12 +296,61 @@ async function main() {
     manifest["__cache_version__"] = `tpb-${manifestSig}`;
 
     await writeFile(
-        path.join(DIST_DIR, "manifest.json"),
+        path.join(DIST_STAGING_DIR, "manifest.json"),
         JSON.stringify(manifest, null, 2) + "\n"
     );
     log(`manifest.json escrito (cache_version=${manifest.__cache_version__}).`);
 
-    await validate(manifest);
+    // Valida o que esta em STAGING (todas as chaves obrigatorias + arquivos existem).
+    await validate(manifest, DIST_STAGING_DIR);
+
+    // ─── Promote atomico: dist.new -> dist ───
+    // Na maioria dos filesystems POSIX, rename(src, dst) eh atomico mesmo
+    // quando dst existe (e dst eh substituido por src). Para preservar uma
+    // versao anterior em caso de problema imediato, fazemos:
+    //   1. mv dist     -> dist.old (se dist existe)
+    //   2. mv dist.new -> dist
+    //   3. rm -rf dist.old
+    // Se step 2 falha apos step 1, o catch reverte (mv dist.old -> dist).
+    // O proprio rename do step 2 nao eh atomico ao 100% (sao duas ops),
+    // mas a janela de inconsistencia e' microscopica vs a janela atual
+    // (varios segundos durante a build inteira).
+    if (existsSync(DIST_OLD_DIR)) {
+        log(`Removendo ${DIST_OLD_DIR} (residuo de promote anterior)`);
+        await rm(DIST_OLD_DIR, { recursive: true, force: true });
+    }
+    let oldDirMoved = false;
+    if (existsSync(DIST_DIR)) {
+        log(`Movendo ${DIST_DIR} -> ${DIST_OLD_DIR} (rollback temporario)`);
+        await rename(DIST_DIR, DIST_OLD_DIR);
+        oldDirMoved = true;
+    }
+    try {
+        log(`Promovendo ${DIST_STAGING_DIR} -> ${DIST_DIR}`);
+        await rename(DIST_STAGING_DIR, DIST_DIR);
+    } catch (e) {
+        // Promote falhou. Reverte se possivel.
+        err(`Falha no promote: ${e}. Tentando rollback...`);
+        if (oldDirMoved && existsSync(DIST_OLD_DIR)) {
+            try {
+                await rename(DIST_OLD_DIR, DIST_DIR);
+                log("Rollback OK — DIST_DIR restaurado da versao anterior.");
+            } catch (e2) {
+                err(`Rollback tambem falhou: ${e2}. dist/ pode estar vazio!`);
+            }
+        }
+        throw e;
+    }
+
+    // Cleanup do dist.old (versao anterior). Se isto falhar, log mas nao
+    // throw — o site ja esta funcional na versao nova.
+    if (existsSync(DIST_OLD_DIR)) {
+        try {
+            await rm(DIST_OLD_DIR, { recursive: true, force: true });
+        } catch (e) {
+            log(`Aviso: falha ao limpar ${DIST_OLD_DIR}: ${e}`);
+        }
+    }
 
     // Lista o conteúdo final
     const entries = (await readdir(DIST_DIR)).sort();

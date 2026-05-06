@@ -84,15 +84,28 @@ self.addEventListener('activate', (event) => {
         // Re-resolve manifest pra detectar cache_version atual (caso o SW
         // tenha sido reativado sem install novo, ex: navegador reabriu).
         let cacheVersion = self.__currentCacheVersion;
+        let resolvedFromManifest = !!cacheVersion;
         if (!cacheVersion) {
-            const resolved = await resolveCoreAssets();
-            cacheVersion = resolved.cacheVersion;
-            self.__currentCacheVersion = cacheVersion;
+            try {
+                const resolved = await resolveCoreAssets();
+                cacheVersion = resolved.cacheVersion;
+                self.__currentCacheVersion = cacheVersion;
+                // Sucesso so se a versao retornada NAO eh o fallback estatico.
+                // Se for fallback, o fetch do manifest provavelmente falhou e
+                // nao queremos purgar caches validos com nome diferente.
+                resolvedFromManifest = cacheVersion !== FALLBACK_CACHE_VERSION;
+            } catch {
+                resolvedFromManifest = false;
+            }
         }
-        // Limpa caches antigos: qualquer chave que nao comece com a versao
-        // atual é purgada.
-        const keys = await caches.keys();
-        await Promise.all(keys.filter((k) => !k.startsWith(cacheVersion)).map((k) => caches.delete(k)));
+        // Cleanup so quando temos certeza da versao atual (manifest fetched
+        // OK ou install setou). Network-fail no activate NAO purga caches —
+        // isso evita wipe acidental do cache hashed valido quando o user
+        // reabre offline ou em rede flaky.
+        if (resolvedFromManifest && cacheVersion) {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter((k) => !k.startsWith(cacheVersion)).map((k) => caches.delete(k)));
+        }
         await self.clients.claim();
     })());
 });
