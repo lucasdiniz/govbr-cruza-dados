@@ -86,6 +86,25 @@ function _dialogUrlClear() {
     } catch { /* ignore */ }
 }
 
+// Atualiza apenas o campo `tab` do state atual (sem nova history entry).
+// Usado quando user clica em outra tab dentro do dialog: URL passa a
+// refletir a tab visivel pra share-link funcionar corretamente.
+function _dialogUrlUpdateTab(tabId) {
+    const current = (history.state && history.state.dialogState) || _readDialogStateFromUrl();
+    if (!current) return;
+    const next = { ...current, tab: tabId || '' };
+    if (!next.tab) delete next.tab;
+    const newUrl = _buildDialogUrl(next);
+    try {
+        const restoredFlag = history.state && history.state.restoredFromUrl;
+        history.replaceState(
+            { tpbDialog: true, dialogState: next, ...(restoredFlag ? { restoredFromUrl: true } : {}) },
+            '',
+            newUrl,
+        );
+    } catch { /* ignore */ }
+}
+
 // ── State extraction from URL ────────────────────────────────────────
 
 function _readDialogStateFromUrl() {

@@ -108,10 +108,26 @@ function _decorateDialogBody(body) {
         const id = active.dataset.dialogTarget;
         if (id && id !== body._activeDialogSectionId) {
             setActive(id, { scroll: true });
+            // Reflete a tab atual no URL pra share-link incluir o estado.
+            if (typeof _dialogUrlUpdateTab === 'function') _dialogUrlUpdateTab(id);
         }
     });
 
-    setActive(sections[0].id, { smooth: false });
+    // Se a URL atual ja indica uma tab (deep-link com d_tab=...), aplica-a
+    // antes do default da primeira section. Senao, primeira tab continua sendo
+    // o default.
+    let initialTabApplied = false;
+    try {
+        const urlState = (history.state && history.state.dialogState) || null;
+        const desiredTab = urlState && urlState.tab;
+        if (desiredTab && tabEls.some(t => t.dataset.dialogTarget === desiredTab)) {
+            setActive(desiredTab, { smooth: false });
+            initialTabApplied = true;
+        }
+    } catch { /* ignore */ }
+    if (!initialTabApplied) {
+        setActive(sections[0].id, { smooth: false });
+    }
 
     // ─── Horizontal swipe to change tabs (mobile / touch) ──────────────
     // On touch devices, swiping the dialog body left/right moves to the
