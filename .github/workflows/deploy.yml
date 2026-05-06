@@ -358,6 +358,19 @@ jobs:
           # Write .env from secrets
           echo "${{ secrets.ENV_FILE }}" > .env
 
+          # Append SEO secrets (mantidos separados do ENV_FILE pra
+          # rotacao independente sem precisar editar o .env todo).
+          # Cada um eh opcional — se nao setado, sai como linha vazia
+          # (NOME=) que o python os.environ.get trata como string vazia.
+          {
+            echo ""
+            echo "# --- SEO secrets (ver .env.example) ---"
+            echo "INDEXNOW_KEY=${{ secrets.INDEXNOW_KEY }}"
+            echo "SITE_URL=${{ secrets.SITE_URL }}"
+            echo "GOOGLE_SITE_VERIFICATION=${{ secrets.GOOGLE_SITE_VERIFICATION }}"
+            echo "BING_SITE_VERIFICATION=${{ secrets.BING_SITE_VERIFICATION }}"
+          } >> .env
+
           # Ensure data dir
           source .env
           DATA="${DATA_DIR:-/data/raw-data}"
