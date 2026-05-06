@@ -14,6 +14,7 @@ from web import db
 from web.routes.cidade import router as cidade_router
 from web.routes.mapa import router as mapa_router
 from web.routes.og_image import router as og_router
+from web.routes.seo import router as seo_router
 
 _dir = Path(__file__).resolve().parent
 
@@ -372,9 +373,65 @@ templates.env.globals["has_asset_bundle"] = has_asset_bundle
 templates.env.globals["ASSETS_STRICT"] = _ASSETS_STRICT
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# SEO helpers — canonical URL e detecção de URL com state de dialog.
+# ─────────────────────────────────────────────────────────────────────────
+
+_DIALOG_QUERY_PARAMS_PREFIX = ("d_",)
+_DIALOG_QUERY_PARAM_EXACT = "d"
+
+
+def _request_origin(request: Request) -> str:
+    """Origem efetiva (esquema + host) — respeita reverse proxy headers."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
+
+
+def canonical_url(request: Request) -> str:
+    """URL canonica: mesma URL atual mas SEM query params do dialog state.
+
+    Strip de `d=...` e `d_*=...` evita duplicate-content em buscas quando
+    usuarios compartilham deep-links (ex: ?d=fornecedor&d_cnpj=...). A URL
+    canonica fica sempre apontando pra pagina sem dialog.
+    """
+    origin = _request_origin(request)
+    path = request.url.path
+    kept = []
+    for key, value in request.query_params.multi_items():
+        if key == _DIALOG_QUERY_PARAM_EXACT:
+            continue
+        if any(key.startswith(p) for p in _DIALOG_QUERY_PARAMS_PREFIX):
+            continue
+        kept.append((key, value))
+    if not kept:
+        return f"{origin}{path}"
+    from urllib.parse import urlencode
+    return f"{origin}{path}?{urlencode(kept)}"
+
+
+def is_dialog_state_url(request: Request) -> bool:
+    """True se a URL atual contem state de dialog (?d=... ou ?d_*=...).
+
+    Usado pra emitir <meta name='robots' content='noindex,follow'> nessas
+    URLs — evita que crawlers indexem versoes 'com dialog aberto' como
+    paginas separadas.
+    """
+    qp = request.query_params
+    if _DIALOG_QUERY_PARAM_EXACT in qp:
+        return True
+    return any(any(k.startswith(p) for p in _DIALOG_QUERY_PARAMS_PREFIX) for k in qp.keys())
+
+
+templates.env.globals["canonical_url"] = canonical_url
+templates.env.globals["is_dialog_state_url"] = is_dialog_state_url
+templates.env.globals["request_origin"] = _request_origin
+
+
 app.include_router(cidade_router)
 app.include_router(mapa_router)
 app.include_router(og_router)
+app.include_router(seo_router)
 
 
 # Fase 12 - erros amigaveis em vez de stack traces
