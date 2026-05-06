@@ -12,6 +12,9 @@ build/
 node_modules/
 .claude/
 
+# Runtime cache de OG images (PIL gera on-demand em data/og_cache/)
+data/og_cache/
+
 # Assets estaticos do frontend nao sao ignorados
 !web/static/geo/*.json
 !web/static/geo/*.geojson

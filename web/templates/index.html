@@ -1,5 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Cruza Dados - Paraiba{% endblock %}
+{% block title %}TransparenciaPB · Como sua prefeitura gasta o dinheiro publico{% endblock %}
+{% block meta_description %}TransparenciaPB cruza dados publicos dos 223 municipios da Paraiba: gastos das prefeituras, fornecedores irregulares, compras sem licitacao, servidores com conflito de interesse e concentracao de contratos. Fontes: TCE-PB, Receita Federal, CGU, Portal da Transparencia, PNCP.{% endblock %}
+{% block og_title %}TransparenciaPB · Dados publicos da Paraiba{% endblock %}
+{% block og_description %}Veja como cada uma das 223 prefeituras da Paraiba gasta o dinheiro publico: fornecedores, licitacoes, servidores, contratos. Cruzamento de dados oficiais.{% endblock %}
 {% block body_class %}mapa-page{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
@@ -9,8 +12,8 @@
     <div class="hero-dots" aria-hidden="true"></div>
     <div class="hero-content">
         <p class="eyebrow">
-            <span class="citizen-only">Paraiba &middot; cidade por cidade</span>
-            <span class="auditor-only">Paraiba &middot; dados abertos</span>
+            <span class="citizen-only">TransparenciaPB &middot; Para&iacute;ba &middot; cidade por cidade</span>
+            <span class="auditor-only">TransparenciaPB &middot; Para&iacute;ba &middot; dados abertos cruzados</span>
         </p>
         <h1>
             <span class="citizen-only">Descubra como sua prefeitura gasta o dinheiro p&uacute;blico</span>
@@ -150,7 +153,12 @@
                     }
                     try { localStorage.setItem('last-city', city); } catch(_){}
                     setStatus(`Identificado: ${city}. Abrindo...`, 'ok');
-                    window.location.href = '/search/cidade?q=' + encodeURIComponent(city);
+                    {
+                        const _slug = (typeof window.municipioSlug === 'function') ? window.municipioSlug(city) : '';
+                        window.location.href = _slug
+                            ? `/cidade/${_slug}`
+                            : '/search/cidade?q=' + encodeURIComponent(city);
+                    }
                 } catch (err) {
                     setStatus('Nao conseguimos identificar o municipio. Tente pela busca.', 'warn');
                     btn.disabled = false;

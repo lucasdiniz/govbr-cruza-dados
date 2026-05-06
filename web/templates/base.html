@@ -17,14 +17,29 @@
     {% set _canonical = canonical_url(request) if request else None %}
     {% if _canonical %}<link rel="canonical" href="{{ _canonical }}">{% endif %}
     {% if request and is_dialog_state_url(request) %}<meta name="robots" content="noindex,follow">{% endif %}
+    {# Search engine verification — codigos vem do Search Console / Bing
+       Webmaster Tools. Setar GOOGLE_SITE_VERIFICATION / BING_SITE_VERIFICATION
+       no .env (secret ENV_FILE no GitHub). Ver SEO operations checklist. #}
+    {% if GOOGLE_SITE_VERIFICATION %}<meta name="google-site-verification" content="{{ GOOGLE_SITE_VERIFICATION }}">{% endif %}
+    {% if BING_SITE_VERIFICATION %}<meta name="msvalidate.01" content="{{ BING_SITE_VERIFICATION }}">{% endif %}
     <meta property="og:site_name" content="TransparenciaPB">
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:title" content="{% block og_title %}TransparenciaPB{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Transparencia e cruzamento de dados publicos dos 223 municipios da Paraiba.{% endblock %}">
     <meta property="og:locale" content="pt_BR">
     <meta property="og:url" content="{{ _canonical or (request.url if request else '') }}">
-    {% block og_image %}{% endblock %}
-    <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
+    {# OG image: paginas que tem imagem propria (cidade, relatorio) sobrescrevem
+       este bloco; default e a OG card generica da home (gerada por PIL em
+       /og/home.png). Garante preview em qualquer compartilhamento. #}
+    {% block og_image %}
+    <meta property="og:image" content="{{ request_origin(request) if request else '' }}/og/home.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:alt" content="TransparenciaPB — Dados publicos cruzados dos 223 municipios da Paraiba">
+    <meta name="twitter:image" content="{{ request_origin(request) if request else '' }}/og/home.png">
+    {% endblock %}
+    <meta name="twitter:card" content="{% block twitter_card %}summary_large_image{% endblock %}">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
     {# JSON-LD: WebSite + Organization (sempre presente quando temos request).
@@ -168,6 +183,7 @@
                 Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, dados.pb.gov.br, PNCP, PGFN, IBGE, TSE.
                 {% if DATA_REFRESH_DATE %}Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.{% endif %}
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
+                &middot; <a href="/sobre" class="footer-link">Sobre</a>
                 &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
                 &middot; <a href="/contato" class="footer-link">Contato</a>
                 &middot; <button type="button" id="tourRestart" class="link-btn footer-link" style="display:none">Como usar</button>

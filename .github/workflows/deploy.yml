@@ -367,6 +367,19 @@ jobs:
           # Write .env from secrets
           echo "${{ secrets.ENV_FILE }}" > .env
 
+          # Append SEO secrets (mantidos separados do ENV_FILE pra
+          # rotacao independente sem precisar editar o .env todo).
+          # Cada um eh opcional — se nao setado, sai como linha vazia
+          # (NOME=) que o python os.environ.get trata como string vazia.
+          {
+            echo ""
+            echo "# --- SEO secrets (ver .env.example) ---"
+            echo "INDEXNOW_KEY=${{ secrets.INDEXNOW_KEY }}"
+            echo "SITE_URL=${{ secrets.SITE_URL }}"
+            echo "GOOGLE_SITE_VERIFICATION=${{ secrets.GOOGLE_SITE_VERIFICATION }}"
+            echo "BING_SITE_VERIFICATION=${{ secrets.BING_SITE_VERIFICATION }}"
+          } >> .env
+
           # Ensure data dir
           source .env
           DATA="${DATA_DIR:-/data/raw-data}"
@@ -630,6 +643,32 @@ jobs:
           systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
           systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
           echo "cruza-warm-cache: oneshot instalado (executado sob demanda)"
+
+      # ── SEO: notificar IndexNow (Bing/Yandex/Yahoo/Seznam/Naver) ──
+      # Roda apos cruza-web restart pra que /<INDEXNOW_KEY>.txt esteja
+      # acessivel quando os crawlers vierem validar. Submissao usa o
+      # sitemap dinamico (web.routes.seo._build_sitemap_xml), que ja
+      # inclui as 223 cidades + paginas estaticas. Tolerante a falha:
+      # `continue-on-error: true` + `|| true` no script garantem que
+      # IndexNow flaky nao quebra o deploy. Skip silencioso se a env
+      # var INDEXNOW_KEY nao estiver no .env.
+      - name: SEO - IndexNow submit (Bing/Yandex/Yahoo)
+        if: inputs.etl_phase == 'web' || inputs.etl_phase == 'all'
+        continue-on-error: true
+        run: |
+          set -e
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          source .env 2>/dev/null || true
+          if [ -z "${INDEXNOW_KEY:-}" ]; then
+            echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
+            exit 0
+          fi
+          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
+          # Aguarda alguns segundos pra garantir que o cruza-web reiniciou
+          # e a rota /<key>.txt esta servindo (caso crawlers validem na hora).
+          sleep 5
+          python -m web.indexnow_submit 2>&1 || echo "::warning::IndexNow submit falhou — verificar log acima"
 
       # ── Atualizar estatisticas das tabelas hot ANTES do warm ──
       # Sem stats atualizadas, o planner pode escolher planos ruins (ex: hash
