@@ -250,7 +250,8 @@ jobs:
 
       # ── Stop legacy warm-cache daemon + disable auto-update timers FIRST ──
       # Antes de qualquer trabalho pesado, paramos:
-      #   1. Daemon antigo cruza-warm-cache (--loop), que disputa I/O.
+      #   1. Daemon antigo cruza-warm-cache (oneshot --daemon ou --loop), que
+      #      disputa I/O e ignora env vars novos (drop-in WARM_SKIP_RECENT_HOURS).
       #   2. Timers do unattended-upgrade — eles disparam systemctl daemon-reexec
       #      que mata processos longos (warm de 12-18h foi morto antes por isso).
       # Roda incondicionalmente para idempotencia.
@@ -258,15 +259,28 @@ jobs:
         run: |
           set +e
           if systemctl is-active --quiet cruza-warm-cache; then
-            echo "Parando cruza-warm-cache antigo..."
+            echo "Parando cruza-warm-cache antigo (graceful stop)..."
             sudo systemctl stop cruza-warm-cache
+            sleep 3
           fi
           if systemctl is-enabled --quiet cruza-warm-cache; then
             echo "Desabilitando cruza-warm-cache antigo..."
             sudo systemctl disable cruza-warm-cache
           fi
-          # Mata qualquer processo orfao rodando warm_cache --loop diretamente.
-          sudo pkill -f 'warm_cache.*--loop' 2>/dev/null || true
+          # Mata qualquer processo orfao rodando warm_cache (--loop OU --daemon
+          # OU sem args). Match 'web.warm_cache' OR 'warm_cache.py' pra pegar
+          # ambos os modos de invocacao do venv. SIGKILL final pra garantir
+          # estado limpo (drop-in env vars sao lidos so no startup).
+          sudo pkill -f 'web\.warm_cache|warm_cache\.py' 2>/dev/null
+          sleep 2
+          sudo pkill -9 -f 'web\.warm_cache|warm_cache\.py' 2>/dev/null
+          # Loga estado final pra audit (nao falha se vazio).
+          PIDS=$(sudo pgrep -af 'web\.warm_cache|warm_cache\.py' || true)
+          if [ -n "$PIDS" ]; then
+            echo "::warning::warm_cache leftover apos pkill -9: $PIDS"
+          else
+            echo "warm_cache: estado limpo (no leftovers)"
+          fi
 
           # Mask timers de auto-update (idempotente — symlink para /dev/null).
           # Sem isso, apt-daily-upgrade.timer dispara systemctl daemon-reexec que
