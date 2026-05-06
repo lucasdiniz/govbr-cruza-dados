@@ -14,6 +14,7 @@ from web import db
 from web.routes.cidade import router as cidade_router
 from web.routes.mapa import router as mapa_router
 from web.routes.og_image import router as og_router
+from web.routes.contato import build_router as build_contato_router
 
 _dir = Path(__file__).resolve().parent
 
@@ -375,6 +376,7 @@ templates.env.globals["ASSETS_STRICT"] = _ASSETS_STRICT
 app.include_router(cidade_router)
 app.include_router(mapa_router)
 app.include_router(og_router)
+app.include_router(build_contato_router(templates))
 
 
 # Fase 12 - erros amigaveis em vez de stack traces

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Contato{% endblock %}
+{% block meta_description %}Entre em contato com a equipe da TransparenciaPB — sugestoes, correcoes ou parcerias.{% endblock %}
+{% block og_title %}Contato — TransparenciaPB{% endblock %}
+{% block og_description %}Mande uma mensagem pra equipe da TransparenciaPB.{% endblock %}
+{% block content %}
+<section class="contato-page">
+    <header class="contato-head">
+        <h1>Contato</h1>
+        <p class="text-muted">
+            Tem uma sugest&atilde;o, encontrou um erro ou quer reportar um caso?
+            Manda uma mensagem &mdash; respondemos pelo email que voc&ecirc; informar.
+        </p>
+        <p class="text-sm text-muted">
+            <strong>Importante:</strong> este site cruza dados <em>p&uacute;blicos</em>
+            e aponta <em>ind&iacute;cios</em> que merecem verifica&ccedil;&atilde;o.
+            Para denunciar irregularidades formalmente, procure o
+            <a href="https://mppb.mp.br" target="_blank" rel="noopener">MP-PB</a>,
+            o <a href="https://tce.pb.gov.br" target="_blank" rel="noopener">TCE-PB</a>
+            ou a <a href="https://www.gov.br/cgu/pt-br/canais-de-atendimento/ouvidoria" target="_blank" rel="noopener">CGU</a>.
+        </p>
+    </header>
+
+    <form id="contatoForm" class="contato-form" novalidate>
+        <md-outlined-text-field
+            id="contatoNome"
+            name="nome"
+            label="Seu nome (opcional)"
+            type="text"
+            maxlength="100"
+            autocomplete="name">
+        </md-outlined-text-field>
+
+        <md-outlined-text-field
+            id="contatoEmail"
+            name="email"
+            label="Seu email"
+            type="email"
+            required
+            maxlength="254"
+            autocomplete="email"
+            error-text="Email inv&aacute;lido"
+            supporting-text="Vamos responder neste endere&ccedil;o.">
+        </md-outlined-text-field>
+
+        <md-outlined-text-field
+            id="contatoTitulo"
+            name="titulo"
+            label="T&iacute;tulo"
+            type="text"
+            required
+            minlength="3"
+            maxlength="120">
+        </md-outlined-text-field>
+
+        <md-outlined-text-field
+            id="contatoMensagem"
+            name="mensagem"
+            label="Mensagem"
+            type="textarea"
+            rows="8"
+            required
+            minlength="20"
+            maxlength="5000"
+            supporting-text="M&iacute;nimo 20 caracteres, m&aacute;ximo 5000.">
+        </md-outlined-text-field>
+
+        {# Honeypot: bots tendem a preencher TODO campo. Humanos nao veem. #}
+        <input type="text" name="website" id="contatoWebsite" tabindex="-1" autocomplete="off"
+               aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:0;width:0;opacity:0">
+
+        <div class="contato-actions">
+            <md-filled-button id="contatoSubmit" type="button">
+                Enviar mensagem
+            </md-filled-button>
+            <md-text-button id="contatoMailto" type="button" href="mailto:contato@transparenciapb.org" target="_blank" rel="noopener">
+                Ou abrir no seu email
+            </md-text-button>
+            <span class="contato-status text-sm text-muted" aria-live="polite"></span>
+        </div>
+    </form>
+</section>
+
+<script>
+(function(){
+    const form = document.getElementById('contatoForm');
+    if (!form) return;
+    const status = form.querySelector('.contato-status');
+    const submitBtn = document.getElementById('contatoSubmit');
+    const mailtoBtn = document.getElementById('contatoMailto');
+    const CONTATO_DEST = 'contato@transparenciapb.org';
+
+    function fieldVal(id) {
+        const el = document.getElementById(id);
+        return el ? (el.value || '') : '';
+    }
+
+    function setStatus(msg, kind) {
+        status.textContent = msg || '';
+        status.dataset.kind = kind || '';
+    }
+
+    /**
+     * Atualiza o atributo href do botao mailto com subject + body
+     * pre-preenchidos a partir dos campos atuais. Chamado a cada input
+     * pra que clicar no botao "abrir no seu email" leve a mensagem
+     * digitada direto pro cliente de email do usuario.
+     *
+     * Limita o body do mailto a ~1500 chars (pre-encoding) pra evitar
+     * truncamento silencioso por clientes (Gmail web, Outlook). Se a
+     * mensagem for maior, o link traz subject + truncamento + aviso.
+     */
+    const MAILTO_BODY_MAX = 1500;
+
+    function refreshMailto() {
+        if (!mailtoBtn) return;
+        const nome = fieldVal('contatoNome').trim();
+        const email = fieldVal('contatoEmail').trim();
+        const titulo = fieldVal('contatoTitulo').trim();
+        const mensagem = fieldVal('contatoMensagem').trim();
+
+        const subject = titulo || 'Contato via TransparenciaPB';
+        const fromLine = nome
+            ? `De: ${nome}${email ? ' <' + email + '>' : ''}\n\n`
+            : (email ? `De: ${email}\n\n` : '');
+
+        let bodyText = mensagem || '';
+        let truncatedNote = '';
+        const reservedForFromAndNote = fromLine.length + 200;
+        const allowedMessage = MAILTO_BODY_MAX - reservedForFromAndNote;
+        if (bodyText.length > allowedMessage && allowedMessage > 0) {
+            bodyText = bodyText.slice(0, allowedMessage);
+            truncatedNote =
+                '\n\n---\n[Mensagem truncada no link de email. Use o botao "Enviar mensagem" ' +
+                'pra envio completo, ou cole o texto manualmente neste rascunho.]';
+        }
+        const body = `${fromLine}${bodyText}${truncatedNote}`;
+
+        const href = `mailto:${CONTATO_DEST}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        mailtoBtn.setAttribute('href', href);
+    }
+
+    // Refresh inicial e a cada input/change.
+    refreshMailto();
+    form.querySelectorAll('md-outlined-text-field').forEach(el => {
+        el.addEventListener('input', refreshMailto);
+        el.addEventListener('change', refreshMailto);
+    });
+
+    submitBtn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        const nome = fieldVal('contatoNome').trim();
+        const email = fieldVal('contatoEmail').trim();
+        const titulo = fieldVal('contatoTitulo').trim();
+        const mensagem = fieldVal('contatoMensagem').trim();
+        const website = fieldVal('contatoWebsite');
+
+        // Validation parity com o servidor (web/contato.py).
+        if (!email || !email.match(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)) {
+            setStatus('Email invalido.', 'err');
+            document.getElementById('contatoEmail')?.focus();
+            return;
+        }
+        if (email.length > 254) {
+            setStatus('Email muito longo (max 254 chars).', 'err');
+            return;
+        }
+        if (nome.length > 100) {
+            setStatus('Nome muito longo (max 100 chars).', 'err');
+            return;
+        }
+        if (titulo.length < 3) {
+            setStatus('Titulo curto demais (minimo 3 caracteres).', 'err');
+            document.getElementById('contatoTitulo')?.focus();
+            return;
+        }
+        if (titulo.length > 120) {
+            setStatus('Titulo muito longo (max 120 chars).', 'err');
+            return;
+        }
+        if (mensagem.length < 20) {
+            setStatus('Mensagem curta demais (minimo 20 caracteres).', 'err');
+            document.getElementById('contatoMensagem')?.focus();
+            return;
+        }
+        if (mensagem.length > 5000) {
+            setStatus('Mensagem muito longa (max 5000 chars).', 'err');
+            return;
+        }
+
+        submitBtn.setAttribute('disabled', '');
+        setStatus('Enviando...', '');
+
+        try {
+            const r = await fetch('/api/contato', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ nome, email, titulo, mensagem, website }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (r.ok && data.ok) {
+                setStatus('Mensagem enviada. Obrigado!', 'ok');
+                form.reset();
+                refreshMailto();
+            } else if (r.status === 422 && data.error) {
+                // Servidor pode ser mais estrito que o cliente (ex: regex
+                // de email mais restrita). Foca o campo email — chute mais
+                // provavel — e mostra o erro do servidor em PT-BR.
+                setStatus(data.error, 'err');
+                if (/email/i.test(data.error)) {
+                    document.getElementById('contatoEmail')?.focus();
+                }
+            } else {
+                setStatus(data.error || `Falha ao enviar (HTTP ${r.status}).`, 'err');
+            }
+        } catch (err) {
+            setStatus('Erro de conexao. Tente novamente.', 'err');
+        } finally {
+            submitBtn.removeAttribute('disabled');
+        }
+    });
+})();
+</script>
+{% endblock %}

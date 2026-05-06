@@ -111,6 +111,10 @@
                 <md-menu-item data-fontlevel="xl">
                     <div slot="headline">Fonte extra grande</div>
                 </md-menu-item>
+                <md-divider role="separator"></md-divider>
+                <md-menu-item href="/contato">
+                    <div slot="headline">Contato</div>
+                </md-menu-item>
             </md-menu>
         </div>
     </nav>
@@ -124,6 +128,7 @@
                 {% if DATA_REFRESH_DATE %}Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.{% endif %}
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
                 &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
+                &middot; <a href="/contato" class="footer-link">Contato</a>
                 &middot; <button type="button" id="tourRestart" class="link-btn footer-link" style="display:none">Como usar</button>
             </span>
         </div>

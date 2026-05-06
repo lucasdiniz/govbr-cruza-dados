@@ -377,6 +377,23 @@ jobs:
 
           echo "=== Code deployed. Data dir: $DATA ==="
 
+      # ── Apply application-level schemas (idempotent) ──
+      # Schemas que a aplicacao web depende mas que NAO sao parte do
+      # pipeline ETL (run_all). Devem ser CREATE IF NOT EXISTS / idempotentes.
+      # Aplicados em todo deploy (cheap; sao DDLs com IF NOT EXISTS).
+      - name: Apply web app schemas
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          for sql_file in sql/40_contato_messages.sql; do
+            if [ -f "$sql_file" ]; then
+              echo "=== Applying $sql_file ==="
+              PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f "$sql_file"
+            fi
+          done
+
       # ── Apply PostgreSQL auto-tuning based on detected RAM ──
       # Idempotente: roda em todo deploy. Detecta RAM via /proc/meminfo e ajusta
       # shared_buffers / effective_cache / work_mem / maintenance_work_mem.
