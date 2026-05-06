@@ -29,6 +29,59 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="govbr-cruza-dados", lifespan=lifespan)
 
+# ─────────────────────────────────────────────────────────────────────────
+# API defense middleware: bloqueia POSTs em /api/* que nao tenham Origin
+# ou Referer batendo com hosts permitidos. Filtra scripts (curl, requests,
+# scrapy) que nao setam Origin por default. NAO eh seguranca contra
+# atacante motivado (Origin eh trivial de forjar), mas elimina ~90% do
+# noise de bots/automation casual sem prejudicar UX de browser legitimo.
+# ─────────────────────────────────────────────────────────────────────────
+
+_ALLOWED_API_HOSTS = {
+    "transparenciapb.org",
+    "www.transparenciapb.org",
+    "localhost",
+    "127.0.0.1",
+}
+
+
+def _host_from_url(value: str) -> str:
+    """Extrai 'host' (netloc sem porta) de uma URL ou retorna ''."""
+    if not value:
+        return ""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(value)
+        netloc = (parsed.netloc or "").lower()
+        if ":" in netloc:
+            netloc = netloc.split(":", 1)[0]
+        return netloc
+    except Exception:
+        return ""
+
+
+@app.middleware("http")
+async def api_origin_guard(request: Request, call_next):
+    """Rejeita POST /api/* se Origin nao bate com hosts permitidos.
+
+    GETs ficam livres (autocomplete, heatmap, export usam GET) — sao
+    cacheaveis e idempotentes. POSTs sao os que causam carga de DB.
+    """
+    if request.method == "POST" and request.url.path.startswith("/api/"):
+        origin_host = _host_from_url(request.headers.get("origin", ""))
+        # Fallback: alguns clients (e GitHub link previews) nao setam Origin
+        # mas setam Referer. Aceita qualquer um.
+        referer_host = _host_from_url(request.headers.get("referer", ""))
+        request_host = origin_host or referer_host
+        if not request_host or request_host not in _ALLOWED_API_HOSTS:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                {"error": "Forbidden: Origin/Referer não permitido"},
+                status_code=403,
+            )
+    return await call_next(request)
+
+
 app.mount("/static", StaticFiles(directory=_dir / "static"), name="static")
 
 templates = Jinja2Templates(directory=_dir / "templates")
