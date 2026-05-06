@@ -24,7 +24,7 @@
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_liquidacao_desconto(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE
   n int;
   total bigint := 0;
@@ -52,7 +52,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_empenho_anulacao(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP
@@ -76,7 +76,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_empenho_suplementacao(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP
@@ -100,7 +100,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_diaria(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP
@@ -124,7 +124,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_dotacao(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP
@@ -150,7 +150,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_aditivo_contrato(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP
@@ -177,7 +177,7 @@ END $$;
 
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_pb_aditivo_convenio(batch_size int DEFAULT 50000)
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE n int; total bigint := 0;
 BEGIN
   LOOP

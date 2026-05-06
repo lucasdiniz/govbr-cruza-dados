@@ -170,24 +170,21 @@ def conditional_download(
                     bytes_dl += len(chunk)
 
             content_sha = sha.hexdigest()
-            # Atomic rename .partial → final
-            if dest_path.exists():
-                dest_path.unlink()
-            partial_path.rename(dest_path)
 
             # Detect "Arquivo Sendo Processado" HTML page (server returns 200 OK
-            # with HTML stub instead of CSV). Don't rename to final, mark as failed.
-            # Re-read first bytes of dest_path:
+            # with HTML stub instead of CSV). Inspect the .partial file BEFORE
+            # renaming to dest_path — otherwise we'd destroy the previously
+            # cached good CSV when the server intermittently serves the stub.
             try:
-                with open(dest_path, "rb") as fchk:
+                with open(partial_path, "rb") as fchk:
                     head = fchk.read(64)
                 if head.lstrip().startswith(b"<!DOCTYPE") or head.lstrip().startswith(b"<html"):
                     logger.warning(
-                        "server returned HTML placeholder for %s (likely 'Arquivo Sendo Processado'); skipping",
-                        dest_path.name,
+                        "server returned HTML placeholder for %s (likely 'Arquivo Sendo Processado'); "
+                        "discarding new download, preserving any existing CSV",
+                        partial_path.name,
                     )
-                    # Remove the file so loader doesn't try to parse HTML as CSV
-                    dest_path.unlink()
+                    partial_path.unlink()
                     return DownloadResult(
                         status="failed",
                         content_changed=False,
@@ -195,8 +192,13 @@ def conditional_download(
                         bytes_downloaded=0,
                         error="server returned HTML placeholder (Arquivo Sendo Processado)",
                     )
-            except Exception:
+            except FileNotFoundError:
                 pass
+
+            # Atomic rename .partial → final
+            if dest_path.exists():
+                dest_path.unlink()
+            partial_path.rename(dest_path)
 
             content_changed = (prev_sha != content_sha)
             logger.info(

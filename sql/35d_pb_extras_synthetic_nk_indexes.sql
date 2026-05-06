@@ -21,6 +21,33 @@
 --
 -- IDEMPOTENT: IF NOT EXISTS evita erro se index já existe.
 
+-- IDEMPOTENT + SELF-HEALING: pre-drop any INVALID index from a previous failed
+-- CONCURRENTLY build before retrying. PG marks failed CONCURRENTLY indexes as
+-- indisvalid=false but keeps the catalog entry, which would cause IF NOT EXISTS
+-- to silently skip recreation, leaving the uniqueness guarantee absent.
+
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.relname FROM pg_class c
+    JOIN pg_index i ON c.oid = i.indexrelid
+    WHERE c.relname IN (
+      'ix_pb_liquidacao_desconto_nk_md5',
+      'ix_pb_empenho_anulacao_nk_md5',
+      'ix_pb_empenho_suplementacao_nk_md5',
+      'ix_pb_diaria_nk_md5',
+      'ix_pb_dotacao_nk_md5',
+      'ix_pb_aditivo_contrato_nk_md5',
+      'ix_pb_aditivo_convenio_nk_md5'
+    ) AND NOT i.indisvalid
+  LOOP
+    RAISE NOTICE 'Dropping INVALID index % from prior failed run', r.relname;
+    EXECUTE format('DROP INDEX %I', r.relname);
+  END LOOP;
+END $$;
+
+
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_pb_liquidacao_desconto_nk_md5
   ON pb_liquidacao_desconto (_nk_md5);
 
@@ -43,7 +70,15 @@ CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_pb_aditivo_convenio_nk_md5
   ON pb_aditivo_convenio (_nk_md5);
 
 
--- Validation query (rode após para confirmar que TODOS os 7 indexes ficaram VALID):
--- SELECT indexrelid::regclass, indisvalid FROM pg_index
--- WHERE indexrelid::text LIKE 'ix_pb_%_nk_md5';
--- (todos devem mostrar indisvalid=true)
+-- Validation: assert all 7 indexes are VALID after creation. If any returns
+-- false here, a uniqueness violation occurred (re-run sql/35c first).
+DO $$
+DECLARE bad int;
+BEGIN
+  SELECT count(*) INTO bad FROM pg_class c
+  JOIN pg_index i ON c.oid = i.indexrelid
+  WHERE c.relname LIKE 'ix_pb_%_nk_md5' AND NOT i.indisvalid;
+  IF bad > 0 THEN
+    RAISE EXCEPTION '% _nk_md5 index(es) are INVALID; check duplicates before retrying', bad;
+  END IF;
+END $$;

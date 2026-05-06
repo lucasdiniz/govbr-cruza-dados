@@ -50,15 +50,16 @@ def _data_dir_for_source(source: str, base: Path) -> Path:
     return base / source
 
 
-def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> None:
-    """Bootstrap automatico de specs ainda sem etl_watermark row.
+def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
+    """Bootstrap automatico de specs ainda sem etl_watermark row OU sem
+    bootstrap_target_max preenchido (caso de bootstrap parcial anterior).
 
-    Idempotent: se watermark ja existe (mesmo que com bootstrap_target_max NULL
-    de versao antiga), skip. Evita re-bootstrap acidental que perderia o
-    baseline original.
+    Idempotent: skip apenas se bootstrap_target_max IS NOT NULL (estado completo).
 
     Em prod: garante que primeira run apos deploy tenha 'foto inicial' do
-    target capturada antes de qualquer mutacao.
+    target capturada antes de qualquer mutacao. Falhas de bootstrap são
+    tratadas como FATAL: retorna lista de spec keys com falha pra runner
+    abortar antes de mutar targets sem baseline.
     """
     import psycopg2
 
@@ -66,24 +67,28 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> None:
         from etl.incremental.bootstrap_watermark import _bootstrap_one
     except ImportError:
         logger.warning("bootstrap_watermark module not available; skipping auto-bootstrap")
-        return
+        return []
 
     needs_bootstrap = []
     with psycopg2.connect(govbr_dsn) as conn:
         with conn.cursor() as cur:
             for key, spec in specs_to_run.items():
                 cur.execute(
-                    "SELECT 1 FROM etl_watermark WHERE source=%s AND table_name=%s",
+                    """SELECT bootstrap_target_max, bootstrapped_at
+                       FROM etl_watermark
+                       WHERE source=%s AND table_name=%s""",
                     (spec.source, spec.table),
                 )
-                if cur.fetchone() is None:
+                row = cur.fetchone()
+                # needs bootstrap if: row absent, OR row exists with bootstrap fields NULL
+                if row is None or row[0] is None or row[1] is None:
                     needs_bootstrap.append((key, spec))
 
     if not needs_bootstrap:
-        return
+        return []
 
-    logger.info("Auto-bootstrap: %d spec(s) without watermark row → bootstrapping",
-                len(needs_bootstrap))
+    logger.info("Auto-bootstrap: %d spec(s) needing bootstrap", len(needs_bootstrap))
+    failed_keys = []
     with psycopg2.connect(govbr_dsn) as conn:
         for key, spec in needs_bootstrap:
             try:
@@ -94,8 +99,8 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> None:
                     logger.info("Auto-bootstrap: %s skipped (already bootstrapped)", key)
             except Exception as e:
                 logger.exception("Auto-bootstrap: %s FAILED: %s", key, e)
-                # Don't abort — let the run continue; spec without bootstrap
-                # will still work, just without baseline checks.
+                failed_keys.append(key)
+    return failed_keys
 
 
 def main():
@@ -136,9 +141,18 @@ def main():
 
     logger.info("Running %d specs: %s", len(specs_to_run), list(specs_to_run.keys()))
 
-    # Auto-bootstrap: any spec sem watermark row recebe bootstrap automatico.
-    # Skip se ja foi feito (idempotent). Evita esquecimento operacional.
-    _auto_bootstrap_if_needed(specs_to_run, args.govbr_dsn)
+    # Auto-bootstrap: any spec without etl_watermark row OR with NULL bootstrap
+    # fields gets bootstrapped automatically. Failed bootstraps remove that
+    # spec from the run to prevent mutating targets without baseline snapshot.
+    bootstrap_failed = _auto_bootstrap_if_needed(specs_to_run, args.govbr_dsn)
+    if bootstrap_failed:
+        logger.error("Removing specs with failed bootstrap from this run: %s",
+                     bootstrap_failed)
+        for key in bootstrap_failed:
+            specs_to_run.pop(key, None)
+        if not specs_to_run:
+            logger.error("All specs failed bootstrap; aborting.")
+            return 3
 
     from etl.incremental.orchestrator import run_incremental_for_source
 

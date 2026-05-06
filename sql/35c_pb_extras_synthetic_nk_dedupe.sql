@@ -49,9 +49,13 @@ DECLARE
   total_deleted bigint := 0;
   n int;
 BEGIN
-  -- Build list of ids to delete (in temp table, single CTE, fast scan)
+  -- IMPORTANT: We use a regular TEMP TABLE WITHOUT `ON COMMIT DROP`.
+  -- A procedure's COMMIT inside a loop would drop ON COMMIT DROP temp tables,
+  -- causing iteration 2+ to fail with "relation does not exist". Instead we
+  -- DROP IF EXISTS at start (idempotent on retry) and again at end.
+  EXECUTE 'DROP TABLE IF EXISTS _ids_to_delete';
   EXECUTE format($f$
-    CREATE TEMP TABLE _ids_to_delete ON COMMIT DROP AS
+    CREATE TEMP TABLE _ids_to_delete AS
     SELECT id FROM (
       SELECT id, ROW_NUMBER() OVER (PARTITION BY _nk_md5 ORDER BY id) AS rn
       FROM %I
@@ -76,16 +80,18 @@ BEGIN
     EXIT WHEN n = 0;
 
     -- Remove deleted ids from temp list to avoid re-scanning
-    EXECUTE format($f$
-      DELETE FROM _ids_to_delete WHERE id IN (
-        SELECT id FROM _ids_to_delete LIMIT %s
-      )
-    $f$, batch_size);
+    DELETE FROM _ids_to_delete WHERE id IN (
+      SELECT id FROM _ids_to_delete LIMIT batch_size
+    );
 
     total_deleted := total_deleted + n;
     RAISE NOTICE '%: deleted % (total %)', table_name, n, total_deleted;
     COMMIT;
   END LOOP;
+
+  -- Cleanup temp table explicitly (since not ON COMMIT DROP).
+  -- Survives across COMMIT, so safe to DROP after loop completes.
+  DROP TABLE _ids_to_delete;
 
   RAISE NOTICE '%: DONE - total % rows deleted', table_name, total_deleted;
 END

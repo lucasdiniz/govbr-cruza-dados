@@ -15,7 +15,10 @@
 
 CREATE OR REPLACE FUNCTION etl_admin.row_hash_md5(VARIADIC vals text[])
 RETURNS text AS $func$
-  SELECT md5(array_to_string(vals, '|'))
+  -- Use JSON serialization to avoid delimiter collision: '|'.join(['a|b','c'])
+  -- vs '|'.join(['a','b|c']) both produce 'a|b|c' (different inputs, same hash).
+  -- array_to_json escapes embedded quotes/separators, ensuring injectivity.
+  SELECT md5(array_to_json(vals)::text)
 $func$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog, public;
 
 GRANT EXECUTE ON FUNCTION etl_admin.row_hash_md5(VARIADIC text[]) TO PUBLIC;

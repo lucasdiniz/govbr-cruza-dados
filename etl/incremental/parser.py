@@ -236,6 +236,11 @@ def _fallback_split_row(parsed_row: list, spec) -> Optional[list]:
     csv.reader vê `"";"` como escape `"` + `;` interno + outro field, agregando
     múltiplos campos em um. Esse fallback ignora o quoting e splita por delim,
     depois strip aspas decorativas. Retorna None se ainda não bater ncols.
+
+    SAFETY: rejeita o fallback se algum campo resultante AINDA contém aspas
+    interiores (p.ex. campo legítimo com vírgula+aspas dentro do texto), porque
+    nesses casos o split sem quote-honor pode ter quebrado em delimitadores
+    legítimamente quoted, produzindo cols-count "correto" com fields shifted.
     """
     if not parsed_row:
         return None
@@ -254,6 +259,11 @@ def _fallback_split_row(parsed_row: list, spec) -> Optional[list]:
             s = s[1:]
         if s.endswith(q):
             s = s[:-1]
+        # SAFETY: any remaining quotechar inside a field is suspicious.
+        # Either it's a legit field with quoted text we just broke, or a
+        # malformed quote. Reject the recovery to send row to DLQ.
+        if q in s:
+            return None
         cleaned.append(s)
     return cleaned
 

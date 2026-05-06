@@ -68,8 +68,18 @@ class HeartbeatThread(threading.Thread):
         # Conexão dedicada autocommit
         conn = None
         try:
-            conn = psycopg2.connect(self.dsn)
-            conn.autocommit = True
+            try:
+                conn = psycopg2.connect(self.dsn)
+                conn.autocommit = True
+            except psycopg2.Error as e:
+                # FATAL: cannot connect at all. Fence the run immediately
+                # so master conn doesn't proceed without a heartbeat.
+                logger.error(
+                    "heartbeat run %s: initial connect FAILED (fencing): %s",
+                    self.run_id, e,
+                )
+                self.fence_event.set()
+                return
 
             while not self.stop_event.is_set():
                 try:
