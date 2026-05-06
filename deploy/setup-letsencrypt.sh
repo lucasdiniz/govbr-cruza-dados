@@ -74,6 +74,26 @@ if [[ -f "${RATE_LIMIT_ZONES_SRC}" ]]; then
     log "Rate limit zones instaladas em ${RATE_LIMIT_ZONES_PATH}"
 fi
 
+# 3c) Garantir traversal de /home/<user>/ pra nginx servir static via alias.
+# Por padrao, /home/<user> eh drwxr-x--- (no traversal por outros). nginx
+# (www-data) precisa de execute bit pra atravessar ate o project_root e ler
+# /home/govbr/govbr-project/web/static/. Sem isso, todo /static/* retorna 404.
+# O parent /home (drwxr-xr-x) ja eh OK; so falta o homedir do owner.
+project_root="${PROJECT_ROOT:-/home/govbr/govbr-project}"
+home_parent="$(dirname "${project_root}")"
+if [[ -d "${home_parent}" ]]; then
+    chmod o+x "${home_parent}" 2>/dev/null || true
+    log "chmod o+x ${home_parent} (nginx traversal pro project_root)"
+fi
+# Pode haver pai intermediario (ex: se project_root for /home/govbr/sub/proj,
+# precisamos +x em /home/govbr E /home/govbr/sub). Aplica recursive nos
+# parents ate o common ancestor /home (que ja tem +x default).
+parent="$(dirname "${project_root}")"
+while [[ "${parent}" != "/" && "${parent}" != "/home" && "${parent}" != "" ]]; do
+    chmod o+x "${parent}" 2>/dev/null || true
+    parent="$(dirname "${parent}")"
+done
+
 # 4) Garantir sites-enabled apontando para o nosso config (não para o default)
 ln -sf "${NGINX_SITE_PATH}" /etc/nginx/sites-enabled/cruza
 rm -f /etc/nginx/sites-enabled/default
