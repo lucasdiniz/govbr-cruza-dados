@@ -532,26 +532,9 @@
     #mapa-pb { height: 75vh; min-height: 0; }
 }
 
-/* Chevron em linhas clicaveis (apenas mobile, e SO em tabelas que NAO sao stack-mobile,
-   pois nos cards empilhados a seta atrapalha o layout label/valor) */
-@media (max-width: 640px) {
-    .clickable-row { position: relative; }
-    table:not(.stack-mobile) .clickable-row td:last-child {
-        padding-right: 1.6rem;
-    }
-    table:not(.stack-mobile) .clickable-row td:last-child::after {
-        content: "›";
-        position: absolute;
-        right: 0.6rem;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #60a5fa;
-        font-size: 1.1rem;
-        font-weight: 400;
-        pointer-events: none;
-        opacity: 0.7;
-    }
-}
+/* Mobile: chevron e indicador clickable agora vem do data-table.css
+   (aplicado a desktop tambem). Aqui mantemos so estilos mobile-only
+   pra outros componentes. */
 
 /* ────────────────────────────────────────────────────────────────────
    Swipe-down close pull tab (mobile)

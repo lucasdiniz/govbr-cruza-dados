@@ -103,14 +103,89 @@ tr:hover {
     border-color: var(--md-sys-color-primary);
 }
 
-/* Clickable rows */
-.clickable-row { cursor: pointer; }
+/* Clickable rows.
+   Affordance: indicador visual PERMANENTE de que a linha eh interativa.
+   - chevron `›` no fim da linha (desktop e mobile)
+   - primeiro cell (nome) ganha cor primary + underline em hover (estilo link)
+   - hover layer mais visivel que tr:hover generico */
+.clickable-row { cursor: pointer; position: relative; }
+
+/* Desktop / table standard (NAO stack-mobile): chevron no canto direito
+   do ultimo td (alinha com a borda da tabela). */
+table:not(.stack-mobile) .clickable-row td:last-child {
+    padding-right: 1.6rem;
+}
+table:not(.stack-mobile) .clickable-row td:last-child::after {
+    content: "›";
+    position: absolute;
+    right: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--md-sys-color-primary);
+    font-size: 1.1rem;
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+table:not(.stack-mobile) .clickable-row:hover td:last-child::after,
+table:not(.stack-mobile) .clickable-row:focus-visible td:last-child::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(2px);
+}
+
+/* Stack-mobile: chevron no card inteiro (canto sup. direito porque o
+   stack-title eh a primeira linha e o chevron deve ficar pareado com
+   ela, nao com a ultima stat). */
+table.stack-mobile .clickable-row::after {
+    content: "›";
+    position: absolute;
+    right: 0.7rem;
+    top: 0.6rem;
+    color: var(--md-sys-color-primary);
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1;
+    pointer-events: none;
+    opacity: 0.6;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+table.stack-mobile .clickable-row:hover::after,
+table.stack-mobile .clickable-row:focus-visible::after {
+    opacity: 1;
+    transform: translateX(2px);
+}
+
+/* Primeiro cell parece link: cor primary nas linhas clicaveis. Em
+   stack-mobile so o .stack-title (nome principal) ganha esse tratamento
+   pra nao esverdear todos os pares label/valor. */
+table:not(.stack-mobile) .clickable-row td:first-child,
+table.stack-mobile .clickable-row .stack-title {
+    color: var(--md-sys-color-primary);
+    font-weight: 500;
+}
+table:not(.stack-mobile) .clickable-row:hover td:first-child,
+table:not(.stack-mobile) .clickable-row:focus-visible td:first-child,
+table.stack-mobile .clickable-row:hover .stack-title,
+table.stack-mobile .clickable-row:focus-visible .stack-title {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
 .clickable-row:hover {
     background: color-mix(in oklab, var(--md-sys-color-primary) 12%, transparent);
 }
+.clickable-row:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: -2px;
+}
+
 /* Severity row tints (M3 container colors).
    Container colors are tinted by the page surface so we keep them visible
-   on the navy bg. Hover layer is the on-container at 12% opacity. */
+   on the navy bg. Hover layer is the on-container at 12% opacity.
+   Mantem cor primary no nome do primeiro cell (clickable link cue) — o
+   container colorido nao sobrescreve. */
 .row-sancao {
     background: color-mix(in oklab, var(--md-sys-color-error-container) 50%, transparent);
 }
@@ -126,6 +201,17 @@ tr:hover {
 .row-detail-unavailable {
     cursor: default;
 }
+/* Quando o detalhe nao esta disponivel, esconde a affordance pra nao
+   prometer clique que nao funciona. */
+table:not(.stack-mobile) .row-detail-unavailable td:last-child::after,
+table.stack-mobile .row-detail-unavailable::after { content: ""; }
+table:not(.stack-mobile) .row-detail-unavailable td:first-child,
+table.stack-mobile .row-detail-unavailable .stack-title {
+    color: inherit;
+    font-weight: inherit;
+}
+.row-detail-unavailable:hover td:first-child,
+.row-detail-unavailable:hover .stack-title { text-decoration: none; }
 .row-detail-unavailable:hover { background: transparent; }
 .row-detail-unavailable.row-sancao:hover {
     background: color-mix(in oklab, var(--md-sys-color-error-container) 50%, transparent);
