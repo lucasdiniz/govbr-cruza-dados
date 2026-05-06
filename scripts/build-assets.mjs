@@ -129,23 +129,45 @@ async function concatFiles(rootDir, relativePaths) {
 // JS bundle pipeline
 // ─────────────────────────────────────────────────────────────────────────
 
+// Funcoes que sao chamadas DIRETO de inline <script> em templates.
+// Wrappar o bundle num IIFE manglaria estes nomes; precisamos re-expo-las
+// explicitamente em window pra que continuem chamaveis.
+//
+// Como descobrir o que vai aqui: grep nos templates por chamadas de funcao
+// JS de top-level scripts (não dentro de DOMContentLoaded handler do bundle).
+//
+// As funcoes do bundle que ja fazem `window.X = X` no source (md3-ready,
+// column-meta, dual-label, dialog-url-state) NAO precisam estar aqui —
+// quando manglada `Y = X` continua atribuindo a referencia da funcao.
+const JS_GLOBAL_EXPORTS = {
+    core: [
+        "bootstrapCityReport", // chamada em web/templates/results/cidade.html
+    ],
+    mapa: [],
+};
+
 async function buildJsBundle({ name, sources, manifest }) {
     log(`JS bundle "${name}": ${sources.length} arquivo(s)`);
     const concatenated = await concatFiles(JS_DIR, sources);
 
-    // Sourcemaps DESABILITADOS pra bundles JS porque:
-    // - Concatenamos arquivos manualmente antes do esbuild → o sourcemap
-    //   resultante mapeia tudo pra um único "core-concat.js" virtual, sem
-    //   valor de debugging real (não aponta pros 56 arquivos originais).
-    // - Pra ter sourcemap útil precisaríamos gerar uma source-map indexada
-    //   manualmente (offset por arquivo) — complexidade não justificável
-    //   pra um app open-source onde o source completo está no GitHub.
-    // - Pra mapa.js (1 arquivo só), seria útil mas mantemos consistência.
+    // Wrap em IIFE para fechar o escopo top-level: dentro de (function(){})()
+    // todas as funcoes/variaveis declaradas no concat sao "locais" e o
+    // esbuild minifyIdentifiers manglara seus nomes.
+    //
+    // Sem o IIFE, esbuild nao mangla top-level (porque se assume que sao
+    // visiveis externamente). Com IIFE + lista explicita de re-exports,
+    // ofuscamos efetivamente todo o bundle.
+    const exports_ = JS_GLOBAL_EXPORTS[name] || [];
+    const exportLines = exports_
+        .map((fn) => `if (typeof ${fn} !== 'undefined') window.${fn} = ${fn};`)
+        .join("\n");
+    const wrapped = `(function(){\n${concatenated}\n;\n${exportLines}\n})();`;
+
     const result = await esbuild({
         stdin: {
-            contents: concatenated,
+            contents: wrapped,
             loader: "js",
-            sourcefile: `${name}-concat.js`,
+            sourcefile: `${name}-bundle.js`,
             resolveDir: JS_DIR,
         },
         format: undefined,
@@ -191,11 +213,14 @@ async function buildCssBundle({ name, entry, manifest }) {
         bundle: true,
         minify: true,
         loader: { ".css": "css" },
-        // outdir necessário pra esbuild gerar sourcemap external.
-        // write: false impede gravação real (capturamos em memória).
         outdir: DIST_STAGING_DIR,
-        sourcemap: "external",
-        sourcesContent: false,
+        // Sourcemap DESABILITADO em prod: o repo nao eh divulgado publicamente
+        // e expor o sourcemap revelaria a estrutura completa de @imports e
+        // arquivos originais (52 components/*.css), facilitando reverse-eng
+        // de superficie de ataque pra atores mal-intencionados.
+        // Pra debug local, rodar sem ASSETS_STRICT serve assets raw com cache
+        // buster ?v=ASSET_VERSION (vide _ASSET_RAW_FALLBACKS em web/main.py).
+        sourcemap: false,
         write: false,
         legalComments: "none",
         charset: "utf8",
@@ -207,24 +232,16 @@ async function buildCssBundle({ name, entry, manifest }) {
     }
 
     const cssOut = result.outputFiles.find((f) => f.path.endsWith(".css"));
-    const mapOut = result.outputFiles.find((f) => f.path.endsWith(".map"));
     if (!cssOut) throw new Error(`Sem output CSS para bundle ${name}`);
 
-    // Hash baseado no conteúdo SEM o sourceMappingURL comment — assim o hash
-    // é estavel independente de como esbuild nomeia o sourcemap output.
-    const codeNoMap = cssOut.text.replace(/\/\*#\s*sourceMappingURL=.+?\*\/\s*$/m, "").trimEnd();
-    const hash = contentHash(codeNoMap);
+    const code = cssOut.text;
+    const hash = contentHash(code);
     const filename = `${name}.${hash}.min.css`;
-    const mapName = `${filename}.map`;
-    const finalCode = `${codeNoMap}\n/*# sourceMappingURL=${mapName} */\n`;
 
-    await writeFile(path.join(DIST_STAGING_DIR, filename), finalCode);
-    if (mapOut) {
-        await writeFile(path.join(DIST_STAGING_DIR, mapName), mapOut.contents);
-    }
+    await writeFile(path.join(DIST_STAGING_DIR, filename), code);
 
     manifest[`${name}.css`] = filename;
-    log(`  -> ${filename} (${(finalCode.length / 1024).toFixed(1)} KB)`);
+    log(`  -> ${filename} (${(code.length / 1024).toFixed(1)} KB)`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
