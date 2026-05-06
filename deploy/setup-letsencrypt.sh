@@ -107,12 +107,16 @@ cert_covers_expected_domains() {
 if cert_covers_expected_domains; then
     log "Cert presente em ${CERT_PATH} cobrindo ${DOMAIN} e ${WWW_DOMAIN}. Pulando emissão."
 else
+    # Em qualquer caso onde precisamos rodar certbot --webroot, o nginx
+    # precisa estar servindo /.well-known/acme-challenge/ a partir do
+    # WEBROOT. Sem garantir o config bootstrap, um cert com SANs errados
+    # ou um setup parcial causaria falha de validacao ACME.
     if [[ -f "${CERT_PATH}" ]]; then
         log "Cert existe mas SANs não batem. Vou expandir/reemitir."
     else
         log "Cert ainda não emitido. Iniciando bootstrap."
-        install_nginx_config "${NGINX_BOOTSTRAP_CONF}" "bootstrap HTTP-only"
     fi
+    install_nginx_config "${NGINX_BOOTSTRAP_CONF}" "bootstrap HTTP-only"
 
     CERTBOT_ARGS=(
         certonly
