@@ -32,8 +32,10 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NGINX_BOOTSTRAP_CONF="${REPO_DIR}/deploy/nginx-cruza-http-only.conf"
 NGINX_FULL_CONF="${REPO_DIR}/deploy/nginx-cruza.conf"
 SSL_PARAMS_SRC="${REPO_DIR}/deploy/ssl-params.conf"
+RATE_LIMIT_ZONES_SRC="${REPO_DIR}/deploy/nginx-rate-limit-zones.conf"
 NGINX_SITE_PATH="/etc/nginx/sites-available/cruza"
 SSL_PARAMS_PATH="/etc/nginx/snippets/ssl-params.conf"
+RATE_LIMIT_ZONES_PATH="/etc/nginx/conf.d/transparenciapb-zones.conf"
 WEBROOT="/var/www/certbot"
 CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 
@@ -63,6 +65,14 @@ chown -R www-data:www-data "${WEBROOT}" 2>/dev/null || true
 # 3) Vendor SSL params snippet (compartilhado entre os server blocks HTTPS)
 mkdir -p "$(dirname "${SSL_PARAMS_PATH}")"
 install -m 0644 "${SSL_PARAMS_SRC}" "${SSL_PARAMS_PATH}"
+
+# 3b) Vendor rate limit zones (http context — precisa estar em conf.d/).
+# Se o arquivo nao existe (branch sem hardening ainda), pula silenciosamente.
+if [[ -f "${RATE_LIMIT_ZONES_SRC}" ]]; then
+    mkdir -p "$(dirname "${RATE_LIMIT_ZONES_PATH}")"
+    install -m 0644 "${RATE_LIMIT_ZONES_SRC}" "${RATE_LIMIT_ZONES_PATH}"
+    log "Rate limit zones instaladas em ${RATE_LIMIT_ZONES_PATH}"
+fi
 
 # 4) Garantir sites-enabled apontando para o nosso config (não para o default)
 ln -sf "${NGINX_SITE_PATH}" /etc/nginx/sites-enabled/cruza

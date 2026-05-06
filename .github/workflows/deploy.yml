@@ -377,6 +377,41 @@ jobs:
 
           echo "=== Code deployed. Data dir: $DATA ==="
 
+      # ── Build frontend assets (esbuild concat + minify + manifest) ──
+      # Roda APOS git reset, IN ${PROJECT_DIR}, porque dist/ é gitignored e
+      # nao seria rsync'ed. Instala Node 22 via NodeSource (idempotente —
+      # so reinstala se /usr/bin/node ausente).
+      #
+      # Roda em TODOS os deploys (incluindo etl_phase=sql/web) porque
+      # cruza-web.service eh restart unconditionally e tem ASSETS_STRICT=1
+      # — sem manifest fresco o app falha no boot.
+      - name: Build frontend assets
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+
+          if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+          fi
+          node --version
+          npm --version
+
+          # Reinstala node_modules apenas se package-lock.json mudou.
+          LOCK_HASH_FILE=".node_modules.lockhash"
+          NEW_HASH=$(sha256sum package-lock.json | awk '{print $1}')
+          OLD_HASH=$(cat "$LOCK_HASH_FILE" 2>/dev/null || echo "")
+          if [ ! -d "node_modules" ] || [ "$NEW_HASH" != "$OLD_HASH" ]; then
+            echo "[build-assets] reinstalando node_modules..."
+            npm ci --no-audit --no-fund
+            echo "$NEW_HASH" > "$LOCK_HASH_FILE"
+          fi
+
+          node scripts/build-assets.mjs
+
+          echo "=== Asset build OK ==="
+          ls -la web/static/dist/
+
       # ── Apply PostgreSQL auto-tuning based on detected RAM ──
       # Idempotente: roda em todo deploy. Detecta RAM via /proc/meminfo e ajusta
       # shared_buffers / effective_cache / work_mem / maintenance_work_mem.
