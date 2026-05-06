@@ -68,6 +68,12 @@ install -m 0644 "${SSL_PARAMS_SRC}" "${SSL_PARAMS_PATH}"
 ln -sf "${NGINX_SITE_PATH}" /etc/nginx/sites-enabled/cruza
 rm -f /etc/nginx/sites-enabled/default
 
+# Limpar override temporário criado durante setup manual de bootstrap
+# (ver instruções de emissão manual). Nosso config completo já contempla
+# o ACME challenge no server block :80, então o override não é mais necessário
+# e deixá-lo causaria conflito de server_name na :80.
+rm -f /etc/nginx/conf.d/acme-challenge.conf
+
 # Helper: copia config atomicamente (evita corrida com renewal-hook reload)
 install_nginx_config() {
     local src="$1"
