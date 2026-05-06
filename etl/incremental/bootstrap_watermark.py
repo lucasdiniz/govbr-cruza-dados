@@ -107,9 +107,11 @@ def _bootstrap_one(govbr_conn, spec, *, force: bool = False) -> bool:
     # We bypass via direct INSERT (initial) ou via reset_watermark.
     with govbr_conn.cursor() as cur:
         if existing:
-            # Use raw UPDATE permitido pelo superuser govbr (trigger só protege se OLD.bootstrap_*
-            # já era NOT NULL; se existing[0] is None, podemos atualizar)
-            if existing[0] is None:
+            # Use bootstrapped_at as completion marker: if NULL, this row is in
+            # incomplete state (partial bootstrap from a previous failure) and
+            # we can UPDATE freely. If NOT NULL, completion is recorded and the
+            # immutability trigger blocks UPDATE → must use DELETE+INSERT.
+            if existing[2] is None:
                 cur.execute(
                     """UPDATE etl_watermark
                        SET bootstrap_target_max = %s,
@@ -121,7 +123,10 @@ def _bootstrap_one(govbr_conn, spec, *, force: bool = False) -> bool:
                     (target_max, target_count, schema_hash, spec.source, spec.table),
                 )
             else:
-                # Force overwrite: requer DELETE+INSERT (trigger bloqueia UPDATE)
+                # Force overwrite (--force): trigger blocks UPDATE of bootstrapped_at,
+                # so we DELETE the row and re-INSERT with fresh values. Reset of
+                # last_value to NULL means subsequent runs treat as new spec
+                # (no upper-bound watermark check). Operator should be aware.
                 cur.execute(
                     "DELETE FROM etl_watermark WHERE source=%s AND table_name=%s",
                     (spec.source, spec.table),

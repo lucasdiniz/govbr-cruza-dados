@@ -305,11 +305,15 @@ def _move_nk_null_to_dlq(
     ctx: IncrementalLoadContext,
     stg_typed: str,
 ) -> int:
-    """Single-SQL DELETE WHERE NK NULL em staging.
+    """Single-SQL DELETE WHERE NK NULL em staging, escrevendo cada row em DLQ.
 
     NOTA: NK em staging usa nomes do CSV (não target). Colunas derivadas
     (ano_arquivo) NÃO existem em staging — são adicionadas no INSERT INTO target.
     Skipamos derived cols no NULL check.
+
+    Audit: cada row deletada vai pra etl_rejected_rows com reason='nk_null'
+    via ctx.dlq (autocommit conn). Permite reconstrução posterior das rows
+    perdidas e auditoria de qualidade da fonte.
     """
     # Filter NK cols to only those that exist in staging (i.e., not derived).
     # Reverse of column_renames pra mapear target → CSV name se necessário.
@@ -327,20 +331,49 @@ def _move_nk_null_to_dlq(
 
     nk_null_pred = " OR ".join(f"{c} IS NULL" for c in staging_nk_cols)
 
+    # First INSERT failed rows into DLQ, then DELETE from staging. Both via
+    # autocommit DLQ conn to persist even if main txn rolls back.
+    import hashlib
+    import json
+
     with ctx.main.cursor() as cur:
+        # Capture rows about to be deleted (limited to relevant cols for DLQ)
         cur.execute(
-            f"""WITH d AS (
-                DELETE FROM {stg_typed}
-                WHERE {nk_null_pred}
-                RETURNING *
-            )
-            SELECT count(*) FROM d"""
+            f"""SELECT * FROM {stg_typed} WHERE {nk_null_pred}"""
         )
-        deleted = int(cur.fetchone()[0])
+        bad_rows = cur.fetchall()
+        col_names = [d[0] for d in cur.description]
+
+    if bad_rows:
+        with ctx.dlq.cursor() as dlq_cur:
+            for row_idx, row in enumerate(bad_rows):
+                # Build raw_line as ;-joined repr of values (best-effort, max 8000 chars)
+                raw_repr = json.dumps(
+                    dict(zip(col_names, [str(v) if v is not None else None for v in row])),
+                    ensure_ascii=False, default=str,
+                )[:8000]
+                raw_hash = hashlib.sha256(raw_repr.encode("utf-8")).hexdigest()
+                try:
+                    dlq_cur.execute(
+                        """INSERT INTO etl_rejected_rows
+                           (run_id, source, table_name, file_path, line_number,
+                            raw_line, raw_line_hash, reason)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT DO NOTHING""",
+                        (str(ctx.run_id), spec.source, spec.table,
+                         f"<staging:{stg_typed}>", row_idx,
+                         raw_repr, raw_hash, "nk_null"),
+                    )
+                except Exception as e:
+                    logger.warning("DLQ insert failed for nk_null row: %s", e)
+
+    with ctx.main.cursor() as cur:
+        cur.execute(f"DELETE FROM {stg_typed} WHERE {nk_null_pred}")
+        deleted = cur.rowcount
 
     if deleted > 0:
         logger.info(
-            "moved %d NK-NULL rows from %s to limbo (DLQ TODO)",
+            "moved %d NK-NULL rows from %s to DLQ (reason=nk_null)",
             deleted, stg_typed,
         )
     return deleted

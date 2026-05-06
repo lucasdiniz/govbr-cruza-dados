@@ -62,6 +62,41 @@ def _bucket_token(source: str, table: str, bucket_id: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}/{table}/{bucket_id}")
 
 
+class SchemaDriftError(RuntimeError):
+    """Target schema mudou desde o bootstrap; abort para inspecao manual."""
+
+
+def _check_target_schema_drift(govbr_conn, spec) -> None:
+    """Recompute target schema_hash and compare with bootstrap baseline.
+
+    If different, raise SchemaDriftError to abort the run before any mutation.
+    Operator should inspect the target (column added/dropped, type changed, etc.)
+    and run `bootstrap_watermark.py --force` to re-baseline if drift is intentional.
+
+    No-op if spec was never bootstrapped (auto-bootstrap will populate baseline).
+    """
+    from etl.incremental.bootstrap_watermark import _compute_target_schema_hash
+
+    with govbr_conn.cursor() as cur:
+        cur.execute(
+            "SELECT target_schema_hash FROM etl_watermark WHERE source=%s AND table_name=%s",
+            (spec.source, spec.table),
+        )
+        row = cur.fetchone()
+    if not row or row[0] is None:
+        # Pre-bootstrap state; auto-bootstrap will set baseline. No drift to check.
+        return
+
+    bootstrap_hash = row[0]
+    current_hash = _compute_target_schema_hash(govbr_conn, spec.target_schema, spec.table)
+    if current_hash != bootstrap_hash:
+        raise SchemaDriftError(
+            f"Target schema drift detected for {spec.source}.{spec.table}: "
+            f"bootstrap_hash={bootstrap_hash[:16]}... current_hash={current_hash[:16]}... "
+            f"Inspect target and re-bootstrap with --force if drift is intentional."
+        )
+
+
 def run_incremental_for_source(
     spec: LoaderSpec,
     *,
@@ -118,6 +153,12 @@ def run_incremental_for_source(
     with lock_raw.cursor() as cur:
         cur.execute("SELECT etl_admin.abort_stale_runs(5)")
         cur.execute("SELECT etl_admin.cleanup_orphan_staging()")
+
+    # 2b. Schema drift check: compare current target schema fingerprint against
+    # bootstrapped baseline. If different, abort to prevent loading into a
+    # target whose structure changed (e.g., trigger missing, column dropped).
+    # Run requires fresh inspection by operator + explicit re-bootstrap (--force).
+    _check_target_schema_drift(govbr_conn, spec)
 
     run_id = etl_db.start_run(
         lock_raw, mode="incremental", triggered_by=triggered_by, commit_sha=commit_sha,
@@ -535,10 +576,13 @@ def _build_buckets(
             "bucket_id": bid,
             "files": files_on_disk_now,
             "skip_reason": skip_reason,
-            # If any expected download failed AND no cached file is usable,
-            # signal to the loader that this bucket should be marked failed
-            # (not silent-success via empty file list / all([])=True).
-            "download_failed": download_failed_count > 0 and not files_on_disk_now,
+            # Mark download_failed whenever a refetch attempt failed, regardless
+            # of whether stale cached files exist. Processing the cache still
+            # happens (so older data is loadable), but bucket cannot advance to
+            # success/watermark-update until the source is healthy again. This
+            # prevents stuck buckets where source published v2 but our cache is
+            # v1 — we'd otherwise process v1 forever and never re-fetch.
+            "download_failed": download_failed_count > 0,
         })
 
     summary["downloads"] = download_summary
