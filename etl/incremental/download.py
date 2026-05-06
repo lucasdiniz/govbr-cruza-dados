@@ -200,6 +200,46 @@ def conditional_download(
                 dest_path.unlink()
             partial_path.rename(dest_path)
 
+            # If source is a ZIP, extract to data_dir alongside. The framework's
+            # file_pattern returns the inner CSV name; loader looks for that
+            # CSV. Without extraction, CSV would be missing on fresh deploy
+            # (prod box without legacy pre-extracted CSVs).
+            if dest_path.suffix.lower() == ".zip":
+                try:
+                    import zipfile
+                    with zipfile.ZipFile(dest_path) as zf:
+                        # Extract atomically: extract to .partial dir then rename
+                        for member in zf.infolist():
+                            if member.is_dir():
+                                continue
+                            inner_name = Path(member.filename).name  # strip dirs
+                            extract_target = dest_path.parent / inner_name
+                            extract_partial = extract_target.with_suffix(
+                                extract_target.suffix + ".extracting"
+                            )
+                            with zf.open(member) as src, open(extract_partial, "wb") as dst:
+                                while True:
+                                    chunk = src.read(CHUNK_SIZE)
+                                    if not chunk:
+                                        break
+                                    dst.write(chunk)
+                            if extract_target.exists():
+                                extract_target.unlink()
+                            extract_partial.rename(extract_target)
+                            logger.info(
+                                "extracted %s → %s (%.1f MB)",
+                                dest_path.name, inner_name, member.file_size / 1e6,
+                            )
+                except zipfile.BadZipFile as e:
+                    logger.error("ZIP extraction failed for %s: %s", dest_path.name, e)
+                    return DownloadResult(
+                        status="failed",
+                        content_changed=False,
+                        content_sha256=None,
+                        bytes_downloaded=bytes_dl,
+                        error=f"ZIP extraction failed: {e}",
+                    )
+
             content_changed = (prev_sha != content_sha)
             logger.info(
                 "downloaded %s (%.1f MB, sha256=%s..., changed=%s)",
