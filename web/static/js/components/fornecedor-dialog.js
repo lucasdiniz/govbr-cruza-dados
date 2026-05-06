@@ -1,5 +1,5 @@
 // === components/fornecedor-dialog.js ===
-async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj) {
+async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverride, switchMun, nomeCredor, cpfCnpj, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     const exactDoc = String(cpfCnpj || '').replace(/\D/g, '');
@@ -9,11 +9,24 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         }
         return;
     }
+    const fromUrl = !!options.fromUrl;
+    const isInitialOpen = !dialog.open && !switchMun;
     if (!switchMun) {
         if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     } else {
         _dialogPush();
     }
+    // URL state (fromUrl=true skips push pra evitar duplicar history entry).
+    if (typeof _dialogStateApply === 'function') {
+        _dialogStateApply({
+            d: 'fornecedor',
+            cnpj: exactDoc,
+            nome: fornecedorNome || '',
+            ncred: nomeCredor || '',
+            mun: municipioOverride || '',
+        }, fromUrl, isInitialOpen);
+    }
+    const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = fornecedorNome || 'Fornecedor';
@@ -23,6 +36,8 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);
+    // Race guard: outro dialog foi aberto / o atual fechado durante o fetch.
+    if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
     let html = _historyNote();
 
     // Pre-compute sanction date ranges (used by charts and empenho table)

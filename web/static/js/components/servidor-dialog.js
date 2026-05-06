@@ -1,8 +1,24 @@
 // === components/servidor-dialog.js ===
-async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallback = {}) {
+async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallback = {}, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const fromUrl = !!options.fromUrl;
+    const isInitialOpen = !dialog.open;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    // URL state push/replace.
+    if (typeof _dialogStateApply === 'function') {
+        const cnpjsStr = (Array.isArray(cnpjs) ? cnpjs : [])
+            .map(c => String(c || '').replace(/\D/g, '').slice(0, 8))
+            .filter(Boolean).slice(0, 12).join(',');
+        _dialogStateApply({
+            d: 'servidor',
+            cpf6: String(cpf6 || ''),
+            nome: nome || '',
+            snome: servidorNome || '',
+            cnpjs: cnpjsStr,
+        }, fromUrl, isInitialOpen);
+    }
+    const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     const cpfMask = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
@@ -12,6 +28,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     document.body.classList.add('dialog-open');
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
+    if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
     if (data.detail_unavailable) {
         body.innerHTML = `<p class="text-sm text-muted">${_esc(data.detail_unavailable)}</p>`;
         return;

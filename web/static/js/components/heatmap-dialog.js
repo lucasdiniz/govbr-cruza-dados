@@ -2,8 +2,19 @@
 async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const fromUrl = !!options.fromUrl;
+    const isInitialOpen = !dialog.open;
     if (dialog.open && !options.inPlace) { _dialogPush(); }
     else if (!dialog.open) { _dialogReset(); }
+    if (typeof _dialogStateApply === 'function' && !options.inPlace) {
+        _dialogStateApply({
+            d: 'heatmap',
+            ano: String(ano || ''),
+            mes: String(mes || ''),
+            mun: municipio || '',
+        }, fromUrl, isInitialOpen);
+    }
+    const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     const mesesLabel = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -27,10 +38,12 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
         data = await resp.json();
         if (data && data.error) throw new Error(data.error);
     } catch (err) {
+        if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
         body.innerHTML = `<div class="async-error"><p class="text-sm text-muted">${_esc(err.message || String(err))}</p><md-text-button data-retry-heatmap>Tentar novamente</md-text-button></div>`;
         body.querySelector('[data-retry-heatmap]')?.addEventListener('click', () => openHeatmapMonthDialog(municipio, ano, mes, { inPlace: true }));
         return;
     }
+    if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
 
     const resumo = data.resumo || {};
     const fornecedores = data.fornecedores || [];

@@ -4,10 +4,22 @@ function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modali
         { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0, municipio, modalidade: modalidade || '' });
 }
 
-async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label, modalidade) {
+async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label, modalidade, options = {}) {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
+    const fromUrl = !!options.fromUrl;
+    const isInitialOpen = !dialog.open;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    if (typeof _dialogStateApply === 'function') {
+        _dialogStateApply({
+            d: 'licitacao',
+            num: String(numeroLicitacao || ''),
+            ano: String(anoLicitacao || ''),
+            mod: modalidade || '',
+            mun: municipio || '',
+        }, fromUrl, isInitialOpen);
+    }
+    const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
     const title = dialog.querySelector('.dialog-title');
     const body = dialog.querySelector('.dialog-body');
     title.textContent = label || `Licitacao ${numeroLicitacao}`;
@@ -16,6 +28,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     document.body.classList.add('dialog-open');
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
+    if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
 
     // Metadata — always render header
     const _licNumLabel = `N. ${_esc(numeroLicitacao)}${anoLicitacao && anoLicitacao !== '0' ? ` / ${anoLicitacao}` : ''}`;

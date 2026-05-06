@@ -253,6 +253,7 @@ JS_FILES: list[str] = [
     "pages/cidade-refresh-perfil.js",
     "components/dialog-nav.js",
     "components/dialog-history-swipe.js",
+    "components/dialog-url-state.js",
     "lib/skeleton.js",
     "components/dialog-links.js",
     "components/dialog-table-sort.js",

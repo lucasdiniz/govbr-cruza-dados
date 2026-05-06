@@ -19,12 +19,17 @@ function _dialogOnOpen() {
 
 function _dialogOnClose() {
     _dialogReset();
+    if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
     if (_dialogHistoryState) {
         _dialogHistoryState = false;
         if (history.state && history.state.tpbDialog) {
             // Removemos nosso state do historico sem disparar navegacao
             try { history.back(); } catch { /* ignore */ }
         }
+    } else if (typeof _dialogUrlClear === 'function') {
+        // Edge case: dialog foi restaurado via URL (sem pushState próprio).
+        // Limpa só os params dialog mantendo page params.
+        _dialogUrlClear();
     }
 }
 
@@ -36,6 +41,7 @@ window.addEventListener('popstate', () => {
     }
     // Popstate com dialog aberto -> fechamos o dialog (state ja foi consumido)
     _dialogHistoryState = false;
+    if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
     dialog.close();
 });
 
