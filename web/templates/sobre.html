@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Sobre o TransparenciaPB{% endblock %}
+{% block meta_description %}TransparenciaPB cruza dados publicos oficiais (TCE-PB, Receita Federal, CGU, PNCP, Portal da Transparencia, dados.pb.gov.br) para tornar visivel como cada uma das 223 prefeituras da Paraiba gasta o dinheiro publico. Metodologia, fontes e limitacoes.{% endblock %}
+{% block og_title %}Sobre o TransparenciaPB - Metodologia e fontes{% endblock %}
+{% block og_description %}Como cruzamos dados oficiais para fiscalizar 223 prefeituras paraibanas. Metodologia transparente, fontes oficiais, codigo aberto.{% endblock %}
+{% block json_ld_extra %}
+{% set _origin = request_origin(request) if request else '' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "AboutPage",
+      "@id": "{{ _origin }}/sobre#aboutpage",
+      "url": "{{ _origin }}/sobre",
+      "name": "Sobre o TransparenciaPB",
+      "description": "Metodologia, fontes e limitacoes do TransparenciaPB",
+      "isPartOf": {"@id": "{{ _origin }}/#website"},
+      "about": {"@id": "{{ _origin }}/#organization"},
+      "inLanguage": "pt-BR"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "{{ _origin }}/sobre#breadcrumb",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ _origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Sobre", "item": "{{ _origin }}/sobre"}
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+<article class="sobre-page">
+  <header class="sobre-head">
+    <p class="eyebrow">Sobre o TransparenciaPB</p>
+    <h1>Dados publicos cruzados, em linguagem cidad&atilde;</h1>
+    <p class="lede">
+      O TransparenciaPB &eacute; uma ferramenta gratuita que cruza dados publicos
+      oficiais para mostrar como cada uma das <strong>223 prefeituras da Para&iacute;ba</strong>
+      gasta o dinheiro publico. Indicamos sinais de aten&ccedil;&atilde;o
+      &mdash; n&atilde;o conclus&otilde;es jur&iacute;dicas. Se algo aqui chamar
+      sua aten&ccedil;&atilde;o, leve a fonte original aos &oacute;rg&atilde;os
+      de controle (MP-PB, TCE-PB, CGU).
+    </p>
+  </header>
+
+  <section class="sobre-section" id="o-que-fazemos">
+    <h2>O que fazemos</h2>
+    <p>
+      Processamos cerca de <strong>350 milh&otilde;es de registros</strong> por
+      semana. Cruzamos por CPF e CNPJ:
+    </p>
+    <ul>
+      <li>Despesas, empenhos e contratos das prefeituras (TCE-PB, dados.pb.gov.br, PNCP).</li>
+      <li>Cadastro de empresas e s&oacute;cios (Receita Federal).</li>
+      <li>Empresas e servidores p&uacute;blicos sancionados (CEIS, CNEP, CEAF da CGU).</li>
+      <li>D&iacute;vidas com a Uni&atilde;o (PGFN).</li>
+      <li>Sal&aacute;rios e v&iacute;nculos federais (SIAPE, Portal da Transpar&ecirc;ncia).</li>
+      <li>Bolsa Fam&iacute;lia, candidatos e doadores eleitorais (TSE).</li>
+    </ul>
+    <p>
+      Para cada cidade, mostramos: maiores fornecedores e poss&iacute;veis
+      problemas (san&ccedil;&otilde;es, d&iacute;vidas, situa&ccedil;&atilde;o
+      cadastral irregular), conflitos de interesse (servidores que s&atilde;o
+      s&oacute;cios de quem recebe da prefeitura), compras sem licita&ccedil;&atilde;o,
+      concentra&ccedil;&atilde;o de gastos em poucos fornecedores e mais.
+    </p>
+  </section>
+
+  <section class="sobre-section" id="metodologia">
+    <h2>Metodologia</h2>
+    <h3>Cruzamento por documentos</h3>
+    <p>
+      Como cada fonte publica os dados em formato pr&oacute;prio &mdash; CPF
+      mascarado, CNPJ b&aacute;sico ou completo &mdash; normalizamos antes de
+      qualquer compara&ccedil;&atilde;o. Joins s&atilde;o sempre por <em>igualdade</em>
+      sobre os d&iacute;gitos normalizados (n&atilde;o por nome aproximado).
+    </p>
+    <h3>Score de aten&ccedil;&atilde;o (0-100)</h3>
+    <p>
+      A &quot;nota de aten&ccedil;&atilde;o&quot; combina 8 indicadores
+      (pesos somam 100): empresas sancionadas que recebem da prefeitura,
+      servidores em CEAF/expuls&otilde;es federais, concentra&ccedil;&atilde;o
+      top-5 fornecedores, servidores s&oacute;cios de fornecedores
+      municipais, % do gasto pago para empresas de s&oacute;cios servidores,
+      fornecedores com situa&ccedil;&atilde;o cadastral irregular,
+      servidores no Bolsa Fam&iacute;lia com sal&aacute;rio alto e
+      fornecedores em CEIS/CNEP. Cada indicador usa curva c&ocirc;ncava
+      (1 caso j&aacute; sinaliza aten&ccedil;&atilde;o) ou linear (percentuais).
+    </p>
+    <h3>Frequ&ecirc;ncia de atualiza&ccedil;&atilde;o</h3>
+    <p>
+      Os dados deste site s&atilde;o atualizados periodicamente a partir
+      dos arquivos abertos publicados pelas fontes oficiais. A data da
+      &uacute;ltima atualiza&ccedil;&atilde;o aparece no rodap&eacute; de
+      todas as p&aacute;ginas.
+    </p>
+  </section>
+
+  <section class="sobre-section" id="limitacoes">
+    <h2>Limita&ccedil;&otilde;es</h2>
+    <ul>
+      <li>
+        <strong>S&atilde;o ind&iacute;cios, n&atilde;o conclus&otilde;es.</strong>
+        Um servidor s&oacute;cio de uma empresa que recebe da prefeitura pode
+        ter v&aacute;rios contextos (her&oacute;i de heran&ccedil;a, contrato
+        legal de pequeno valor, etc.). Sempre verifique a fonte original
+        antes de tirar conclus&otilde;es.
+      </li>
+      <li>
+        <strong>Algumas fontes mascaram CPF.</strong> O Portal da Transpar&ecirc;ncia
+        mascara 6 d&iacute;gitos do meio e o dados.pb.gov.br mascara o
+        in&iacute;cio e o fim. Quando cruzamos masked com aberto, indicamos
+        explicitamente.
+      </li>
+      <li>
+        <strong>Dados podem ter erro de origem.</strong> Erros de digita&ccedil;&atilde;o
+        no TCE-PB (ex: CNPJ inv&aacute;lido) ou divergencias entre fontes
+        s&atilde;o filtrados, mas n&atilde;o garantimos cobertura total.
+      </li>
+      <li>
+        <strong>N&atilde;o substitui &oacute;rg&atilde;os de controle.</strong>
+        Suspeitas s&eacute;rias devem ser levadas a MP-PB, TCE-PB ou CGU,
+        que t&ecirc;m poder de investiga&ccedil;&atilde;o formal.
+      </li>
+    </ul>
+  </section>
+
+  <section class="sobre-section" id="fontes">
+    <h2>Fontes oficiais</h2>
+    <ul>
+      <li><a href="https://portaldatransparencia.gov.br/" target="_blank" rel="noopener">Portal da Transpar&ecirc;ncia</a> &mdash; execu&ccedil;&atilde;o or&ccedil;ament&aacute;ria federal, Bolsa Fam&iacute;lia, servidores SIAPE.</li>
+      <li><a href="https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj" target="_blank" rel="noopener">Receita Federal &mdash; CNPJ</a> &mdash; cadastro de empresas e s&oacute;cios.</li>
+      <li><a href="https://www.gov.br/cgu/pt-br/assuntos/transparencia-publica" target="_blank" rel="noopener">CGU</a> &mdash; CEIS, CNEP, CEAF.</li>
+      <li><a href="https://tce.pb.gov.br/" target="_blank" rel="noopener">TCE-PB</a> &mdash; despesas, licita&ccedil;&otilde;es e folha das prefeituras paraibanas.</li>
+      <li><a href="https://dados.pb.gov.br/" target="_blank" rel="noopener">dados.pb.gov.br</a> &mdash; dados abertos do Governo do Estado.</li>
+      <li><a href="https://pncp.gov.br/" target="_blank" rel="noopener">PNCP</a> &mdash; Portal Nacional de Contrata&ccedil;&otilde;es P&uacute;blicas.</li>
+      <li><a href="https://www.gov.br/pgfn/pt-br" target="_blank" rel="noopener">PGFN</a> &mdash; d&iacute;vida ativa da Uni&atilde;o.</li>
+      <li><a href="https://www.ibge.gov.br/" target="_blank" rel="noopener">IBGE</a> &mdash; dados dos munic&iacute;pios.</li>
+      <li><a href="https://www.tse.jus.br/" target="_blank" rel="noopener">TSE</a> &mdash; candidatos e doa&ccedil;&otilde;es eleitorais.</li>
+    </ul>
+  </section>
+
+  <section class="sobre-section" id="contato">
+    <h2>Contato e c&oacute;digo aberto</h2>
+    <p>
+      Encontrou um bug, dado errado ou sugest&atilde;o? Use a
+      <a href="/contato">p&aacute;gina de contato</a>. Toda devolutiva
+      &eacute; lida e respondida.
+    </p>
+    <p>
+      O c&oacute;digo deste projeto est&aacute; em
+      <a href="https://github.com/lucasdiniz/govbr-cruza-dados" target="_blank" rel="noopener">github.com/lucasdiniz/govbr-cruza-dados</a>.
+    </p>
+  </section>
+
+  <nav class="sobre-cta">
+    <a href="/" class="btn-primary">Voltar para o mapa</a>
+    <a href="/glossario" class="btn-secondary">Ver gloss&aacute;rio</a>
+  </nav>
+</article>
+{% endblock %}

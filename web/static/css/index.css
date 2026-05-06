@@ -72,6 +72,7 @@
 /* --- layer: pages --- */
 @import url("./pages/errors.css");
 @import url("./pages/glossario.css");
+@import url("./pages/sobre.css");
 @import url("./pages/contato.css");
 
 /* --- layer: utilities --- */

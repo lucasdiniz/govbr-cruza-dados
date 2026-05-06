@@ -9,23 +9,34 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "Dataset",
-  "name": "Mapa de transparência da Paraíba",
-  "description": {{ ((_muni_total | string) ~ " municípios da Paraíba indexados por risco composto, % de fornecedores irregulares, % sem licitação, concentração top-5 e pagamento per capita.") | tojson }},
-  "url": "{{ origin }}/mapa",
-  "isAccessibleForFree": true,
-  "inLanguage": "pt-BR",
-  "creator": {"@id": "{{ origin }}/#organization"},
-  "license": "https://creativecommons.org/licenses/by/4.0/",
-  "spatialCoverage": {
-    "@type": "State",
-    "name": "Paraíba",
-    "alternateName": "PB",
-    "containedInPlace": {
-      "@type": "Country",
-      "name": "Brasil"
+  "@graph": [
+    {
+      "@type": "Dataset",
+      "name": "Mapa de transparência da Paraíba",
+      "description": {{ ((_muni_total | string) ~ " municípios da Paraíba indexados por risco composto, % de fornecedores irregulares, % sem licitação, concentração top-5 e pagamento per capita.") | tojson }},
+      "url": "{{ origin }}/mapa",
+      "isAccessibleForFree": true,
+      "inLanguage": "pt-BR",
+      "creator": {"@id": "{{ origin }}/#organization"},
+      "license": "https://creativecommons.org/licenses/by/4.0/",
+      "spatialCoverage": {
+        "@type": "State",
+        "name": "Paraíba",
+        "alternateName": "PB",
+        "containedInPlace": {
+          "@type": "Country",
+          "name": "Brasil"
+        }
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "TransparenciaPB", "item": "{{ origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Mapa Paraíba", "item": "{{ origin }}/mapa"}
+      ]
     }
-  }
+  ]
 }
 </script>
 {% endblock %}

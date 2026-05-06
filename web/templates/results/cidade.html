@@ -4,17 +4,20 @@
 {% block og_title %}{{ municipio }} - PB | TransparenciaPB{% endblock %}
 {% block og_description %}Panorama de transparencia de {{ municipio }} - PB.{% endblock %}
 {% block twitter_card %}summary_large_image{% endblock %}
+{% set _slug = municipio | municipio_slug %}
 {% block og_image %}
-<meta property="og:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
+<meta property="og:image" content="{{ request_origin(request) if request else '' }}/og/cidade/{{ _slug }}.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta name="twitter:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="{{ municipio }} - Resumo TransparenciaPB">
+<meta name="twitter:image" content="{{ request_origin(request) if request else '' }}/og/cidade/{{ _slug }}.png">
 {% endblock %}
 {% block json_ld_extra %}
 {# JSON-LD adicional pra pagina de cidade: GovernmentOrganization (a
    prefeitura), Dataset (o relatorio), e BreadcrumbList (Home > Cidade). #}
 {% set origin = request_origin(request) if request else '' %}
-{% set page_url = origin + '/search/cidade?q=' + (municipio | urlencode) %}
+{% set page_url = origin + '/cidade/' + _slug %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -64,7 +67,8 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": {{ municipio | tojson }}
+          "name": {{ municipio | tojson }},
+          "item": {{ page_url | tojson }}
         }
       ]
     }

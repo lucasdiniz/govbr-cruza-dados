@@ -286,6 +286,7 @@ JS_FILES: list[str] = [
     # ES module web/static/js/md3/imports.js).
     "lib/md3-ready.js",
     "lib/dual-label.js",
+    "lib/slug.js",
     "lib/column-meta.js",
     "components/term-tooltip.js",
     "lib/expand-context.js",
@@ -341,7 +342,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "97"
+templates.env.globals["ASSET_VERSION"] = "98"
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -493,6 +494,13 @@ templates.env.globals["canonical_url"] = canonical_url
 templates.env.globals["is_dialog_state_url"] = is_dialog_state_url
 templates.env.globals["request_origin"] = _request_origin
 
+# Helper de slug pra URLs amigaveis (/cidade/<slug>). Mesma logica em
+# web/utils/slug.py garante que sitemap, links em HTML e a rota /cidade/{slug}
+# usem a forma canonica (acento removido, lowercase, hifens normalizados).
+from web.utils.slug import municipio_slug as _municipio_slug
+templates.env.globals["municipio_slug"] = _municipio_slug
+templates.env.filters["municipio_slug"] = _municipio_slug
+
 
 app.include_router(cidade_router)
 app.include_router(mapa_router)
@@ -575,3 +583,9 @@ async def service_worker():
 @app.get("/glossario")
 async def glossario(request: Request):
     return templates.TemplateResponse(request, "glossario.html")
+
+
+@app.get("/sobre")
+async def sobre(request: Request):
+    """Pagina /sobre: metodologia + fontes + limitacoes (E-E-A-T pra SEO)."""
+    return templates.TemplateResponse(request, "sobre.html")

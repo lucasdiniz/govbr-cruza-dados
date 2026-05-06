@@ -9,7 +9,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from psycopg2.errors import QueryCanceled, UndefinedTable, UndefinedColumn
 
@@ -626,11 +626,84 @@ def _render_partial(request: Request, template_name: str, context: dict):
     return templates.TemplateResponse(request, template_name, context)
 
 
+@router.get("/cidade/{slug}")
+async def cidade_by_slug(request: Request, slug: str):
+    """URL amigavel: /cidade/joao-pessoa.
+
+    Resolve slug -> nome canonico via web.utils.slug. Se slug recebido nao
+    eh canonico (ex: maiuscula, hifens duplos, com acento), responde 301
+    para a forma canonica pra evitar duplicate content.
+    """
+    from web.main import templates
+    from web.utils.slug import (
+        SlugLookupError,
+        municipio_slug,
+        slug_to_municipio,
+    )
+
+    try:
+        municipio = slug_to_municipio(slug)
+    except SlugLookupError:
+        # Cache vazio + DB indisponivel: 503 (nao 404). Crawler vai tentar
+        # de novo; transformar em 404 deindexava paginas validas.
+        return Response(
+            status_code=503,
+            headers={"Retry-After": "300"},
+            content="Servico temporariamente indisponivel. Tente novamente em alguns minutos.",
+            media_type="text/plain; charset=utf-8",
+        )
+
+    if not municipio:
+        return templates.TemplateResponse(
+            request, "errors/404.html",
+            {"path": str(request.url.path)},
+            status_code=404,
+        )
+
+    # Canonicalizacao: se o slug recebido nao for o canonico (ex:
+    # /cidade/Joao-Pessoa, /cidade/joao--pessoa), 301 pra canonical.
+    canonical_slug = municipio_slug(municipio)
+    if canonical_slug and slug != canonical_slug:
+        return RedirectResponse(
+            url=f"/cidade/{canonical_slug}",
+            status_code=301,
+        )
+
+    return await _render_cidade(request, municipio)
+
+
 @router.get("/search/cidade")
 async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
-    from web.main import templates
+    """URL legada (busca por texto livre). Quando consegue resolver o termo
+    para uma cidade conhecida, faz 301 pra /cidade/<slug> (sinal SEO forte
+    de migracao). Fallback: renderiza pagina como antes (com 404 se
+    municipio nao existe na base)."""
+    from web.utils.slug import SlugLookupError, municipio_slug, slug_to_municipio
 
-    municipio, uf = _parse_municipio_uf(q)
+    municipio, _uf = _parse_municipio_uf(q)
+
+    # Tenta resolver via slug cache antes de redirecionar. Em SlugLookupError
+    # (cold start sem fallback), seguimos pro render direto — DB pode estar
+    # OK pra outras MVs mesmo se a slug cache falhou.
+    try:
+        canonical = slug_to_municipio(municipio_slug(municipio))
+    except SlugLookupError:
+        canonical = None
+
+    if canonical:
+        return RedirectResponse(
+            url=f"/cidade/{municipio_slug(canonical)}",
+            status_code=301,
+        )
+
+    # Termo nao bate com nenhuma cidade conhecida: render direto (404 templated)
+    return await _render_cidade(request, municipio)
+
+
+async def _render_cidade(request: Request, municipio: str):
+    """Renderiza pagina /cidade/<slug> ou /search/cidade?q=. Compartilhado
+    pelas duas rotas pra evitar duplicacao + risco de loop de redirect."""
+    from web.main import templates
 
     perfil = None
     try:

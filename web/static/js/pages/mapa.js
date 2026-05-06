@@ -228,7 +228,12 @@
         layer.bindTooltip(tooltipHTML(feat), { sticky: true, className: 'mapa-tooltip' });
         layer.on('click', () => {
             const name = feat.properties.name;
-            window.location.href = `/search/cidade?q=${encodeURIComponent(name)}`;
+            const slug = (typeof window.municipioSlug === 'function') ? window.municipioSlug(name) : '';
+            if (slug) {
+                window.location.href = `/cidade/${slug}`;
+            } else {
+                window.location.href = `/search/cidade?q=${encodeURIComponent(name)}`;
+            }
         });
         layer.on('mouseover', () => layer.setStyle({ weight: 2, color: '#fff' }));
         layer.on('mouseout', () => state.layer.resetStyle(layer));

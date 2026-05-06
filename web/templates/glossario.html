@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Gloss&aacute;rio{% endblock %}
+{% block meta_description %}Glossario do TransparenciaPB: termos tecnicos de transparencia publica (CEIS, CNEP, empenho, dispensa, licitacao, PGFN, PNCP) traduzidos para linguagem cidad.{% endblock %}
+{% block og_title %}Glossario - TransparenciaPB{% endblock %}
+{% block og_description %}Termos tecnicos de transparencia publica traduzidos para linguagem cidad.{% endblock %}
+{% block json_ld_extra %}
+{% set _origin = request_origin(request) if request else '' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "TransparenciaPB", "item": "{{ _origin }}/"},
+    {"@type": "ListItem", "position": 2, "name": "Glossário", "item": "{{ _origin }}/glossario"}
+  ]
+}
+</script>
+{% endblock %}
 {% block content %}
 <section class="glossario-page">
   <header class="glossario-head">

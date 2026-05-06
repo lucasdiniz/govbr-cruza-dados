@@ -52,9 +52,14 @@ async def robots_txt(request: Request) -> PlainTextResponse:
     )
 
 
-def _municipios_pb() -> list[str]:
-    """Lista municípios PB ordenada por total_pago desc (mesma logica
-    do warm_cache pra alinhar prioridade). Retorna lista vazia em erro."""
+def _municipios_pb() -> list[tuple[str, str]]:
+    """Lista municipios PB ordenada por total_pago desc (mesma logica
+    do warm_cache pra alinhar prioridade). Retorna [(nome_canonico, slug), ...].
+
+    Reutiliza nomes do mv_municipio_pb_risco e o slug helper de
+    web.utils.slug pra garantir que sitemap, links no HTML e rota
+    /cidade/<slug> usam a MESMA forma canonica.
+    """
     sql = """
         SELECT r.municipio
         FROM mv_municipio_pb_risco r
@@ -63,11 +68,20 @@ def _municipios_pb() -> list[str]:
         ORDER BY COALESCE(m.total_pago_pj, 0) DESC, r.municipio
     """
     try:
+        from web.utils.slug import municipio_slug
         with db.get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute(sql)
-                return [row[0] for row in cur.fetchall()]
+                out: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for (mun,) in cur.fetchall():
+                    slug = municipio_slug(mun)
+                    if not slug or slug in seen:
+                        continue
+                    seen.add(slug)
+                    out.append((str(mun), slug))
+                return out
     except Exception:
         _log.exception("Falha ao listar municipios PB pro sitemap")
         return []
@@ -100,6 +114,7 @@ def _build_sitemap_xml(origin: str) -> str:
     static_pages = [
         ("/", "1.0", "daily"),
         ("/mapa", "0.9", "daily"),
+        ("/sobre", "0.6", "monthly"),
         ("/glossario", "0.5", "monthly"),
         ("/contato", "0.4", "yearly"),
     ]
@@ -111,14 +126,11 @@ def _build_sitemap_xml(origin: str) -> str:
         parts.append(f"    <priority>{prio}</priority>")
         parts.append("  </url>")
 
-    # Pagina /search/cidade pra cada municipio PB
+    # Pagina /cidade/<slug> pra cada municipio PB. URLs amigaveis: substituem
+    # /search/cidade?q=... no sitemap. /search permanece funcional via 301.
     municipios = _municipios_pb()
-    for muni in municipios:
-        # Rota real eh /search/cidade?q=<NOME> (web/routes/cidade.py:629).
-        # _parse_municipio_uf assume PB sempre quando UF nao esta no string.
-        from urllib.parse import quote
-        encoded = quote(muni, safe="")
-        loc = f"{origin}/search/cidade?q={encoded}"
+    for _muni, slug in municipios:
+        loc = f"{origin}/cidade/{slug}"
         parts.append("  <url>")
         parts.append(f"    <loc>{xml_escape(loc)}</loc>")
         parts.append(f"    <lastmod>{lastmod}</lastmod>")

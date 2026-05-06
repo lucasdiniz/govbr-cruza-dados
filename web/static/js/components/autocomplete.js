@@ -123,7 +123,14 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
 
 function initCidadeAutocomplete() {
     setupAutocomplete('ac-cidade', 'aclist-cidade', '/api/autocomplete/municipio', (value) => {
-        window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
+        // URL amigavel: /cidade/<slug>. Fallback /search/cidade?q= se slugify
+        // nao estiver disponivel (defensivo: lib/slug.js carrega cedo no JS_FILES).
+        const slug = (typeof window.municipioSlug === 'function') ? window.municipioSlug(value) : '';
+        if (slug) {
+            window.location.href = `/cidade/${slug}`;
+        } else {
+            window.location.href = `/search/cidade?q=${encodeURIComponent(value)}`;
+        }
     });
 }
 

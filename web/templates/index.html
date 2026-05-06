@@ -153,7 +153,12 @@
                     }
                     try { localStorage.setItem('last-city', city); } catch(_){}
                     setStatus(`Identificado: ${city}. Abrindo...`, 'ok');
-                    window.location.href = '/search/cidade?q=' + encodeURIComponent(city);
+                    {
+                        const _slug = (typeof window.municipioSlug === 'function') ? window.municipioSlug(city) : '';
+                        window.location.href = _slug
+                            ? `/cidade/${_slug}`
+                            : '/search/cidade?q=' + encodeURIComponent(city);
+                    }
                 } catch (err) {
                     setStatus('Nao conseguimos identificar o municipio. Tente pela busca.', 'warn');
                     btn.disabled = false;
