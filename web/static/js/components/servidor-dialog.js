@@ -178,7 +178,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         // fornecedor-dialog.js linha ~248.
         const nomeBusca = (servidorNome || nome || '').trim();
         const ceafUrl = nomeBusca
-            ? `https://portaldatransparencia.gov.br/sancoes/consulta?cadastro=ceaf&nomeSancionado=${encodeURIComponent(nomeBusca)}`
+            ? `https://portaldatransparencia.gov.br/sancoes/consulta?cadastro=3&nomeSancionado=${encodeURIComponent(nomeBusca)}`
             : '';
         const ceafLink = ceafUrl
             ? ` <a href="${ceafUrl}" target="_blank" rel="noopener" class="ext-link-inline" title="Ver no Portal da Transparencia">&#8599;</a>`
