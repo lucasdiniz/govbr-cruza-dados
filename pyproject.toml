@@ -18,6 +18,10 @@ web = [
     "uvicorn[standard]>=0.29",
     "pillow>=10.0",
 ]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+]
 
 [project.scripts]
 govbr-etl = "etl.run_all:main"
