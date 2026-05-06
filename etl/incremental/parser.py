@@ -117,6 +117,7 @@ def stream_csv_to_staging(
     expected_ncols = len(spec.columns)
     valid_count = 0
     rejected_count = 0
+    recovered_via_fallback = 0
 
     temp_fd, temp_name = tempfile.mkstemp(
         prefix=f"_stg_{spec.source}_{spec.table}_",
@@ -164,13 +165,24 @@ def stream_csv_to_staging(
                         continue
 
                     if len(row) != expected_ncols:
-                        _dlq_insert(
-                            dlq_conn, run_id, source, table, str(csv_path),
-                            line_num, _join_row(row, spec.csv_delimiter),
-                            f"col_count_mismatch (expected {expected_ncols}, got {len(row)})",
-                        )
-                        rejected_count += 1
-                        continue
+                        # Fallback: source publishes CSVs with malformed quote
+                        # escaping (e.g., LEITÃO."";"2024-04-30 — interior `"` not
+                        # doubled per RFC 4180). Try a quote-less reparse: rejoin
+                        # the row, strip surrounding quotes, split on delimiter.
+                        # This recovers most rows at cost of treating ornamental
+                        # quotes as text.
+                        recovered = _fallback_split_row(row, spec)
+                        if recovered is not None and len(recovered) == expected_ncols:
+                            row = recovered
+                            recovered_via_fallback += 1
+                        else:
+                            _dlq_insert(
+                                dlq_conn, run_id, source, table, str(csv_path),
+                                line_num, _join_row(row, spec.csv_delimiter),
+                                f"col_count_mismatch (expected {expected_ncols}, got {len(row)})",
+                            )
+                            rejected_count += 1
+                            continue
 
                     too_big = False
                     for v in row:
@@ -205,7 +217,45 @@ def stream_csv_to_staging(
         )
         rejected_count += 1
 
+    if recovered_via_fallback > 0:
+        logger.info(
+            "csv-fallback recovered %d malformed-quote rows in %s",
+            recovered_via_fallback, csv_path.name,
+        )
     return PreParseResult(valid_count, rejected_count, temp_path, csv_header_hash)
+
+
+def _fallback_split_row(parsed_row: list, spec) -> Optional[list]:
+    """Repara rows com aspas mal-escapadas: rejunta a row, strip outer quotes
+    around delimiters, split sem honor de quotes.
+
+    Padrão observado em dados.pb.gov.br:
+        "...LEITÃO."";"2024-04-30";"2024-05-04";;"http://..."
+                  ^^^ aspas literais não-escapadas conforme RFC 4180
+
+    csv.reader vê `"";"` como escape `"` + `;` interno + outro field, agregando
+    múltiplos campos em um. Esse fallback ignora o quoting e splita por delim,
+    depois strip aspas decorativas. Retorna None se ainda não bater ncols.
+    """
+    if not parsed_row:
+        return None
+    # Reconstruct best-effort: this assumes parsed_row was on a single source line
+    # (multi-line quoted fields are NOT supported by fallback).
+    rejoined = spec.csv_delimiter.join(str(c) for c in parsed_row)
+    # Split sem quote honor
+    parts = rejoined.split(spec.csv_delimiter)
+    # Strip outer quotechar from each piece (pure decorative quotes)
+    q = spec.csv_quotechar
+    cleaned = []
+    for p in parts:
+        s = p
+        # strip 1 leading + 1 trailing quote (common decorative pattern)
+        if s.startswith(q):
+            s = s[1:]
+        if s.endswith(q):
+            s = s[:-1]
+        cleaned.append(s)
+    return cleaned
 
 
 def _clean_for_tab(v: str) -> str:
