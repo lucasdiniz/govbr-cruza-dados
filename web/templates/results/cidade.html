@@ -10,6 +10,68 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="/og/cidade/{{ municipio | replace(' ', '-') | lower }}.png">
 {% endblock %}
+{% block json_ld_extra %}
+{# JSON-LD adicional pra pagina de cidade: GovernmentOrganization (a
+   prefeitura), Dataset (o relatorio), e BreadcrumbList (Home > Cidade). #}
+{% set origin = request_origin(request) if request else '' %}
+{% set page_url = origin + '/search/cidade?q=' + (municipio | urlencode) %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "GovernmentOrganization",
+      "name": {{ ("Prefeitura de " ~ municipio) | tojson }},
+      "areaServed": {
+        "@type": "AdministrativeArea",
+        "name": {{ municipio | tojson }},
+        "containedInPlace": {
+          "@type": "State",
+          "name": "Paraíba",
+          "alternateName": "PB"
+        }
+      }
+    },
+    {
+      "@type": "Dataset",
+      "name": {{ ("Panorama de transparência de " ~ municipio ~ " - PB") | tojson }},
+      "description": {{ ("Cruzamento de despesas, fornecedores e servidores municipais de " ~ municipio ~ " contra bases públicas (Receita Federal, CEIS, CNEP, PGFN, TCE-PB, TSE).") | tojson }},
+      "url": {{ page_url | tojson }},
+      "isAccessibleForFree": true,
+      "inLanguage": "pt-BR",
+      "creator": {"@id": "{{ origin }}/#organization"},
+      "license": "https://creativecommons.org/licenses/by/4.0/",
+      "spatialCoverage": {
+        "@type": "AdministrativeArea",
+        "name": {{ (municipio ~ ", Paraíba, Brasil") | tojson }}
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TransparenciaPB",
+          "item": "{{ origin }}/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Mapa Paraíba",
+          "item": "{{ origin }}/mapa"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": {{ municipio | tojson }}
+        }
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
 {% block body_class %}{% endblock %}
 {% block content %}
 
