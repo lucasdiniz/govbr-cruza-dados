@@ -58,6 +58,11 @@ on:
         required: false
         type: string
         default: ''
+      warm_skip_hours:
+        description: 'Janela em horas que warm_cache pula (resume mode). Default 24: pula munis cacheados nas ultimas 24h. Aumente quando o ultimo warm foi ha mais tempo mas voce so quer reprocessar queries especificas via invalidate_cache_keys (ex: 72 = pula tudo cacheado nas ultimas 72h). Ignorado se drop_cache=true (forca SKIP_HRS=0).'
+        required: false
+        type: string
+        default: '24'
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -683,8 +688,15 @@ jobs:
             SKIP_HRS=0
             echo "Full rebuild mode (drop_cache=true)"
           else
-            SKIP_HRS=24
-            echo "Resume mode: pula munis cacheados nas ultimas 24h"
+            # Sanitiza input warm_skip_hours: apenas digitos
+            RAW_SKIP="${{ inputs.warm_skip_hours }}"
+            if echo "$RAW_SKIP" | grep -qE '^[0-9]+$'; then
+              SKIP_HRS="$RAW_SKIP"
+            else
+              SKIP_HRS=24
+              echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), usando default 24"
+            fi
+            echo "Resume mode: pula munis cacheados nas ultimas ${SKIP_HRS}h"
           fi
           sudo mkdir -p /etc/systemd/system/cruza-warm-cache.service.d
           cat <<EOF | sudo tee /etc/systemd/system/cruza-warm-cache.service.d/runtime-env.conf > /dev/null
