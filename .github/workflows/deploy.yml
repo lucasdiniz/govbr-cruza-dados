@@ -533,18 +533,14 @@ jobs:
           set -e
           cd ${{ env.PROJECT_DIR }}
 
-          # Install nginx if missing
-          if ! dpkg -s nginx >/dev/null 2>&1; then
-            sudo apt update
-            sudo apt install -y nginx
-          fi
-
-          # Configure nginx reverse proxy
-          sudo cp deploy/nginx-cruza.conf /etc/nginx/sites-available/cruza
-          sudo ln -sf /etc/nginx/sites-available/cruza /etc/nginx/sites-enabled/cruza
-          sudo rm -f /etc/nginx/sites-enabled/default
-          sudo nginx -t && sudo systemctl reload nginx
-          sudo systemctl enable nginx
+          # Configure nginx + Let's Encrypt (idempotente).
+          # setup-letsencrypt.sh:
+          #   - Instala nginx e certbot se ausentes
+          #   - Se cert ainda nao existe, copia config bootstrap (HTTP-only com
+          #     ACME path), emite cert via webroot e troca pelo config completo.
+          #   - Se cert existe, so reaplica o config completo (idempotente).
+          #   - Configura hook de renovacao (reload nginx) e ativa certbot.timer.
+          sudo bash deploy/setup-letsencrypt.sh
 
           # Install systemd services. cruza-warm-cache eh oneshot (sem [Install]):
           # apenas o arquivo eh copiado, sem enable/start. Disparado pelo step
