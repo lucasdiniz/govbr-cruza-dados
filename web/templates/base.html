@@ -27,36 +27,41 @@
     <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
-    {# JSON-LD: WebSite + Organization (sempre presente). Paginas especificas
-       podem injetar tipos adicionais via {% block json_ld_extra %}. #}
+    {# JSON-LD: WebSite + Organization (sempre presente quando temos request).
+       Paginas especificas podem injetar tipos adicionais via
+       {% block json_ld_extra %}. Pulamos quando request eh None pra nao
+       emitir IDs/URLs relativos invalidos pra structured data. #}
+    {% if request %}
+    {% set _origin = request_origin(request) %}
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@graph": [
         {
           "@type": "WebSite",
-          "@id": "{{ request_origin(request) if request else '' }}/#website",
-          "url": "{{ request_origin(request) if request else '' }}/",
+          "@id": "{{ _origin }}/#website",
+          "url": "{{ _origin }}/",
           "name": "TransparenciaPB",
           "description": "Transparência e cruzamento de dados públicos dos 223 municípios da Paraíba",
           "inLanguage": "pt-BR",
           "potentialAction": {
             "@type": "SearchAction",
-            "target": "{{ request_origin(request) if request else '' }}/search/cidade?q={search_term_string}",
+            "target": "{{ _origin }}/search/cidade?q={search_term_string}",
             "query-input": "required name=search_term_string"
           }
         },
         {
           "@type": "Organization",
-          "@id": "{{ request_origin(request) if request else '' }}/#organization",
+          "@id": "{{ _origin }}/#organization",
           "name": "TransparenciaPB",
-          "url": "{{ request_origin(request) if request else '' }}/",
-          "logo": "{{ request_origin(request) if request else '' }}/static/icon-512.png",
+          "url": "{{ _origin }}/",
+          "logo": "{{ _origin }}/static/icon-512.png",
           "description": "Plataforma cidadã de cruzamento de dados públicos abertos da Paraíba"
         }
       ]
     }
     </script>
+    {% endif %}
     {% block json_ld_extra %}{% endblock %}
     <link rel="stylesheet" href="{{ asset_url('index.css') }}">
     <script>
