@@ -559,6 +559,11 @@ jobs:
           #   - Configura hook de renovacao (reload nginx) e ativa certbot.timer.
           sudo bash deploy/setup-letsencrypt.sh
 
+          # Setup fail2ban: jail customizado pra IPs que excedem rate
+          # limit (10x 429 em 5min = ban 1h via iptables). Idempotente:
+          # so reload se config mudou.
+          sudo bash deploy/setup-fail2ban.sh
+
           # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
           # a janela onde nginx serve novo dist/ enquanto workers velhos
           # geram HTML com URLs antigas (404 nos hashed assets).
