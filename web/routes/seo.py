@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import secrets
 import time
 from typing import Any
 from xml.sax.saxutils import escape as xml_escape
@@ -15,6 +17,11 @@ from web import db
 
 router = APIRouter()
 _log = logging.getLogger("transparencia.seo")
+
+
+# IndexNow keys: 8-128 chars URL-safe. Pre-compilado pra rejeitar
+# paths nao-key sem comparacao (defesa contra probing).
+_INDEXNOW_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{8,128}$")
 
 
 # Cache em memória pra sitemap (gera lista de municípios uma vez por hora).
@@ -144,15 +151,31 @@ def _build_sitemap_xml(origin: str) -> str:
 
 @router.get("/sitemap.xml")
 async def sitemap_xml(request: Request) -> Response:
-    """Sitemap dinamico cached por 1h."""
+    """Sitemap dinamico cached por 1h.
+
+    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade) — caso
+    contrario, uma falha transitoria de DB no primeiro hit pos-restart
+    serviria por 1h um sitemap incompleto a Google/IndexNow. Em build
+    parcial, servimos o resultado mas mantemos cache invalido para a
+    proxima request tentar de novo.
+    """
     origin = _site_origin(request)
     now = time.time()
     if _SITEMAP_CACHE["xml"] and (now - _SITEMAP_CACHE["ts"] < _SITEMAP_TTL):
         xml = _SITEMAP_CACHE["xml"]
     else:
         xml = _build_sitemap_xml(origin)
-        _SITEMAP_CACHE["xml"] = xml
-        _SITEMAP_CACHE["ts"] = now
+        # Heuristica simples: sitemap completo tem 100+ <url>; parcial
+        # (so paginas estaticas) tem ~5. Nao cachear parcial.
+        if xml.count("<url>") >= 100:
+            _SITEMAP_CACHE["xml"] = xml
+            _SITEMAP_CACHE["ts"] = now
+        else:
+            _log.warning(
+                "Sitemap parcial gerado (%d <url> entries) — nao cacheando, "
+                "proxima request tentara recarregar municipios",
+                xml.count("<url>"),
+            )
     return Response(
         content=xml,
         media_type="application/xml",
@@ -194,9 +217,26 @@ async def indexnow_key_file(key: str) -> PlainTextResponse:
 
     Esta rota tambem captura qualquer outro `.txt` no root (ex:
     /humans.txt, /security.txt) que ainda nao temos. Pra esses,
-    raise HTTPException(404) entrega o 404 templated normal."""
+    HTTPException(404) cai no handler global @app.exception_handler(404)
+    em main.py:522, que renderiza errors/404.html (UX consistente).
+
+    Defesa em profundidade:
+    - Validacao de regex no key recebido: rejeitamos paths que nao
+      poderiam ser IndexNow keys (8-128 chars URL-safe). Reduz superficie
+      de probing.
+    - Compare timing-safe via secrets.compare_digest: defesa contra
+      timing attacks que poderiam revelar caracteres da key (impacto baixo
+      ja que vazar a key apenas permite que 3rd party submeta URLs do
+      nosso dominio, mas e uma boa pratica barata).
+    """
     expected = os.environ.get("INDEXNOW_KEY", "").strip()
-    if not expected or key != expected:
+    if not expected:
+        raise HTTPException(status_code=404)
+    # IndexNow keys sao 8-128 chars URL-safe (alfanumerico + - + _).
+    # Qualquer coisa fora disso: 404 sem nem comparar.
+    if not _INDEXNOW_KEY_PATTERN.fullmatch(key):
+        raise HTTPException(status_code=404)
+    if not secrets.compare_digest(key, expected):
         raise HTTPException(status_code=404)
     return PlainTextResponse(
         expected,

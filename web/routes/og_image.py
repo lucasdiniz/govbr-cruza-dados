@@ -6,7 +6,6 @@ import hashlib
 import io
 import os
 import time
-import unicodedata
 from pathlib import Path
 
 from fastapi import APIRouter, Response
@@ -29,9 +28,8 @@ _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _TTL = 24 * 3600
 
 
-def _norm_slug(name: str) -> str:
-    n = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
-    return "".join(c.lower() if c.isalnum() else "-" for c in n).strip("-")
+# Slug logic agora centralizada em web/utils/slug.py (mesma usada pelo
+# sitemap, rota /cidade/{slug} e JS lib/slug.js). Nao re-implementar aqui.
 
 
 def _font(size: int):
@@ -164,9 +162,19 @@ def _render_png(municipio: str, perfil: dict | None) -> bytes:
 
 @router.get("/og/cidade/{slug}.png")
 async def og_cidade(slug: str):
+    """OG card por municipio. Slug deve ser canonico (resolvido pela rota
+    /cidade/{slug} antes de injetar a URL na meta og:image). Se o slug nao
+    bater com nenhum municipio conhecido, gera card generico (titlecased)
+    pra nao quebrar previews em caso de cache miss bizarro.
+    """
     if not _PIL_OK:
         return Response(status_code=501, content="Pillow nao instalado")
-    safe_slug = _norm_slug(slug)
+    # Reutiliza o helper canonico (mesma logica do sitemap, da rota
+    # /cidade/{slug} e do JS lib/slug.js). Evita 4 normalizacoes
+    # divergentes que causam OG 404 em municipios com apostrofo/parenteses.
+    from web.utils.slug import municipio_slug, slug_to_municipio, SlugLookupError
+
+    safe_slug = municipio_slug(slug)
     if not safe_slug:
         return Response(status_code=400)
 
@@ -174,26 +182,16 @@ async def og_cidade(slug: str):
     if cache_path.exists() and (time.time() - cache_path.stat().st_mtime) < _TTL:
         return FileResponse(cache_path, media_type="image/png")
 
-    # Resolve slug -> nome de municipio (normalizado)
-    # Busca em mv_municipio_pb_risco por slug aproximado
-    sql = """
-        SELECT municipio FROM mv_municipio_pb_risco
-        WHERE lower(unaccent(replace(municipio, ' ', '-'))) = %(slug)s
-        LIMIT 1
-    """
+    # Resolve slug -> nome canonico via cache compartilhado. Em cold start
+    # (cache vazio + DB down) usamos o fallback titlecased pra ainda
+    # entregar PNG (preview de social media nunca deve 503).
     municipio = slug.replace("-", " ").title()
     try:
-        cols, rows = cached_query(
-            f"og:slug:{safe_slug}",
-            sql,
-            params={"slug": safe_slug},
-            timeout_sec=5,
-            ttl=CACHE_TTL,
-        )
-        if rows:
-            municipio = rows[0][0]
-    except Exception:
-        pass
+        resolved = slug_to_municipio(safe_slug)
+        if resolved:
+            municipio = resolved
+    except SlugLookupError:
+        pass  # cold start - usa fallback titlecased
 
     perfil = _fetch_perfil(municipio)
     png = _render_png(municipio, perfil)

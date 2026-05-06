@@ -28,6 +28,7 @@ Recomendamos rodar:
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import logging
 import os
@@ -52,8 +53,15 @@ BATCH_SIZE = 500
 
 def _extract_urls_from_sitemap(xml_text: str) -> list[str]:
     """Parse simples (regex) das tags <loc>. Evita dependencia de XML
-    parser externo; sitemap eh pequeno e bem formado."""
-    return re.findall(r"<loc>([^<]+)</loc>", xml_text)
+    parser externo; sitemap eh pequeno e bem formado.
+
+    IMPORTANTE: o conteudo eh entity-encoded (xml.sax.saxutils.escape em
+    seo.py:_build_sitemap_xml). Hoje URLs sao /cidade/<slug> e nao tem
+    `&`/`<`/`>`, mas se algum dia voltarmos a indexar URLs com query
+    string, html.unescape garante que `&amp;` vire `&` antes de submeter
+    pro IndexNow (que rejeitaria a URL malformada silenciosamente).
+    """
+    return [html.unescape(loc) for loc in re.findall(r"<loc>([^<]+)</loc>", xml_text)]
 
 
 def _submit_batch(host: str, key: str, urls: list[str], dry_run: bool) -> bool:
