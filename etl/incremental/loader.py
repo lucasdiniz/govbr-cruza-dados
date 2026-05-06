@@ -230,7 +230,7 @@ def _incremental_load(
         cur.execute(f"CREATE TABLE {stg_typed} AS {typed_sql}")
 
     # NK NULL move via single SQL (D6 dual-write trade-off: docked em main TX)
-    rows_rejected_null_key = _move_nk_null_to_dlq(spec, ctx, stg_typed)
+    rows_rejected_null_key = _move_nk_null_to_dlq(spec, ctx, stg_typed, csv_path)
 
     # Step 8: build staging_final (POC: alias for now if no derived_columns)
     # Derived columns na FORMA literal/SQL acontece no INSERT INTO target via
@@ -304,6 +304,7 @@ def _move_nk_null_to_dlq(
     spec: LoaderSpec,
     ctx: IncrementalLoadContext,
     stg_typed: str,
+    csv_path: Path,
 ) -> int:
     """Single-SQL DELETE WHERE NK NULL em staging, escrevendo cada row em DLQ.
 
@@ -311,9 +312,17 @@ def _move_nk_null_to_dlq(
     (ano_arquivo) NÃO existem em staging — são adicionadas no INSERT INTO target.
     Skipamos derived cols no NULL check.
 
-    Audit: cada row deletada vai pra etl_rejected_rows com reason='nk_null'
+    Audit: cada row deletada vai pra etl_rejected_rows com reason='NK_NULL'
     via ctx.dlq (autocommit conn). Permite reconstrução posterior das rows
     perdidas e auditoria de qualidade da fonte.
+
+    File path: usa csv_path real (não staging table name) pra que cross-run
+    dedup via idx_etl_rejected_dedupe (source, table_name, file_path,
+    line_number, raw_line_hash) realmente funcione.
+
+    Failure mode: se DLQ insert falhar para QUALQUER row, raise para abortar
+    a phase. Garante P3 (auditabilidade): nenhuma row é deletada de staging
+    sem trace correspondente em etl_rejected_rows.
     """
     # Filter NK cols to only those that exist in staging (i.e., not derived).
     # Reverse of column_renames pra mapear target → CSV name se necessário.
@@ -331,41 +340,44 @@ def _move_nk_null_to_dlq(
 
     nk_null_pred = " OR ".join(f"{c} IS NULL" for c in staging_nk_cols)
 
-    # First INSERT failed rows into DLQ, then DELETE from staging. Both via
-    # autocommit DLQ conn to persist even if main txn rolls back.
     import hashlib
     import json
 
     with ctx.main.cursor() as cur:
-        # Capture rows about to be deleted (limited to relevant cols for DLQ)
+        # Capture rows about to be deleted, ORDER BY ctid for stable ordering
+        # so line_number is deterministic across runs (otherwise dedup index
+        # in idx_etl_rejected_dedupe wouldn't fire on retry).
         cur.execute(
-            f"""SELECT * FROM {stg_typed} WHERE {nk_null_pred}"""
+            f"""SELECT * FROM {stg_typed} WHERE {nk_null_pred} ORDER BY ctid"""
         )
         bad_rows = cur.fetchall()
         col_names = [d[0] for d in cur.description]
 
     if bad_rows:
+        # Write to DLQ first; only DELETE from staging if ALL DLQ inserts succeed.
+        # Per-row try/except + log-and-continue would silently lose audit trail
+        # on partial DLQ failure (P3 violation). Fail-fast and let the run
+        # operator investigate.
         with ctx.dlq.cursor() as dlq_cur:
             for row_idx, row in enumerate(bad_rows):
-                # Build raw_line as ;-joined repr of values (best-effort, max 8000 chars)
                 raw_repr = json.dumps(
                     dict(zip(col_names, [str(v) if v is not None else None for v in row])),
                     ensure_ascii=False, default=str,
                 )[:8000]
                 raw_hash = hashlib.sha256(raw_repr.encode("utf-8")).hexdigest()
-                try:
-                    dlq_cur.execute(
-                        """INSERT INTO etl_rejected_rows
-                           (run_id, source, table_name, file_path, line_number,
-                            raw_line, raw_line_hash, reason)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                           ON CONFLICT DO NOTHING""",
-                        (str(ctx.run_id), spec.source, spec.table,
-                         f"<staging:{stg_typed}>", row_idx,
-                         raw_repr, raw_hash, "nk_null"),
-                    )
-                except Exception as e:
-                    logger.warning("DLQ insert failed for nk_null row: %s", e)
+                # line_number stable per row content: hash truncated to bigint.
+                # Avoids collision with real CSV line numbers (positive bigint range).
+                stable_line = -int(raw_hash[:15], 16)  # negative → distinct namespace
+                dlq_cur.execute(
+                    """INSERT INTO etl_rejected_rows
+                       (run_id, source, table_name, file_path, line_number,
+                        raw_line, raw_line_hash, reason)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT DO NOTHING""",
+                    (str(ctx.run_id), spec.source, spec.table,
+                     str(csv_path), stable_line,
+                     raw_repr, raw_hash, "NK_NULL"),
+                )
 
     with ctx.main.cursor() as cur:
         cur.execute(f"DELETE FROM {stg_typed} WHERE {nk_null_pred}")
@@ -373,7 +385,7 @@ def _move_nk_null_to_dlq(
 
     if deleted > 0:
         logger.info(
-            "moved %d NK-NULL rows from %s to DLQ (reason=nk_null)",
+            "moved %d NK-NULL rows from %s to DLQ (reason=NK_NULL)",
             deleted, stg_typed,
         )
     return deleted

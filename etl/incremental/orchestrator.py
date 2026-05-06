@@ -149,16 +149,15 @@ def run_incremental_for_source(
     drop_raw = psycopg2.connect(govbr_dsn)
     drop_raw.autocommit = True
 
+    # 2b. Schema drift check: compare current target schema fingerprint against
+    # bootstrapped baseline. Run BEFORE any mutation (abort_stale_runs/cleanup)
+    # so that drift detection doesn't happen with audit-tables already touched.
+    _check_target_schema_drift(govbr_raw, spec)
+
     # 2. Pre-flight + start_run
     with lock_raw.cursor() as cur:
         cur.execute("SELECT etl_admin.abort_stale_runs(5)")
         cur.execute("SELECT etl_admin.cleanup_orphan_staging()")
-
-    # 2b. Schema drift check: compare current target schema fingerprint against
-    # bootstrapped baseline. If different, abort to prevent loading into a
-    # target whose structure changed (e.g., trigger missing, column dropped).
-    # Run requires fresh inspection by operator + explicit re-bootstrap (--force).
-    _check_target_schema_drift(govbr_conn, spec)
 
     run_id = etl_db.start_run(
         lock_raw, mode="incremental", triggered_by=triggered_by, commit_sha=commit_sha,

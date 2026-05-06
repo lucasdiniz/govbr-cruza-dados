@@ -71,18 +71,22 @@ BEGIN
                table_name, (SELECT count(*) FROM _ids_to_delete);
 
   LOOP
+    -- Materialize the batch IDs in a CTE so target DELETE and temp-table
+    -- cleanup operate on the EXACT SAME set of ids. Without this, two
+    -- separate `LIMIT N` subqueries are independent and PG is free to
+    -- return different rows, causing some target dups to be skipped while
+    -- their temp-table entries are removed (silent under-dedup).
     EXECUTE format($f$
-      DELETE FROM %I WHERE id IN (
-        SELECT id FROM _ids_to_delete LIMIT %s
+      WITH batch AS (
+        SELECT id FROM _ids_to_delete ORDER BY id LIMIT %s
+      ),
+      target_del AS (
+        DELETE FROM %I WHERE id IN (SELECT id FROM batch) RETURNING 1
       )
-    $f$, table_name, batch_size);
+      DELETE FROM _ids_to_delete WHERE id IN (SELECT id FROM batch)
+    $f$, batch_size, table_name);
     GET DIAGNOSTICS n = ROW_COUNT;
     EXIT WHEN n = 0;
-
-    -- Remove deleted ids from temp list to avoid re-scanning
-    DELETE FROM _ids_to_delete WHERE id IN (
-      SELECT id FROM _ids_to_delete LIMIT batch_size
-    );
 
     total_deleted := total_deleted + n;
     RAISE NOTICE '%: deleted % (total %)', table_name, n, total_deleted;
