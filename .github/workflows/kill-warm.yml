@@ -1,0 +1,65 @@
+name: Kill Warm Cache
+
+# Workflow descartavel para matar SIGKILL o processo cruza-warm-cache
+# orfao na VM. Usar quando um run anterior foi cancelado mas o systemd
+# unit + python --daemon continuou rodando.
+#
+# Apos rodar este workflow, dispare deploy.yml normal (com warm_cache=true
+# se quiser rebuildar) para continuar o trabalho com env vars frescos.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_RG: RG-GOVBR-NCUS
+  AZURE_VM: vm-govbr
+
+# Reusa o lock global do deploy.yml: se o deploy estiver rodando, este
+# workflow espera. Use cancel_run no UI antes de rodar este se quiser
+# matar de fato.
+concurrency:
+  group: cruza-deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  kill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Stop cruza-warm-cache + SIGKILL python --daemon
+        run: |
+          set -euxo pipefail
+          az vm run-command invoke \
+            -g "$AZURE_RG" -n "$AZURE_VM" \
+            --command-id RunShellScript \
+            --scripts '
+              echo "=== status BEFORE ==="
+              systemctl status cruza-warm-cache --no-pager --lines=5 || true
+              echo "=== python warm_cache PIDs BEFORE ==="
+              pgrep -af "warm_cache" || echo "no python warm_cache running"
+              echo "=== systemctl stop ==="
+              systemctl stop cruza-warm-cache || true
+              echo "=== sleep 5 ==="
+              sleep 5
+              echo "=== SIGKILL leftovers ==="
+              pkill -9 -f "warm_cache" || echo "no leftovers"
+              sleep 2
+              echo "=== status AFTER ==="
+              systemctl status cruza-warm-cache --no-pager --lines=5 || true
+              echo "=== python warm_cache PIDs AFTER ==="
+              pgrep -af "warm_cache" || echo "all killed - clean state"
+            '
+
+      - name: Done
+        run: |
+          echo "Warm cache killed. Voce pode disparar deploy.yml normal agora."
