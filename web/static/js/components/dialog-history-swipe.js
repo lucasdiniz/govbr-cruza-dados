@@ -3,12 +3,25 @@
 // Objetivo: botao voltar do Android/gesto iOS fecha o dialog em vez de
 // sair da pagina. Ao abrir o dialog empilhamos um state; se o usuario
 // voltar, o popstate fecha o dialog.
+//
+// Coordena com dialog-url-state.js: quando _dialogStateApply() ja fez
+// pushState com state.tpbDialog=true, _dialogOnOpen NAO duplica a
+// entrada (verifica history.state.tpbDialog primeiro).
 let _dialogHistoryState = false;
 
 function _dialogOnOpen() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     document.body.classList.add('dialog-open');
+    // Nao push state se _dialogStateApply (de dialog-url-state.js) ja
+    // empurrou um state com tpbDialog=true. Isso evita double-push (que
+    // deixava ?d=... na URL apos close porque history.back() consumia
+    // so a entrada generica, nao a com URL params).
+    const alreadyPushed = !!(history.state && history.state.tpbDialog);
+    if (alreadyPushed) {
+        _dialogHistoryState = true;
+        return;
+    }
     if (!_dialogHistoryState) {
         try {
             history.pushState({ tpbDialog: true }, '', '');
