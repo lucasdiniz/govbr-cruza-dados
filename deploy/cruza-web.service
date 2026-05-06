@@ -8,6 +8,10 @@ Type=simple
 User=govbr
 WorkingDirectory=/home/govbr/govbr-project
 EnvironmentFile=/home/govbr/govbr-project/.env
+# Forca asset_url() a falhar loud se manifest.json estiver ausente ou
+# corrupto — evita servir URLs raw em prod silenciosamente quando o
+# build pipeline quebrou.
+Environment=ASSETS_STRICT=1
 ExecStart=/home/govbr/govbr-project/venv/bin/python -m uvicorn web.main:app --host 0.0.0.0 --port 8000 --workers 3
 Restart=always
 RestartSec=5

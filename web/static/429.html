@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Muitas requisições — TransparenciaPB</title>
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #060a14;
+            color: #e6edf7;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            line-height: 1.5;
+        }
+        .card {
+            max-width: 520px;
+            background: #0f1726;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 32px 28px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+            color: #fbbf24;
+        }
+        p { color: #a8b3c7; margin-bottom: 16px; }
+        .icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 20px;
+            display: block;
+            color: #fbbf24;
+        }
+        a {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        a:hover { background: #1d4ed8; }
+        .subtle {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-top: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <h1>Aguarde um momento</h1>
+        <p>Você fez muitas requisições rápido demais. Aguarde alguns segundos e tente de novo.</p>
+        <p>Se você é um robô fazendo scraping legítimo, por favor reduza a frequência de requisições — todos os dados estão disponíveis nas fontes originais (Portal da Transparência, TCE-PB, etc.).</p>
+        <a href="/">Voltar à página inicial</a>
+        <p class="subtle">Erro 429 — TransparenciaPB</p>
+    </div>
+</body>
+</html>

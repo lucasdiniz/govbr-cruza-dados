@@ -533,18 +533,38 @@ jobs:
           set -e
           cd ${{ env.PROJECT_DIR }}
 
-          # Install nginx if missing
-          if ! dpkg -s nginx >/dev/null 2>&1; then
-            sudo apt update
-            sudo apt install -y nginx
-          fi
+          # Configure nginx + Let's Encrypt (idempotente).
+          # setup-letsencrypt.sh:
+          #   - Instala nginx e certbot se ausentes
+          #   - Se cert ainda nao existe, copia config bootstrap (HTTP-only com
+          #     ACME path), emite cert via webroot e troca pelo config completo.
+          #   - Se cert existe, so reaplica o config completo (idempotente).
+          #   - Configura hook de renovacao (reload nginx) e ativa certbot.timer.
+          sudo bash deploy/setup-letsencrypt.sh
 
-          # Configure nginx reverse proxy
-          sudo cp deploy/nginx-cruza.conf /etc/nginx/sites-available/cruza
-          sudo ln -sf /etc/nginx/sites-available/cruza /etc/nginx/sites-enabled/cruza
-          sudo rm -f /etc/nginx/sites-enabled/default
-          sudo nginx -t && sudo systemctl reload nginx
-          sudo systemctl enable nginx
+          # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
+          # a janela onde nginx serve novo dist/ enquanto workers velhos
+          # geram HTML com URLs antigas (404 nos hashed assets).
+          # build-assets.mjs eh atomic (dist.new -> mv -T dist), entao se
+          # falhar, dist/ fica como esta. ASSETS_STRICT=1 (cruza-web.service)
+          # garante que cruza-web crashe loud se manifest sumir.
+          if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+          fi
+          node --version
+          npm --version
+          LOCK_HASH_FILE=".node_modules.lockhash"
+          NEW_HASH=$(sha256sum package-lock.json | awk '{print $1}')
+          OLD_HASH=$(cat "$LOCK_HASH_FILE" 2>/dev/null || echo "")
+          if [ ! -d "node_modules" ] || [ "$NEW_HASH" != "$OLD_HASH" ]; then
+            echo "[build-assets] reinstalando node_modules..."
+            npm ci --no-audit --no-fund
+            echo "$NEW_HASH" > "$LOCK_HASH_FILE"
+          fi
+          node scripts/build-assets.mjs
+          echo "=== Asset build OK ==="
+          ls -la web/static/dist/
 
           # Install systemd services. cruza-warm-cache eh oneshot (sem [Install]):
           # apenas o arquivo eh copiado, sem enable/start. Disparado pelo step
@@ -555,7 +575,9 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable cruza-web
 
-          # Restart cruza-web to pick up new code.
+          # Restart cruza-web to pick up new code AND new asset manifest.
+          # Importante: build acima + restart aqui = sem gap onde workers
+          # com manifest antigo coexistem com nginx servindo dist/ novo.
           sudo systemctl restart cruza-web
 
           echo "=== Web services deployed ==="

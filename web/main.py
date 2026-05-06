@@ -277,6 +277,101 @@ templates.env.globals["JS_FILES"] = JS_FILES
 templates.env.globals["ASSET_VERSION"] = "97"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Asset manifest (build pipeline em scripts/build-assets.mjs).
+#
+# Em prod, web/static/dist/manifest.json mapeia nomes lógicos
+# ("core.js", "mapa.js", "index.css") -> filenames com hash content-based
+# ("core.<hash>.min.js"). Templates usam {{ asset_url('core.js') }}.
+#
+# Modo dev (sem build): asset_url() devolve URL raw para o arquivo original
+# (não minificado), com cache buster ?v=ASSET_VERSION. Permite rodar
+# `uvicorn` localmente sem rodar `npm run build` antes.
+#
+# Em prod, exportar ASSETS_STRICT=1 (deploy.yml seta isso) para FALHAR LOUD
+# se o manifest sumir ou ficar inconsistente — evita servir URLs raw quando
+# o usuário esperaria as hashed (debugging hard).
+# ─────────────────────────────────────────────────────────────────────────
+
+_ASSET_MANIFEST_PATH = _dir / "static" / "dist" / "manifest.json"
+_ASSETS_STRICT = os.environ.get("ASSETS_STRICT", "").strip() in ("1", "true", "True", "yes")
+
+# Mapa nome lógico -> path raw (relativo a /static/) usado como fallback
+# quando manifest está ausente (dev). Mantém os mesmos arquivos servidos
+# antes do build pipeline.
+_ASSET_RAW_FALLBACKS: dict[str, str] = {
+    "core.js": None,  # core.js não tem fallback unitário — em dev, JS_FILES é renderizado um por um.
+    "mapa.js": "/static/js/pages/mapa.js",
+    "index.css": "/static/css/index.css",
+}
+
+
+def _load_asset_manifest() -> dict[str, str] | None:
+    if not _ASSET_MANIFEST_PATH.exists():
+        if _ASSETS_STRICT:
+            raise RuntimeError(
+                f"ASSETS_STRICT=1 mas manifest ausente em {_ASSET_MANIFEST_PATH}. "
+                "Rode `npm run build` ou desative ASSETS_STRICT pra servir assets raw."
+            )
+        return None
+    try:
+        import json as _json
+        data = _json.loads(_ASSET_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        if _ASSETS_STRICT:
+            raise RuntimeError(f"Manifest corrupto ({_ASSET_MANIFEST_PATH}): {exc}")
+        return None
+    # Validacao mínima: chaves obrigatórias presentes em prod.
+    if _ASSETS_STRICT:
+        missing = [k for k in ("core.js", "mapa.js", "index.css") if k not in data]
+        if missing:
+            raise RuntimeError(
+                f"Manifest em {_ASSET_MANIFEST_PATH} sem chaves obrigatórias: {missing}"
+            )
+        # Validação extra: arquivos referenciados existem fisicamente em dist/.
+        # Sem isso, um manifest válido apontando pra arquivos faltantes
+        # passaria startup e produziria 404 em runtime.
+        dist_dir = _ASSET_MANIFEST_PATH.parent
+        ghost = []
+        for key in ("core.js", "mapa.js", "index.css"):
+            filename = data.get(key)
+            if not filename:
+                continue
+            if not (dist_dir / filename).is_file():
+                ghost.append(f"{key} -> {filename}")
+        if ghost:
+            raise RuntimeError(
+                f"Manifest aponta pra arquivos ausentes em {dist_dir}: {ghost}"
+            )
+    return data
+
+
+_ASSET_MANIFEST: dict[str, str] | None = _load_asset_manifest()
+
+
+def asset_url(logical_name: str) -> str:
+    """Retorna URL do asset.
+    Em prod (manifest carregado): /static/dist/<hashed-name>.
+    Em dev (sem manifest): caminho raw com ?v=ASSET_VERSION.
+    """
+    if _ASSET_MANIFEST and logical_name in _ASSET_MANIFEST:
+        return f"/static/dist/{_ASSET_MANIFEST[logical_name]}"
+    fallback = _ASSET_RAW_FALLBACKS.get(logical_name)
+    if fallback:
+        return f"{fallback}?v={templates.env.globals['ASSET_VERSION']}"
+    raise KeyError(f"asset_url: nome lógico desconhecido sem fallback: {logical_name!r}")
+
+
+def has_asset_bundle(logical_name: str) -> bool:
+    """True se manifest tem bundle hashed pra este nome (modo prod)."""
+    return bool(_ASSET_MANIFEST and logical_name in _ASSET_MANIFEST)
+
+
+templates.env.globals["asset_url"] = asset_url
+templates.env.globals["has_asset_bundle"] = has_asset_bundle
+templates.env.globals["ASSETS_STRICT"] = _ASSETS_STRICT
+
+
 app.include_router(cidade_router)
 app.include_router(mapa_router)
 app.include_router(og_router)

@@ -9,11 +9,16 @@ build/
 *.txt
 *.csv
 *.json
+node_modules/
 .claude/
 
 # Assets estaticos do frontend nao sao ignorados
 !web/static/geo/*.json
 !web/static/geo/*.geojson
+
+# Build pipeline (Node)
+!package.json
+!package-lock.json
 
 # Playwright MCP scratch artifacts
 .playwright-mcp/

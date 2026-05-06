@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
-    <link rel="stylesheet" href="/static/css/index.css?v={{ ASSET_VERSION }}">
+    <link rel="stylesheet" href="{{ asset_url('index.css') }}">
     <script>
         // Aplica modo (cidadao/auditor) + tamanho de fonte ANTES do render para evitar flash
         (function(){
@@ -164,8 +164,14 @@
     <script>
         window.COLUMN_META = {{ COLUMN_META | tojson }};
     </script>
-    {% for src in JS_FILES %}<script src="/static/js/{{ src }}?v={{ ASSET_VERSION }}"></script>
-    {% endfor %}
+    {# Em prod (manifest carregado): 1 bundle "core" hashed. Em dev sem build:
+       fallback pros 56 arquivos da JS_FILES list, na ordem original. #}
+    {% if has_asset_bundle('core.js') %}
+        <script src="{{ asset_url('core.js') }}"></script>
+    {% else %}
+        {% for src in JS_FILES %}<script src="/static/js/{{ src }}?v={{ ASSET_VERSION }}"></script>
+        {% endfor %}
+    {% endif %}
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

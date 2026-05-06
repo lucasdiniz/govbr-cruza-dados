@@ -1,0 +1,17 @@
+{
+  "name": "govbr-cruza-dados-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build pipeline for frontend assets (esbuild concat+minify+sourcemap, manifest.json with content-hashed names).",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-assets.mjs",
+    "build:check": "node scripts/build-assets.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
