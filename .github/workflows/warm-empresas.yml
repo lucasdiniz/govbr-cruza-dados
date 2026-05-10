@@ -1,10 +1,16 @@
-name: Warm cache (empresas)
+name: Warm cache (empresas) + ativar sitemap
 
-# Pre-popula web_cache com perfil de cada /empresa/<cnpj>.
-# Pre-requisito pra ativar SITEMAP_INCLUDE_EMPRESAS=1 (sem cache, pagina
-# /empresa/<cnpj> retorna 503 — nunca executa as 8 queries inline).
+# Rollout completo das paginas /empresa/<cnpj>:
+#   1. Pre-popula web_cache com perfil de cada CNPJ qualificado (~30-90min)
+#   2. E2E smoke test: 3 CNPJs aleatorios via cruza-web -> HTTP 200
+#   3. Habilita SITEMAP_INCLUDE_EMPRESAS=1 via systemd drop-in
+#   4. Restart cruza-web pra picking up env var
+#   5. Verifica /sitemap.xml inclui /empresa/
+#   6. IndexNow re-submete sitemap atualizado pro Bing/Yandex
 #
-# Esperado: ~30-90min para 45K empresas em B4 (4 workers paralelos).
+# Single dispatch -> rollout completo. Idempotente: se rodar 2x, apenas
+# atualiza cache e re-notifica IndexNow (drop-in ja existe).
+#
 # Self-hosted runner (mesma VM) pra evitar SSH overhead.
 
 on:
@@ -12,6 +18,11 @@ on:
     inputs:
       preflight_b4:
         description: 'Subir VM pra B4 antes de warm (recomendado — 4 workers paralelos saturam B2 facil)'
+        required: false
+        type: boolean
+        default: true
+      enable_sitemap_after_warm:
+        description: 'Apos warm + smoke test OK: habilita SITEMAP_INCLUDE_EMPRESAS=1, restart cruza-web, IndexNow. Default true. Setar false pra so warmar sem expor (dry run).'
         required: false
         type: boolean
         default: true
@@ -146,6 +157,76 @@ jobs:
             exit 1
           fi
           echo "E2E smoke test OK (3/3 CNPJs cached returning 200)"
+
+      # Smoke OK -> habilita o sitemap. Drop-in systemd e idempotente
+      # (overwrite). cruza-web reload pra picking up Environment=. Sem
+      # tocar .env (deploy.yml pode regenerar do ENV_FILE secret a
+      # qualquer momento — drop-in sobrevive).
+      - name: Habilitar SITEMAP_INCLUDE_EMPRESAS=1 (drop-in systemd)
+        if: success() && inputs.enable_sitemap_after_warm == true
+        run: |
+          set -euo pipefail
+          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
+          DROPIN_FILE="$DROPIN_DIR/sitemap-empresas.conf"
+          sudo mkdir -p "$DROPIN_DIR"
+          # Escreve drop-in via tee + multiple echos pra evitar issues
+          # de indentacao com heredocs em YAML run: |. Systemd rejeita
+          # section headers com leading whitespace.
+          {
+            echo '# Auto-gerado por warm-empresas.yml apos warm + smoke OK.'
+            echo '# Habilita /empresa/<cnpj> no /sitemap.xml. Pra desabilitar:'
+            echo '#   sudo rm /etc/systemd/system/cruza-web.service.d/sitemap-empresas.conf'
+            echo '#   sudo systemctl daemon-reload && sudo systemctl restart cruza-web'
+            echo '[Service]'
+            echo 'Environment="SITEMAP_INCLUDE_EMPRESAS=1"'
+          } | sudo tee "$DROPIN_FILE" >/dev/null
+          echo "Drop-in escrito:"
+          sudo cat "$DROPIN_FILE"
+          sudo systemctl daemon-reload
+          sudo systemctl restart cruza-web
+          # Aguarda rota /sitemap.xml respond — cruza-web restart leva
+          # ~3-5s pra abrir porta 8000 e o pool DB.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 3 -o /dev/null \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/static/manifest.webmanifest; then
+              echo "cruza-web ready (tentativa $i)"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Verificar sitemap inclui /empresa/
+        if: success() && inputs.enable_sitemap_after_warm == true
+        run: |
+          set -uo pipefail
+          # /sitemap.xml com cache 1h interno — restart limpou o cache,
+          # primeira request reconstroi (slow).
+          COUNT=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/empresa/' || true)
+          echo "sitemap inclui $COUNT URLs /empresa/"
+          if [ "$COUNT" -lt 100 ]; then
+            echo "::error::sitemap tem so $COUNT empresas (esperado >100). Drop-in pode nao ter sido picked up."
+            exit 1
+          fi
+
+      - name: IndexNow submit (Bing/Yandex/Yahoo)
+        if: success() && inputs.enable_sitemap_after_warm == true
+        run: |
+          set -uo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          if [ -z "${INDEXNOW_KEY:-}" ]; then
+            echo "::warning::INDEXNOW_KEY nao setada — skip submit"
+            exit 0
+          fi
+          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
+          python -m web.indexnow_submit 2>&1 || \
+            echo "::warning::IndexNow submit falhou — sitemap esta exposto, crawl normal vai descobrir as URLs em alguns dias"
 
   postflight:
     needs: [warm]
