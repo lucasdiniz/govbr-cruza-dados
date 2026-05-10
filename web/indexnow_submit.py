@@ -133,8 +133,28 @@ def main() -> int:
 
     # Gera sitemap localmente (mesma logica do endpoint /sitemap.xml).
     # Importamos aqui pra evitar custo de DB se fizermos --dry-run sem env.
+    # _build_sitemap_xml chama _municipios_pb() que usa web.db.get_conn();
+    # como esse script e standalone (nao roda dentro do FastAPI app), o pool
+    # nao foi inicializado pelo lifespan handler — fazemos manual aqui.
+    from web import db as web_db
     from web.routes.seo import _build_sitemap_xml
-    xml = _build_sitemap_xml(site_url)
+
+    pool_inited = False
+    try:
+        try:
+            web_db.init_pool()
+            pool_inited = True
+        except Exception:
+            log.exception(
+                "Falha ao inicializar pool DB; sitemap vai usar so URLs estaticas"
+            )
+        xml = _build_sitemap_xml(site_url)
+    finally:
+        if pool_inited:
+            try:
+                web_db.close_pool()
+            except Exception:
+                log.exception("Falha ao fechar pool DB (ignorado)")
     urls = _extract_urls_from_sitemap(xml)
     if args.limit:
         urls = urls[: args.limit]
