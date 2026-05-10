@@ -212,15 +212,22 @@ EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────
-# Sitemap: empresas qualificadas (heuristica de filtro pra evitar ruido).
-# Inclui CNPJs com pagamentos PB relevantes (>= R$ 10k), em CEIS vigente
-# ou com divida PGFN > 0. Retorna (razao_social, cnpj_completo) onde
-# cnpj_completo = basico+ordem(0001)+dv da matriz.
+# Sitemap: TODAS as empresas em mv_empresa_pb que tem matriz cadastrada
+# em estabelecimento (cnpj_ordem='0001'). Sem filtro de threshold de
+# valor/sancao/divida — qualquer empresa que apareceu em fonte PB merece
+# pagina indexavel.
 #
-# LIMIT 45000: protocolo sitemap.org permite ate 50.000 URLs por arquivo.
-# Cidades (~223) + estaticas (5) + 45k empresas = ~45.2k, com folga ate
-# o limite. Quando passarmos disso, implementar sitemap index com chunks
-# (TODO: web/routes/seo.py — sitemap-empresas-1.xml etc).
+# JOIN com estabelecimento eh OBRIGATORIO pra gerar CNPJ completo
+# (basico+ordem+dv). Empresas em mv_empresa_pb sem matriz cadastrada na
+# RFB (~12K) nao podem ter pagina (compute_empresa_perfil_dict 404 nelas)
+# entao tambem ficam fora do sitemap. Skip esperado.
+#
+# SEM LIMIT — sitemap-index permite indexar tudo via paginacao
+# (web/routes/seo.py: /sitemap-empresas-{n}.xml com LIMIT 49000 OFFSET).
+#
+# Warmer (web/warm_cache.py:_get_qualifying_empresas) consume sem LIMIT
+# pra cachear todas, preservando ORDER BY estavel pra paginacao bater
+# entre warmer e routes.
 # ─────────────────────────────────────────────────────────────────────────
 
 EMPRESAS_QUALIFICADAS_PARA_SITEMAP = """
@@ -231,10 +238,33 @@ EMPRESAS_QUALIFICADAS_PARA_SITEMAP = """
     JOIN estabelecimento est
         ON est.cnpj_basico = epb.cnpj_basico
        AND est.cnpj_ordem = '0001'
-    WHERE epb.total_pb_geral >= 10000
-       OR epb.flag_ceis_vigente
-       OR epb.total_divida_pgfn > 0
     ORDER BY epb.total_pb_geral DESC NULLS LAST,
              epb.cnpj_basico
-    LIMIT 45000
+"""
+
+# Variante paginada usada pelos shards do sitemap. Aceita LIMIT/OFFSET via
+# params nomeados (psycopg2): %(limit)s / %(offset)s. Mesmo ORDER BY pra
+# garantir que warmer e shards do sitemap processem o mesmo conjunto
+# deterministicamente.
+EMPRESAS_QUALIFICADAS_PAGINATED = """
+    SELECT
+        COALESCE(NULLIF(epb.razao_social, ''), 'Empresa ' || epb.cnpj_basico) AS razao_social,
+        est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv AS cnpj_completo
+    FROM mv_empresa_pb epb
+    JOIN estabelecimento est
+        ON est.cnpj_basico = epb.cnpj_basico
+       AND est.cnpj_ordem = '0001'
+    ORDER BY epb.total_pb_geral DESC NULLS LAST,
+             epb.cnpj_basico
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+# Conta total (usado por sitemap-index pra calcular num_shards e por
+# deploy.yml Enable step pra calcular coverage gate).
+EMPRESAS_QUALIFICADAS_COUNT = """
+    SELECT COUNT(*)
+    FROM mv_empresa_pb epb
+    JOIN estabelecimento est
+        ON est.cnpj_basico = epb.cnpj_basico
+       AND est.cnpj_ordem = '0001'
 """
