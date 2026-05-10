@@ -1,0 +1,39 @@
+{# Dividas ativas PGFN #}
+{% if pgfn %}
+<section class="empresa-section" id="pgfn">
+    <h2>Divida ativa da Uniao (PGFN)</h2>
+    <p class="text-sm text-muted">
+        Inscricoes da empresa em divida ativa federal. Total: <strong>{{ kpi_total_divida_pgfn|short_brl }}</strong>.
+    </p>
+    <div class="tbl-wrap">
+        <table class="stack-mobile">
+            <thead>
+                <tr>
+                    <th>Inscricao</th>
+                    <th>Situacao</th>
+                    <th>Receita</th>
+                    <th class="text-right">Valor consolidado</th>
+                    <th>Inscricao em</th>
+                    <th>Ajuizado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in pgfn %}
+                <tr>
+                    <td data-label="Inscricao"><code class="text-sm">{{ d.numero_inscricao }}</code></td>
+                    <td data-label="Situacao">{{ d.situacao_inscricao|clean_text }}</td>
+                    <td data-label="Receita">{{ d.receita_principal|clean_text }}</td>
+                    <td data-label="Valor" class="text-right num">{{ d.valor_consolidado|short_brl }}</td>
+                    <td data-label="Inscricao em">{{ d.dt_inscricao or '-' }}</td>
+                    <td data-label="Ajuizado">{{ d.indicador_ajuizado or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-sm">
+        Fonte oficial:
+        <a href="https://www.listadevedores.pgfn.gov.br/" target="_blank" rel="noopener nofollow">Lista de Devedores da PGFN</a>.
+    </p>
+</section>
+{% endif %}

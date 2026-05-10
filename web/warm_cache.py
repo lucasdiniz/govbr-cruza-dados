@@ -29,6 +29,7 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
 )
+from web.queries.empresa import EMPRESAS_QUALIFICADAS_PARA_SITEMAP
 from web.kpis.cidade import compute_cidade_kpis
 from web.queries.registry import CIDADE_QUERIES
 
@@ -595,6 +596,162 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
     return ano_ok + m12_ok + all_ok, ano_fail + m12_fail + all_fail
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Empresa warmer — pre-computa o dict completo de cada /empresa/<cnpj>.
+# Necessario porque a rota e CACHE-ONLY (cache miss = 503) pra evitar
+# thundering herd quando crawlers acessam 45K URLs.
+#
+# Storage no web_cache:
+#   query_id = "EMPRESA_PERFIL"
+#   municipio = cnpj_completo (14 digitos numericos)
+#   columns = ["payload"]
+#   rows = [[<dict_serializado_como_json>]]
+#
+# Read pela rota:
+#   read_web_cache("EMPRESA_PERFIL", cnpj) -> rows[0][0] = dict
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _get_qualifying_empresas(conn) -> list[str]:
+    """Lista cnpj_completo (14 digits) das empresas qualificadas.
+
+    Usa EMPRESAS_QUALIFICADAS_PARA_SITEMAP de web.queries.empresa que ja
+    aplica filtro (total_pb_geral >= 10k OR ceis_vigente OR pgfn > 0) e
+    LIMIT 45000.
+    """
+    with conn.cursor() as cur:
+        cur.execute(EMPRESAS_QUALIFICADAS_PARA_SITEMAP)
+        rows = cur.fetchall()
+    out = []
+    seen = set()
+    for _razao, cnpj_completo in rows:
+        if not cnpj_completo:
+            continue
+        cnpj_str = str(cnpj_completo).strip()
+        if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+            continue
+        if cnpj_str in seen:
+            continue
+        seen.add(cnpj_str)
+        out.append(cnpj_str)
+    return out
+
+
+def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
+    """Computa o perfil de uma empresa e armazena em web_cache.
+
+    Retorna (ok, mensagem_de_erro_ou_None). Cada chamada abre conexao
+    propria (thread-safe via _thread_conn).
+    """
+    # Import diferido pra evitar ciclo na inicializacao do modulo
+    # (web.routes.empresa importa web.db que importa etl.config).
+    from web.routes.empresa import (
+        CACHE_QUERY_ID as EMPRESA_CACHE_QID,
+        EmpresaNotFoundError,
+        compute_empresa_perfil_dict,
+    )
+
+    try:
+        data = compute_empresa_perfil_dict(cnpj_completo)
+    except EmpresaNotFoundError as e:
+        # Empresa sem dados PB — nao deve estar no sitemap qualificado,
+        # mas pode acontecer se mv_empresa_pb e estabelecimento divergem.
+        # Skip silencioso (nao caching, nao erro fatal).
+        return False, f"not_found:{e}"
+    except Exception as e:
+        return False, f"compute_failed:{str(e).splitlines()[0]}"
+
+    # Passamos o dict CRU pra _upsert. Ele faz UM `json.dumps(rows, default=str)`
+    # que serializa os valores aninhados (dict, list, datetime) em JSONB
+    # corretamente. Ao ler com read_web_cache, psycopg2 desserializa o JSONB
+    # de volta pra Python — `rows[0][0]` retorna o dict.
+    #
+    # NAO fazer json.dumps aqui antes de _upsert: dupla-serializacao gera
+    # string JSON aninhada (o que JSONB armazena seria '[["{...}"]]', com
+    # o objeto como string, nao dict). Resultado: toda leitura volta str em
+    # vez de dict, isinstance(data, dict) falha, rota cai pra 503 mesmo com
+    # cache "popular". Bug pego pelo Opus 4.7 review do PR #58 (P0).
+    try:
+        conn = _thread_conn()
+        with conn.cursor() as cur:
+            _upsert(
+                cur,
+                EMPRESA_CACHE_QID,
+                cnpj_completo,
+                ["payload"],
+                [[data]],
+            )
+        conn.commit()
+    except Exception as e:
+        try:
+            _thread_conn().rollback()
+        except Exception:
+            pass
+        return False, f"cache_write_failed:{str(e).splitlines()[0]}"
+    return True, None
+
+
+def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, int]:
+    """Processa empresas em paralelo. Cada falha eh logada mas nao aborta.
+
+    Args:
+        cnpjs: lista de 14-digit CNPJ completo.
+        verbose: log progresso a cada 100 processadas.
+
+    Returns: (ok_count, fail_count)
+    """
+    bootstrap = psycopg2.connect(DSN)
+    bootstrap.autocommit = False
+    _ensure_cache_table(bootstrap)
+    bootstrap.close()
+
+    total = len(cnpjs)
+    if total == 0:
+        return 0, 0
+    print(
+        f"[empresas] Warming {total} empresas em {PARALLEL_WORKERS} workers...",
+        flush=True,
+    )
+
+    ok = 0
+    fail = 0
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+        futures = {ex.submit(_warm_one_empresa, c): c for c in cnpjs}
+        done = 0
+        for fut in as_completed(futures):
+            done += 1
+            cnpj = futures[fut]
+            try:
+                success, msg = fut.result()
+            except Exception as e:
+                success = False
+                msg = f"future_exception:{e}"
+            if success:
+                ok += 1
+            else:
+                fail += 1
+                if verbose and msg and not msg.startswith("not_found:"):
+                    print(f"  [ERR] {cnpj}: {msg}", flush=True)
+            if verbose and done % 200 == 0:
+                elapsed = time.time() - t0
+                rate = done / elapsed if elapsed > 0 else 0
+                eta = (total - done) / rate if rate > 0 else 0
+                print(
+                    f"[empresas] {done}/{total} "
+                    f"({ok} ok, {fail} fail) — "
+                    f"{rate:.1f}/s, eta {eta/60:.1f}min",
+                    flush=True,
+                )
+    elapsed = time.time() - t0
+    print(
+        f"[empresas] Completo: {ok} ok, {fail} fail "
+        f"({elapsed/60:.1f}min)",
+        flush=True,
+    )
+    return ok, fail
+
+
 
 
 
@@ -604,8 +761,64 @@ def main():
     parser.add_argument("--daemon", action="store_true", help="Processa todos os municipios (use com --loop para repetir)")
     parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista")
     parser.add_argument("--pb", action="store_true", help="(compat) Processar PB - default")
+    parser.add_argument(
+        "--empresas",
+        action="store_true",
+        help=(
+            "Processa SOMENTE empresas (web_cache key=EMPRESA_PERFIL:<cnpj>). "
+            "Pre-requisito pra ativar SITEMAP_INCLUDE_EMPRESAS=1 no nginx. "
+            "Demora ~30-90min pra 45K empresas em B4."
+        ),
+    )
     args = parser.parse_args()
 
+    # ── Empresa warmer (modo separado, nao usa lista de municipios) ──
+    if args.empresas:
+        # Pool de conexoes do web/db.py precisa ser inicializado explicitamente:
+        # compute_empresa_perfil_dict() usa execute_query/get_conn que dependem
+        # do pool. Em runtime normal, web/main.py:lifespan inicializa. No
+        # warmer (CLI standalone) nao tem lifespan, fariamos
+        # RuntimeError("Connection pool not initialized") em cada empresa.
+        from web import db as web_db
+
+        web_db.init_pool()
+        try:
+            boot = psycopg2.connect(DSN)
+            boot.autocommit = True
+            try:
+                cnpjs = _get_qualifying_empresas(boot)
+            finally:
+                boot.close()
+            if not cnpjs:
+                print(
+                    "Nenhuma empresa qualificada encontrada (filtro: total>=10k OR "
+                    "CEIS vigente OR PGFN>0). Talvez mv_empresa_pb nao foi refreshed.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            ok, fail = warm_cycle_empresas(cnpjs)
+        finally:
+            try:
+                web_db.close_pool()
+            except Exception:
+                pass
+        total = ok + fail
+        fail_pct = (fail / total * 100) if total > 0 else 0.0
+        print(
+            f"[empresas] Resultado: {ok} ok, {fail} fail ({fail_pct:.1f}%)"
+        )
+        # Threshold mais permissivo (10%) que cidades (5%) porque empresa
+        # tem maior variancia: CNPJs com cadastro RFB ausente sao "skip
+        # esperado", contam como fail mas nao sao bug.
+        if fail_pct > 10.0:
+            print(
+                f"ERRO: taxa de falha {fail_pct:.1f}% > 10% — exit 1",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return
+
+    # ── Modo cidade (default, comportamento legado) ──
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
 
