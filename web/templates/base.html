@@ -22,6 +22,16 @@
        no .env (secret ENV_FILE no GitHub). Ver SEO operations checklist. #}
     {% if GOOGLE_SITE_VERIFICATION %}<meta name="google-site-verification" content="{{ GOOGLE_SITE_VERIFICATION }}">{% endif %}
     {% if BING_SITE_VERIFICATION %}<meta name="msvalidate.01" content="{{ BING_SITE_VERIFICATION }}">{% endif %}
+    {# Resource hints: a CSS de tipografia (typography.css) faz @import de
+       fonts.googleapis.com, que por sua vez baixa woff2 de fonts.gstatic.com.
+       Sem preconnect, o browser so descobre essas origens depois de parsear o
+       CSS — adiciona ~200-400ms de DNS+TLS no path critico do LCP. Preconnect
+       inicia o handshake ja no parse do <head>. crossorigin="" e necessario
+       em fonts.gstatic.com porque os fetches de woff2 sao CORS (font-face). #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
     <meta property="og:site_name" content="TransparenciaPB">
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:title" content="{% block og_title %}TransparenciaPB{% endblock %}">
