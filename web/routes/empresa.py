@@ -113,8 +113,19 @@ class EmpresaNotFoundError(Exception):
     """Empresa nao tem dados PB (nao em mv_empresa_pb) ou CNPJ invalido."""
 
 
-def compute_empresa_perfil_dict(cnpj_completo: str) -> dict[str, Any]:
+def compute_empresa_perfil_dict(
+    cnpj_completo: str,
+    timeout_sec: int = TIMEOUT_PROFILE,
+) -> dict[str, Any]:
     """Executa as 8 queries e monta o dict completo do perfil.
+
+    Args:
+        cnpj_completo: 14 digitos numericos puros.
+        timeout_sec: statement_timeout em segundos. Default TIMEOUT_PROFILE
+            (3s) — adequado pra empresas tipicas. Warmer passa
+            TIMEOUT_PROFILE_WARM (120s) pra cobrir mega-empresas
+            governamentais (BB, Caixa, INSS) que tem milhoes de empenhos
+            e estouram timeouts curtos em GROUP BY.
 
     Returns: dict pronto pra TemplateResponse.
     Raises: EmpresaNotFoundError se empresa nao em mv_empresa_pb ou
@@ -130,7 +141,7 @@ def compute_empresa_perfil_dict(cnpj_completo: str) -> dict[str, Any]:
     agg_cols, agg_rows = execute_query(
         EMPRESA_AGREGADOS_PB_BY_BASICO,
         (cnpj_basico,),
-        timeout_sec=TIMEOUT_PROFILE,
+        timeout_sec=timeout_sec,
     )
     if not agg_rows:
         raise EmpresaNotFoundError(f"sem dados PB: {cnpj_completo}")
@@ -142,7 +153,7 @@ def compute_empresa_perfil_dict(cnpj_completo: str) -> dict[str, Any]:
     with get_conn() as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
-            cur.execute(f"SET statement_timeout = '{TIMEOUT_PROFILE * 1000}'")
+            cur.execute(f"SET statement_timeout = '{timeout_sec * 1000}'")
             try:
                 cur.execute(EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO, (cnpj_completo,))
                 est_cols = [d[0] for d in cur.description]

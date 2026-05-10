@@ -646,6 +646,7 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
     """
     # Import diferido pra evitar ciclo na inicializacao do modulo
     # (web.routes.empresa importa web.db que importa etl.config).
+    from web.config import TIMEOUT_PROFILE_WARM
     from web.routes.empresa import (
         CACHE_QUERY_ID as EMPRESA_CACHE_QID,
         EmpresaNotFoundError,
@@ -653,7 +654,12 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
     )
 
     try:
-        data = compute_empresa_perfil_dict(cnpj_completo)
+        # timeout_sec=120 cobre mega-empresas governamentais (BB,
+        # Caixa, INSS) com milhoes de empenhos. TIMEOUT_PROFILE=3s do
+        # frontend nao se aplica aqui (warmer roda offline).
+        data = compute_empresa_perfil_dict(
+            cnpj_completo, timeout_sec=TIMEOUT_PROFILE_WARM
+        )
     except EmpresaNotFoundError as e:
         # Empresa sem dados PB — nao deve estar no sitemap qualificado,
         # mas pode acontecer se mv_empresa_pb e estabelecimento divergem.
