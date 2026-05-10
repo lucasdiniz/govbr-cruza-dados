@@ -9,7 +9,16 @@ function initClickableRows(root = document) {
         if (titleCell && !row.getAttribute('aria-label')) {
             row.setAttribute('aria-label', `Abrir detalhes de ${titleCell.textContent.trim()}`);
         }
-        const activate = () => {
+        const activate = (event) => {
+            // Empenho row (top-level, fora de dialog)
+            const empenhoId = row.dataset.empenhoId || '';
+            if (empenhoId) {
+                if (event && event.target && event.target.closest && event.target.closest('a')) return;
+                if (typeof openEmpenhoDialog === 'function') {
+                    openEmpenhoDialog(empenhoId);
+                }
+                return;
+            }
             // Servidor row
             const cpf6 = row.dataset.cpf6 || '';
             const nomeUpper = row.dataset.nomeUpper || '';
@@ -40,11 +49,11 @@ function initClickableRows(root = document) {
                 openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`, licMod);
             }
         };
-        row.addEventListener('click', activate);
+        row.addEventListener('click', (event) => activate(event));
         row.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
-            activate();
+            activate(event);
         });
     });
 }

@@ -110,8 +110,6 @@
         {% include "partials/empresa/_charts.html" %}
     {% endwith %}
 
-    {% include "partials/empresa/_empenhos.html" %}
-
     {% include "partials/empresa/_sancao_outros.html" %}
 
     {% include "partials/empresa/_sancoes.html" %}
@@ -119,6 +117,10 @@
     {% include "partials/empresa/_leniencia.html" %}
 
     {% include "partials/empresa/_socios.html" %}
+
+    {# Empenhos no fim — pode ser longo (ate 50 linhas). Linhas clickaveis
+       abrem #empresa-dialog (ver partials/dialogs/_empresa_dialog.html). #}
+    {% include "partials/empresa/_empenhos.html" %}
 
     <section class="empresa-section empresa-fontes">
         <h2>Fontes oficiais</h2>
@@ -133,4 +135,19 @@
         </p>
     </section>
 </article>
+
+{% include "partials/dialogs/_empresa_dialog.html" %}
+
+<script>
+// Deep-link de dialog: ?d=empenho&id=... abre o dialog correspondente.
+// Ver dialog-url-state.js. Roda apos main.js wirear os handlers do
+// dialog (DOMContentLoaded). Pequeno setTimeout pra garantir ordem.
+document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => {
+        if (typeof restoreDialogFromUrl === 'function') {
+            restoreDialogFromUrl();
+        }
+    }, 0);
+});
+</script>
 {% endblock %}
