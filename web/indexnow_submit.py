@@ -36,7 +36,16 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from urllib.parse import urlparse
+
+from dotenv import load_dotenv
+
+# Carrega .env explicitamente: bash `source .env` no deploy.yml define vars
+# de shell mas NAO exporta pra subprocesso, entao `os.environ` ficaria vazio.
+# Outras entradas (etl.config) ja fazem isso; replicamos aqui pra script
+# standalone funcionar igual local e em CI.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logging.basicConfig(
     level=logging.INFO,

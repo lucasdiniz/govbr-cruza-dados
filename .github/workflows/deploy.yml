@@ -673,7 +673,13 @@ jobs:
           set -e
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
+          # `set -a` faz `source .env` exportar as vars pro ambiente do
+          # subprocesso (sem isso, `python -m` nao enxergaria INDEXNOW_KEY
+          # mesmo com a var setada no .env). web/indexnow_submit.py tambem
+          # chama load_dotenv() como defesa em profundidade.
+          set -a
           source .env 2>/dev/null || true
+          set +a
           if [ -z "${INDEXNOW_KEY:-}" ]; then
             echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
             exit 0
