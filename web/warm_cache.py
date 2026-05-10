@@ -768,20 +768,34 @@ def main():
 
     # ── Empresa warmer (modo separado, nao usa lista de municipios) ──
     if args.empresas:
-        boot = psycopg2.connect(DSN)
-        boot.autocommit = True
+        # Pool de conexoes do web/db.py precisa ser inicializado explicitamente:
+        # compute_empresa_perfil_dict() usa execute_query/get_conn que dependem
+        # do pool. Em runtime normal, web/main.py:lifespan inicializa. No
+        # warmer (CLI standalone) nao tem lifespan, fariamos
+        # RuntimeError("Connection pool not initialized") em cada empresa.
+        from web import db as web_db
+
+        web_db.init_pool()
         try:
-            cnpjs = _get_qualifying_empresas(boot)
+            boot = psycopg2.connect(DSN)
+            boot.autocommit = True
+            try:
+                cnpjs = _get_qualifying_empresas(boot)
+            finally:
+                boot.close()
+            if not cnpjs:
+                print(
+                    "Nenhuma empresa qualificada encontrada (filtro: total>=10k OR "
+                    "CEIS vigente OR PGFN>0). Talvez mv_empresa_pb nao foi refreshed.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            ok, fail = warm_cycle_empresas(cnpjs)
         finally:
-            boot.close()
-        if not cnpjs:
-            print(
-                "Nenhuma empresa qualificada encontrada (filtro: total>=10k OR "
-                "CEIS vigente OR PGFN>0). Talvez mv_empresa_pb nao foi refreshed.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        ok, fail = warm_cycle_empresas(cnpjs)
+            try:
+                web_db.close_pool()
+            except Exception:
+                pass
         total = ok + fail
         fail_pct = (fail / total * 100) if total > 0 else 0.0
         print(
