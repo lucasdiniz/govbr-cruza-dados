@@ -178,15 +178,26 @@ def _build_sitemap_xml(origin: str) -> str:
     # Pagina /empresa/<cnpj> pra cada empresa qualificada (filtro em
     # web.queries.empresa.EMPRESAS_QUALIFICADAS_PARA_SITEMAP). URL canonica
     # usa 14 digitos numericos puros (sem mascara).
-    empresas = _empresas_pb()
-    for _razao, cnpj_completo in empresas:
-        loc = f"{origin}/empresa/{cnpj_completo}"
-        parts.append("  <url>")
-        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
-        parts.append(f"    <lastmod>{lastmod}</lastmod>")
-        parts.append("    <changefreq>weekly</changefreq>")
-        parts.append("    <priority>0.5</priority>")
-        parts.append("  </url>")
+    #
+    # GATED por env var: empresas SO entram no sitemap quando
+    # SITEMAP_INCLUDE_EMPRESAS=1. Padrao OFF porque, sem web_cache pre-
+    # populado pelas paginas /empresa/<cnpj>, expor 45K URLs ao IndexNow/
+    # Google causa thundering herd que derruba o site inteiro (incidente
+    # com PR #57). Workflow:
+    #   1. Deploy do codigo com flag OFF
+    #   2. python -m web.warm_cache --empresas (popula web_cache)
+    #   3. SITEMAP_INCLUDE_EMPRESAS=1 + reload (separar deploy)
+    #   4. IndexNow re-dispara automatico via deploy.yml
+    if os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1":
+        empresas = _empresas_pb()
+        for _razao, cnpj_completo in empresas:
+            loc = f"{origin}/empresa/{cnpj_completo}"
+            parts.append("  <url>")
+            parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+            parts.append(f"    <lastmod>{lastmod}</lastmod>")
+            parts.append("    <changefreq>weekly</changefreq>")
+            parts.append("    <priority>0.5</priority>")
+            parts.append("  </url>")
 
     parts.append("</urlset>")
     return "\n".join(parts)
@@ -203,10 +214,12 @@ async def sitemap_xml(request: Request) -> Response:
     para a proxima request tentar de novo.
 
     Heuristica de completude:
-    - Sitemap completo tem static (5) + cidades (~223) + empresas (>=1).
-    - Threshold combina: precisa de >= 100 cidades E >= 1 empresa.
-    - Se DB de empresas falhar mas cidades estao OK, recusa cache (a
-      proxima request reativa _empresas_pb).
+    - Sitemap completo tem static (5) + cidades (~223) + empresas (>=1
+      QUANDO flag SITEMAP_INCLUDE_EMPRESAS=1).
+    - Threshold combina: precisa de >= 100 cidades. Empresas opcional
+      (so quando flag ativada).
+    - Se DB de empresas falhar mas cidades estao OK e flag OFF, cacheia.
+      Se flag ON e empresas vier vazio, recusa cache.
     """
     origin = _site_origin(request)
     now = time.time()
@@ -216,21 +229,21 @@ async def sitemap_xml(request: Request) -> Response:
         xml = _build_sitemap_xml(origin)
         cidades_n = xml.count("/cidade/")
         empresas_n = xml.count("/empresa/")
-        # Bookmark de completude: cidades >= 100 (entre 223 PB, threshold
-        # generoso pra sobreviver a flapping) E pelo menos 1 empresa
-        # qualificada. Se filtro de qualificacao algum dia retornar 0
-        # legitimamente, este check vira "nao cacheia, mas /sitemap.xml
-        # continua servindo build novo a cada request" — penalty aceitavel.
-        is_complete = cidades_n >= 100 and empresas_n >= 1
+        flag_on = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
+        # Se flag esta OFF, sitemap eh "completo" sem empresas (so cidades).
+        # Se flag esta ON, exige tambem empresas >= 1.
+        is_complete = cidades_n >= 100 and (not flag_on or empresas_n >= 1)
         if is_complete:
             _SITEMAP_CACHE["xml"] = xml
             _SITEMAP_CACHE["ts"] = now
         else:
             _log.warning(
-                "Sitemap parcial gerado (cidades=%d, empresas=%d) — nao "
-                "cacheando, proxima request tentara recarregar do DB",
+                "Sitemap parcial gerado (cidades=%d, empresas=%d, "
+                "flag_empresas=%s) — nao cacheando, proxima request "
+                "tentara recarregar do DB",
                 cidades_n,
                 empresas_n,
+                flag_on,
             )
     return Response(
         content=xml,

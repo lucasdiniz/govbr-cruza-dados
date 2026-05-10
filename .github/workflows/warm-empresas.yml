@@ -1,0 +1,133 @@
+name: Warm cache (empresas)
+
+# Pre-popula web_cache com perfil de cada /empresa/<cnpj>.
+# Pre-requisito pra ativar SITEMAP_INCLUDE_EMPRESAS=1 (sem cache, pagina
+# /empresa/<cnpj> retorna 503 — nunca executa as 8 queries inline).
+#
+# Esperado: ~30-90min para 45K empresas em B4 (4 workers paralelos).
+# Self-hosted runner (mesma VM) pra evitar SSH overhead.
+
+on:
+  workflow_dispatch:
+    inputs:
+      preflight_b4:
+        description: 'Subir VM pra B4 antes de warm (recomendado — 4 workers paralelos saturam B2 facil)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+# Lock global compartilhado com deploy.yml — mesmo group key.
+concurrency:
+  group: deploy-vm-govbr
+  cancel-in-progress: false
+
+env:
+  PROJECT_DIR: /home/govbr/govbr-project
+  AZURE_RG: RG-GOVBR-NCUS
+  AZURE_VM: vm-govbr
+  VM_SIZE_WEB: Standard_B2as_v2
+  VM_SIZE_ETL: Standard_B4as_v2
+
+jobs:
+  preflight:
+    if: inputs.preflight_b4 == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resize VM to B4 if needed
+        run: |
+          set -euo pipefail
+          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query "hardwareProfile.vmSize" -o tsv)
+          if [ "$CURRENT" = "$VM_SIZE_ETL" ]; then
+            echo "VM ja em $VM_SIZE_ETL, skip resize"
+            exit 0
+          fi
+          echo "Resizing $AZURE_VM: $CURRENT -> $VM_SIZE_ETL"
+          az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
+          az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$VM_SIZE_ETL"
+          az vm start -g "$AZURE_RG" -n "$AZURE_VM"
+          # Aguarda runner se reconectar
+          sleep 30
+
+  warm:
+    needs: [preflight]
+    if: always() && (needs.preflight.result == 'success' || needs.preflight.result == 'skipped')
+    runs-on: self-hosted
+    timeout-minutes: 180  # 3h cap (warming 45K empresas em ~60-90min normal)
+    steps:
+      - name: Pre-warm sanity check
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          source .env 2>/dev/null || true
+          # Confirma que mv_empresa_pb existe (pre-requisito do warmer).
+          PASS=$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "SELECT COUNT(*) FROM mv_empresa_pb;" \
+            || (echo "::error::mv_empresa_pb nao existe — rode etl_phase=sql primeiro"; exit 1)
+
+      - name: Run empresa warmer
+        run: |
+          set -uo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          # set -a faz `source .env` exportar pro subprocesso (mesmo padrao
+          # do step IndexNow apos fix do PR #56).
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          echo "=== Empresa warmer started at $(date -Iseconds) ==="
+          python -m web.warm_cache --empresas
+          STATUS=$?
+          echo "=== Empresa warmer exit status: $STATUS ==="
+          exit $STATUS
+
+      - name: Cache stats
+        if: always()
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          PASS=$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT 'EMPRESA_PERFIL rows: ' || COUNT(*)
+            FROM web_cache WHERE query_id = 'EMPRESA_PERFIL';
+          "
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT 'oldest cache: ' || MIN(updated_at)::text || ' newest: ' || MAX(updated_at)::text
+            FROM web_cache WHERE query_id = 'EMPRESA_PERFIL';
+          "
+
+  postflight:
+    needs: [warm]
+    if: always() && needs.warm.result == 'success' && inputs.preflight_b4 == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resize VM down to B2
+        run: |
+          set -euo pipefail
+          CURRENT=$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --query "hardwareProfile.vmSize" -o tsv)
+          if [ "$CURRENT" = "$VM_SIZE_WEB" ]; then
+            echo "VM ja em $VM_SIZE_WEB, skip"
+            exit 0
+          fi
+          echo "Downsizing $AZURE_VM: $CURRENT -> $VM_SIZE_WEB"
+          az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM"
+          az vm resize -g "$AZURE_RG" -n "$AZURE_VM" --size "$VM_SIZE_WEB"
+          az vm start -g "$AZURE_RG" -n "$AZURE_VM"
