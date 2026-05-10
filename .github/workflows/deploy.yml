@@ -76,6 +76,11 @@ on:
           - enable
           - disable
         default: keep
+      download_sources:
+        description: 'CSV de fontes para baixar via etl.00_download --only ANTES do ETL phase (ex: "tce_pb,dados_pb"). Vazio = sem download. Usado pra restore quando uma fase destructive (ex: etl.19_tce_pb) precisa dos CSVs mas o cleanup automatico ja apagou os antigos. Soft-fail se a fase nao alcanca a tabela destino.'
+        required: false
+        type: string
+        default: ''
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -596,6 +601,21 @@ jobs:
           # etl_phase=sql. Idempotente, ~1-2min.
           echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
           python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
+
+      # ── Download seletivo (opt-in) ──
+      # Roda ANTES do ETL phase quando download_sources != ''. Caso de uso:
+      # restore apos cancelar uma fase destructive (ex: etl.19_tce_pb DROP+CREATE)
+      # — _cleanup_csvs ja apagou os CSVs antigos, preciso re-baixar antes de
+      # popular as tabelas. etl_phase=N entra depois e roda etl.run_all N.
+      - name: "ETL: Download seletivo"
+        if: inputs.download_sources != ''
+        run: |
+          set -e
+          sudo systemctl restart tor 2>/dev/null || true
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          echo "=== Download seletivo: ${{ inputs.download_sources }} ==="
+          python -m etl.00_download --only "${{ inputs.download_sources }}" 2>&1
 
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
