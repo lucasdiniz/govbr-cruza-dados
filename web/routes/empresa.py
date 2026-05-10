@@ -337,14 +337,15 @@ def compute_empresa_perfil_dict(
         - cadastrais (estabelecimento, matriz, socios, sancoes, pgfn,
           leniencia)
         - agregados/KPIs
-        - municipios_pagantes (com slug pre-computado)
+        - municipios_pagantes (com slug pre-computado — lista clicavel
+          pra /empresa/<cnpj>/<slug>)
         - top_elementos GLOBAL
         - monthly_global (chart 12 meses GLOBAL)
-        - municipios_data: dict {municipio_slug: {stats, monthly,
-          top_elementos, empenhos, [pagamentos_sancao_outros]}}
-          — usado pelo perfil global para mostrar prévia de cada
-          municipio. Se sancoes vazias, pagamentos_sancao_outros eh
-          omitido por municipio (poupa I/O).
+        Detalhes POR municipio (50 empenhos, monthly local, top elementos,
+        stats, sancao_outros) NAO sao cacheados aqui — vivem em
+        EMPRESA_PERFIL_MUN:<cnpj>:<slug> populado por
+        _warm_one_empresa_municipio. Pagina global so mostra preview;
+        detalhes carregam via /empresa/<cnpj>/<slug>.
     Raises: EmpresaNotFoundError se empresa nao em mv_empresa_pb ou
             cadastro RFB ausente.
     """
@@ -376,34 +377,15 @@ def compute_empresa_perfil_dict(
                     cur, cnpj_completo, cnpj_basico, cnpj_ordem
                 )
 
-                # Para cada municipio pagante, traz stats+monthly+top+empenhos.
-                # Se a empresa tem sancoes, inclui tambem
-                # pagamentos_sancao_outros pra cada municipio (so faz
-                # sentido nesse caso).
-                #
-                # LIMIT 10: empresas governamentais (BB, Caixa, INSS) pagam
-                # 200+ municipios. Embed de 200 sub-perfis no JSONB do
-                # web_cache global produzia payload de MB e duplicava
-                # trabalho do cache EMPRESA_PERFIL_MUN. Top-10 cobre os
-                # casos visiveis na pagina global; municipios alem disso
-                # so renderizam via /empresa/<cnpj>/<slug> dedicada.
-                # (P1 Opus 4.7 review PR #62.)
-                with_sancao_outros = bool(cadastral["sancoes"])
-                municipios_data: dict[str, dict[str, Any]] = {}
-                MAX_MUNICIPIOS_INLINE = 10
-                # municipios_pagantes ja vem ordenado por total_pago DESC
-                # (EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO).
-                for mp in cadastral["municipios_pagantes"][:MAX_MUNICIPIOS_INLINE]:
-                    slug = mp.get("slug")
-                    nome = mp.get("municipio")
-                    if not slug or not nome:
-                        continue
-                    if slug in municipios_data:
-                        continue
-                    municipios_data[slug] = _fetch_pagamentos_municipio(
-                        cur, cnpj_basico, nome,
-                        with_sancao_outros=with_sancao_outros,
-                    )
+                # NOTA: dados detalhados POR MUNICIPIO (50 empenhos, monthly,
+                # top elementos, stats, sancao_outros) NAO sao cacheados aqui.
+                # Eles vivem em cache separado (EMPRESA_PERFIL_MUN:<cnpj>:<slug>)
+                # populado por _warm_one_empresa_municipio. Pagina global so
+                # mostra preview + lista clicavel; detalhes carregam via
+                # /empresa/<cnpj>/<slug>. Versao anterior do PR #62 cacheava
+                # tudo aqui inline (dict municipios_data) — dead code que
+                # inflava blobs ate 15MB pra mega-empresas governamentais
+                # (BB, Caixa, INSS) sem nenhum template lendo.
             finally:
                 try:
                     cur.execute("RESET statement_timeout")
@@ -447,7 +429,6 @@ def compute_empresa_perfil_dict(
         "municipios_pagantes": cadastral["municipios_pagantes"],
         "top_elementos": cadastral["top_elementos"],
         "monthly_global": cadastral["monthly_global"],
-        "municipios_data": municipios_data,
         "kpi_total_pb": total_pb_geral,
         "kpi_qtd_municipios": qtd_municipios,
         "kpi_qtd_empenhos": qtd_empenhos_pb,
