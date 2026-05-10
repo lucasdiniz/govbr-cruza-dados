@@ -69,3 +69,28 @@ jobs:
           PGPASSWORD="$DB_PASSWORD" psql -U govbr -d govbr -h localhost -At -c "
             SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;
           " 2>&1
+          echo ""
+          echo "=== row counts (key tables/MVs) ==="
+          PGPASSWORD="$DB_PASSWORD" psql -U govbr -d govbr -h localhost -At -F'|' -c "
+            SELECT 'tce_pb_despesa', (SELECT COUNT(*) FROM tce_pb_despesa)
+            UNION ALL SELECT 'tce_pb_servidor', (SELECT COUNT(*) FROM tce_pb_servidor)
+            UNION ALL SELECT 'tce_pb_licitacao', (SELECT COUNT(*) FROM tce_pb_licitacao)
+            UNION ALL SELECT 'tce_pb_receita', (SELECT COUNT(*) FROM tce_pb_receita)
+            UNION ALL SELECT 'pb_pagamento', (SELECT COUNT(*) FROM pb_pagamento)
+            UNION ALL SELECT 'pb_empenho', (SELECT COUNT(*) FROM pb_empenho)
+            UNION ALL SELECT 'estabelecimento', (SELECT COUNT(*) FROM estabelecimento)
+            UNION ALL SELECT 'empresa', (SELECT COUNT(*) FROM empresa)
+            UNION ALL SELECT 'socio', (SELECT COUNT(*) FROM socio)
+            UNION ALL SELECT 'mv_empresa_pb', (SELECT COUNT(*) FROM mv_empresa_pb)
+            UNION ALL SELECT 'mv_pessoa_pb', (SELECT COUNT(*) FROM mv_pessoa_pb)
+            UNION ALL SELECT 'mv_municipio_pb_risco', (SELECT COUNT(*) FROM mv_municipio_pb_risco)
+            UNION ALL SELECT 'mv_municipio_pb_mapa', (SELECT COUNT(*) FROM mv_municipio_pb_mapa)
+            UNION ALL SELECT 'mv_empresa_governo', (SELECT COUNT(*) FROM mv_empresa_governo)
+            UNION ALL SELECT 'mv_empresa_municipio_pagantes', (SELECT COUNT(*) FROM mv_empresa_municipio_pagantes)
+            UNION ALL SELECT 'web_cache', (SELECT COUNT(*) FROM web_cache);
+          " 2>&1
+          echo ""
+          echo "=== web_cache by query_id ==="
+          PGPASSWORD="$DB_PASSWORD" psql -U govbr -d govbr -h localhost -At -F'|' -c "
+            SELECT query_id, COUNT(*) FROM web_cache GROUP BY query_id ORDER BY COUNT(*) DESC LIMIT 20;
+          " 2>&1
