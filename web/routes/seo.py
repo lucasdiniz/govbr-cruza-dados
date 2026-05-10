@@ -196,11 +196,17 @@ def _build_sitemap_xml(origin: str) -> str:
 async def sitemap_xml(request: Request) -> Response:
     """Sitemap dinamico cached por 1h.
 
-    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade) — caso
-    contrario, uma falha transitoria de DB no primeiro hit pos-restart
-    serviria por 1h um sitemap incompleto a Google/IndexNow. Em build
-    parcial, servimos o resultado mas mantemos cache invalido para a
-    proxima request tentar de novo.
+    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade ou
+    empresa) — caso contrario, uma falha transitoria de DB no primeiro
+    hit pos-restart serviria por 1h um sitemap incompleto a Google/IndexNow.
+    Em build parcial, servimos o resultado mas mantemos cache invalido
+    para a proxima request tentar de novo.
+
+    Heuristica de completude:
+    - Sitemap completo tem static (5) + cidades (~223) + empresas (>=1).
+    - Threshold combina: precisa de >= 100 cidades E >= 1 empresa.
+    - Se DB de empresas falhar mas cidades estao OK, recusa cache (a
+      proxima request reativa _empresas_pb).
     """
     origin = _site_origin(request)
     now = time.time()
@@ -208,16 +214,23 @@ async def sitemap_xml(request: Request) -> Response:
         xml = _SITEMAP_CACHE["xml"]
     else:
         xml = _build_sitemap_xml(origin)
-        # Heuristica simples: sitemap completo tem 100+ <url>; parcial
-        # (so paginas estaticas) tem ~5. Nao cachear parcial.
-        if xml.count("<url>") >= 100:
+        cidades_n = xml.count("/cidade/")
+        empresas_n = xml.count("/empresa/")
+        # Bookmark de completude: cidades >= 100 (entre 223 PB, threshold
+        # generoso pra sobreviver a flapping) E pelo menos 1 empresa
+        # qualificada. Se filtro de qualificacao algum dia retornar 0
+        # legitimamente, este check vira "nao cacheia, mas /sitemap.xml
+        # continua servindo build novo a cada request" — penalty aceitavel.
+        is_complete = cidades_n >= 100 and empresas_n >= 1
+        if is_complete:
             _SITEMAP_CACHE["xml"] = xml
             _SITEMAP_CACHE["ts"] = now
         else:
             _log.warning(
-                "Sitemap parcial gerado (%d <url> entries) — nao cacheando, "
-                "proxima request tentara recarregar municipios",
-                xml.count("<url>"),
+                "Sitemap parcial gerado (cidades=%d, empresas=%d) — nao "
+                "cacheando, proxima request tentara recarregar do DB",
+                cidades_n,
+                empresas_n,
             )
     return Response(
         content=xml,
