@@ -661,10 +661,16 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
     except Exception as e:
         return False, f"compute_failed:{str(e).splitlines()[0]}"
 
-    # Serializa o dict como JSON. _upsert ja faz json.dumps em rows mas
-    # nosso "payload" eh um dict aninhado — passamos como string JSON pra
-    # evitar duplo-encode (dict -> jsonb conversion implicita).
-    payload_json = json.dumps(data, default=str, ensure_ascii=False)
+    # Passamos o dict CRU pra _upsert. Ele faz UM `json.dumps(rows, default=str)`
+    # que serializa os valores aninhados (dict, list, datetime) em JSONB
+    # corretamente. Ao ler com read_web_cache, psycopg2 desserializa o JSONB
+    # de volta pra Python — `rows[0][0]` retorna o dict.
+    #
+    # NAO fazer json.dumps aqui antes de _upsert: dupla-serializacao gera
+    # string JSON aninhada (o que JSONB armazena seria '[["{...}"]]', com
+    # o objeto como string, nao dict). Resultado: toda leitura volta str em
+    # vez de dict, isinstance(data, dict) falha, rota cai pra 503 mesmo com
+    # cache "popular". Bug pego pelo Opus 4.7 review do PR #58 (P0).
     try:
         conn = _thread_conn()
         with conn.cursor() as cur:
@@ -673,7 +679,7 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
                 EMPRESA_CACHE_QID,
                 cnpj_completo,
                 ["payload"],
-                [[payload_json]],
+                [[data]],
             )
         conn.commit()
     except Exception as e:

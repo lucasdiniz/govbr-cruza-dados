@@ -106,6 +106,47 @@ jobs:
             FROM web_cache WHERE query_id = 'EMPRESA_PERFIL';
           "
 
+      # E2E smoke test: pega 3 CNPJs warmed aleatorios e bate na rota
+      # /empresa/<cnpj> via cruza-web. Tem que retornar HTTP 200.
+      # Detecta bugs de serializacao (cache hit volta str em vez de dict
+      # — toda hit cairia em 503) que o warmer sozinho nao pega.
+      - name: E2E smoke test (warmed CNPJs returning 200, not 503)
+        if: success()
+        run: |
+          set -uo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          PASS=$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)
+          # Pega 3 CNPJs warmed pra bater na rota local
+          CNPJS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT municipio FROM web_cache
+            WHERE query_id = 'EMPRESA_PERFIL'
+            ORDER BY random() LIMIT 3;
+          ")
+          if [ -z "$CNPJS" ]; then
+            echo "::warning::Sem CNPJs cached pra smoke test"
+            exit 0
+          fi
+          FAIL=0
+          for cnpj in $CNPJS; do
+            # Bate via localhost:8000 (cruza-web) com Host header pra trigger
+            # da rota correta. -o /dev/null + -w pra so capturar status.
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              -H "Host: transparenciapb.org" \
+              "http://127.0.0.1:8000/empresa/$cnpj")
+            if [ "$STATUS" = "200" ]; then
+              echo "  /empresa/$cnpj -> 200 OK"
+            else
+              echo "::error::/empresa/$cnpj -> $STATUS (esperado 200)"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::E2E smoke test FAILED em $FAIL/3 CNPJs — cache pode estar mal-formado"
+            exit 1
+          fi
+          echo "E2E smoke test OK (3/3 CNPJs cached returning 200)"
+
   postflight:
     needs: [warm]
     if: always() && needs.warm.result == 'success' && inputs.preflight_b4 == true
