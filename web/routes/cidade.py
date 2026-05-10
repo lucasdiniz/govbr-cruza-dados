@@ -41,6 +41,16 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
 )
+from web.queries.empresa import (
+    EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO,
+    EMPRESA_LENIENCIA_BY_CNPJ,
+    EMPRESA_LENIENCIA_EFEITOS_BY_ID,
+    EMPRESA_MATRIZ_BY_BASICO,
+    EMPRESA_PGFN_BY_CNPJ,
+    EMPRESA_SANCOES_CEIS_BY_CNPJ,
+    EMPRESA_SANCOES_CNEP_BY_CNPJ,
+    EMPRESA_SOCIOS_BY_BASICO,
+)
 from web.queries.registry import CIDADE_QUERIES, get_categories
 from web.kpis.cidade import compute_cidade_kpis
 
@@ -1743,15 +1753,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 result["top_elementos"] = top_elementos
 
                 # Sancoes CEIS
-                cur.execute("""
-                    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
-                           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
-                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal,
-                           abrangencia_sancao
-                    FROM ceis_sancao
-                    WHERE cpf_cnpj_norm = %s
-                    ORDER BY dt_inicio_sancao DESC
-                """, (cpf_cnpj,))
+                cur.execute(EMPRESA_SANCOES_CEIS_BY_CNPJ, (cpf_cnpj,))
                 san_cols = [d[0] for d in cur.description]
                 san_rows = cur.fetchall()
                 sancoes = []
@@ -1764,15 +1766,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     sancoes.append(r)
 
                 # Sancoes CNEP
-                cur.execute("""
-                    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
-                           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
-                           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal, valor_multa,
-                           abrangencia_sancao
-                    FROM cnep_sancao
-                    WHERE cpf_cnpj_norm = %s
-                    ORDER BY dt_inicio_sancao DESC
-                """, (cpf_cnpj,))
+                cur.execute(EMPRESA_SANCOES_CNEP_BY_CNPJ, (cpf_cnpj,))
                 cnep_cols = [d[0] for d in cur.description]
                 cnep_rows = cur.fetchall()
                 for row in cnep_rows:
@@ -1850,31 +1844,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 # Situacao cadastral + dados cadastrais detalhados
                 # Retorna estabelecimento exato + matriz (cnpj_ordem='0001') para
                 # endereco/contato + dados da empresa (capital, porte, natureza).
-                est_where = "est.cnpj_completo = %s"
                 est_params = (cpf_cnpj,)
-                cur.execute(f"""
-                    SELECT
-                        est.situacao_cadastral, est.dt_situacao,
-                        est.cnpj_completo, est.cnae_principal,
-                        dcnae.descricao AS desc_cnae_principal,
-                        est.uf,
-                        COALESCE(dm.descricao, est.municipio) AS municipio,
-                        est.matriz_filial, est.nome_fantasia,
-                        est.dt_inicio_atividade,
-                        est.tipo_logradouro, est.logradouro, est.numero,
-                        est.complemento, est.bairro, est.cep,
-                        est.ddd1, est.telefone1, est.email,
-                        e.razao_social, e.capital_social, e.porte,
-                        e.natureza_juridica,
-                        dnj.descricao AS desc_natureza_juridica,
-                        e.ente_federativo
-                    FROM estabelecimento est
-                    LEFT JOIN empresa e ON e.cnpj_basico = est.cnpj_basico
-                    LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
-                    LEFT JOIN dom_cnae dcnae ON dcnae.codigo = est.cnae_principal
-                    LEFT JOIN dom_natureza_juridica dnj ON dnj.codigo = e.natureza_juridica
-                    WHERE {est_where}
-                """, est_params)
+                cur.execute(EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO, est_params)
                 sit_cols = [d[0] for d in cur.description]
                 sit_rows = cur.fetchall()
                 if sit_rows:
@@ -1892,18 +1863,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 cnpj_basico_int = cpf_cnpj[:8]
                 cnpj_ordem_int = cpf_cnpj[8:12]
                 if cnpj_ordem_int != '0001':
-                    cur.execute("""
-                        SELECT est.cnpj_completo,
-                               est.tipo_logradouro, est.logradouro, est.numero,
-                               est.complemento, est.bairro, est.cep,
-                               est.ddd1, est.telefone1, est.email,
-                               COALESCE(dm.descricao, est.municipio) AS municipio,
-                               est.uf, est.nome_fantasia,
-                               est.dt_inicio_atividade
-                        FROM estabelecimento est
-                        LEFT JOIN dom_municipio dm ON dm.codigo = est.municipio
-                        WHERE est.cnpj_basico = %s AND est.cnpj_ordem = '0001'
-                    """, (cnpj_basico_int,))
+                    cur.execute(EMPRESA_MATRIZ_BY_BASICO, (cnpj_basico_int,))
                     mat_cols = [d[0] for d in cur.description]
                     mat_row = cur.fetchone()
                     if mat_row:
@@ -1914,20 +1874,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                         result["matriz"] = matriz
 
                 # Socios (CPFs vem mascarados pela RFB — seguro expor).
-                cur.execute("""
-                    SELECT s.tipo_socio, s.nome, s.cpf_cnpj_socio,
-                           s.qualificacao,
-                           dq.descricao AS desc_qualificacao,
-                           s.dt_entrada, s.pais, s.faixa_etaria,
-                           s.nome_representante, s.cpf_representante,
-                           s.qualif_representante,
-                           dqr.descricao AS desc_qualif_representante
-                    FROM socio s
-                    LEFT JOIN dom_qualificacao dq ON dq.codigo = s.qualificacao
-                    LEFT JOIN dom_qualificacao dqr ON dqr.codigo = s.qualif_representante
-                    WHERE s.cnpj_basico = %s
-                    ORDER BY s.tipo_socio, s.dt_entrada DESC
-                """, (cnpj_basico_int,))
+                cur.execute(EMPRESA_SOCIOS_BY_BASICO, (cnpj_basico_int,))
                 soc_cols = [d[0] for d in cur.description]
                 soc_rows = cur.fetchall()
                 if soc_rows:
@@ -1941,14 +1888,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["socios"] = socios
 
                 # Divida PGFN
-                cur.execute("""
-                    SELECT numero_inscricao, situacao_inscricao,
-                           receita_principal, valor_consolidado,
-                           dt_inscricao, indicador_ajuizado
-                    FROM pgfn_divida
-                    WHERE cpf_cnpj_norm = %s
-                    ORDER BY valor_consolidado DESC
-                """, (cpf_cnpj,))
+                cur.execute(EMPRESA_PGFN_BY_CNPJ, (cpf_cnpj,))
                 pgfn_cols = [d[0] for d in cur.description]
                 pgfn_rows = cur.fetchall()
                 if pgfn_rows:
@@ -1964,14 +1904,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     result["pgfn"] = dividas
 
                 # Acordos de Leniencia
-                cur.execute("""
-                    SELECT al.cnpj_sancionado, al.razao_social_rfb, al.situacao_acordo,
-                           al.orgao_sancionador, al.dt_inicio_acordo, al.dt_fim_acordo,
-                           al.numero_processo, al.id_acordo
-                    FROM acordo_leniencia al
-                    WHERE al.cnpj_norm = %s
-                    ORDER BY al.dt_inicio_acordo DESC
-                """, (cpf_cnpj,))
+                cur.execute(EMPRESA_LENIENCIA_BY_CNPJ, (cpf_cnpj,))
                 al_cols = [d[0] for d in cur.description]
                 al_rows = cur.fetchall()
                 if al_rows:
@@ -1982,10 +1915,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                             if hasattr(v, 'isoformat'):
                                 a[k] = v.isoformat()
                         # Buscar efeitos do acordo
-                        cur.execute("""
-                            SELECT efeito, complemento FROM acordo_efeito
-                            WHERE id_acordo = %s
-                        """, (a["id_acordo"],))
+                        cur.execute(EMPRESA_LENIENCIA_EFEITOS_BY_ID, (a["id_acordo"],))
                         ef_cols = [d[0] for d in cur.description]
                         ef_rows = cur.fetchall()
                         a["efeitos"] = [_row_to_dict(ef_cols, er) for er in ef_rows]

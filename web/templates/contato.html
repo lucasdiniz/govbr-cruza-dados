@@ -3,6 +3,34 @@
 {% block meta_description %}Entre em contato com a equipe da TransparenciaPB — sugestoes, correcoes ou parcerias.{% endblock %}
 {% block og_title %}Contato — TransparenciaPB{% endblock %}
 {% block og_description %}Mande uma mensagem pra equipe da TransparenciaPB.{% endblock %}
+{% block json_ld_extra %}
+{% set _origin = request_origin(request) if request else '' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "ContactPage",
+      "@id": "{{ _origin }}/contato#contactpage",
+      "url": "{{ _origin }}/contato",
+      "name": "Contato — TransparenciaPB",
+      "description": "Canal de contato com a equipe da TransparenciaPB para sugestoes, correcoes e parcerias.",
+      "isPartOf": {"@id": "{{ _origin }}/#website"},
+      "about": {"@id": "{{ _origin }}/#organization"},
+      "inLanguage": "pt-BR"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "{{ _origin }}/contato#breadcrumb",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ _origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Contato", "item": "{{ _origin }}/contato"}
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
 {% block content %}
 <section class="contato-page">
     <header class="contato-head">

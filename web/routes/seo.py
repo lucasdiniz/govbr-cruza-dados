@@ -94,6 +94,36 @@ def _municipios_pb() -> list[tuple[str, str]]:
         return []
 
 
+def _empresas_pb() -> list[tuple[str, str]]:
+    """Lista empresas qualificadas (heuristica em web.queries.empresa).
+    Retorna [(razao_social, cnpj_completo), ...]. Cnpj eh string de 14
+    digitos numericos puros (forma canonica usada pela rota /empresa/{cnpj}).
+    """
+    from web.queries.empresa import EMPRESAS_QUALIFICADAS_PARA_SITEMAP
+
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(EMPRESAS_QUALIFICADAS_PARA_SITEMAP)
+                out: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for razao, cnpj_completo in cur.fetchall():
+                    if not cnpj_completo:
+                        continue
+                    cnpj_str = str(cnpj_completo).strip()
+                    if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+                        continue
+                    if cnpj_str in seen:
+                        continue
+                    seen.add(cnpj_str)
+                    out.append((str(razao or ""), cnpj_str))
+                return out
+    except Exception:
+        _log.exception("Falha ao listar empresas PB pro sitemap")
+        return []
+
+
 def _lastmod_iso() -> str:
     """Data ISO (YYYY-MM-DD) usada como <lastmod> nas paginas de cidade.
 
@@ -145,6 +175,19 @@ def _build_sitemap_xml(origin: str) -> str:
         parts.append("    <priority>0.7</priority>")
         parts.append("  </url>")
 
+    # Pagina /empresa/<cnpj> pra cada empresa qualificada (filtro em
+    # web.queries.empresa.EMPRESAS_QUALIFICADAS_PARA_SITEMAP). URL canonica
+    # usa 14 digitos numericos puros (sem mascara).
+    empresas = _empresas_pb()
+    for _razao, cnpj_completo in empresas:
+        loc = f"{origin}/empresa/{cnpj_completo}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>weekly</changefreq>")
+        parts.append("    <priority>0.5</priority>")
+        parts.append("  </url>")
+
     parts.append("</urlset>")
     return "\n".join(parts)
 
@@ -153,11 +196,17 @@ def _build_sitemap_xml(origin: str) -> str:
 async def sitemap_xml(request: Request) -> Response:
     """Sitemap dinamico cached por 1h.
 
-    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade) — caso
-    contrario, uma falha transitoria de DB no primeiro hit pos-restart
-    serviria por 1h um sitemap incompleto a Google/IndexNow. Em build
-    parcial, servimos o resultado mas mantemos cache invalido para a
-    proxima request tentar de novo.
+    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade ou
+    empresa) — caso contrario, uma falha transitoria de DB no primeiro
+    hit pos-restart serviria por 1h um sitemap incompleto a Google/IndexNow.
+    Em build parcial, servimos o resultado mas mantemos cache invalido
+    para a proxima request tentar de novo.
+
+    Heuristica de completude:
+    - Sitemap completo tem static (5) + cidades (~223) + empresas (>=1).
+    - Threshold combina: precisa de >= 100 cidades E >= 1 empresa.
+    - Se DB de empresas falhar mas cidades estao OK, recusa cache (a
+      proxima request reativa _empresas_pb).
     """
     origin = _site_origin(request)
     now = time.time()
@@ -165,16 +214,23 @@ async def sitemap_xml(request: Request) -> Response:
         xml = _SITEMAP_CACHE["xml"]
     else:
         xml = _build_sitemap_xml(origin)
-        # Heuristica simples: sitemap completo tem 100+ <url>; parcial
-        # (so paginas estaticas) tem ~5. Nao cachear parcial.
-        if xml.count("<url>") >= 100:
+        cidades_n = xml.count("/cidade/")
+        empresas_n = xml.count("/empresa/")
+        # Bookmark de completude: cidades >= 100 (entre 223 PB, threshold
+        # generoso pra sobreviver a flapping) E pelo menos 1 empresa
+        # qualificada. Se filtro de qualificacao algum dia retornar 0
+        # legitimamente, este check vira "nao cacheia, mas /sitemap.xml
+        # continua servindo build novo a cada request" — penalty aceitavel.
+        is_complete = cidades_n >= 100 and empresas_n >= 1
+        if is_complete:
             _SITEMAP_CACHE["xml"] = xml
             _SITEMAP_CACHE["ts"] = now
         else:
             _log.warning(
-                "Sitemap parcial gerado (%d <url> entries) — nao cacheando, "
-                "proxima request tentara recarregar municipios",
-                xml.count("<url>"),
+                "Sitemap parcial gerado (cidades=%d, empresas=%d) — nao "
+                "cacheando, proxima request tentara recarregar do DB",
+                cidades_n,
+                empresas_n,
             )
     return Response(
         content=xml,
