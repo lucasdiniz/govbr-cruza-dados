@@ -1102,7 +1102,7 @@ jobs:
           source .env 2>/dev/null || true
           set +a
           if [ -n "${INDEXNOW_KEY:-}" ]; then
-            echo "=== IndexNow re-submit (sitemap com $EMPRESA_URLS URLs novas) ==="
+            echo "=== IndexNow re-submit (sitemap com $INDEX_HAS_EMPRESA shards × ${SHARD1_URLS}+ URLs/shard) ==="
             SITEMAP_INCLUDE_EMPRESAS=1 python -m web.indexnow_submit 2>&1 || \
               echo "::warning::IndexNow submit falhou — Bing vai descobrir via crawl normal"
           else
