@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCidadeAutocomplete();
     initInteractiveToggles(document);
     initClickableRows(document);
+    initEmpenhosControllers(document);
     initBackToTop();
     initShareButtons();
     initModeToggle();

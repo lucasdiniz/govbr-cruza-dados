@@ -27,6 +27,10 @@ from web.config import TIMEOUT_PROFILE
 from web.db import execute_query, get_conn, read_web_cache
 from web.queries.empresa import (
     EMPRESA_AGREGADOS_PB_BY_BASICO,
+    EMPRESA_EMPENHOS_COUNT_BY_MUN,
+    EMPRESA_EMPENHOS_COUNT_GLOBAL,
+    EMPRESA_EMPENHOS_PAGINATED_BY_MUN,
+    EMPRESA_EMPENHOS_PAGINATED_GLOBAL,
     EMPRESA_EMPENHOS_RECENTES_BY_MUN,
     EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO,
     EMPRESA_LENIENCIA_BY_BASICO,
@@ -172,6 +176,11 @@ def _fetch_pagamentos_municipio(cur, cnpj_basico: str, municipio: str,
     e_cols = [d[0] for d in cur.description]
     empenhos = [_convert_row(_row_to_dict(e_cols, r)) for r in cur.fetchall()]
 
+    # `qtd_empenhos` em stats ja eh o count total (foi computado pela
+    # mesma query EMPRESA_STATS_BY_MUN acima). Usado pelo footer de
+    # paginacao no frontend ("X paginas de Y empenhos") sem 1 query extra.
+    empenhos_total = int(stats.get("qtd_empenhos") or 0) if stats else 0
+
     out = {
         "municipio": municipio,
         "municipio_slug": municipio_slug(municipio),
@@ -179,6 +188,7 @@ def _fetch_pagamentos_municipio(cur, cnpj_basico: str, municipio: str,
         "monthly": monthly,
         "top_elementos": top_elementos,
         "empenhos": empenhos,
+        "empenhos_total": empenhos_total,
     }
     if with_sancao_outros:
         cur.execute(
@@ -272,6 +282,35 @@ def _fetch_cadastral_block(cur, cnpj_completo: str, cnpj_basico: str,
         _convert_row(_row_to_dict(m_cols, r)) for r in cur.fetchall()
     ]
 
+    # Top 50 empenhos GLOBAIS (sem filtro de municipio) + count total.
+    # Alimenta a primeira pagina da tabela paginada em /empresa/<cnpj>.
+    # Pages 2+ ou filtros sao live via /api/empresa/empenhos. Cache key
+    # global eh EMPRESA_PERFIL:<cnpj> — entries pre-deploy nao tem esses
+    # campos, frontend lida com fallback (lazy fetch live ao mount).
+    cur.execute(
+        EMPRESA_EMPENHOS_PAGINATED_GLOBAL,
+        {
+            "cnpj_basico": cnpj_basico,
+            "data_inicio": None, "data_fim": None,
+            "q": None, "q_pat": None,
+            "limit": 50, "offset": 0,
+        },
+    )
+    eg_cols = [d[0] for d in cur.description]
+    empenhos_global = [
+        _convert_row(_row_to_dict(eg_cols, r)) for r in cur.fetchall()
+    ]
+    cur.execute(
+        EMPRESA_EMPENHOS_COUNT_GLOBAL,
+        {
+            "cnpj_basico": cnpj_basico,
+            "data_inicio": None, "data_fim": None,
+            "q": None, "q_pat": None,
+        },
+    )
+    cnt_row = cur.fetchone()
+    empenhos_total_global = int(cnt_row[0]) if cnt_row else 0
+
     return {
         "estabelecimento": estabelecimento,
         "matriz": matriz,
@@ -282,6 +321,8 @@ def _fetch_cadastral_block(cur, cnpj_completo: str, cnpj_basico: str,
         "municipios_pagantes": municipios_pagantes,
         "top_elementos": top_elementos,
         "monthly_global": monthly_global,
+        "empenhos_global": empenhos_global,
+        "empenhos_total_global": empenhos_total_global,
     }
 
 
@@ -429,6 +470,11 @@ def compute_empresa_perfil_dict(
         "municipios_pagantes": cadastral["municipios_pagantes"],
         "top_elementos": cadastral["top_elementos"],
         "monthly_global": cadastral["monthly_global"],
+        # Empenhos globais (top 50 + count) — pagina 1 da tabela
+        # paginada em /empresa/<cnpj>. Adicionado no PR de paginacao;
+        # entries pre-PR nao tem esses campos, frontend faz fallback live.
+        "empenhos_global": cadastral.get("empenhos_global", []),
+        "empenhos_total_global": cadastral.get("empenhos_total_global", 0),
         "kpi_total_pb": total_pb_geral,
         "kpi_qtd_municipios": qtd_municipios,
         "kpi_qtd_empenhos": qtd_empenhos_pb,
@@ -556,6 +602,11 @@ def compute_empresa_municipio_perfil_dict(
         "monthly": pag["monthly"],
         "top_elementos": pag["top_elementos"],
         "empenhos": pag["empenhos"],
+        # Total empenhos no municipio (count) — usado pra paginacao.
+        # Adicionado no PR de paginacao; entries pre-PR cacheadas usam
+        # fallback len(empenhos) no frontend (ate primeiro fetch live
+        # popular total real).
+        "empenhos_total": pag.get("empenhos_total") or qtd_no_mun,
         "pagamentos_sancao_outros": pag.get("pagamentos_sancao_outros") or [],
         # KPIs focados no municipio:
         "kpi_total_pago_mun": total_pago_mun,
@@ -766,3 +817,176 @@ async def empresa_perfil_municipio(
         ),
         media_type="text/plain; charset=utf-8",
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# /api/empresa/empenhos — paginate + filtra empenhos. Live (5s timeout).
+# Page 1 sem filtros eh servido pelo warmer cache (campo `empenhos` em
+# EMPRESA_PERFIL/EMPRESA_PERFIL_MUN); frontend so chama este endpoint pra
+# pages 2+ ou qualquer filtro. Sem cache server-side proprio: usuario que
+# pagina/filtra geralmente vai ver dados unicos, baixa hit rate.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+from fastapi import Body
+from fastapi.responses import JSONResponse
+from psycopg2.errors import QueryCanceled
+
+# Limites do endpoint. Ver plan.md "Performance: limites e safeguards".
+_PAGE_SIZE = 50
+_API_TIMEOUT_SEC = 5
+_Q_MIN_CHARS = 2
+_Q_MAX_CHARS = 100
+
+
+def _parse_iso_date_or_none(s: Any) -> str | None:
+    """Aceita 'YYYY-MM-DD' ou retorna None. Rejeita qualquer outro
+    formato pra evitar SQL injection via cast (tho psycopg2 ja escapa).
+    Defensivo + claro.
+    """
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    return s
+
+
+def _parse_search_query_or_none(q: Any) -> tuple[str | None, str | None]:
+    """Normaliza query de busca textual. Retorna (q_clean, q_pat) onde
+    q_pat eh o pattern para ILIKE (com wildcards %). Min 2 chars, max
+    100. Strings menores/vazias retornam (None, None) — query SQL
+    simplifica via `%(q)s IS NULL OR ...`.
+    """
+    if q is None:
+        return (None, None)
+    s = str(q).strip()
+    if len(s) < _Q_MIN_CHARS:
+        return (None, None)
+    if len(s) > _Q_MAX_CHARS:
+        s = s[:_Q_MAX_CHARS]
+    # Escape % e _ pra que o usuario nao injete wildcards (pode tornar
+    # busca extremamente lenta sem retornar erros).
+    escaped = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pat = f"%{escaped}%"
+    return (s, pat)
+
+
+def _empenho_row_to_dict(row, cols):
+    """Converte row do PG (Decimal/date) pra dict JSON-serializavel."""
+    d = _row_to_dict(cols, row)
+    return _convert_row(d)
+
+
+@router.post("/api/empresa/empenhos")
+async def get_empresa_empenhos(payload: dict = Body(...)):
+    """Lista paginada de empenhos de uma empresa.
+
+    Body:
+        cnpj: 14 digitos (canonico). Obrigatorio.
+        municipio: nome canonico do municipio (NAO slug). Opcional —
+            None/vazio = visao global (todos os municipios).
+        q: busca textual (min 2 chars). Opcional.
+        data_inicio, data_fim: 'YYYY-MM-DD'. Opcional.
+        page: 1-indexed. Default 1.
+
+    Returns:
+        {empenhos: [...], total: int, page: int, total_pages: int,
+         page_size: int, scope: 'global'|'municipio'}
+
+    Errors:
+        400 cnpj invalido
+        504 query timeout (mega-empresa + filtros pesados)
+    """
+    # Validacao
+    cnpj_raw = "".join(ch for ch in str(payload.get("cnpj", "")) if ch.isdigit())
+    if not _CNPJ_RE.fullmatch(cnpj_raw):
+        return JSONResponse(
+            {"error": "cnpj invalido (esperado 14 digitos)"}, status_code=400
+        )
+    cnpj_basico = cnpj_raw[:8]
+
+    municipio = (payload.get("municipio") or "").strip() or None
+    data_inicio = _parse_iso_date_or_none(payload.get("data_inicio"))
+    data_fim = _parse_iso_date_or_none(payload.get("data_fim"))
+    q_clean, q_pat = _parse_search_query_or_none(payload.get("q"))
+
+    try:
+        page = int(payload.get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    if page < 1:
+        page = 1
+    offset = (page - 1) * _PAGE_SIZE
+
+    params = {
+        "cnpj_basico": cnpj_basico,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "q": q_clean,
+        "q_pat": q_pat,
+        "limit": _PAGE_SIZE,
+        "offset": offset,
+    }
+    if municipio:
+        params["municipio"] = municipio
+        list_sql = EMPRESA_EMPENHOS_PAGINATED_BY_MUN
+        count_sql = EMPRESA_EMPENHOS_COUNT_BY_MUN
+        scope = "municipio"
+    else:
+        list_sql = EMPRESA_EMPENHOS_PAGINATED_GLOBAL
+        count_sql = EMPRESA_EMPENHOS_COUNT_GLOBAL
+        scope = "global"
+
+    try:
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(f"SET statement_timeout = '{_API_TIMEOUT_SEC * 1000}'")
+                try:
+                    cur.execute(list_sql, params)
+                    cols = [d[0] for d in cur.description]
+                    empenhos = [_empenho_row_to_dict(r, cols) for r in cur.fetchall()]
+
+                    # Count com mesmos params (sem limit/offset)
+                    count_params = {k: v for k, v in params.items()
+                                    if k not in ("limit", "offset")}
+                    cur.execute(count_sql, count_params)
+                    cnt_row = cur.fetchone()
+                    total = int(cnt_row[0]) if cnt_row else 0
+                finally:
+                    try:
+                        cur.execute("RESET statement_timeout")
+                    except Exception:
+                        _log.warning("RESET statement_timeout falhou")
+    except QueryCanceled:
+        # Timeout — geralmente mega-empresa (BB/Caixa/INSS) com OFFSET
+        # alto sem filtros. Frontend mostra mensagem amigavel.
+        return JSONResponse(
+            {
+                "error": "timeout",
+                "message": (
+                    "A busca demorou muito. Use filtros (data ou texto) "
+                    "para refinar."
+                ),
+            },
+            status_code=504,
+        )
+    except Exception as exc:
+        _log.exception("get_empresa_empenhos: %s", exc)
+        return JSONResponse(
+            {"error": "internal", "message": "Erro ao buscar empenhos."},
+            status_code=500,
+        )
+
+    total_pages = (total + _PAGE_SIZE - 1) // _PAGE_SIZE if total > 0 else 0
+    return {
+        "empenhos": empenhos,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "page_size": _PAGE_SIZE,
+        "scope": scope,
+    }

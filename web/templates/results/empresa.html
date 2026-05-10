@@ -102,6 +102,24 @@
     {% include "partials/empresa/_municipios_pagantes.html" %}
     {% include "partials/empresa/_socios.html" %}
 
+    {# Empenhos GLOBAIS (todos os municipios) — paginado + filtravel.
+       Page 1 vem do warmer (campo `empenhos_global`). Entries cacheadas
+       pre-PR de paginacao nao tem esses campos — frontend faz lazy
+       fetch live ao mount.
+
+       NOTA: empresa.html tambem precisa do partial dialogs/_empresa_dialog.html
+       pra empenho-dialog poder abrir. Adicionado no fim do template. #}
+    {% with
+       empenhos = empenhos_global or [],
+       empenhos_total = empenhos_total_global or 0,
+       empenhos_endpoint = '/api/empresa/empenhos',
+       empenhos_scope = 'global',
+       empenhos_cnpj = cnpj,
+       empenhos_municipio = None
+    %}
+        {% include "partials/empresa/_empenhos.html" %}
+    {% endwith %}
+
     <section class="empresa-section empresa-fontes">
         <h2>Fontes oficiais</h2>
         <p class="text-sm text-muted">
@@ -115,4 +133,21 @@
         </p>
     </section>
 </article>
+
+{% include "partials/dialogs/_empresa_dialog.html" %}
+
+<script>
+// _currentMunicipio nao se aplica aqui (perfil global), mas dialog-nav
+// declara o global — mantemos vazio. Deep-link de empenho via
+// ?d=empenho&id=... eh restaurado quando dialog estiver pronto.
+document.addEventListener("DOMContentLoaded", () => {
+    if (typeof window.whenMD3Ready === 'function') {
+        window.whenMD3Ready(() => {
+            if (typeof restoreDialogFromUrl === 'function') {
+                restoreDialogFromUrl();
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

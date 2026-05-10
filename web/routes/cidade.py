@@ -42,6 +42,8 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO_DATED,
 )
 from web.queries.empresa import (
+    EMPRESA_EMPENHOS_COUNT_BY_DOC_MUN,
+    EMPRESA_EMPENHOS_PAGINATED_BY_DOC_MUN,
     EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO,
     EMPRESA_LENIENCIA_BY_CNPJ,
     EMPRESA_LENIENCIA_EFEITOS_BY_ID,
@@ -1965,6 +1967,158 @@ async def get_empenho_detalhes(payload: dict = Body(...)):
     except Exception:
         import logging; logging.exception("empenho detalhes failed")
         return JSONResponse({})
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# /api/fornecedor/empenhos — paginate + filtra empenhos do dialog de
+# fornecedor em /cidade/<slug>. Usa cpf_cnpj exato (em vez de
+# cnpj_basico) pra evitar colisao CPF/CNPJ — mesmo padrao do
+# /api/fornecedor/detalhes acima.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+_EMP_FORN_PAGE_SIZE = 50
+_EMP_FORN_TIMEOUT_SEC = 5
+_EMP_FORN_Q_MIN = 2
+_EMP_FORN_Q_MAX = 100
+
+
+def _empforn_parse_iso_date(s):
+    """YYYY-MM-DD ou None."""
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    import re as _re
+    if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    return s
+
+
+def _empforn_parse_q(q):
+    """Retorna (q_clean, q_pat) ou (None, None) se invalido. Escapa
+    wildcards SQL pra impedir patterns lentos do usuario."""
+    if q is None:
+        return (None, None)
+    s = str(q).strip()
+    if len(s) < _EMP_FORN_Q_MIN:
+        return (None, None)
+    if len(s) > _EMP_FORN_Q_MAX:
+        s = s[:_EMP_FORN_Q_MAX]
+    escaped = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return (s, f"%{escaped}%")
+
+
+@router.post("/api/fornecedor/empenhos")
+async def get_fornecedor_empenhos(payload: dict = Body(...)):
+    """Lista paginada de empenhos de um fornecedor num municipio.
+
+    Body:
+        cpf_cnpj: 14 digitos (canonico). Obrigatorio.
+        municipio: nome canonico. Obrigatorio (dialog sempre tem mun
+            scope — escopo cross-mun ja eh tratado por
+            empenhos_sancao_outros separado).
+        q, data_inicio, data_fim, page: idem /api/empresa/empenhos.
+
+    Returns: {empenhos, total, page, total_pages, page_size}
+    """
+    cpf_cnpj = "".join(ch for ch in str(payload.get("cpf_cnpj", "")) if ch.isdigit())
+    if len(cpf_cnpj) != 14:
+        return JSONResponse(
+            {"error": "cpf_cnpj invalido (esperado 14 digitos)"},
+            status_code=400,
+        )
+    municipio = (payload.get("municipio") or "").strip()
+    if not municipio:
+        return JSONResponse(
+            {"error": "municipio obrigatorio"}, status_code=400
+        )
+
+    data_inicio = _empforn_parse_iso_date(payload.get("data_inicio"))
+    data_fim = _empforn_parse_iso_date(payload.get("data_fim"))
+    q_clean, q_pat = _empforn_parse_q(payload.get("q"))
+
+    try:
+        page = int(payload.get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    if page < 1:
+        page = 1
+    offset = (page - 1) * _EMP_FORN_PAGE_SIZE
+
+    params = {
+        "cpf_cnpj": cpf_cnpj,
+        "municipio": municipio,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "q": q_clean,
+        "q_pat": q_pat,
+        "limit": _EMP_FORN_PAGE_SIZE,
+        "offset": offset,
+    }
+
+    try:
+        from psycopg2.errors import QueryCanceled
+        from web.db import get_conn
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SET statement_timeout = '{_EMP_FORN_TIMEOUT_SEC * 1000}'"
+                )
+                try:
+                    cur.execute(EMPRESA_EMPENHOS_PAGINATED_BY_DOC_MUN, params)
+                    cols = [d[0] for d in cur.description]
+                    empenhos = []
+                    for row in cur.fetchall():
+                        d = _row_to_dict(cols, row)
+                        for k, v in d.items():
+                            if hasattr(v, "as_tuple"):
+                                d[k] = float(v)
+                            elif hasattr(v, "isoformat"):
+                                d[k] = v.isoformat()
+                        empenhos.append(d)
+
+                    count_params = {k: v for k, v in params.items()
+                                    if k not in ("limit", "offset")}
+                    cur.execute(EMPRESA_EMPENHOS_COUNT_BY_DOC_MUN, count_params)
+                    cnt = cur.fetchone()
+                    total = int(cnt[0]) if cnt else 0
+                finally:
+                    try:
+                        cur.execute("RESET statement_timeout")
+                    except Exception:
+                        pass
+    except QueryCanceled:
+        return JSONResponse(
+            {
+                "error": "timeout",
+                "message": (
+                    "A busca demorou muito. Use filtros (data ou texto) "
+                    "para refinar."
+                ),
+            },
+            status_code=504,
+        )
+    except Exception:
+        import logging; logging.exception("fornecedor empenhos failed")
+        return JSONResponse(
+            {"error": "internal", "message": "Erro ao buscar empenhos."},
+            status_code=500,
+        )
+
+    total_pages = (
+        (total + _EMP_FORN_PAGE_SIZE - 1) // _EMP_FORN_PAGE_SIZE
+        if total > 0 else 0
+    )
+    return {
+        "empenhos": empenhos,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "page_size": _EMP_FORN_PAGE_SIZE,
+    }
 
 
 @router.post("/api/licitacao/detalhes")

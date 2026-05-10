@@ -118,9 +118,19 @@
 
     {% include "partials/empresa/_socios.html" %}
 
-    {# Empenhos no fim — pode ser longo (ate 50 linhas). Linhas clickaveis
-       abrem #empresa-dialog (ver partials/dialogs/_empresa_dialog.html). #}
-    {% include "partials/empresa/_empenhos.html" %}
+    {# Empenhos no fim — pode ser longo (paginado, busca, filtros).
+       Linhas clickaveis abrem #empresa-dialog (ver partials/dialogs/_empresa_dialog.html).
+       Variaveis empenhos_endpoint/scope/cnpj/municipio orientam o
+       empenhos-controller (JS) a fazer fetches paginados ao
+       /api/empresa/empenhos com escopo de municipio. #}
+    {% with
+       empenhos_endpoint = '/api/empresa/empenhos',
+       empenhos_scope = 'municipio',
+       empenhos_cnpj = cnpj,
+       empenhos_municipio = municipio
+    %}
+        {% include "partials/empresa/_empenhos.html" %}
+    {% endwith %}
 
     <section class="empresa-section empresa-fontes">
         <h2>Fontes oficiais</h2>

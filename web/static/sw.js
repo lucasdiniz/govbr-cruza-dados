@@ -9,7 +9,7 @@
 // Fallback estatico (FALLBACK_CACHE_VERSION) é usado quando manifest indisponível
 // (dev mode sem build, ou race no deploy).
 
-const FALLBACK_CACHE_VERSION = 'tpb-v44-fallback';
+const FALLBACK_CACHE_VERSION = 'tpb-v45-fallback';
 
 // Lista mínima usada APENAS quando manifest.json não pode ser fetched.
 // Mantém PWA instalável mesmo em deploy race / 404 transitorio.

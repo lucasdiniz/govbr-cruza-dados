@@ -190,3 +190,66 @@
     }
 }
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   Tabela paginada de empenhos: filter bar local + footer de paginacao.
+
+   Filter bar reusa estilos de .date-filter-bar (cidade) com pequenas
+   diferencas de scope/dimensao. Pagination eh um chip-like centralizado
+   com dois botoes md-text-button (prev/next).
+   ──────────────────────────────────────────────────────────────────── */
+.empenhos-section .empenhos-filter-bar {
+    margin: .75rem 0 1rem 0;
+}
+.empenhos-section .empenhos-filter-bar .date-filter-panel {
+    padding: .75rem 0 .25rem 0;
+}
+.empenhos-search-row {
+    margin-bottom: .75rem;
+}
+.empenhos-search-field {
+    flex: 1 1 100%;
+}
+.empenhos-search-field input[type="search"] {
+    width: 100%;
+}
+.empenhos-section [data-empenhos-table].loading {
+    opacity: .55;
+    pointer-events: none;
+    transition: opacity .15s linear;
+}
+.empenhos-empty {
+    padding: 1.5rem 0;
+    text-align: center;
+}
+.empenhos-loading-placeholder {
+    padding: 1.5rem 0;
+    text-align: center;
+}
+.empenhos-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+.empenhos-pagination[hidden] {
+    display: none;
+}
+.empenhos-pagination .empenhos-page-info {
+    font-size: .9rem;
+    color: var(--md-sys-color-on-surface-variant);
+    min-width: 12rem;
+    text-align: center;
+}
+@media (max-width: 600px) {
+    .empenhos-pagination {
+        gap: .35rem;
+    }
+    .empenhos-pagination .empenhos-page-info {
+        order: -1;
+        flex-basis: 100%;
+        margin-bottom: .25rem;
+    }
+}

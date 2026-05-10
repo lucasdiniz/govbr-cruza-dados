@@ -361,8 +361,12 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         html += '</div>';
     }
 
-    // Empenhos recentes
-    if (data.empenhos && data.empenhos.length) {
+    // Empenhos recentes (paginado + filtravel via empenhos-controller).
+    // Sempre renderiza a secao mesmo se data.empenhos vazio: o controller
+    // pode buscar empenhos paginados a partir do API se houver total > 0.
+    const stStats = data.stats || {};
+    const empTotal = parseInt(stStats.qtd_empenhos || 0, 10) || 0;
+    if ((data.empenhos && data.empenhos.length) || empTotal > 0) {
         // Municipality selector
         const munOptions = (data.municipios_ativos || []);
         let munSelect = '';
@@ -374,11 +378,71 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">${opts}</select>`;
         }
 
-        html += `<div class="dialog-section" id="forn-empenhos"><h4>${dualLabel('Pagamentos recentes','Empenhos recentes')} ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
-        html += _buildEmpenhoTable(data.empenhos, sancaoRanges);
-        if (data.empenhos.length >= 50) {
-            html += '<p class="text-sm text-muted">Mostrando os 50 empenhos mais recentes.</p>';
+        html += `<div class="dialog-section" id="forn-empenhos"><h4>${dualLabel('Pagamentos','Empenhos')} ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
+        // Container montado pelo empenhos-controller. Initial empenhos vem
+        // do payload do /detalhes (50 mais recentes); paginas 2+ ou
+        // filtros chamam /api/fornecedor/empenhos.
+        html += `<section
+            class="empenhos-section empenhos-section-dialog"
+            data-empenhos-mount
+            data-empenhos-endpoint="/api/fornecedor/empenhos"
+            data-empenhos-scope="municipio"
+            data-empenhos-cpf-cnpj="${_esc(cpfCnpj || '')}"
+            data-empenhos-municipio="${_esc(viewMunicipio || '')}"
+            data-empenhos-total="${empTotal}"
+            data-empenhos-initial="1">
+            <p class="text-sm text-muted" data-empenhos-summary>
+                ${empTotal.toLocaleString('pt-BR')} empenhos encontrados.
+            </p>`;
+        // Filter bar (sub-template inline pra evitar dependencia de Jinja
+        // no dialog que eh montado client-side).
+        html += `<details class="date-filter-bar empenhos-filter-bar">
+            <summary class="date-filter-summary">
+                <span class="date-filter-current" data-empenhos-filter-summary>Periodo: todo o historico</span>
+                <span class="date-filter-action">Filtrar empenhos</span>
+            </summary>
+            <div class="date-filter-panel" role="group" aria-label="Filtros de empenhos">
+                <div class="empenhos-search-row">
+                    <label class="date-field empenhos-search-field"><span>Buscar</span>
+                        <input type="search" data-empenhos-q placeholder="Numero, elemento, historico..." inputmode="search" maxlength="100" autocomplete="off">
+                    </label>
+                </div>
+                <div class="date-filter-inputs">
+                    <label class="date-field"><span>De</span>
+                        <input type="text" data-empenhos-date-inicio inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off">
+                    </label>
+                    <label class="date-field"><span>Ate</span>
+                        <input type="text" data-empenhos-date-fim inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off">
+                    </label>
+                    <md-filled-button data-empenhos-apply class="date-filter-submit">Aplicar</md-filled-button>
+                    <p class="date-filter-status text-sm text-muted" data-empenhos-status aria-live="polite"></p>
+                </div>
+                <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+                    <md-filter-chip label="Tudo" data-empenhos-preset="all" selected></md-filter-chip>
+                    <md-filter-chip label="Ano atual" data-empenhos-preset="current-year"></md-filter-chip>
+                    <md-filter-chip label="12 meses" data-empenhos-preset="last-12m"></md-filter-chip>
+                    <md-text-button data-empenhos-clear style="display:none">Limpar filtros</md-text-button>
+                </div>
+            </div>
+        </details>`;
+        // Tabela inicial: 50 do payload (se houver). Senao placeholder
+        // pro controller fetch live.
+        if (data.empenhos && data.empenhos.length) {
+            html += `<div data-empenhos-table>${_buildEmpenhoTable(data.empenhos, sancaoRanges)}</div>`;
+        } else {
+            html += '<div data-empenhos-table><p class="text-sm text-muted empenhos-loading-placeholder">Carregando empenhos...</p></div>';
         }
+        // Pagination footer
+        html += `<nav class="empenhos-pagination" data-empenhos-pagination aria-label="Paginacao de empenhos" hidden>
+            <md-text-button data-empenhos-prev disabled aria-label="Pagina anterior">
+                <md-icon slot="icon">chevron_left</md-icon>Anterior
+            </md-text-button>
+            <span class="empenhos-page-info" data-empenhos-page-info aria-live="polite">Pagina 1</span>
+            <md-text-button data-empenhos-next aria-label="Proxima pagina">
+                Proxima<md-icon slot="icon">chevron_right</md-icon>
+            </md-text-button>
+        </nav>`;
+        html += '</section>';
         html += '</div>';
     }
 
@@ -404,6 +468,9 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
+    if (typeof initEmpenhosControllers === 'function') {
+        initEmpenhosControllers(body);
+    }
     if (switchMun) {
         _activateDialogSection(body, 'forn-empenhos', { focus: false, scroll: false, smooth: false });
         const empSection = body.querySelector('#forn-empenhos');

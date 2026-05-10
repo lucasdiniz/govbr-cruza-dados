@@ -1,0 +1,63 @@
+{# Mini barra de filtros pra tabela paginada de empenhos.
+
+   ESCOPO LOCAL: nao afeta o filtro global da pagina /cidade/ (que tem
+   IDs dateInicio/dateFim/btnFiltrarData). IDs aqui prefixados com
+   `empenhos*` pra evitar colisao quando o partial eh incluso em
+   /cidade/<slug> (dialog de fornecedor) ao mesmo tempo que existe a
+   filter bar global.
+
+   Caller: define o data attribute `data-empenhos-mount` no container
+   <section> que envolve esta filter bar e a tabela. JS empenhos-controller.js
+   busca esses elementos por proximidade dentro do mount.
+#}
+<details class="date-filter-bar empenhos-filter-bar">
+    <summary class="date-filter-summary">
+        <span class="date-filter-current" data-empenhos-filter-summary>Periodo: todo o historico</span>
+        <span class="date-filter-action">Filtrar empenhos</span>
+    </summary>
+    <div class="date-filter-panel" role="group" aria-label="Filtros de empenhos">
+        <div class="empenhos-search-row">
+            <label class="date-field empenhos-search-field">
+                <span>Buscar</span>
+                <input
+                    type="search"
+                    data-empenhos-q
+                    placeholder="Numero, elemento, historico, modalidade..."
+                    inputmode="search"
+                    maxlength="100"
+                    autocomplete="off"
+                >
+            </label>
+        </div>
+        <div class="date-filter-inputs">
+            <label class="date-field"><span>De</span>
+                <input
+                    type="text"
+                    data-empenhos-date-inicio
+                    inputmode="numeric"
+                    placeholder="DD/MM/AAAA"
+                    maxlength="10"
+                    autocomplete="off"
+                >
+            </label>
+            <label class="date-field"><span>Ate</span>
+                <input
+                    type="text"
+                    data-empenhos-date-fim
+                    inputmode="numeric"
+                    placeholder="DD/MM/AAAA"
+                    maxlength="10"
+                    autocomplete="off"
+                >
+            </label>
+            <md-filled-button data-empenhos-apply class="date-filter-submit">Aplicar</md-filled-button>
+            <p class="date-filter-status text-sm text-muted" data-empenhos-status aria-live="polite"></p>
+        </div>
+        <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+            <md-filter-chip label="Tudo" data-empenhos-preset="all" selected></md-filter-chip>
+            <md-filter-chip label="Ano atual" data-empenhos-preset="current-year"></md-filter-chip>
+            <md-filter-chip label="12 meses" data-empenhos-preset="last-12m"></md-filter-chip>
+            <md-text-button data-empenhos-clear style="display:none">Limpar filtros</md-text-button>
+        </div>
+    </div>
+</details>
