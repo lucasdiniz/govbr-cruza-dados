@@ -691,14 +691,21 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
     return True, None
 
 
-def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, int]:
+def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, int, int]:
     """Processa empresas em paralelo. Cada falha eh logada mas nao aborta.
 
     Args:
-        cnpjs: lista de 14-digit CNPJ completo.
-        verbose: log progresso a cada 100 processadas.
+        cnpjs: lista de 14-digit CNPJ completo. Resume mode (via env
+            WARM_SKIP_RECENT_HOURS) ja foi aplicado pelo caller via
+            _filter_cached_munis(query_id="EMPRESA_PERFIL", ...).
+        verbose: log progresso a cada 200 processadas.
 
-    Returns: (ok_count, fail_count)
+    Returns: (ok, fail, skipped_not_found)
+        - ok: dict computado e cacheado com sucesso.
+        - fail: erro real (compute exception, cache write fail).
+        - skipped_not_found: empresa qualificada no sitemap mas sem
+          cadastro RFB (mv_empresa_pb e estabelecimento divergem).
+          Conta separado pra nao inflar threshold de falha.
     """
     bootstrap = psycopg2.connect(DSN)
     bootstrap.autocommit = False
@@ -707,7 +714,7 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
 
     total = len(cnpjs)
     if total == 0:
-        return 0, 0
+        return 0, 0, 0
     print(
         f"[empresas] Warming {total} empresas em {PARALLEL_WORKERS} workers...",
         flush=True,
@@ -715,6 +722,7 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
 
     ok = 0
     fail = 0
+    skipped = 0
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
         futures = {ex.submit(_warm_one_empresa, c): c for c in cnpjs}
@@ -729,9 +737,13 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
                 msg = f"future_exception:{e}"
             if success:
                 ok += 1
+            elif msg and msg.startswith("not_found:"):
+                # Empresa no sitemap mas sem cadastro RFB. Esperado em
+                # ETL stale; nao conta como fail no threshold.
+                skipped += 1
             else:
                 fail += 1
-                if verbose and msg and not msg.startswith("not_found:"):
+                if verbose and msg:
                     print(f"  [ERR] {cnpj}: {msg}", flush=True)
             if verbose and done % 200 == 0:
                 elapsed = time.time() - t0
@@ -739,86 +751,38 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
                 eta = (total - done) / rate if rate > 0 else 0
                 print(
                     f"[empresas] {done}/{total} "
-                    f"({ok} ok, {fail} fail) — "
+                    f"({ok} ok, {fail} fail, {skipped} skipped) — "
                     f"{rate:.1f}/s, eta {eta/60:.1f}min",
                     flush=True,
                 )
     elapsed = time.time() - t0
     print(
-        f"[empresas] Completo: {ok} ok, {fail} fail "
+        f"[empresas] Completo: {ok} ok, {fail} fail, {skipped} skipped "
         f"({elapsed/60:.1f}min)",
         flush=True,
     )
-    return ok, fail
+    return ok, fail, skipped
 
 
 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Pre-processa queries para cache do frontend (PB)")
-    parser.add_argument("--mun", type=str, default=None, help="Processar apenas um municipio")
+    parser = argparse.ArgumentParser(description="Pre-processa queries para cache do frontend (PB) — cidades + empresas")
+    parser.add_argument("--mun", type=str, default=None, help="Processar apenas um municipio (skip empresas)")
     parser.add_argument("--daemon", action="store_true", help="Processa todos os municipios (use com --loop para repetir)")
-    parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista")
+    parser.add_argument("--loop", action="store_true", help="Recomeça automaticamente ao terminar a lista (skip empresas)")
     parser.add_argument("--pb", action="store_true", help="(compat) Processar PB - default")
     parser.add_argument(
-        "--empresas",
+        "--skip-empresas",
         action="store_true",
         help=(
-            "Processa SOMENTE empresas (web_cache key=EMPRESA_PERFIL:<cnpj>). "
-            "Pre-requisito pra ativar SITEMAP_INCLUDE_EMPRESAS=1 no nginx. "
-            "Demora ~30-90min pra 45K empresas em B4."
+            "Pula warming de empresas. Default: processa cidades + empresas em sequencia. "
+            "Use com --mun ou --loop (que ja sao escopados a cidades)."
         ),
     )
     args = parser.parse_args()
 
-    # ── Empresa warmer (modo separado, nao usa lista de municipios) ──
-    if args.empresas:
-        # Pool de conexoes do web/db.py precisa ser inicializado explicitamente:
-        # compute_empresa_perfil_dict() usa execute_query/get_conn que dependem
-        # do pool. Em runtime normal, web/main.py:lifespan inicializa. No
-        # warmer (CLI standalone) nao tem lifespan, fariamos
-        # RuntimeError("Connection pool not initialized") em cada empresa.
-        from web import db as web_db
-
-        web_db.init_pool()
-        try:
-            boot = psycopg2.connect(DSN)
-            boot.autocommit = True
-            try:
-                cnpjs = _get_qualifying_empresas(boot)
-            finally:
-                boot.close()
-            if not cnpjs:
-                print(
-                    "Nenhuma empresa qualificada encontrada (filtro: total>=10k OR "
-                    "CEIS vigente OR PGFN>0). Talvez mv_empresa_pb nao foi refreshed.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            ok, fail = warm_cycle_empresas(cnpjs)
-        finally:
-            try:
-                web_db.close_pool()
-            except Exception:
-                pass
-        total = ok + fail
-        fail_pct = (fail / total * 100) if total > 0 else 0.0
-        print(
-            f"[empresas] Resultado: {ok} ok, {fail} fail ({fail_pct:.1f}%)"
-        )
-        # Threshold mais permissivo (10%) que cidades (5%) porque empresa
-        # tem maior variancia: CNPJs com cadastro RFB ausente sao "skip
-        # esperado", contam como fail mas nao sao bug.
-        if fail_pct > 10.0:
-            print(
-                f"ERRO: taxa de falha {fail_pct:.1f}% > 10% — exit 1",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        return
-
-    # ── Modo cidade (default, comportamento legado) ──
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
 
@@ -829,11 +793,22 @@ def main():
         print("Nenhum municipio encontrado.")
         sys.exit(1)
 
+    # Empresas seguem o mesmo fluxo de warm: resume mode (skip cacheados
+    # nas ultimas WARM_SKIP_RECENT_HOURS), threshold combinado com cidades,
+    # invalidate_cache_keys via deploy.yml usando 'EMPRESA_PERFIL'.
+    # Skip se: (a) --mun (foco numa cidade especifica), (b) --loop (daemon
+    # contnuo, empresas ja warmadas no primeiro ciclo), (c) --skip-empresas.
+    skip_empresas_flag = bool(args.mun) or args.loop or args.skip_empresas
+
     def run_one_cycle(cycle_num: int | None = None):
         if cycle_num:
             print(f"\n=== Ciclo {cycle_num} iniciado em {datetime.now().strftime('%H:%M:%S')} ===")
         print(f"--- PB: {len(municipios_pb)} municipios ---")
-        return warm_cycle_pb(municipios_pb)
+        ok_p, fail_p = warm_cycle_pb(municipios_pb)
+        ok_e = fail_e = skip_e = 0
+        if not skip_empresas_flag:
+            ok_e, fail_e, skip_e = _warm_empresas_phase()
+        return ok_p + ok_e, fail_p + fail_e, skip_e
 
     if args.daemon:
         print(f"Daemon mode: {len(municipios_pb)} PB municipios.")
@@ -842,12 +817,12 @@ def main():
         while True:
             cycle += 1
             t0 = time.time()
-            ok, fail = run_one_cycle(cycle)
+            ok, fail, skipped = run_one_cycle(cycle)
             elapsed = time.time() - t0
             total = ok + fail
             last_fail_pct = (fail / total * 100) if total > 0 else 0.0
             print(
-                f"=== Ciclo {cycle} completo: {ok} ok, {fail} fail "
+                f"=== Ciclo {cycle} completo: {ok} ok, {fail} fail, {skipped} skipped "
                 f"({last_fail_pct:.1f}%, {elapsed/60:.1f}min) ==="
             )
             if not args.loop:
@@ -867,13 +842,74 @@ def main():
             sys.exit(1)
     else:
         print(f"Processando {len(municipios_pb)} PB municipios...")
-        ok, fail = run_one_cycle()
+        ok, fail, skipped = run_one_cycle()
         total = ok + fail
         fail_pct = (fail / total * 100) if total > 0 else 0.0
-        print(f"Completo: {ok} ok, {fail} fail ({fail_pct:.1f}%)")
+        print(f"Completo: {ok} ok, {fail} fail, {skipped} skipped ({fail_pct:.1f}%)")
         if fail_pct > 5.0:
             print(f"ERRO: taxa de falha {fail_pct:.1f}% > 5% — exit 1", file=sys.stderr)
             sys.exit(1)
+
+
+def _warm_empresas_phase() -> tuple[int, int, int]:
+    """Fase de warming de empresas, integrada com cidades.
+
+    Aplica resume mode (WARM_SKIP_RECENT_HOURS) via _filter_cached_munis
+    com query_id='EMPRESA_PERFIL'. Inicializa pool DB explicitamente porque
+    compute_empresa_perfil_dict() usa execute_query/get_conn que dependem
+    de _pool inicializado (em runtime via FastAPI lifespan).
+
+    Returns: (ok, fail, skipped) — somam aos contadores de cidades pra
+    threshold global de 5% no main().
+    """
+    print("--- Empresas: enumerando qualificadas ---")
+    boot = psycopg2.connect(DSN)
+    boot.autocommit = True
+    try:
+        all_cnpjs = _get_qualifying_empresas(boot)
+    finally:
+        boot.close()
+
+    if not all_cnpjs:
+        print(
+            "[empresas] Nenhuma empresa qualificada (mv_empresa_pb vazia ou "
+            "filtro >=10k/CEIS/PGFN nao matchou). Skipping."
+        )
+        return 0, 0, 0
+
+    # Resume mode: skip CNPJs cacheados nas ultimas WARM_SKIP_RECENT_HOURS.
+    # Mesma logica de cidades — reusa _filter_cached_munis (generico em
+    # query_id e lista de keys).
+    cnpjs, skipped_resume = _filter_cached_munis(
+        "EMPRESA_PERFIL", all_cnpjs
+    )
+    if skipped_resume > 0:
+        print(
+            f"[empresas] Resume mode: {skipped_resume} ja cacheadas nas "
+            f"ultimas {SKIP_RECENT_HOURS}h, processando {len(cnpjs)} restantes."
+        )
+
+    if not cnpjs:
+        return 0, 0, skipped_resume
+
+    # web.routes.empresa.compute_empresa_perfil_dict usa execute_query/
+    # get_conn de web/db.py. Pool precisa ser inicializado explicitamente
+    # — em runtime web/main.py:lifespan inicializa, mas no warmer (CLI
+    # standalone) nao tem lifespan.
+    from web import db as web_db
+
+    web_db.init_pool()
+    try:
+        ok, fail, skip_nf = warm_cycle_empresas(cnpjs)
+    finally:
+        try:
+            web_db.close_pool()
+        except Exception:
+            pass
+
+    # skip_resume eh tambem skipped (nao foi processado nesse ciclo).
+    # Soma com skip_nf pra reportagem completa.
+    return ok, fail, skipped_resume + skip_nf
 
 
 if __name__ == "__main__":

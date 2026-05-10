@@ -67,6 +67,15 @@ on:
         required: false
         type: string
         default: '24'
+      expose_empresa_sitemap:
+        description: 'Toggle das paginas /empresa/<cnpj> no sitemap.xml. "keep" (default) preserva estado atual. "enable" exige cache cheio (warm_cache=true antes ou anteriormente) — escreve drop-in systemd, restart cruza-web, smoke test 3 CNPJs, IndexNow submit. "disable" remove drop-in (URLs somem do sitemap; cache web_cache permanece).'
+        required: false
+        type: choice
+        options:
+          - keep
+          - enable
+          - disable
+        default: keep
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -857,6 +866,7 @@ jobs:
       # quando ETL succeeded mas warm teve issues. Falhas sao visiveis via
       # job result no GitHub UI.
       - name: Warm cache
+        id: warm-cache
         if: |
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
@@ -909,6 +919,183 @@ jobs:
             exit "$STATUS"
           fi
           echo "=== Cache warming complete ==="
+
+      # ── Toggle empresa sitemap (enable/disable/keep) ──
+      # Controla SITEMAP_INCLUDE_EMPRESAS via drop-in systemd em
+      # cruza-web.service.d/sitemap-empresas.conf. Drop-in e preservado
+      # entre deploys (deploy.yml so substitui o .service file, nao toca
+      # o .service.d/ directory).
+      #
+      # "enable" exige cache populado (>= 100 EMPRESA_PERFIL rows). Faz:
+      #   1. Sanity-check do cache + da MV mv_empresa_pb
+      #   2. Escreve drop-in
+      #   3. systemctl daemon-reload + restart cruza-web
+      #   4. Verifica /sitemap.xml inclui >100 URLs /empresa/
+      #   5. E2E smoke test: 3 CNPJs aleatorios → HTTP 200
+      #   6. IndexNow re-submit pra notificar Bing/Yandex das URLs novas
+      # Falha em qualquer step (4-5) faz auto-rollback (rm drop-in).
+      #
+      # "disable" sempre roda (mesmo sem warm). Remove drop-in + restart.
+      #
+      # "keep" (default) nada faz — preserva estado.
+      - name: Disable empresa sitemap (rm drop-in)
+        if: inputs.expose_empresa_sitemap == 'disable'
+        run: |
+          set -euo pipefail
+          DROPIN=/etc/systemd/system/cruza-web.service.d/sitemap-empresas.conf
+          if [ -f "$DROPIN" ]; then
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            echo "Drop-in removido. /empresa/ saiu do sitemap.xml. Cache web_cache preservado."
+          else
+            echo "Drop-in nao existia (sitemap ja estava sem /empresa/). No-op."
+          fi
+
+      - name: Enable empresa sitemap (drop-in + verify + IndexNow)
+        if: |
+          inputs.expose_empresa_sitemap == 'enable' &&
+          steps.warm-cache.outcome != 'failure'
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+
+          # 1. Coverage check: cache cobre >= 80% das empresas qualificadas
+          # (mesma definicao de EMPRESAS_QUALIFICADAS_PARA_SITEMAP).
+          # Sem isso, o "sanity check" de 100 rows aprovaria expor 45K
+          # URLs no sitemap com 99.8% retornando 503 — Google penaliza
+          # mass-503 com deindex e cuts de crawl rate. (P1 reviewers
+          # GPT-5.5 + Opus-4.7 do PR #59.)
+          QUALIFYING=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT LEAST(45000, COUNT(*))
+            FROM mv_empresa_pb
+            WHERE total_pb_geral >= 10000
+               OR flag_ceis_vigente
+               OR total_divida_pgfn > 0
+          ")
+          CACHED=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
+            "SELECT COUNT(*) FROM web_cache WHERE query_id = 'EMPRESA_PERFIL';")
+          if [ "$QUALIFYING" -le 0 ]; then
+            echo "::error::Sem empresas qualificadas em mv_empresa_pb (rode etl_phase=sql ou =all primeiro)"
+            exit 1
+          fi
+          COVERAGE_PCT=$((CACHED * 100 / QUALIFYING))
+          echo "Coverage: $CACHED/$QUALIFYING = ${COVERAGE_PCT}%"
+          if [ "$COVERAGE_PCT" -lt 80 ]; then
+            echo "::error::Cobertura ${COVERAGE_PCT}% < 80%. Rode warm_cache=true antes (ou em conjunto com expose_empresa_sitemap=enable). Cache parcial expoe sitemap mas mostra 503 nas URLs."
+            exit 1
+          fi
+
+          # 2. Escreve drop-in (idempotente — overwrite OK).
+          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
+          DROPIN="$DROPIN_DIR/sitemap-empresas.conf"
+          sudo mkdir -p "$DROPIN_DIR"
+          {
+            echo '# Auto-gerado por deploy.yml com expose_empresa_sitemap=enable.'
+            echo '# Removido por expose_empresa_sitemap=disable.'
+            echo '[Service]'
+            echo 'Environment="SITEMAP_INCLUDE_EMPRESAS=1"'
+          } | sudo tee "$DROPIN" >/dev/null
+          echo "Drop-in escrito em $DROPIN"
+
+          # 3. Reload + restart com rollback se restart falhar.
+          # Sem rollback, drop-in fica no disco mesmo com cruza-web em
+          # failed state — proximo restart manual tenta carregar drop-in
+          # quebrado de novo. (Opus P2 do PR #59 review.)
+          sudo systemctl daemon-reload
+          if ! sudo systemctl restart cruza-web; then
+            echo "::error::cruza-web restart falhou. Rollback automatico do drop-in."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web || true
+            sudo systemctl status cruza-web --no-pager --lines=20 || true
+            exit 1
+          fi
+          # Aguarda cruza-web abrir porta 8000 (3-5s normal)
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 3 -o /dev/null \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/static/manifest.webmanifest; then
+              echo "cruza-web ready (tentativa $i)"
+              break
+            fi
+            sleep 2
+          done
+
+          # 4. Verifica sitemap.xml inclui /empresa/ (rebuild via 1a request)
+          EMPRESA_URLS=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/empresa/' || true)
+          echo "sitemap.xml expoe $EMPRESA_URLS URLs /empresa/"
+          # Threshold permissivo aqui — sitemap reflete mv_empresa_pb diretamente,
+          # nao o cache. Coverage check em (1) ja garante que estes URLs vao 200.
+          if [ "$EMPRESA_URLS" -lt 100 ]; then
+            echo "::error::Sitemap so retornou $EMPRESA_URLS empresas (esperado >100). Drop-in pode nao ter sido picked up pelo cruza-web. Rollback automatico."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 5. E2E smoke test: amostra CNPJs DO SITEMAP QUALIFYING SET (NAO
+          # do web_cache). Pega justamente o caso "URL exposta mas sem
+          # cache" que o cache-only retornaria 503. Tolera 1/10 fail
+          # (corresponde ao not_found rate esperado em mv_empresa_pb vs
+          # estabelecimento divergente). (P1 reviewers PR #59.)
+          CNPJS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv
+            FROM mv_empresa_pb epb
+            JOIN estabelecimento est
+              ON est.cnpj_basico = epb.cnpj_basico
+             AND est.cnpj_ordem = '0001'
+            WHERE epb.total_pb_geral >= 10000
+               OR epb.flag_ceis_vigente
+               OR epb.total_divida_pgfn > 0
+            ORDER BY random() LIMIT 10;
+          ")
+          FAIL=0
+          OK=0
+          for cnpj in $CNPJS; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              -H "Host: transparenciapb.org" \
+              "http://127.0.0.1:8000/empresa/$cnpj")
+            if [ "$STATUS" = "200" ]; then
+              echo "  /empresa/$cnpj -> 200 OK"
+              OK=$((OK + 1))
+            else
+              echo "  /empresa/$cnpj -> $STATUS (FAIL)"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          echo "E2E smoke: $OK/10 OK, $FAIL/10 FAIL"
+          # Tolerancia: 8/10 = 80% (alinhado com coverage threshold).
+          if [ "$OK" -lt 8 ]; then
+            echo "::error::E2E smoke FAIL — so $OK/10 CNPJs do sitemap respondem 200. Cache pode estar parcial OU mal-formado. Rollback automatico."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 6. IndexNow: notifica Bing/Yandex das URLs novas. CRITICO setar
+          # SITEMAP_INCLUDE_EMPRESAS=1 no env do subprocess Python — o drop-in
+          # systemd so afeta cruza-web, NAO este shell. Sem essa export,
+          # _build_sitemap_xml() em web.indexnow_submit gera sitemap SEM
+          # empresas e submete so as URLs antigas. (P2 do GPT-5.5 review.)
+          source venv/bin/activate
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          if [ -n "${INDEXNOW_KEY:-}" ]; then
+            echo "=== IndexNow re-submit (sitemap com $EMPRESA_URLS URLs novas) ==="
+            SITEMAP_INCLUDE_EMPRESAS=1 python -m web.indexnow_submit 2>&1 || \
+              echo "::warning::IndexNow submit falhou — Bing vai descobrir via crawl normal"
+          else
+            echo "INDEXNOW_KEY nao setada — skip IndexNow notify"
+          fi
 
       # ── Verify ──
       - name: Verify database
