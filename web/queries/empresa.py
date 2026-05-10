@@ -66,6 +66,9 @@ EMPRESA_SOCIOS_BY_BASICO = """
 
 # ─────────────────────────────────────────────────────────────────────────
 # Sancoes (CEIS / CNEP) e dividas (PGFN) — chave: cpf_cnpj_norm = 14 digitos
+# Usadas pelo dialog (cidade.py /api/fornecedor/detalhes), onde o usuario
+# clica num pagamento especifico do municipio e queremos as sancoes do
+# estabelecimento exato que recebeu aquele empenho.
 # ─────────────────────────────────────────────────────────────────────────
 
 EMPRESA_SANCOES_CEIS_BY_CNPJ = """
@@ -112,6 +115,56 @@ EMPRESA_LENIENCIA_EFEITOS_BY_ID = """
                         """
 
 # ─────────────────────────────────────────────────────────────────────────
+# Versoes _BY_BASICO — usadas pela pagina /empresa/{cnpj} (perfil agregado
+# da empresa raiz, alinhado com mv_empresa_pb que tambem agrega por
+# cnpj_basico). Garantem coerencia entre KPIs (que vem da MV agregada por
+# basico) e listagens detalhadas. Filtro `tipo_pessoa IN (PJ, ...)` evita
+# colisao de prefixo com CPFs (cpf=11 digitos vs cnpj=14, mas LEFT(.,8)
+# poderia bater com CPF cuja primeira metade coincide).
+# ─────────────────────────────────────────────────────────────────────────
+
+EMPRESA_SANCOES_CEIS_BY_BASICO = """
+    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
+           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal,
+           abrangencia_sancao
+    FROM ceis_sancao
+    WHERE LEFT(cpf_cnpj_norm, 8) = %s
+      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+    ORDER BY dt_inicio_sancao DESC
+"""
+
+EMPRESA_SANCOES_CNEP_BY_BASICO = """
+    SELECT cpf_cnpj_norm AS cpf_cnpj_sancionado,
+           categoria_sancao, dt_inicio_sancao, dt_final_sancao,
+           orgao_sancionador, esfera_orgao_sancionador, fundamentacao_legal, valor_multa,
+           abrangencia_sancao
+    FROM cnep_sancao
+    WHERE LEFT(cpf_cnpj_norm, 8) = %s
+      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+    ORDER BY dt_inicio_sancao DESC
+"""
+
+EMPRESA_PGFN_BY_BASICO = """
+    SELECT numero_inscricao, situacao_inscricao,
+           receita_principal, valor_consolidado,
+           dt_inscricao, indicador_ajuizado
+    FROM pgfn_divida
+    WHERE LEFT(cpf_cnpj_norm, 8) = %s
+      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+    ORDER BY valor_consolidado DESC
+"""
+
+EMPRESA_LENIENCIA_BY_BASICO = """
+    SELECT al.cnpj_sancionado, al.razao_social_rfb, al.situacao_acordo,
+           al.orgao_sancionador, al.dt_inicio_acordo, al.dt_fim_acordo,
+           al.numero_processo, al.id_acordo
+    FROM acordo_leniencia al
+    WHERE LEFT(al.cnpj_norm, 8) = %s
+    ORDER BY al.dt_inicio_acordo DESC
+"""
+
+# ─────────────────────────────────────────────────────────────────────────
 # Pagamentos publicos PB (agregados + por municipio + top elementos)
 # Usados apenas pela pagina /empresa/{cnpj}.
 # ─────────────────────────────────────────────────────────────────────────
@@ -122,23 +175,23 @@ EMPRESA_AGREGADOS_PB_BY_BASICO = """
     WHERE cnpj_basico = %s
 """
 
-EMPRESA_MUNICIPIOS_PAGANTES_BY_CNPJ = """
+EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO = """
     SELECT municipio,
            SUM(valor_pago) AS total_pago,
            COUNT(*) AS qtd_empenhos
     FROM tce_pb_despesa
-    WHERE cpf_cnpj = %s
+    WHERE cnpj_basico = %s
       AND valor_pago > 0
     GROUP BY municipio
     ORDER BY total_pago DESC
 """
 
-EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_CNPJ = """
+EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO = """
     SELECT elemento_despesa,
            SUM(valor_pago) AS total_elemento,
            COUNT(*) AS qtd
     FROM tce_pb_despesa
-    WHERE cpf_cnpj = %s
+    WHERE cnpj_basico = %s
       AND valor_pago > 0
     GROUP BY elemento_despesa
     ORDER BY SUM(valor_pago) DESC
@@ -150,6 +203,11 @@ EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_CNPJ = """
 # Inclui CNPJs com pagamentos PB relevantes (>= R$ 10k), em CEIS vigente
 # ou com divida PGFN > 0. Retorna (razao_social, cnpj_completo) onde
 # cnpj_completo = basico+ordem(0001)+dv da matriz.
+#
+# LIMIT 45000: protocolo sitemap.org permite ate 50.000 URLs por arquivo.
+# Cidades (~223) + estaticas (5) + 45k empresas = ~45.2k, com folga ate
+# o limite. Quando passarmos disso, implementar sitemap index com chunks
+# (TODO: web/routes/seo.py — sitemap-empresas-1.xml etc).
 # ─────────────────────────────────────────────────────────────────────────
 
 EMPRESAS_QUALIFICADAS_PARA_SITEMAP = """
@@ -165,4 +223,5 @@ EMPRESAS_QUALIFICADAS_PARA_SITEMAP = """
        OR epb.total_divida_pgfn > 0
     ORDER BY epb.total_pb_geral DESC NULLS LAST,
              epb.cnpj_basico
+    LIMIT 45000
 """

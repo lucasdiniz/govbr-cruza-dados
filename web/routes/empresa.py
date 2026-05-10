@@ -21,15 +21,15 @@ from web.db import execute_query, get_conn
 from web.queries.empresa import (
     EMPRESA_AGREGADOS_PB_BY_BASICO,
     EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO,
-    EMPRESA_LENIENCIA_BY_CNPJ,
+    EMPRESA_LENIENCIA_BY_BASICO,
     EMPRESA_LENIENCIA_EFEITOS_BY_ID,
     EMPRESA_MATRIZ_BY_BASICO,
-    EMPRESA_MUNICIPIOS_PAGANTES_BY_CNPJ,
-    EMPRESA_PGFN_BY_CNPJ,
-    EMPRESA_SANCOES_CEIS_BY_CNPJ,
-    EMPRESA_SANCOES_CNEP_BY_CNPJ,
+    EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO,
+    EMPRESA_PGFN_BY_BASICO,
+    EMPRESA_SANCOES_CEIS_BY_BASICO,
+    EMPRESA_SANCOES_CNEP_BY_BASICO,
     EMPRESA_SOCIOS_BY_BASICO,
-    EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_CNPJ,
+    EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO,
 )
 
 router = APIRouter()
@@ -116,93 +116,111 @@ async def empresa_perfil(request: Request, cnpj: str):
         agregados = _convert_row(_row_to_dict(agg_cols, agg_rows[0]))
 
         # 2. Cadastro RFB (estabelecimento + empresa) — chave: cnpj_completo.
+        # Detalhes (sancoes/divida/leniencia/pagamentos) sao consultados POR
+        # CNPJ_BASICO (8 digitos) pra coerencia com mv_empresa_pb que agrega
+        # por basico. URL e canonicalizada com 14 digitos da matriz mas a
+        # pagina representa a empresa raiz.
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute(f"SET statement_timeout = '{TIMEOUT_PROFILE * 1000}'")
+                # try/finally: garante RESET statement_timeout em qualquer
+                # caminho (404 cedo, exception, ou sucesso). Sem isso, a
+                # config de sessao vaza pra proxima request que pegar a
+                # mesma conexao do pool, podendo quebrar queries pesadas
+                # de outros endpoints. (Caught by GPT-5.5 review do PR #57.)
+                try:
+                    cur.execute(EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO, (canonical,))
+                    est_cols = [d[0] for d in cur.description]
+                    est_rows = cur.fetchall()
+                    if not est_rows:
+                        return templates.TemplateResponse(
+                            request,
+                            "errors/404.html",
+                            {"path": str(request.url.path)},
+                            status_code=404,
+                        )
+                    estabelecimento = _convert_row(_row_to_dict(est_cols, est_rows[0]))
 
-                cur.execute(EMPRESA_ESTABELECIMENTO_BY_CNPJ_COMPLETO, (canonical,))
-                est_cols = [d[0] for d in cur.description]
-                est_rows = cur.fetchall()
-                if not est_rows:
-                    return templates.TemplateResponse(
-                        request,
-                        "errors/404.html",
-                        {"path": str(request.url.path)},
-                        status_code=404,
-                    )
-                estabelecimento = _convert_row(_row_to_dict(est_cols, est_rows[0]))
+                    # 3. Matriz (se a entidade nao for ela propria a matriz)
+                    matriz = None
+                    if cnpj_ordem != "0001":
+                        cur.execute(EMPRESA_MATRIZ_BY_BASICO, (cnpj_basico,))
+                        mat_cols = [d[0] for d in cur.description]
+                        mat_row = cur.fetchone()
+                        if mat_row:
+                            matriz = _convert_row(_row_to_dict(mat_cols, mat_row))
 
-                # 3. Matriz (se a entidade nao for ela propria a matriz)
-                matriz = None
-                if cnpj_ordem != "0001":
-                    cur.execute(EMPRESA_MATRIZ_BY_BASICO, (cnpj_basico,))
-                    mat_cols = [d[0] for d in cur.description]
-                    mat_row = cur.fetchone()
-                    if mat_row:
-                        matriz = _convert_row(_row_to_dict(mat_cols, mat_row))
-
-                # 4. Socios
-                cur.execute(EMPRESA_SOCIOS_BY_BASICO, (cnpj_basico,))
-                soc_cols = [d[0] for d in cur.description]
-                socios = [
-                    _convert_row(_row_to_dict(soc_cols, r))
-                    for r in cur.fetchall()
-                ]
-
-                # 5. Sancoes CEIS + CNEP
-                cur.execute(EMPRESA_SANCOES_CEIS_BY_CNPJ, (canonical,))
-                ceis_cols = [d[0] for d in cur.description]
-                sancoes = []
-                for r in cur.fetchall():
-                    item = _convert_row(_row_to_dict(ceis_cols, r))
-                    item["origem"] = "CEIS"
-                    sancoes.append(item)
-
-                cur.execute(EMPRESA_SANCOES_CNEP_BY_CNPJ, (canonical,))
-                cnep_cols = [d[0] for d in cur.description]
-                for r in cur.fetchall():
-                    item = _convert_row(_row_to_dict(cnep_cols, r))
-                    item["origem"] = "CNEP"
-                    sancoes.append(item)
-
-                # 6. PGFN
-                cur.execute(EMPRESA_PGFN_BY_CNPJ, (canonical,))
-                pg_cols = [d[0] for d in cur.description]
-                pgfn = [
-                    _convert_row(_row_to_dict(pg_cols, r))
-                    for r in cur.fetchall()
-                ]
-
-                # 7. Acordos de Leniencia + efeitos
-                cur.execute(EMPRESA_LENIENCIA_BY_CNPJ, (canonical,))
-                len_cols = [d[0] for d in cur.description]
-                acordos = []
-                for r in cur.fetchall():
-                    a = _convert_row(_row_to_dict(len_cols, r))
-                    cur.execute(EMPRESA_LENIENCIA_EFEITOS_BY_ID, (a["id_acordo"],))
-                    ef_cols = [d[0] for d in cur.description]
-                    a["efeitos"] = [
-                        _row_to_dict(ef_cols, er) for er in cur.fetchall()
+                    # 4. Socios
+                    cur.execute(EMPRESA_SOCIOS_BY_BASICO, (cnpj_basico,))
+                    soc_cols = [d[0] for d in cur.description]
+                    socios = [
+                        _convert_row(_row_to_dict(soc_cols, r))
+                        for r in cur.fetchall()
                     ]
-                    acordos.append(a)
 
-                # 8. Municipios pagantes (PB) + top elementos
-                cur.execute(EMPRESA_MUNICIPIOS_PAGANTES_BY_CNPJ, (canonical,))
-                mp_cols = [d[0] for d in cur.description]
-                municipios_pagantes = [
-                    _convert_row(_row_to_dict(mp_cols, r))
-                    for r in cur.fetchall()
-                ]
+                    # 5. Sancoes CEIS + CNEP (por basico, todos estabelecimentos)
+                    cur.execute(EMPRESA_SANCOES_CEIS_BY_BASICO, (cnpj_basico,))
+                    ceis_cols = [d[0] for d in cur.description]
+                    sancoes = []
+                    for r in cur.fetchall():
+                        item = _convert_row(_row_to_dict(ceis_cols, r))
+                        item["origem"] = "CEIS"
+                        sancoes.append(item)
 
-                cur.execute(EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_CNPJ, (canonical,))
-                te_cols = [d[0] for d in cur.description]
-                top_elementos = [
-                    _convert_row(_row_to_dict(te_cols, r))
-                    for r in cur.fetchall()
-                ]
+                    cur.execute(EMPRESA_SANCOES_CNEP_BY_BASICO, (cnpj_basico,))
+                    cnep_cols = [d[0] for d in cur.description]
+                    for r in cur.fetchall():
+                        item = _convert_row(_row_to_dict(cnep_cols, r))
+                        item["origem"] = "CNEP"
+                        sancoes.append(item)
 
-                cur.execute("RESET statement_timeout")
+                    # 6. PGFN (por basico)
+                    cur.execute(EMPRESA_PGFN_BY_BASICO, (cnpj_basico,))
+                    pg_cols = [d[0] for d in cur.description]
+                    pgfn = [
+                        _convert_row(_row_to_dict(pg_cols, r))
+                        for r in cur.fetchall()
+                    ]
+
+                    # 7. Acordos de Leniencia + efeitos (por basico)
+                    cur.execute(EMPRESA_LENIENCIA_BY_BASICO, (cnpj_basico,))
+                    len_cols = [d[0] for d in cur.description]
+                    acordos = []
+                    for r in cur.fetchall():
+                        a = _convert_row(_row_to_dict(len_cols, r))
+                        cur.execute(EMPRESA_LENIENCIA_EFEITOS_BY_ID, (a["id_acordo"],))
+                        ef_cols = [d[0] for d in cur.description]
+                        a["efeitos"] = [
+                            _row_to_dict(ef_cols, er) for er in cur.fetchall()
+                        ]
+                        acordos.append(a)
+
+                    # 8. Municipios pagantes (PB) + top elementos (por basico)
+                    cur.execute(EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO, (cnpj_basico,))
+                    mp_cols = [d[0] for d in cur.description]
+                    municipios_pagantes = [
+                        _convert_row(_row_to_dict(mp_cols, r))
+                        for r in cur.fetchall()
+                    ]
+
+                    cur.execute(EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO, (cnpj_basico,))
+                    te_cols = [d[0] for d in cur.description]
+                    top_elementos = [
+                        _convert_row(_row_to_dict(te_cols, r))
+                        for r in cur.fetchall()
+                    ]
+                finally:
+                    try:
+                        cur.execute("RESET statement_timeout")
+                    except Exception:
+                        # se conexao ja foi marcada como aborted, RESET
+                        # falha — tolerar porque putconn vai descartar a
+                        # conexao corrompida em vez de devolver ao pool.
+                        _log.warning(
+                            "RESET statement_timeout falhou (conexao "
+                            "provavelmente sera descartada pelo pool)"
+                        )
     except Exception:
         _log.exception("empresa perfil failed cnpj=%s", canonical)
         return Response(
