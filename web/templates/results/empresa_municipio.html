@@ -140,14 +140,21 @@
 
 <script>
 // Deep-link de dialog: ?d=empenho&id=... abre o dialog correspondente.
-// Ver dialog-url-state.js. Roda apos main.js wirear os handlers do
-// dialog (DOMContentLoaded). Pequeno setTimeout pra garantir ordem.
+// Ver dialog-url-state.js. Espera o md-dialog upgrade (whenMD3Ready) —
+// senao corremos o risco de chamar dialog.show() antes da custom-element
+// upgrade resolver, o que da TypeError. main.js tambem espera por isso
+// pra wirear handlers.
 document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
+    const restore = () => {
         if (typeof restoreDialogFromUrl === 'function') {
             restoreDialogFromUrl();
         }
-    }, 0);
+    };
+    if (typeof window.whenMD3Ready === 'function') {
+        window.whenMD3Ready(restore);
+    } else {
+        setTimeout(restore, 0);
+    }
 });
 </script>
 {% endblock %}
