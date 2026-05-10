@@ -37,9 +37,10 @@
       {% if estabelecimento.dt_inicio_atividade %}"foundingDate": {{ estabelecimento.dt_inicio_atividade | tojson }},{% endif %}
       "address": {
         "@type": "PostalAddress",
-        {% if street_address %}"streetAddress": {{ street_address | clean_text | tojson }},{% endif %}
-        {% if bai %}"addressLocality": {{ bai | clean_text | tojson }},{% endif %}
-        {% if mun %}"addressRegion": {{ ((mun ~ (', ' ~ uf if uf else '')) | clean_text) | tojson }},{% endif %}
+        {%- set street_with_neighborhood = (street_address ~ (' - ' ~ bai if bai else '')) | trim if street_address or bai else '' %}
+        {% if street_with_neighborhood %}"streetAddress": {{ street_with_neighborhood | clean_text | tojson }},{% endif %}
+        {% if mun %}"addressLocality": {{ mun | clean_text | tojson }},{% endif %}
+        {% if uf %}"addressRegion": {{ uf | tojson }},{% endif %}
         {% if cep %}"postalCode": {{ cep | tojson }},{% endif %}
         "addressCountry": "BR"
       },
@@ -55,7 +56,12 @@
       "url": {{ page_url | tojson }},
       "isAccessibleForFree": true,
       "inLanguage": "pt-BR",
-      "creator": {"@id": "{{ origin }}/#organization"},
+      "creator": {
+        "@type": "Organization",
+        "@id": "{{ origin }}/#organization",
+        "name": "TransparenciaPB",
+        "url": "{{ origin }}/"
+      },
       "license": "https://creativecommons.org/licenses/by/4.0/",
       "keywords": [
         "CNPJ",
