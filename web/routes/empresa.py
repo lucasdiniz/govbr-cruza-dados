@@ -77,6 +77,31 @@ def _normalize_cnpj_input(raw: str) -> str | None:
     return digits
 
 
+def _calculate_cnpj_dv(basico: str, ordem: str) -> str:
+    """Computa os 2 digitos verificadores do CNPJ a partir de basico+ordem.
+
+    Algoritmo padrao da Receita Federal (modulo 11):
+    - DV1: soma ponderada dos primeiros 12 digitos com pesos
+      [5,4,3,2,9,8,7,6,5,4,3,2], depois (sum * 10) % 11 % 10.
+    - DV2: idem com 13 digitos e pesos [6,5,4,3,2,9,8,7,6,5,4,3,2].
+
+    Pure math, sem DB hit. Usado pra redirecionar /empresa/<filial> ->
+    /empresa/<matriz> sem precisar consultar estabelecimento (mantem o
+    invariant cache-only da rota).
+    """
+    digits = basico + ordem
+    if len(digits) != 12 or not digits.isdigit():
+        raise ValueError(f"basico+ordem invalido: {digits!r}")
+    weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    sum1 = sum(int(digits[i]) * weights1[i] for i in range(12))
+    dv1 = (sum1 * 10) % 11 % 10
+    digits2 = digits + str(dv1)
+    weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    sum2 = sum(int(digits2[i]) * weights2[i] for i in range(13))
+    dv2 = (sum2 * 10) % 11 % 10
+    return f"{dv1}{dv2}"
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Pipeline de computacao: roda as 8 queries e monta o dict de template.
 # Usado APENAS pelo warmer. Nao chamar da rota (custo alto, risco de pool
@@ -277,6 +302,26 @@ async def empresa_perfil(request: Request, cnpj: str):
         )
     if cnpj != canonical:
         return RedirectResponse(url=f"/empresa/{canonical}", status_code=301)
+
+    # Filial → matriz: o warmer popula cache so para a matriz (cnpj_ordem='0001')
+    # de cada cnpj_basico (mesma logica do sitemap). Se chegou aqui um CNPJ
+    # de filial (ordem != 0001), redireciona pra matriz canonica usando DV
+    # computado matematicamente (sem DB hit, mantem cache-only invariant).
+    # Sem isso, links do dialog de fornecedor que usam exactDoc da filial
+    # cairiam em 503 mesmo apos warmer rodar (caught by GPT-5.5 review #58).
+    cnpj_ordem = canonical[8:12]
+    if cnpj_ordem != "0001":
+        try:
+            matriz_dv = _calculate_cnpj_dv(canonical[:8], "0001")
+            matriz = canonical[:8] + "0001" + matriz_dv
+            return RedirectResponse(url=f"/empresa/{matriz}", status_code=301)
+        except ValueError:
+            return templates.TemplateResponse(
+                request,
+                "errors/404.html",
+                {"path": str(request.url.path)},
+                status_code=404,
+            )
 
     # Lookup no web_cache. Schema: (query_id=EMPRESA_PERFIL, municipio=cnpj),
     # rows[0][0] = dict completo serializado como JSONB.

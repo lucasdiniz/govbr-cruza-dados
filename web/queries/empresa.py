@@ -118,9 +118,20 @@ EMPRESA_LENIENCIA_EFEITOS_BY_ID = """
 # Versoes _BY_BASICO — usadas pela pagina /empresa/{cnpj} (perfil agregado
 # da empresa raiz, alinhado com mv_empresa_pb que tambem agrega por
 # cnpj_basico). Garantem coerencia entre KPIs (que vem da MV agregada por
-# basico) e listagens detalhadas. Filtro `tipo_pessoa IN (PJ, ...)` evita
-# colisao de prefixo com CPFs (cpf=11 digitos vs cnpj=14, mas LEFT(.,8)
-# poderia bater com CPF cuja primeira metade coincide).
+# basico) e listagens detalhadas.
+#
+# Os filtros foram alinhados com os indices parciais existentes em
+# sql/19_indices_queries.sql:
+#   - CEIS/CNEP: idx_ceis/cnep_cnpj_basico_j ON (LEFT(cpf_cnpj_norm,8))
+#                WHERE tipo_pessoa = 'J' — usar `tipo_pessoa = 'J'` strict
+#                (CGU normaliza pra 'J', valor unico em pratica).
+#   - PGFN: idx_pgfn_cnpj_basico_norm ON (LEFT(cpf_cnpj_norm,8))
+#           WHERE LENGTH(cpf_cnpj_norm) = 14 — usar LENGTH=14 (exclui CPFs
+#           cujo prefixo de 8 caracteres poderia colidir).
+#   - LENIENCIA: tabela pequena (~80 acordos historicos), seq scan trivial.
+# Sem esses filtros casando com os indices, o warmer rodaria seq scan em
+# tabelas de milhoes de rows × 45K empresas — risco de derrubar o DB
+# justamente no rollout que deveria evitar isso (P1 do GPT 5.5 review).
 # ─────────────────────────────────────────────────────────────────────────
 
 EMPRESA_SANCOES_CEIS_BY_BASICO = """
@@ -130,7 +141,8 @@ EMPRESA_SANCOES_CEIS_BY_BASICO = """
            abrangencia_sancao
     FROM ceis_sancao
     WHERE LEFT(cpf_cnpj_norm, 8) = %s
-      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+      AND tipo_pessoa = 'J'
+      AND cpf_cnpj_norm IS NOT NULL
     ORDER BY dt_inicio_sancao DESC
 """
 
@@ -141,7 +153,8 @@ EMPRESA_SANCOES_CNEP_BY_BASICO = """
            abrangencia_sancao
     FROM cnep_sancao
     WHERE LEFT(cpf_cnpj_norm, 8) = %s
-      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+      AND tipo_pessoa = 'J'
+      AND cpf_cnpj_norm IS NOT NULL
     ORDER BY dt_inicio_sancao DESC
 """
 
@@ -151,7 +164,7 @@ EMPRESA_PGFN_BY_BASICO = """
            dt_inscricao, indicador_ajuizado
     FROM pgfn_divida
     WHERE LEFT(cpf_cnpj_norm, 8) = %s
-      AND tipo_pessoa IN ('PJ', 'Pessoa jurídica', 'J')
+      AND LENGTH(cpf_cnpj_norm) = 14
     ORDER BY valor_consolidado DESC
 """
 

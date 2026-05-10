@@ -149,7 +149,12 @@ jobs:
 
   postflight:
     needs: [warm]
-    if: always() && needs.warm.result == 'success' && inputs.preflight_b4 == true
+    # Downsize SEMPRE que preflight subiu, mesmo se warm falhou ou estourou
+    # timeout. VM em B4 sem trabalho ativo custa $108/mes vs $30 do B2.
+    # Se warm falhou parcialmente, cache esta degradado mas nao bloqueia
+    # operacao — re-trigger manual quando precisar (lock global do
+    # concurrency garante exclusao mutua).
+    if: always() && needs.warm.result != 'skipped' && inputs.preflight_b4 == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
