@@ -230,8 +230,154 @@ EMPRESA_EMPENHOS_RECENTES_BY_MUN = """
     WHERE cnpj_basico = %(cnpj_basico)s
       AND municipio = %(municipio)s
       AND valor_pago > 0
-    ORDER BY data_empenho DESC
+    ORDER BY data_empenho DESC NULLS LAST, id DESC
     LIMIT 50
+"""
+
+# ─────────────────────────────────────────────────────────────────────────
+# Empenhos paginados + filtraveis (data + busca textual). Alimentam o
+# endpoint /api/empresa/empenhos para paginacao live (page 2+ ou qualquer
+# filtro). Page 1 sem filtros eh servido do warmer cache (campo `empenhos`
+# em EMPRESA_PERFIL_MUN/EMPRESA_PERFIL).
+#
+# Filtros opcionais via padrao "param IS NULL OR coluna OP param" — isso
+# permite uma unica query servir todos os casos (com/sem data, com/sem
+# busca) sem string concat. PG otimiza bem esse padrao quando os params
+# sao todos NULL (planner pode pular).
+#
+# Busca textual: ILIKE em 4 colunas (numero, elemento, historico,
+# modalidade). Sem FTS por ora — ILIKE funciona bem com WHERE ja restrito
+# por cnpj_basico/municipio (poucos milhares de rows). Frontend exige
+# min 2 chars.
+#
+# ORDER BY data_empenho DESC NULLS LAST, id DESC: estavel para
+# paginacao (id desempata datas iguais).
+# ─────────────────────────────────────────────────────────────────────────
+
+EMPRESA_EMPENHOS_PAGINATED_BY_MUN = """
+    SELECT id, numero_empenho, data_empenho, elemento_despesa,
+           valor_empenhado, valor_pago,
+           modalidade_licitacao, numero_licitacao
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+          )
+      )
+    ORDER BY data_empenho DESC NULLS LAST, id DESC
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+EMPRESA_EMPENHOS_COUNT_BY_MUN = """
+    SELECT COUNT(*)
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+          )
+      )
+"""
+
+# Variantes globais (sem filtro de municipio) — usadas pela pagina
+# /empresa/<cnpj> (perfil global). Warmer popula primeira pagina;
+# pages 2+ ou filtros sao live.
+EMPRESA_EMPENHOS_PAGINATED_GLOBAL = """
+    SELECT id, numero_empenho, data_empenho, municipio, elemento_despesa,
+           valor_empenhado, valor_pago,
+           modalidade_licitacao, numero_licitacao
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+              OR municipio ILIKE %(q_pat)s
+          )
+      )
+    ORDER BY data_empenho DESC NULLS LAST, id DESC
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+EMPRESA_EMPENHOS_COUNT_GLOBAL = """
+    SELECT COUNT(*)
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+              OR municipio ILIKE %(q_pat)s
+          )
+      )
+"""
+
+# Variantes para fornecedor (cpf_cnpj exato em vez de cnpj_basico) — o
+# dialog de fornecedor em /cidade/ usa identidade exata pra evitar
+# colisao CPF/CNPJ por prefixo de 8 digitos (ver cidade.py:1655).
+EMPRESA_EMPENHOS_PAGINATED_BY_DOC_MUN = """
+    SELECT id, numero_empenho, data_empenho, elemento_despesa,
+           valor_empenhado, valor_pago,
+           modalidade_licitacao, numero_licitacao
+    FROM tce_pb_despesa
+    WHERE cpf_cnpj = %(cpf_cnpj)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+          )
+      )
+    ORDER BY data_empenho DESC NULLS LAST, id DESC
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+EMPRESA_EMPENHOS_COUNT_BY_DOC_MUN = """
+    SELECT COUNT(*)
+    FROM tce_pb_despesa
+    WHERE cpf_cnpj = %(cpf_cnpj)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+      AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
+      AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
+      AND (
+          %(q)s IS NULL OR (
+              numero_empenho ILIKE %(q_pat)s
+              OR elemento_despesa ILIKE %(q_pat)s
+              OR COALESCE(historico, '') ILIKE %(q_pat)s
+              OR COALESCE(modalidade_licitacao, '') ILIKE %(q_pat)s
+          )
+      )
 """
 
 EMPRESA_STATS_BY_MUN = """

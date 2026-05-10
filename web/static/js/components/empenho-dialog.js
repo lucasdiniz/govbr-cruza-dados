@@ -57,8 +57,13 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     const cnpjB = cnpjRaw.slice(0, 8);
     const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
     const credorNome = _esc(data.nome_credor || '-');
+    // data-forn-mun: igual ao licitacao link logo abaixo, repassa o
+    // municipio do empenho pra que o fornecedor-dialog tenha context
+    // correto na pagina /empresa/<cnpj> global onde _currentMunicipio
+    // eh vazio.
+    const credorMun = _esc(data.municipio || '');
     const credorLink = isClickable
-        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${credorNome}" data-forn-nome-credor="${credorNome}">${credorNome}</a>`
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${credorNome}" data-forn-nome-credor="${credorNome}" data-forn-mun="${credorMun}">${credorNome}</a>`
         : credorNome;
     html += `<div class="empresa-card"><div class="empresa-header">
         <strong>${credorLink}</strong>
@@ -90,12 +95,18 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     if (data.municipio) html += `<span><strong>Municipio:</strong> ${_esc(data.municipio)}</span>`;
     html += '</div></div>';
 
-    // Licitacao vinculada
+    // Licitacao vinculada. Inclui data-mun do proprio empenho — sem ele,
+    // dialog-links.js cai em _currentMunicipio global. Em /empresa/<cnpj>
+    // (global) esse global eh '' e a API devolve vazio. Repassar o
+    // municipio do empenho corrige cross-dialog navigation no perfil
+    // global; nas demais paginas (cidade, empresa-municipio) eh
+    // equivalente ao comportamento atual.
     const mod = data.modalidade_licitacao || '';
     const numLic = data.numero_licitacao || '';
     const semLic = !numLic || numLic === '000000000' || mod.toLowerCase().includes('sem licit');
+    const empMun = data.municipio || '';
     if (!semLic) {
-        html += `<p class="text-sm mt-2"><strong>Licitacao:</strong> <a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0">${_esc(mod)} (${_esc(numLic)})</a></p>`;
+        html += `<p class="text-sm mt-2"><strong>Licitacao:</strong> <a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0" data-lic-mun="${_esc(empMun)}">${_esc(mod)} (${_esc(numLic)})</a></p>`;
     } else {
         html += '<p class="text-sm mt-2"><strong>Licitacao:</strong> <span class="badge badge-yellow">Sem licitacao</span></p>';
     }

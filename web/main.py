@@ -399,10 +399,11 @@ JS_FILES: list[str] = [
     "lib/run-limited.js",
     "components/data-table.js",
     "components/clickable-rows.js",
+    "components/empenhos-controller.js",
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "99"
+templates.env.globals["ASSET_VERSION"] = "100"
 
 
 # ─────────────────────────────────────────────────────────────────────────
