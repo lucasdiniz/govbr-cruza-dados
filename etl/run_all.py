@@ -97,6 +97,7 @@ def main():
         ("Fase 16: PNCP Itens", "etl.04b_pncp_itens"),
         ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
         ("Fase 18: Views materializadas", "etl.21_views"),
+        ("Fase 19: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
     ]
 
     errors = []

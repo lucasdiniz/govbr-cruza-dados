@@ -568,6 +568,13 @@ jobs:
           # para que o postflight NAO faca downsize da VM (deixa em 16GB para retomar).
           python -m etl.21_views 2>&1
 
+          # 22_mv_sitemap: MV dedicada pro sitemap (mv_empresa_municipio_pagantes).
+          # Idempotente (DROP IF EXISTS + CREATE) e rapido (~1-2min em B4) — ok
+          # rodar mesmo em deploys SQL incrementais. Sem isso, queries
+          # EMPRESAS_MUNICIPIOS_QUALIFICADAS_* fazem GROUP BY em ~16M rows
+          # do tce_pb_despesa e os sitemaps empresa-municipio dao timeout.
+          python -m etl.22_mv_sitemap 2>&1
+
       # ── Incremental ETL (framework PB POC) ──
       - name: "ETL: Incremental"
         if: inputs.etl_phase == 'incremental'
@@ -582,6 +589,13 @@ jobs:
           else
             python -m etl.incremental.runner 2>&1
           fi
+          # Refresh da MV de sitemap apos incremental: mv_empresa_municipio_pagantes
+          # depende de tce_pb_despesa que pode ter ganhado novos rows na fase
+          # incremental (TCE-PB esta no escopo POC v7). Sem refresh, sitemap fica
+          # stale e novos pares (empresa, municipio) nao indexam ate o proximo
+          # etl_phase=sql. Idempotente, ~1-2min.
+          echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
+          python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
 
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
@@ -991,19 +1005,10 @@ jobs:
 
           # Coverage check para EMPRESA_PERFIL_MUN (variantes /empresa/<cnpj>/<slug>).
           # Mesma logica: rejeita se < 80%, evitando expor mass-503.
+          # Usa mv_empresa_municipio_pagantes (instantaneo) em vez do GROUP BY
+          # original de ~16M rows do tce_pb_despesa (que dava timeout).
           QUALIFYING_MUN=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
-            SELECT COUNT(*) FROM (
-              SELECT 1
-              FROM tce_pb_despesa d
-              JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
-              JOIN estabelecimento est
-                ON est.cnpj_basico = epb.cnpj_basico
-               AND est.cnpj_ordem = '0001'
-              WHERE d.cnpj_basico IS NOT NULL
-                AND d.municipio IS NOT NULL
-                AND d.valor_pago > 0
-              GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
-            ) sub
+            SELECT COUNT(*) FROM mv_empresa_municipio_pagantes
           ")
           CACHED_MUN=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
             "SELECT COUNT(*) FROM web_cache WHERE query_id = 'EMPRESA_PERFIL_MUN';")
@@ -1140,20 +1145,11 @@ jobs:
 
           # 5b. E2E smoke pra /empresa/<cnpj>/<slug> (variantes scoped por
           # municipio). Mesma logica: amostra do qualifying set, tolera 2/10.
+          # Sample direto da MV (rapido) em vez do GROUP BY pesado.
           if [ "${QUALIFYING_MUN:-0}" -gt 0 ]; then
             PARES=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -F'|' -c "
-              SELECT
-                est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv,
-                d.municipio
-              FROM tce_pb_despesa d
-              JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
-              JOIN estabelecimento est
-                ON est.cnpj_basico = epb.cnpj_basico
-               AND est.cnpj_ordem = '0001'
-              WHERE d.cnpj_basico IS NOT NULL
-                AND d.municipio IS NOT NULL
-                AND d.valor_pago > 0
-              GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+              SELECT cnpj_completo, municipio
+              FROM mv_empresa_municipio_pagantes
               ORDER BY random() LIMIT 10;
             ")
             FAIL_MUN=0
