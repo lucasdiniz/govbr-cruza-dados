@@ -41,7 +41,15 @@ _INDEXNOW_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{8,128}$")
 
 # Cache em memoria pra cada urlset/index (1h TTL). Cada shard e cacheado
 # separadamente — restart do cruza-web limpa tudo, primeira request rebuilda.
-_SITEMAP_TTL = 3600  # 1h
+_SITEMAP_TTL = 86400  # 24h
+# 24h ao inves de 1h: counts/shards mudam pouco (depende de novos
+# fornecedores aparecerem em tce_pb_despesa). Reduz exposicao a queries
+# pesadas pos-restart do cruza-web (cache em memoria limpo) — Google
+# Search Console reportou "Couldn't fetch" quando o primeiro hit pos-
+# restart batia em GROUP BY de ~16M rows.
+#
+# Plus o COUNT/PAGINATED agora usam mv_empresa_municipio_pagantes
+# (instantaneo) em vez de GROUP BY live — TTL longo eh seguranca extra.
 _SITEMAP_CACHE: dict[str, Any] = {
     "index": {"ts": 0.0, "xml": ""},
     "cidades": {"ts": 0.0, "xml": ""},

@@ -542,54 +542,20 @@ EMPRESAS_QUALIFICADAS_COUNT = """
 # ─────────────────────────────────────────────────────────────────────────
 
 EMPRESAS_MUNICIPIOS_QUALIFICADAS_PAGINATED = """
-    SELECT
-        est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv AS cnpj_completo,
-        d.municipio,
-        SUM(d.valor_pago) AS total
-    FROM tce_pb_despesa d
-    JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
-    JOIN estabelecimento est
-        ON est.cnpj_basico = epb.cnpj_basico
-       AND est.cnpj_ordem = '0001'
-    WHERE d.cnpj_basico IS NOT NULL
-      AND d.municipio IS NOT NULL
-      AND d.valor_pago > 0
-    GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
-    ORDER BY SUM(d.valor_pago) DESC NULLS LAST,
-             est.cnpj_basico, d.municipio
+    SELECT cnpj_completo, municipio, total_pago AS total
+    FROM mv_empresa_municipio_pagantes
+    ORDER BY total_pago DESC NULLS LAST, cnpj_completo, municipio
     LIMIT %(limit)s OFFSET %(offset)s
 """
 
 EMPRESAS_MUNICIPIOS_QUALIFICADAS_COUNT = """
-    SELECT COUNT(*) FROM (
-        SELECT 1
-        FROM tce_pb_despesa d
-        JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
-        JOIN estabelecimento est
-            ON est.cnpj_basico = epb.cnpj_basico
-           AND est.cnpj_ordem = '0001'
-        WHERE d.cnpj_basico IS NOT NULL
-          AND d.municipio IS NOT NULL
-          AND d.valor_pago > 0
-        GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
-    ) sub
+    SELECT COUNT(*) FROM mv_empresa_municipio_pagantes
 """
 
 # Versao sem LIMIT, usada pelo warmer (single shot, processa todos
 # os pares de uma vez). Mantem mesmo ORDER BY do paginated.
 EMPRESAS_MUNICIPIOS_QUALIFICADAS_TODOS = """
-    SELECT
-        est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv AS cnpj_completo,
-        d.municipio
-    FROM tce_pb_despesa d
-    JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
-    JOIN estabelecimento est
-        ON est.cnpj_basico = epb.cnpj_basico
-       AND est.cnpj_ordem = '0001'
-    WHERE d.cnpj_basico IS NOT NULL
-      AND d.municipio IS NOT NULL
-      AND d.valor_pago > 0
-    GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
-    ORDER BY SUM(d.valor_pago) DESC NULLS LAST,
-             est.cnpj_basico, d.municipio
+    SELECT cnpj_completo, municipio
+    FROM mv_empresa_municipio_pagantes
+    ORDER BY total_pago DESC NULLS LAST, cnpj_completo, municipio
 """

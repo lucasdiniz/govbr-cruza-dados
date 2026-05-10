@@ -568,6 +568,13 @@ jobs:
           # para que o postflight NAO faca downsize da VM (deixa em 16GB para retomar).
           python -m etl.21_views 2>&1
 
+          # 22_mv_sitemap: MV dedicada pro sitemap (mv_empresa_municipio_pagantes).
+          # Idempotente (DROP IF EXISTS + CREATE) e rapido (~1-2min em B4) — ok
+          # rodar mesmo em deploys SQL incrementais. Sem isso, queries
+          # EMPRESAS_MUNICIPIOS_QUALIFICADAS_* fazem GROUP BY em ~16M rows
+          # do tce_pb_despesa e os sitemaps empresa-municipio dao timeout.
+          python -m etl.22_mv_sitemap 2>&1
+
       # ── Incremental ETL (framework PB POC) ──
       - name: "ETL: Incremental"
         if: inputs.etl_phase == 'incremental'
