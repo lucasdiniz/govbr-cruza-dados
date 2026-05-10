@@ -212,6 +212,113 @@ EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────
+# Detalhe (cnpj × municipio) — alimenta /empresa/<cnpj>/<municipio_slug>
+# e tambem a secao "Pagamentos detalhados" da pagina global. Replicam
+# a logica que o dialog de fornecedor faz inline em cidade.py
+# (/api/fornecedor/detalhes), mas filtram por cnpj_basico (em vez de
+# cpf_cnpj exato) para coerencia com mv_empresa_pb e
+# EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO. Diferenca esperada: filiais
+# do mesmo grupo (ordens != 0001) que recebam no mesmo municipio
+# entram juntas, alinhado com a visao "perfil da empresa raiz".
+# ─────────────────────────────────────────────────────────────────────────
+
+EMPRESA_EMPENHOS_RECENTES_BY_MUN = """
+    SELECT id, numero_empenho, data_empenho, elemento_despesa,
+           valor_empenhado, valor_pago,
+           modalidade_licitacao, numero_licitacao
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+    ORDER BY data_empenho DESC
+    LIMIT 50
+"""
+
+EMPRESA_STATS_BY_MUN = """
+    SELECT COUNT(*) AS qtd_empenhos,
+           COALESCE(SUM(valor_empenhado), 0) AS total_empenhado,
+           COALESCE(SUM(valor_pago), 0) AS total_pago,
+           MIN(data_empenho) AS primeiro_empenho,
+           MAX(data_empenho) AS ultimo_empenho,
+           COUNT(*) FILTER (
+               WHERE numero_licitacao IS NULL
+                  OR numero_licitacao = '000000000'
+                  OR modalidade_licitacao ILIKE '%%sem licit%%'
+           ) AS qtd_sem_licitacao
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+"""
+
+EMPRESA_PAGAMENTOS_MENSAIS_BY_MUN = """
+    SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
+           SUM(valor_pago) AS total_mes
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+      AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
+    GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
+    ORDER BY mes
+"""
+
+EMPRESA_TOP_ELEMENTOS_BY_MUN = """
+    SELECT elemento_despesa,
+           SUM(valor_pago) AS total_elemento,
+           COUNT(*) AS qtd
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %(cnpj_basico)s
+      AND municipio = %(municipio)s
+      AND valor_pago > 0
+    GROUP BY elemento_despesa
+    ORDER BY SUM(valor_pago) DESC
+    LIMIT 5
+"""
+
+# Pagamentos durante sancao em OUTROS municipios (excluindo o atual).
+# Usado quando a empresa tem sancoes registradas para destacar
+# pagamentos em municipios alheios durante o periodo da sancao.
+# Reproduz a logica que vivia inline em cidade.py:1788-1809 mas
+# filtra por cnpj_basico (alinhado com perfil agregado).
+EMPRESA_PAGAMENTOS_SANCAO_OUTROS = """
+    SELECT d.municipio, COUNT(*) AS qtd_empenhos,
+           SUM(d.valor_pago) AS total_pago
+    FROM tce_pb_despesa d
+    JOIN (
+        SELECT cpf_cnpj_norm, dt_inicio_sancao, dt_final_sancao
+        FROM ceis_sancao
+        WHERE LEFT(cpf_cnpj_norm, 8) = %(cnpj_basico)s
+          AND tipo_pessoa = 'J'
+        UNION ALL
+        SELECT cpf_cnpj_norm, dt_inicio_sancao, dt_final_sancao
+        FROM cnep_sancao
+        WHERE LEFT(cpf_cnpj_norm, 8) = %(cnpj_basico)s
+          AND tipo_pessoa = 'J'
+    ) san ON LEFT(san.cpf_cnpj_norm, 8) = d.cnpj_basico
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio != %(municipio_atual)s
+      AND d.valor_pago > 0
+      AND d.data_empenho >= san.dt_inicio_sancao
+      AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+    GROUP BY d.municipio
+    ORDER BY total_pago DESC
+"""
+
+# Visao global (sem filtro de municipio) das pagamentos mensais,
+# usado pelo chart "monthly" da pagina /empresa/<cnpj>.
+EMPRESA_PAGAMENTOS_MENSAIS_GLOBAL_BY_BASICO = """
+    SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
+           SUM(valor_pago) AS total_mes
+    FROM tce_pb_despesa
+    WHERE cnpj_basico = %s
+      AND valor_pago > 0
+      AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
+    GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
+    ORDER BY mes
+"""
+
+# ─────────────────────────────────────────────────────────────────────────
 # Sitemap: TODAS as empresas em mv_empresa_pb que tem matriz cadastrada
 # em estabelecimento (cnpj_ordem='0001'). Sem filtro de threshold de
 # valor/sancao/divida — qualquer empresa que apareceu em fonte PB merece
@@ -267,4 +374,68 @@ EMPRESAS_QUALIFICADAS_COUNT = """
     JOIN estabelecimento est
         ON est.cnpj_basico = epb.cnpj_basico
        AND est.cnpj_ordem = '0001'
+"""
+
+# ─────────────────────────────────────────────────────────────────────────
+# Sitemap empresa × municipio: pares (cnpj_completo, municipio_nome).
+# Cada par vira uma URL /empresa/<cnpj>/<municipio_slug>. Como o
+# warmer cobre todos os municipios pagantes de cada empresa, o sitemap
+# aqui REUSA exatamente a mesma fonte (mv_empresa_pb + estabelecimento
+# + tce_pb_despesa GROUP BY) para ficar 1:1 com o cache populado.
+#
+# ORDER BY total desc estabiliza paginacao (mesma posicao no warmer
+# e nos shards do sitemap).
+# ─────────────────────────────────────────────────────────────────────────
+
+EMPRESAS_MUNICIPIOS_QUALIFICADAS_PAGINATED = """
+    SELECT
+        est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv AS cnpj_completo,
+        d.municipio,
+        SUM(d.valor_pago) AS total
+    FROM tce_pb_despesa d
+    JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
+    JOIN estabelecimento est
+        ON est.cnpj_basico = epb.cnpj_basico
+       AND est.cnpj_ordem = '0001'
+    WHERE d.cnpj_basico IS NOT NULL
+      AND d.municipio IS NOT NULL
+      AND d.valor_pago > 0
+    GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+    ORDER BY SUM(d.valor_pago) DESC NULLS LAST,
+             est.cnpj_basico, d.municipio
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+EMPRESAS_MUNICIPIOS_QUALIFICADAS_COUNT = """
+    SELECT COUNT(*) FROM (
+        SELECT 1
+        FROM tce_pb_despesa d
+        JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
+        JOIN estabelecimento est
+            ON est.cnpj_basico = epb.cnpj_basico
+           AND est.cnpj_ordem = '0001'
+        WHERE d.cnpj_basico IS NOT NULL
+          AND d.municipio IS NOT NULL
+          AND d.valor_pago > 0
+        GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+    ) sub
+"""
+
+# Versao sem LIMIT, usada pelo warmer (single shot, processa todos
+# os pares de uma vez). Mantem mesmo ORDER BY do paginated.
+EMPRESAS_MUNICIPIOS_QUALIFICADAS_TODOS = """
+    SELECT
+        est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv AS cnpj_completo,
+        d.municipio
+    FROM tce_pb_despesa d
+    JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
+    JOIN estabelecimento est
+        ON est.cnpj_basico = epb.cnpj_basico
+       AND est.cnpj_ordem = '0001'
+    WHERE d.cnpj_basico IS NOT NULL
+      AND d.municipio IS NOT NULL
+      AND d.valor_pago > 0
+    GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+    ORDER BY SUM(d.valor_pago) DESC NULLS LAST,
+             est.cnpj_basico, d.municipio
 """

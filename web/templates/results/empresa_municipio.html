@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ razao_social|clean_text }} (CNPJ {{ cnpj_fmt }}){% endblock %}
+{% block title %}{{ razao_social|clean_text }} em {{ municipio|clean_text }}, PB (CNPJ {{ cnpj_fmt }}){% endblock %}
 {% block meta_description %}{{ meta_description }}{% endblock %}
-{% block og_title %}{{ razao_social|clean_text }} - CNPJ {{ cnpj_fmt }} | TransparenciaPB{% endblock %}
+{% block og_title %}{{ razao_social|clean_text }} em {{ municipio|clean_text }} - CNPJ {{ cnpj_fmt }} | TransparenciaPB{% endblock %}
 {% block og_description %}{{ meta_description }}{% endblock %}
 {% block og_type %}article{% endblock %}
 {% block json_ld_extra %}
 {% set origin = request_origin(request) if request else '' %}
-{% set page_url = origin + '/empresa/' + cnpj %}
+{% set page_url = origin + '/empresa/' + cnpj + '/' + municipio_slug %}
 {% set logr = estabelecimento.logradouro or (matriz.logradouro if matriz else None) %}
 {% set num = estabelecimento.numero or (matriz.numero if matriz else None) %}
 {% set bai = estabelecimento.bairro or (matriz.bairro if matriz else None) %}
@@ -23,9 +23,9 @@
   "@graph": [
     {
       "@type": "Organization",
-      "@id": {{ (page_url ~ '#organization') | tojson }},
+      "@id": {{ (origin ~ '/empresa/' ~ cnpj ~ '#organization') | tojson }},
       "name": {{ razao_social | clean_text | tojson }},
-      "url": {{ page_url | tojson }},
+      "url": {{ (origin ~ '/empresa/' ~ cnpj) | tojson }},
       "identifier": [
         {
           "@type": "PropertyValue",
@@ -43,15 +43,11 @@
         {% if uf %}"addressRegion": {{ uf | tojson }},{% endif %}
         {% if cep %}"postalCode": {{ cep | tojson }},{% endif %}
         "addressCountry": "BR"
-      },
-      "sameAs": [
-        {{ ("https://cnpj.biz/" ~ cnpj) | tojson }},
-        {{ ("https://www.gov.br/receitafederal/pt-br/servicos/cadastro/cnpj/consultar-situacao-cadastral") | tojson }}
-      ]
+      }
     },
     {
       "@type": "Dataset",
-      "name": {{ ("Perfil publico de " ~ razao_social ~ " (CNPJ " ~ cnpj_fmt ~ ")") | clean_text | tojson }},
+      "name": {{ ("Pagamentos publicos de " ~ razao_social ~ " em " ~ municipio ~ ", PB (CNPJ " ~ cnpj_fmt ~ ")") | clean_text | tojson }},
       "description": {{ meta_description | tojson }},
       "url": {{ page_url | tojson }},
       "isAccessibleForFree": true,
@@ -67,12 +63,18 @@
         "CNPJ",
         "transparencia publica",
         "Paraiba",
-        "fornecedor publico",
-        "CEIS", "CNEP", "PGFN"
+        {{ municipio | clean_text | tojson }},
+        "fornecedor publico"
       ],
       "spatialCoverage": {
         "@type": "Place",
-        "name": "Paraiba, Brasil"
+        "name": {{ (municipio ~ ', Paraiba, Brasil') | clean_text | tojson }},
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": {{ municipio | clean_text | tojson }},
+          "addressRegion": "PB",
+          "addressCountry": "BR"
+        }
       }
     },
     {
@@ -80,7 +82,8 @@
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ origin }}/"},
         {"@type": "ListItem", "position": 2, "name": "Empresas", "item": "{{ origin }}/sobre"},
-        {"@type": "ListItem", "position": 3, "name": {{ razao_social | clean_text | tojson }}, "item": {{ page_url | tojson }} }
+        {"@type": "ListItem", "position": 3, "name": {{ razao_social | clean_text | tojson }}, "item": {{ (origin ~ '/empresa/' ~ cnpj) | tojson }} },
+        {"@type": "ListItem", "position": 4, "name": {{ municipio | clean_text | tojson }}, "item": {{ page_url | tojson }} }
       ]
     }
   ]
@@ -88,25 +91,40 @@
 </script>
 {% endblock %}
 {% block content %}
-<article class="empresa-page">
+<article class="empresa-page empresa-page-municipio">
     {% include "partials/empresa/_hero.html" %}
-    {% include "partials/empresa/_resumo_pagamentos.html" %}
-    {# Charts globais (12 meses + top 5 elementos PB inteiro) #}
-    {% with monthly_data = monthly_global, charts_titulo = 'Resumo grafico (todo PB)' %}
+
+    <section class="empresa-section empresa-section-scope">
+        <p class="eyebrow">Recorte por municipio</p>
+        <h2 class="empresa-municipio-title">Pagamentos em {{ municipio|clean_text }}, PB</h2>
+        <p class="text-sm">
+            <a href="/empresa/{{ cnpj }}">&larr; Ver perfil global da empresa</a>
+            &middot;
+            <a href="/cidade/{{ municipio_slug }}">Panorama de {{ municipio|clean_text }}</a>
+        </p>
+    </section>
+
+    {% include "partials/empresa/_stats_municipio.html" %}
+
+    {% with monthly_data = monthly, charts_titulo = 'Resumo grafico em ' ~ municipio %}
         {% include "partials/empresa/_charts.html" %}
     {% endwith %}
-    {% include "partials/empresa/_flags.html" %}
+
+    {% include "partials/empresa/_empenhos.html" %}
+
+    {% include "partials/empresa/_sancao_outros.html" %}
+
     {% include "partials/empresa/_sancoes.html" %}
     {% include "partials/empresa/_pgfn.html" %}
     {% include "partials/empresa/_leniencia.html" %}
-    {% include "partials/empresa/_municipios_pagantes.html" %}
+
     {% include "partials/empresa/_socios.html" %}
 
     <section class="empresa-section empresa-fontes">
         <h2>Fontes oficiais</h2>
         <p class="text-sm text-muted">
-            Este perfil cruza dados publicos da Receita Federal (CNPJ), CGU (CEIS, CNEP, Acordos de Leniencia),
-            PGFN (divida ativa), TCE-PB (despesas municipais) e dados.pb.gov.br (orcamento estadual).
+            Este recorte cruza dados publicos da Receita Federal (CNPJ), CGU (CEIS, CNEP, Acordos de Leniencia),
+            PGFN (divida ativa) e TCE-PB (despesas municipais).
             Todos os dados sao oficiais e publicos. Indicamos sinais de atencao &mdash; nao conclusoes juridicas.
         </p>
         <p class="text-sm">

@@ -29,7 +29,10 @@ from web.queries.cidade import (
     TOP_SERVIDORES_RISCO,
     TOP_SERVIDORES_RISCO_DATED,
 )
-from web.queries.empresa import EMPRESAS_QUALIFICADAS_PARA_SITEMAP
+from web.queries.empresa import (
+    EMPRESAS_MUNICIPIOS_QUALIFICADAS_TODOS,
+    EMPRESAS_QUALIFICADAS_PARA_SITEMAP,
+)
 from web.kpis.cidade import compute_cidade_kpis
 from web.queries.registry import CIDADE_QUERIES
 
@@ -813,9 +816,11 @@ def main():
         print(f"--- PB: {len(municipios_pb)} municipios ---")
         ok_p, fail_p = warm_cycle_pb(municipios_pb)
         ok_e = fail_e = skip_e = 0
+        ok_em = fail_em = skip_em = 0
         if not skip_empresas_flag:
             ok_e, fail_e, skip_e = _warm_empresas_phase()
-        return ok_p + ok_e, fail_p + fail_e, skip_e
+            ok_em, fail_em, skip_em = _warm_empresas_municipios_phase()
+        return ok_p + ok_e + ok_em, fail_p + fail_e + fail_em, skip_e + skip_em
 
     if args.daemon:
         print(f"Daemon mode: {len(municipios_pb)} PB municipios.")
@@ -916,6 +921,215 @@ def _warm_empresas_phase() -> tuple[int, int, int]:
 
     # skip_resume eh tambem skipped (nao foi processado nesse ciclo).
     # Soma com skip_nf pra reportagem completa.
+    return ok, fail, skipped_resume + skip_nf
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Empresa x Municipio warmer — pre-computa /empresa/<cnpj>/<slug>.
+# Mesma estrategia de cache-only do /empresa/<cnpj>: cache miss = 503.
+#
+# Storage no web_cache:
+#   query_id = "EMPRESA_PERFIL_MUN"
+#   municipio = f"{cnpj_completo}:{slug}" (key composta)
+#   columns = ["payload"]
+#   rows = [[<dict_serializado_como_json>]]
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _get_qualifying_empresas_municipios(conn) -> list[tuple[str, str]]:
+    """Lista pares (cnpj_completo, municipio_nome) das empresas qualificadas
+    em cada municipio onde tem pagamentos. Usa a mesma query do sitemap."""
+    with conn.cursor() as cur:
+        cur.execute(EMPRESAS_MUNICIPIOS_QUALIFICADAS_TODOS)
+        rows = cur.fetchall()
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for cnpj_completo, municipio in rows:
+        if not cnpj_completo or not municipio:
+            continue
+        cnpj_str = str(cnpj_completo).strip()
+        if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+            continue
+        mun = str(municipio).strip()
+        if not mun:
+            continue
+        key = (cnpj_str, mun)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _warm_one_empresa_municipio(par: tuple[str, str]) -> tuple[bool, str | None]:
+    """Computa o perfil de uma empresa em um municipio especifico e armazena
+    em web_cache. par = (cnpj_completo, municipio_nome).
+    """
+    from web.config import TIMEOUT_PROFILE_WARM
+    from web.routes.empresa import (
+        CACHE_QUERY_ID_MUN as EMPRESA_MUN_CACHE_QID,
+        EmpresaNotFoundError,
+        compute_empresa_municipio_perfil_dict,
+    )
+    from web.utils.slug import municipio_slug as _slug_of
+
+    cnpj_completo, municipio_nome = par
+    slug = _slug_of(municipio_nome)
+    if not slug:
+        return False, "no_slug"
+
+    try:
+        data = compute_empresa_municipio_perfil_dict(
+            cnpj_completo, municipio_nome, timeout_sec=TIMEOUT_PROFILE_WARM
+        )
+    except EmpresaNotFoundError as e:
+        return False, f"not_found:{e}"
+    except Exception as e:
+        return False, f"compute_failed:{str(e).splitlines()[0]}"
+
+    key = f"{cnpj_completo}:{slug}"
+    try:
+        conn = _thread_conn()
+        with conn.cursor() as cur:
+            _upsert(
+                cur,
+                EMPRESA_MUN_CACHE_QID,
+                key,
+                ["payload"],
+                [[data]],
+            )
+        conn.commit()
+    except Exception as e:
+        try:
+            _thread_conn().rollback()
+        except Exception:
+            pass
+        return False, f"cache_write_failed:{str(e).splitlines()[0]}"
+    return True, None
+
+
+def warm_cycle_empresas_municipios(
+    pares: list[tuple[str, str]], verbose: bool = True
+) -> tuple[int, int, int]:
+    """Processa pares (empresa, municipio) em paralelo. Mesma semantica de
+    warm_cycle_empresas. Returns: (ok, fail, skipped_not_found)."""
+    bootstrap = psycopg2.connect(DSN)
+    bootstrap.autocommit = False
+    _ensure_cache_table(bootstrap)
+    bootstrap.close()
+
+    total = len(pares)
+    if total == 0:
+        return 0, 0, 0
+    print(
+        f"[empresas-mun] Warming {total} pares em {PARALLEL_WORKERS} workers...",
+        flush=True,
+    )
+
+    ok = 0
+    fail = 0
+    skipped = 0
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+        futures = {ex.submit(_warm_one_empresa_municipio, p): p for p in pares}
+        done = 0
+        for fut in as_completed(futures):
+            done += 1
+            par = futures[fut]
+            try:
+                success, msg = fut.result()
+            except Exception as e:
+                success = False
+                msg = f"future_exception:{e}"
+            if success:
+                ok += 1
+            elif msg and msg.startswith("not_found:"):
+                skipped += 1
+            else:
+                fail += 1
+                if verbose and msg:
+                    print(f"  [ERR] {par[0]}@{par[1]}: {msg}", flush=True)
+            if verbose and done % 500 == 0:
+                elapsed = time.time() - t0
+                rate = done / elapsed if elapsed > 0 else 0
+                eta = (total - done) / rate if rate > 0 else 0
+                print(
+                    f"[empresas-mun] {done}/{total} "
+                    f"({ok} ok, {fail} fail, {skipped} skipped) — "
+                    f"{rate:.1f}/s, eta {eta/60:.1f}min",
+                    flush=True,
+                )
+    elapsed = time.time() - t0
+    print(
+        f"[empresas-mun] Completo: {ok} ok, {fail} fail, {skipped} skipped "
+        f"({elapsed/60:.1f}min)",
+        flush=True,
+    )
+    return ok, fail, skipped
+
+
+def _warm_empresas_municipios_phase() -> tuple[int, int, int]:
+    """Fase de warming de pares (empresa, municipio). Mesma logica do
+    _warm_empresas_phase mas sobre EMPRESA_PERFIL_MUN. Resume mode aplicado
+    via _filter_cached_munis com keys f'{cnpj}:{slug}'.
+    """
+    from web.utils.slug import municipio_slug as _slug_of
+
+    print("--- Empresas-Municipios: enumerando qualificadas ---")
+    boot = psycopg2.connect(DSN)
+    boot.autocommit = True
+    try:
+        all_pares = _get_qualifying_empresas_municipios(boot)
+    finally:
+        boot.close()
+
+    if not all_pares:
+        print(
+            "[empresas-mun] Nenhum par (empresa, municipio) qualificado. "
+            "Skipping."
+        )
+        return 0, 0, 0
+
+    # Construir keys e mapping pra filtrar resume mode.
+    par_by_key: dict[str, tuple[str, str]] = {}
+    keys: list[str] = []
+    for cnpj_completo, municipio_nome in all_pares:
+        slug = _slug_of(municipio_nome)
+        if not slug:
+            continue
+        key = f"{cnpj_completo}:{slug}"
+        par_by_key[key] = (cnpj_completo, municipio_nome)
+        keys.append(key)
+
+    if not keys:
+        return 0, 0, 0
+
+    remaining_keys, skipped_resume = _filter_cached_munis(
+        "EMPRESA_PERFIL_MUN", keys
+    )
+    if skipped_resume > 0:
+        print(
+            f"[empresas-mun] Resume mode: {skipped_resume} ja cacheados nas "
+            f"ultimas {SKIP_RECENT_HOURS}h, processando {len(remaining_keys)} "
+            f"restantes."
+        )
+
+    if not remaining_keys:
+        return 0, 0, skipped_resume
+
+    pares_proc = [par_by_key[k] for k in remaining_keys if k in par_by_key]
+
+    from web import db as web_db
+
+    web_db.init_pool()
+    try:
+        ok, fail, skip_nf = warm_cycle_empresas_municipios(pares_proc)
+    finally:
+        try:
+            web_db.close_pool()
+        except Exception:
+            pass
+
     return ok, fail, skipped_resume + skip_nf
 
 

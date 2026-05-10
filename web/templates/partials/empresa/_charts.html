@@ -1,0 +1,61 @@
+{# Charts: mini bar mensal + top elementos.
+   Reusa as classes mini-chart / top-elementos do dialog
+   (web/static/css/components/mini-chart.css). Sem JS — bars puro CSS.
+
+   Vars esperadas:
+     monthly_data: list[{mes: 'YYYY-MM', total_mes: float}] (12 meses).
+     top_elementos: list[{elemento_despesa, total_elemento, qtd}] (top 5).
+     charts_titulo (opcional): string que titula a secao. Se vazio,
+                               renderiza so os charts sem header.
+#}
+{% set monthly_data = monthly_data|default([]) %}
+{% set top_elementos_local = top_elementos|default([]) %}
+{% if monthly_data|length > 1 or top_elementos_local %}
+<section class="empresa-section empresa-charts">
+    {% if charts_titulo %}<h2>{{ charts_titulo }}</h2>{% endif %}
+    <div class="charts-grid">
+        {% if monthly_data|length > 1 %}
+        {% set max_mes = monthly_data|map(attribute='total_mes')|map('float')|max %}
+        <div>
+            <p class="text-sm text-muted" style="margin-bottom:.2rem">Pagamentos mensais (ultimos 12 meses)</p>
+            <div class="mini-chart" role="img" aria-label="Grafico de pagamentos mensais">
+                {% for m in monthly_data %}
+                {% set total_mes = m.total_mes|float %}
+                {% set pct = (total_mes / max_mes * 100) if max_mes and max_mes > 0 else 0 %}
+                {% set yy_mm = (m.mes or '')|string %}
+                {% set yy = yy_mm[:4] %}
+                {% set mm = yy_mm[5:7] %}
+                <div class="mini-bar-col">
+                    <span class="mini-bar-tip">{{ total_mes|short_brl }}</span>
+                    <div class="mini-bar" style="height:{{ [pct, 3]|max }}%"></div>
+                    <span class="mini-bar-label">{{ mm }}/{{ yy[2:] }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if top_elementos_local %}
+        {% set top_max = top_elementos_local[0].total_elemento|float %}
+        {% set total_geral = top_elementos_local|sum(attribute='total_elemento') %}
+        <div>
+            <p class="text-sm text-muted" style="margin-bottom:.2rem">Principais elementos de despesa</p>
+            <div class="top-elementos">
+                {% for el in top_elementos_local %}
+                {% set v = el.total_elemento|float %}
+                {% set pct = (v / top_max * 100) if top_max and top_max > 0 else 0 %}
+                {% set pct_total = ((v / total_geral * 100)|round|int) if total_geral and total_geral > 0 else 0 %}
+                <div class="top-el-row">
+                    <span class="top-el-name" title="{{ el.elemento_despesa|clean_text or 'Sem classificacao' }}">{{ el.elemento_despesa|clean_text or 'Sem classificacao' }}</span>
+                    <div class="top-el-track">
+                        <div class="top-el-fill" style="width:{{ pct }}%"></div>
+                        <span class="top-el-pct">{{ pct_total }}%</span>
+                    </div>
+                    <span class="top-el-value">{{ v|short_brl }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endif %}

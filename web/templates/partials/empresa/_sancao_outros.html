@@ -1,0 +1,41 @@
+{# Pagamentos sob sancao em outros municipios.
+   Renderiza apenas se a empresa tem sancoes registradas (a propria
+   query nao retornaria linhas de outra forma) e ha registros em
+   outros municipios durante a vigencia da sancao.
+   Var esperada: pagamentos_sancao_outros (lista). #}
+{% if pagamentos_sancao_outros %}
+<section class="empresa-section" id="sancao-outros">
+    <h2>Pagamentos durante sancao em outros municipios</h2>
+    <p class="text-sm text-muted">
+        Periodos em que esta empresa estava com sancao ativa (CEIS/CNEP)
+        e ainda recebeu pagamentos publicos em outros municipios da Paraiba.
+    </p>
+    <div class="tbl-wrap">
+        <table class="stack-mobile data-table">
+            <thead>
+                <tr>
+                    <th>Municipio</th>
+                    <th class="text-right">Total pago</th>
+                    <th class="text-right">Empenhos</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in pagamentos_sancao_outros %}
+                {% set _slug = o.municipio | municipio_slug %}
+                <tr>
+                    <td data-label="Municipio">
+                        {% if _slug %}
+                            <a href="/empresa/{{ cnpj }}/{{ _slug }}">{{ o.municipio|clean_text }}</a>
+                        {% else %}
+                            {{ o.municipio|clean_text }}
+                        {% endif %}
+                    </td>
+                    <td data-label="Total pago" class="text-right num">{{ o.total_pago|short_brl }}</td>
+                    <td data-label="Empenhos" class="text-right num">{{ o.qtd_empenhos|short_number }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}

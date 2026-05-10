@@ -46,6 +46,7 @@ _SITEMAP_CACHE: dict[str, Any] = {
     "index": {"ts": 0.0, "xml": ""},
     "cidades": {"ts": 0.0, "xml": ""},
     "empresas": {},  # {shard_n: {"ts": ..., "xml": ...}}
+    "empresas_municipios": {},  # {shard_n: {"ts": ..., "xml": ...}}
 }
 
 # Tamanho de cada shard de empresas. Limite do protocolo eh 50K URLs por
@@ -291,6 +292,95 @@ def _build_empresas_shard_sitemap(origin: str, shard_n: int) -> str:
     return "\n".join(parts)
 
 
+def _empresas_municipios_qualificadas_count() -> int:
+    """Total de pares (empresa, municipio) que vao pro sitemap. Usado pra
+    calcular num_shards do /sitemap-empresas-municipios-{n}.xml.
+
+    Cache em memoria (1h) via _SITEMAP_CACHE['empresas_municipios_count'].
+    """
+    cached = _SITEMAP_CACHE.get("empresas_municipios_count")
+    now = time.time()
+    if cached and (now - cached["ts"] < _SITEMAP_TTL):
+        return int(cached["value"])
+
+    from web.queries.empresa import EMPRESAS_MUNICIPIOS_QUALIFICADAS_COUNT
+
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(EMPRESAS_MUNICIPIOS_QUALIFICADAS_COUNT)
+                row = cur.fetchone()
+                count = int(row[0]) if row else 0
+        _SITEMAP_CACHE["empresas_municipios_count"] = {"ts": now, "value": count}
+        return count
+    except Exception:
+        _log.exception("Falha ao contar pares (empresa, municipio) pro sitemap")
+        return 0
+
+
+def _empresas_municipios_paginated(shard_n: int, shard_size: int) -> list[tuple[str, str, str]]:
+    """Retorna pares (cnpj_completo, municipio_nome, slug) do shard N
+    (1-indexed). Aplica municipio_slug() aqui pra evitar SQL fancy.
+    """
+    from web.queries.empresa import EMPRESAS_MUNICIPIOS_QUALIFICADAS_PAGINATED
+    from web.utils.slug import municipio_slug as _slug_of
+
+    if shard_n < 1:
+        return []
+    offset = (shard_n - 1) * shard_size
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    EMPRESAS_MUNICIPIOS_QUALIFICADAS_PAGINATED,
+                    {"limit": shard_size, "offset": offset},
+                )
+                out: list[tuple[str, str, str]] = []
+                seen: set[tuple[str, str]] = set()
+                for cnpj_completo, municipio, _total in cur.fetchall():
+                    if not cnpj_completo or not municipio:
+                        continue
+                    cnpj_str = str(cnpj_completo).strip()
+                    if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+                        continue
+                    mun = str(municipio).strip()
+                    if not mun:
+                        continue
+                    slug = _slug_of(mun)
+                    if not slug:
+                        continue
+                    key = (cnpj_str, slug)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append((cnpj_str, mun, slug))
+                return out
+    except Exception:
+        _log.exception("Falha ao carregar shard %d de empresas-municipios", shard_n)
+        return []
+
+
+def _build_empresas_municipios_shard_sitemap(origin: str, shard_n: int) -> str:
+    """urlset com /empresa/<cnpj>/<slug> pra pares do shard N (1-indexed).
+    Cacheado em _SITEMAP_CACHE['empresas_municipios'][shard_n]."""
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    pares = _empresas_municipios_paginated(shard_n, EMPRESA_SHARD_SIZE)
+    for cnpj_completo, _mun_nome, slug in pares:
+        loc = f"{origin}/empresa/{cnpj_completo}/{slug}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>weekly</changefreq>")
+        parts.append("    <priority>0.5</priority>")
+        parts.append("  </url>")
+    parts.append("</urlset>")
+    return "\n".join(parts)
+
+
 def _build_sitemap_index(origin: str) -> str:
     """sitemapindex que aponta pra /sitemap-cidades.xml + N
     /sitemap-empresas-{n}.xml. Empresas so sao listadas se
@@ -316,6 +406,16 @@ def _build_sitemap_index(origin: str) -> str:
             for n in range(1, num_shards + 1):
                 parts.append("  <sitemap>")
                 parts.append(f"    <loc>{xml_escape(origin)}/sitemap-empresas-{n}.xml</loc>")
+                parts.append(f"    <lastmod>{lastmod}</lastmod>")
+                parts.append("  </sitemap>")
+
+        # Pares (empresa, municipio) — variantes /empresa/<cnpj>/<slug>.
+        total_mun = _empresas_municipios_qualificadas_count()
+        if total_mun > 0:
+            num_shards_mun = math.ceil(total_mun / EMPRESA_SHARD_SIZE)
+            for n in range(1, num_shards_mun + 1):
+                parts.append("  <sitemap>")
+                parts.append(f"    <loc>{xml_escape(origin)}/sitemap-empresas-municipios-{n}.xml</loc>")
                 parts.append(f"    <lastmod>{lastmod}</lastmod>")
                 parts.append("  </sitemap>")
 
@@ -432,6 +532,41 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: str) -> Response
             )
         # else (n > 1, vazio): nao cacheia, mas serve urlset vazio agora.
         # Proxima request rebuilda — se MV cresceu, vai retornar URLs.
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# Pattern: /sitemap-empresas-municipios-{n}.xml onde n = inteiro 1..num_shards
+_EMPRESAS_MUN_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
+
+
+@router.get("/sitemap-empresas-municipios-{shard_n}.xml")
+async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: str) -> Response:
+    """Sub-sitemap shard das URLs /empresa/<cnpj>/<slug>. Mesma logica do
+    shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna urlset
+    vazio sem cache. Cache 1h por shard."""
+    if not _EMPRESAS_MUN_SHARD_RE.match(shard_n):
+        raise HTTPException(status_code=404)
+    n = int(shard_n)
+
+    origin = _site_origin(request)
+    now = time.time()
+    shard_cache = _SITEMAP_CACHE["empresas_municipios"].get(n)
+    if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
+        xml = shard_cache["xml"]
+    else:
+        xml = _build_empresas_municipios_shard_sitemap(origin, n)
+        urls_n = xml.count("/empresa/")
+        if urls_n > 0:
+            _SITEMAP_CACHE["empresas_municipios"][n] = {"ts": now, "xml": xml}
+        elif n == 1:
+            _log.warning(
+                "Sitemap-empresas-municipios shard 1 vazio — nao cacheando "
+                "(DB pode ter falhado)"
+            )
     return Response(
         content=xml,
         media_type="application/xml",
