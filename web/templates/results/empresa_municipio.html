@@ -110,8 +110,6 @@
         {% include "partials/empresa/_charts.html" %}
     {% endwith %}
 
-    {% include "partials/empresa/_empenhos.html" %}
-
     {% include "partials/empresa/_sancao_outros.html" %}
 
     {% include "partials/empresa/_sancoes.html" %}
@@ -119,6 +117,10 @@
     {% include "partials/empresa/_leniencia.html" %}
 
     {% include "partials/empresa/_socios.html" %}
+
+    {# Empenhos no fim — pode ser longo (ate 50 linhas). Linhas clickaveis
+       abrem #empresa-dialog (ver partials/dialogs/_empresa_dialog.html). #}
+    {% include "partials/empresa/_empenhos.html" %}
 
     <section class="empresa-section empresa-fontes">
         <h2>Fontes oficiais</h2>
@@ -133,4 +135,43 @@
         </p>
     </section>
 </article>
+
+{% include "partials/dialogs/_empresa_dialog.html" %}
+
+<script>
+// Deep-link de dialog: ?d=empenho&id=... abre o dialog correspondente.
+// Ver dialog-url-state.js. Espera o md-dialog upgrade (whenMD3Ready) —
+// senao corremos o risco de chamar dialog.show() antes da custom-element
+// upgrade resolver, o que da TypeError. main.js tambem espera por isso
+// pra wirear handlers.
+//
+// IMPORTANTE: setamos _currentMunicipio/_currentUf imediatamente no
+// DOMContentLoaded (nao dentro do whenMD3Ready). Esses globals (declarados
+// em dialog-nav.js, escopo compartilhado entre scripts classicos) sao
+// usados por dialog-links.js + fornecedor/licitacao dialogs como fallback
+// quando nenhum override eh passado. Sem isso, click numa licitacao dentro
+// do empenho-dialog manda municipio="" pra /api/licitacao/detalhes (que
+// devolve {} = dialog vazio).
+document.addEventListener("DOMContentLoaded", () => {
+    try {
+        // eslint-disable-next-line no-undef
+        _currentMunicipio = {{ municipio|tojson }};
+        // eslint-disable-next-line no-undef
+        _currentUf = "PB";
+    } catch (_) {
+        // dialog-nav.js ainda nao carregou — improvavel apos
+        // DOMContentLoaded mas seguro ignorar.
+    }
+    const restore = () => {
+        if (typeof restoreDialogFromUrl === 'function') {
+            restoreDialogFromUrl();
+        }
+    };
+    if (typeof window.whenMD3Ready === 'function') {
+        window.whenMD3Ready(restore);
+    } else {
+        setTimeout(restore, 0);
+    }
+});
+</script>
 {% endblock %}

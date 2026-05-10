@@ -1,10 +1,16 @@
-{# Tabela de empenhos recentes (ate 50). Esperada a var `empenhos`. #}
+{# Tabela de empenhos recentes (ate 50). Esperada a var `empenhos`.
+
+   Linhas sao clickable: abrem #empresa-dialog via openEmpenhoDialog (handler
+   em clickable-rows.js -> empenho-dialog.js). Caller deve incluir o partial
+   partials/dialogs/_empresa_dialog.html no template pra que o dialog exista.
+#}
 {% if empenhos %}
 <section class="empresa-section" id="empenhos-recentes">
     <h2>Empenhos recentes</h2>
     <p class="text-sm text-muted">
         Ultimos {{ empenhos|length }} empenhos pagos identificados no TCE-PB
-        (ordenados pela data do empenho, mais recentes primeiro).
+        (ordenados pela data do empenho, mais recentes primeiro). Clique em uma
+        linha para abrir os detalhes.
     </p>
     <div class="tbl-wrap">
         <table class="stack-mobile data-table empresa-empenhos-table">
@@ -21,7 +27,7 @@
             <tbody>
                 {% for e in empenhos %}
                 {% set sem_lic = (not e.numero_licitacao) or (e.numero_licitacao == '000000000') or ((e.modalidade_licitacao or '')|lower).startswith('sem licit') %}
-                <tr>
+                <tr class="clickable-row"{% if e.id %} data-empenho-id="{{ e.id }}"{% endif %}>
                     <td data-label="Data">{{ e.data_empenho|date_br }}</td>
                     <td data-label="Numero"><code>{{ e.numero_empenho|clean_text or '—' }}</code></td>
                     <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>

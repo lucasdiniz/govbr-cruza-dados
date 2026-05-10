@@ -1,0 +1,22 @@
+{# Dialog reutilizavel pra detalhes de empresa/empenho/servidor/licitacao/heatmap.
+
+   Incluso em /cidade/<slug> e /empresa/<cnpj>/<mun>. Os componentes JS
+   (empenho-dialog.js, fornecedor-dialog.js etc) procuram `#empresa-dialog`
+   e fazem early-return se nao encontrarem, entao paginas que nao precisam
+   de dialog simplesmente nao incluem este partial.
+#}
+<md-dialog id="empresa-dialog" class="empresa-dialog" aria-labelledby="empresa-dialog-title">
+    <div slot="headline" class="dialog-header">
+        <md-icon-button class="dialog-back" data-dialog-back style="visibility:hidden" aria-label="Voltar">
+            <md-icon>arrow_back</md-icon>
+        </md-icon-button>
+        <h3 class="dialog-title" id="empresa-dialog-title">Detalhes</h3>
+        <md-icon-button class="dialog-share" data-share data-share-text="Detalhe compartilhado da TransparenciaPB" aria-label="Compartilhar este detalhe">
+            <md-icon>share</md-icon>
+        </md-icon-button>
+        <md-icon-button class="dialog-close" data-md-dialog-close aria-label="Fechar">
+            <md-icon>close</md-icon>
+        </md-icon-button>
+    </div>
+    <div slot="content" class="dialog-body"></div>
+</md-dialog>
