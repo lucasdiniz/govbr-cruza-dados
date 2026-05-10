@@ -1,0 +1,71 @@
+name: Debug server logs
+
+# Runs on self-hosted runner (VM) to dump logs without touching anything.
+# Read-only: journalctl + pg_stat_activity + connection counts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: 'Lines of log to dump (default 300)'
+        required: false
+        default: '300'
+
+jobs:
+  debug:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    env:
+      PROJECT_DIR: /home/govbr/govbr-project
+    steps:
+      - name: cruza-web journalctl
+        run: |
+          set +e
+          echo "=== cruza-web (last ${{ inputs.lines }} lines) ==="
+          sudo journalctl -u cruza-web -n ${{ inputs.lines }} --no-pager 2>&1 | tail -200
+
+      - name: nginx error.log
+        run: |
+          set +e
+          echo "=== nginx error.log (last 100 lines) ==="
+          sudo tail -100 /var/log/nginx/error.log 2>&1
+          echo ""
+          echo "=== nginx access.log (last 50 lines, status >= 400) ==="
+          sudo tail -200 /var/log/nginx/access.log 2>&1 | awk '$9 >= 400' | tail -50
+
+      - name: process and connection state
+        run: |
+          set +e
+          echo "=== systemctl status cruza-web ==="
+          systemctl status cruza-web --no-pager 2>&1 | head -30
+          echo ""
+          echo "=== python/uvicorn processes ==="
+          ps -eo pid,user,pcpu,pmem,cmd --sort=-pcpu | grep -E '(uvicorn|cruza|python)' | grep -v grep | head -20
+          echo ""
+          echo "=== open connections (LISTEN + ESTABLISHED count) ==="
+          ss -lnt | head -20
+          echo ""
+          echo "=== ESTABLISHED connections to port 8000 (cruza-web) ==="
+          ss -ant '( dport = :8000 or sport = :8000 )' | head -50
+          echo ""
+          echo "=== Total ESTABLISHED on 443 (nginx) ==="
+          ss -ant '( sport = :443 )' state established | wc -l
+
+      - name: postgres state
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set +e
+          echo "=== pg_stat_activity (active queries) ==="
+          PGPASSWORD="$DB_PASSWORD" psql -U govbr -d govbr -h localhost -At -c "
+            SELECT pid, state, age(clock_timestamp(), query_start) AS age, left(query, 200)
+            FROM pg_stat_activity
+            WHERE state IS NOT NULL AND state != 'idle'
+            ORDER BY age DESC
+            LIMIT 30;
+          " 2>&1 | head -60
+          echo ""
+          echo "=== pg connections by state ==="
+          PGPASSWORD="$DB_PASSWORD" psql -U govbr -d govbr -h localhost -At -c "
+            SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;
+          " 2>&1
