@@ -417,15 +417,21 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: str) -> Response
     else:
         xml = _build_empresas_shard_sitemap(origin, n)
         urls_n = xml.count("/empresa/")
-        # Cacheia se shard tem URLs OU se eh shard que esperamos vazio
-        # (depois do ultimo). Heuristica: se shard1 retorna 0, eh erro
-        # de DB (recusa cache); shard2+ vazio eh esperado past-end.
-        if urls_n > 0 or n > 1:
+        # NUNCA cachear shard vazio. Cenario: MV cresce de 143K pra 200K
+        # entre 2 requests. Shard 4 (antes past-end, vazio) agora tem
+        # ~49K URLs reais. Se cacheamos vazio, Google lê 0 URLs por ate
+        # 1h apos crescimento — perde ~49K paginas indexaveis. Query past-
+        # end com OFFSET alto eh barata (LIMIT 49000 + index hit) entao
+        # rebuilda em ~ms. (P2 do Opus 4.7 review do PR #60.)
+        if urls_n > 0:
             _SITEMAP_CACHE["empresas"][n] = {"ts": now, "xml": xml}
-        else:
+        elif n == 1:
             _log.warning(
-                "Sitemap-empresas shard 1 vazio — nao cacheando (DB pode ter falhado)"
+                "Sitemap-empresas shard 1 vazio — nao cacheando "
+                "(DB pode ter falhado)"
             )
+        # else (n > 1, vazio): nao cacheia, mas serve urlset vazio agora.
+        # Proxima request rebuilda — se MV cresceu, vai retornar URLs.
     return Response(
         content=xml,
         media_type="application/xml",
