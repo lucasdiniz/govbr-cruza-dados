@@ -494,20 +494,27 @@ async def sitemap_cidades_xml(request: Request) -> Response:
 _EMPRESAS_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
 
 
-@router.get("/sitemap-empresas-{shard_n}.xml")
-async def sitemap_empresas_shard_xml(request: Request, shard_n: str) -> Response:
+@router.get("/sitemap-empresas-{shard_n:int}.xml")
+async def sitemap_empresas_shard_xml(request: Request, shard_n: int) -> Response:
     """Sub-sitemap shard de empresas. shard_n eh 1-indexed.
 
-    Validacao defensiva: regex 1-9999. Shards inexistentes (alem do
+    Path converter `int` (FastAPI/Starlette) garante que so digitos puros
+    casam — `municipios-1` cai pro handler especifico abaixo, nao aqui.
+    Sem isso, /sitemap-empresas-municipios-1.xml seria capturado por essa
+    rota com shard_n="municipios-1" e retornaria 404 silenciosamente,
+    quebrando todas as URLs municipios-scoped no sitemap. (P1 do GPT-5.5
+    review do PR #62.)
+
+    Validacao adicional: 1-9999 via regex. Shards inexistentes (alem do
     numero de shards atual) retornam urlset vazio (200 valido) — Google
     tolera, e evita 404 transitorio se sitemap-index aponta pra shard
     que ainda nao foi cacheado.
 
     Cache 1h por shard em _SITEMAP_CACHE['empresas'][n].
     """
-    if not _EMPRESAS_SHARD_RE.match(shard_n):
+    if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
-    n = int(shard_n)
+    n = shard_n
 
     origin = _site_origin(request)
     now = time.time()
@@ -543,14 +550,17 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: str) -> Response
 _EMPRESAS_MUN_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
 
 
-@router.get("/sitemap-empresas-municipios-{shard_n}.xml")
-async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: str) -> Response:
+@router.get("/sitemap-empresas-municipios-{shard_n:int}.xml")
+async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) -> Response:
     """Sub-sitemap shard das URLs /empresa/<cnpj>/<slug>. Mesma logica do
     shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna urlset
-    vazio sem cache. Cache 1h por shard."""
-    if not _EMPRESAS_MUN_SHARD_RE.match(shard_n):
+    vazio sem cache. Cache 1h por shard.
+
+    Path converter `int` evita conflito com a rota irma (sem isso ambas
+    competem pelo mesmo path). Vide P1 do GPT-5.5 review."""
+    if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
-    n = int(shard_n)
+    n = shard_n
 
     origin = _site_origin(request)
     now = time.time()

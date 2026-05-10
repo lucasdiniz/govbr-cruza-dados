@@ -380,9 +380,20 @@ def compute_empresa_perfil_dict(
                 # Se a empresa tem sancoes, inclui tambem
                 # pagamentos_sancao_outros pra cada municipio (so faz
                 # sentido nesse caso).
+                #
+                # LIMIT 10: empresas governamentais (BB, Caixa, INSS) pagam
+                # 200+ municipios. Embed de 200 sub-perfis no JSONB do
+                # web_cache global produzia payload de MB e duplicava
+                # trabalho do cache EMPRESA_PERFIL_MUN. Top-10 cobre os
+                # casos visiveis na pagina global; municipios alem disso
+                # so renderizam via /empresa/<cnpj>/<slug> dedicada.
+                # (P1 Opus 4.7 review PR #62.)
                 with_sancao_outros = bool(cadastral["sancoes"])
                 municipios_data: dict[str, dict[str, Any]] = {}
-                for mp in cadastral["municipios_pagantes"]:
+                MAX_MUNICIPIOS_INLINE = 10
+                # municipios_pagantes ja vem ordenado por total_pago DESC
+                # (EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO).
+                for mp in cadastral["municipios_pagantes"][:MAX_MUNICIPIOS_INLINE]:
                     slug = mp.get("slug")
                     nome = mp.get("municipio")
                     if not slug or not nome:
@@ -640,9 +651,9 @@ async def empresa_perfil(request: Request, cnpj: str):
     )
 
 
-# Slug pattern: alfanumerico + hifen, 1-100 chars (defesa contra path
-# travado e injecao). municipio_slug() emite exatamente esse formato.
-_MUN_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# slug_to_municipio() ja normaliza acentos/case e tolera hifens duplos.
+# Nao precisamos validar regex aqui: lookup falha (None) eh suficiente
+# pra rejeitar slug invalido com 404. (Ver fix P2 GPT-5.5 PR #62.)
 
 
 @router.get("/empresa/{cnpj}/{municipio_slug_in}")
@@ -693,16 +704,19 @@ async def empresa_perfil_municipio(
                 status_code=404,
             )
 
-    # Validacao defensiva do slug (formato, antes de hit no DB)
-    if not municipio_slug_in or not _MUN_SLUG_RE.fullmatch(municipio_slug_in):
+    # Resolve slug -> nome canonico do municipio.
+    # IMPORTANTE: slug_to_municipio() ja normaliza (case, acentos), entao
+    # variantes como Joao-Pessoa, JOAO-PESSOA, joao--pessoa resolvem.
+    # Tentamos resolver ANTES de validar regex estrito — se nao bater
+    # case canonico, devolvemos 301. Sem isso, slugs validos mas
+    # nao-canonicos virariam 404 silenciosos. (P2 GPT-5.5 PR #62.)
+    if not municipio_slug_in:
         return templates.TemplateResponse(
             request,
             "errors/404.html",
             {"path": str(request.url.path)},
             status_code=404,
         )
-
-    # Resolve slug -> nome canonico do municipio
     try:
         municipio_nome = slug_to_municipio(municipio_slug_in)
     except SlugLookupError:
@@ -715,6 +729,8 @@ async def empresa_perfil_municipio(
             media_type="text/plain; charset=utf-8",
         )
     if not municipio_nome:
+        # Slug nao bate com nenhum municipio conhecido — agora sim 404
+        # (depois de tentar resolver via lookup que tolera variantes).
         return templates.TemplateResponse(
             request,
             "errors/404.html",

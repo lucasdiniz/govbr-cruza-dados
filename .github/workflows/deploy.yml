@@ -1158,11 +1158,16 @@ jobs:
             ")
             FAIL_MUN=0
             OK_MUN=0
+            TESTED_MUN=0
             while IFS='|' read -r cnpj municipio; do
               [ -z "$cnpj" ] && continue
               # Slug via Python helper, mesmo do warmer/sitemap.
-              slug=$(python -c "from web.utils.slug import municipio_slug; print(municipio_slug('''$municipio'''))")
+              # Passa municipio como argv pra evitar shell injection
+              # (nomes de municipio podem conter aspas/$ — quebrariam o
+              # python -c '''$mun''' interpolado). (P2 Opus 4.7 PR #62.)
+              slug=$(python -c "import sys; from web.utils.slug import municipio_slug; print(municipio_slug(sys.argv[1]))" "$municipio")
               [ -z "$slug" ] && continue
+              TESTED_MUN=$((TESTED_MUN + 1))
               STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                 --max-time 10 \
                 -H "Host: transparenciapb.org" \
@@ -1175,7 +1180,17 @@ jobs:
                 FAIL_MUN=$((FAIL_MUN + 1))
               fi
             done <<< "$PARES"
-            echo "E2E smoke MUN: $OK_MUN/10 OK, $FAIL_MUN/10 FAIL"
+            echo "E2E smoke MUN: $OK_MUN/$TESTED_MUN OK, $FAIL_MUN/$TESTED_MUN FAIL (de 10 pares amostrados)"
+            # Falha tambem se < 10 efetivamente testados — slug helper
+            # silenciosamente retornando vazio inflaria OK_MUN/TESTED_MUN
+            # ratio sem realmente testar. (P2 Opus 4.7 PR #62.)
+            if [ "$TESTED_MUN" -lt 10 ]; then
+              echo "::error::E2E smoke MUN: so $TESTED_MUN/10 pares foram efetivamente testados (slug helper falhou pra $((10 - TESTED_MUN))). Rollback automatico."
+              sudo rm -f "$DROPIN"
+              sudo systemctl daemon-reload
+              sudo systemctl restart cruza-web
+              exit 1
+            fi
             if [ "$OK_MUN" -lt 8 ]; then
               echo "::error::E2E smoke MUN FAIL — so $OK_MUN/10 pares respondem 200. Cache MUN parcial. Rollback automatico."
               sudo rm -f "$DROPIN"

@@ -279,28 +279,36 @@ EMPRESA_TOP_ELEMENTOS_BY_MUN = """
 # Pagamentos durante sancao em OUTROS municipios (excluindo o atual).
 # Usado quando a empresa tem sancoes registradas para destacar
 # pagamentos em municipios alheios durante o periodo da sancao.
-# Reproduz a logica que vivia inline em cidade.py:1788-1809 mas
-# filtra por cnpj_basico (alinhado com perfil agregado).
+#
+# IMPORTANTE: usa EXISTS em vez de JOIN+UNION pra evitar inflar COUNT/SUM.
+# Bug original (P0 do Opus 4.7 review do PR #62): JOIN com UNION ALL de
+# CEIS+CNEP fazia produto cartesiano — empresa com 2 sancoes ativas via
+# COUNT/SUM dobrados. Com EXISTS, cada despesa entra UMA vez se houver
+# qualquer sancao cobrindo a data.
 EMPRESA_PAGAMENTOS_SANCAO_OUTROS = """
     SELECT d.municipio, COUNT(*) AS qtd_empenhos,
            SUM(d.valor_pago) AS total_pago
     FROM tce_pb_despesa d
-    JOIN (
-        SELECT cpf_cnpj_norm, dt_inicio_sancao, dt_final_sancao
-        FROM ceis_sancao
-        WHERE LEFT(cpf_cnpj_norm, 8) = %(cnpj_basico)s
-          AND tipo_pessoa = 'J'
-        UNION ALL
-        SELECT cpf_cnpj_norm, dt_inicio_sancao, dt_final_sancao
-        FROM cnep_sancao
-        WHERE LEFT(cpf_cnpj_norm, 8) = %(cnpj_basico)s
-          AND tipo_pessoa = 'J'
-    ) san ON LEFT(san.cpf_cnpj_norm, 8) = d.cnpj_basico
     WHERE d.cnpj_basico = %(cnpj_basico)s
       AND d.municipio != %(municipio_atual)s
       AND d.valor_pago > 0
-      AND d.data_empenho >= san.dt_inicio_sancao
-      AND (san.dt_final_sancao IS NULL OR d.data_empenho <= san.dt_final_sancao)
+      AND EXISTS (
+          SELECT 1
+          FROM ceis_sancao s
+          WHERE LEFT(s.cpf_cnpj_norm, 8) = %(cnpj_basico)s
+            AND s.tipo_pessoa = 'J'
+            AND d.data_empenho >= s.dt_inicio_sancao
+            AND (s.dt_final_sancao IS NULL
+                 OR d.data_empenho <= s.dt_final_sancao)
+          UNION ALL
+          SELECT 1
+          FROM cnep_sancao s
+          WHERE LEFT(s.cpf_cnpj_norm, 8) = %(cnpj_basico)s
+            AND s.tipo_pessoa = 'J'
+            AND d.data_empenho >= s.dt_inicio_sancao
+            AND (s.dt_final_sancao IS NULL
+                 OR d.data_empenho <= s.dt_final_sancao)
+      )
     GROUP BY d.municipio
     ORDER BY total_pago DESC
 """
