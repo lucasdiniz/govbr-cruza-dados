@@ -1,0 +1,44 @@
+{# Sancoes CEIS + CNEP #}
+{% if sancoes %}
+<section class="empresa-section" id="sancoes">
+    <h2>Sancoes administrativas</h2>
+    <p class="text-sm text-muted">
+        Registros do CEIS e CNEP (CGU). Cada item indica orgao sancionador, periodo e fundamentacao legal.
+    </p>
+    <ul class="empresa-sancoes">
+        {% for s in sancoes %}
+        {% set vigente = (not s.dt_final_sancao) or (s.dt_final_sancao and s.dt_final_sancao >= DATA_REFRESH_DATE_ISO) %}
+        <li class="empresa-sancao-item {% if vigente %}is-vigente{% endif %}">
+            <p>
+                <span class="badge {% if vigente %}badge-red{% else %}badge-gray{% endif %}">
+                    {{ s.origem }}{% if vigente %} &mdash; vigente{% endif %}
+                </span>
+                <strong>{{ s.categoria_sancao|clean_text or 'Sancao' }}</strong>
+            </p>
+            <p class="text-sm text-muted">
+                {% if s.dt_inicio_sancao %}Inicio: {{ s.dt_inicio_sancao }}{% endif %}
+                {% if s.dt_final_sancao %} &mdash; fim: {{ s.dt_final_sancao }}{% else %} &mdash; sem data fim cadastrada{% endif %}
+            </p>
+            {% if s.orgao_sancionador %}
+            <p class="text-sm">Orgao sancionador: <strong>{{ s.orgao_sancionador|clean_text }}</strong>
+                {% if s.esfera_orgao_sancionador %} ({{ s.esfera_orgao_sancionador|clean_text }}){% endif %}
+            </p>
+            {% endif %}
+            {% if s.abrangencia_sancao %}
+            <p class="text-sm text-muted">Abrangencia: {{ s.abrangencia_sancao|clean_text }}</p>
+            {% endif %}
+            {% if s.fundamentacao_legal %}
+            <p class="text-sm text-muted">Fundamentacao: {{ s.fundamentacao_legal|clean_text }}</p>
+            {% endif %}
+            {% if s.valor_multa %}
+            <p class="text-sm">Valor da multa: {{ s.valor_multa|short_brl }}</p>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <p class="text-sm">
+        Fonte oficial:
+        <a href="https://portaldatransparencia.gov.br/sancoes" target="_blank" rel="noopener nofollow">Portal da Transparencia &mdash; Sancoes</a>.
+    </p>
+</section>
+{% endif %}
