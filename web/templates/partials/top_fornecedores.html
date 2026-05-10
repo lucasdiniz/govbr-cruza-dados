@@ -48,8 +48,7 @@
                         data-fornecedor-cnpj="{{ f.cnpj_basico }}"
                         data-fornecedor-cpf-cnpj="{{ cnpj_completo_digits }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
-                        data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}"
-                        data-empresa-url="/empresa/{{ cnpj_completo_digits }}">
+                        data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}">
                     {% else %}
                     <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true">
                     {% endif %}

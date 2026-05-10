@@ -34,7 +34,6 @@ import logging
 import os
 import re
 import sys
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -166,16 +165,9 @@ def main() -> int:
 
     log.info("Submetendo %d URL(s) ao IndexNow (host=%s)", len(urls), host)
     ok = True
-    # Sleep entre batches: IndexNow nao publica rate limits oficiais, mas
-    # apos onda de empresas (~5K-50K URLs) podemos bater limite implicito
-    # do Bing. 0.5s entre batches da margem de seguranca sem alongar muito
-    # o submit (50 batches = 25s adicional). Apenas em modo real, nao dry-run.
-    batch_indices = list(range(0, len(urls), BATCH_SIZE))
-    for idx, i in enumerate(batch_indices):
+    for i in range(0, len(urls), BATCH_SIZE):
         batch = urls[i : i + BATCH_SIZE]
         ok = _submit_batch(host, key, batch, args.dry_run) and ok
-        if not args.dry_run and idx < len(batch_indices) - 1:
-            time.sleep(0.5)
 
     return 0 if ok else 1
 

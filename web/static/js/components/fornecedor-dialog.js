@@ -109,7 +109,6 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             <div class="empresa-header">
                 <strong>${_esc(est.razao_social || fornecedorNome)}</strong>
                 <code class="auditor-only">${cnpjFmt}</code>
-                <a href="/empresa/${_esc(exactDoc)}" class="ext-link-inline" title="Ver perfil completo da empresa (pagina dedicada)">Ver perfil &#8599;</a>
             </div>
             <div class="empresa-details">
                 <span>${dualLabel('Cadastro:','Situacao:')} <span class="${sitClass}">${sit}</span>${isFilial ? ` <span class="badge badge-gray">${tipoFilial}</span>` : ''}</span>
@@ -167,7 +166,6 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
                 <div class="empresa-header">
                     <strong>${_esc(fornecedorNome || nomeCredor || 'Fornecedor')}</strong>
                     <code class="auditor-only">${cnpjFmt}</code>
-                    <a href="/empresa/${_esc(exactDoc)}" class="ext-link-inline" title="Ver perfil completo da empresa (pagina dedicada)">Ver perfil &#8599;</a>
                 </div>
                 <div class="empresa-details">
                     <span>Cadastro completo da empresa indisponivel na base RFB para este CNPJ.</span>
