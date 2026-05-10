@@ -840,9 +840,13 @@ _Q_MAX_CHARS = 100
 
 
 def _parse_iso_date_or_none(s: Any) -> str | None:
-    """Aceita 'YYYY-MM-DD' ou retorna None. Rejeita qualquer outro
-    formato pra evitar SQL injection via cast (tho psycopg2 ja escapa).
-    Defensivo + claro.
+    """Aceita 'YYYY-MM-DD' valido OU retorna None.
+
+    Validacao em 2 passos:
+    1. Regex de shape (defensivo contra strings absurdas).
+    2. `date.fromisoformat` pra rejeitar datas calendarial-mente
+       impossiveis (ex: '2026-02-31') que passariam pelo regex mas
+       quebrariam o cast `::date` em PG (-> 500).
     """
     if s is None:
         return None
@@ -850,6 +854,11 @@ def _parse_iso_date_or_none(s: Any) -> str | None:
     if not s:
         return None
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    try:
+        from datetime import date as _date
+        _date.fromisoformat(s)
+    except ValueError:
         return None
     return s
 

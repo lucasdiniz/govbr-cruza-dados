@@ -20,10 +20,15 @@
    Linhas sao clickaveis: abrem #empresa-dialog via openEmpenhoDialog
    (precisa do partial dialogs/_empresa_dialog.html no template).
 #}
-{% set _empenhos_total = empenhos_total or (empenhos|length if empenhos else 0) %}
 {% set _empenhos_endpoint = empenhos_endpoint or '/api/empresa/empenhos' %}
 {% set _empenhos_scope = empenhos_scope or 'municipio' %}
 {% set _show_municipio_col = (_empenhos_scope == 'global') %}
+{# `empenhos_total` autoritativo do payload (warmer novo). Se ausente
+   (entry cacheada pre-PR), nao sabemos o total real — frontend faz
+   fetch live ao mount ate descobrir. `_empenhos_total_known` controla
+   esse comportamento via data-empenhos-total-known. #}
+{% set _empenhos_total_known = (empenhos_total is defined) and (empenhos_total is not none) %}
+{% set _empenhos_total = empenhos_total if _empenhos_total_known else (empenhos|length if empenhos else 0) %}
 <section class="empresa-section empenhos-section"
          id="empenhos-recentes"
          data-empenhos-mount
@@ -33,9 +38,10 @@
          {% if empenhos_municipio %}data-empenhos-municipio="{{ empenhos_municipio }}"{% endif %}
          {% if empenhos_cpf_cnpj %}data-empenhos-cpf-cnpj="{{ empenhos_cpf_cnpj }}"{% endif %}
          data-empenhos-total="{{ _empenhos_total }}"
+         data-empenhos-total-known="{{ '1' if _empenhos_total_known else '0' }}"
          data-empenhos-initial="{{ '1' if empenhos else '0' }}">
     <h2>Empenhos</h2>
-    {% if _empenhos_total %}
+    {% if _empenhos_total_known and _empenhos_total %}
     <p class="text-sm text-muted" data-empenhos-summary>
         {{ "{:,}".format(_empenhos_total).replace(',', '.') }} empenhos encontrados.
         Clique em uma linha para ver os detalhes.

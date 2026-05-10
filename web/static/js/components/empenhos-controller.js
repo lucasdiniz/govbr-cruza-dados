@@ -43,10 +43,17 @@ class EmpenhosController {
         this.municipio = mount.dataset.empenhosMunicipio || '';
         this.total = parseInt(mount.dataset.empenhosTotal || '0', 10) || 0;
         this.hasInitial = mount.dataset.empenhosInitial === '1';
+        // Flag: total acima eh autoritativo (warmer novo) ou eh um proxy
+        // (entry cacheada pre-PR de paginacao que so tinha 50 empenhos
+        // sem count). Se desconhecido, mesmo com rows iniciais fazemos
+        // fetch live ao mount pra descobrir o total real e desbloquear
+        // paginacao. Sem isso, paginas /empresa/<cnpj>/<mun> ja cacheadas
+        // mostrariam exatamente 50 e esconderiam paginacao mesmo quando
+        // existem milhares de empenhos.
+        this.totalKnown = mount.dataset.empenhosTotalKnown === '1';
         this.page = 1;
         this.pageSize = 50;
         this.filters = { q: '', dateInicio: '', dateFim: '' };
-        this.busy = false;
         this.searchDebounceMs = 300;
         this._searchTimer = null;
         this._reqSeq = 0;
@@ -72,10 +79,21 @@ class EmpenhosController {
         this._updatePagination();
         this._updateFilterSummary();
         if (!this.hasInitial) {
+            // Sem rows server-side: fetch page 1 live (placeholder esta
+            // visivel ate fetch retornar).
+            this._fetchAndRender();
+        } else if (!this.totalKnown) {
+            // Tem rows mas total nao eh autoritativo (entry cacheada
+            // pre-PR de paginacao). Inicializa clickable rows pra UX
+            // imediata, mas dispara fetch live em paralelo pra obter
+            // total real e desbloquear paginacao. Re-render eh inofensivo:
+            // mesma pagina, mesmo ORDER BY estavel.
+            if (typeof initClickableRows === 'function') {
+                initClickableRows(this.tableContainer);
+            }
             this._fetchAndRender();
         } else {
-            // Empenhos ja renderizados server-side. So inicializa
-            // clickable rows pra wirear empenho-dialog.
+            // Tem rows + total conhecido: sem fetch ao mount.
             if (typeof initClickableRows === 'function') {
                 initClickableRows(this.tableContainer);
             }
@@ -315,8 +333,12 @@ class EmpenhosController {
 
     async _fetchAndRender(opts) {
         const options = opts || {};
-        if (this.busy) return;
-        this.busy = true;
+        // NAO guard com `this.busy`: usuario digitando rapido durante um
+        // fetch lento (mega-empresa pode estourar 5s timeout) teria o
+        // input silenciosamente descartado. Em vez disso, incrementamos
+        // _reqSeq antes de cada fetch e checamos apos o await — qualquer
+        // request stale e descartado sem render. Concorrencia eh ok
+        // (server-side cada call eh independente; pool aguenta).
         const seq = ++this._reqSeq;
         this._setStatus('Carregando...');
         if (this.tableContainer) {
@@ -329,8 +351,8 @@ class EmpenhosController {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(this._buildBody()),
             });
+            if (seq !== this._reqSeq) return; // request stale
             if (resp.status === 504) {
-                if (seq !== this._reqSeq) return;
                 this._setStatus(
                     'A busca demorou muito. Use filtros (data ou texto) para refinar.',
                     true
@@ -338,22 +360,23 @@ class EmpenhosController {
                 return;
             }
             if (!resp.ok) {
-                if (seq !== this._reqSeq) return;
                 this._setStatus(`Erro ao carregar (${resp.status}).`, true);
                 return;
             }
             data = await resp.json();
+            if (seq !== this._reqSeq) return; // request stale
         } catch (err) {
             if (seq !== this._reqSeq) return;
             this._setStatus('Falha de rede ao carregar empenhos.', true);
             return;
         } finally {
-            this.busy = false;
-            if (this.tableContainer) {
+            // So tira loading se for o request mais recente. Senao deixa
+            // o spinner ate o que esta mais novo terminar.
+            if (seq === this._reqSeq && this.tableContainer) {
                 this.tableContainer.classList.remove('loading');
             }
         }
-        if (seq !== this._reqSeq) return; // request stale
+        if (seq !== this._reqSeq) return;
         this._setStatus('');
         this.total = parseInt(data.total || 0, 10) || 0;
         this.page = parseInt(data.page || 1, 10) || 1;
@@ -447,6 +470,13 @@ function _empBrToIso(br) {
     const d = parseInt(dd, 10), mo = parseInt(mm, 10), y = parseInt(yyyy, 10);
     if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
     if (y < 1900 || y > 2100) return '';
+    // Valida calendario (rejeita 31/02, 30/02, 31/04 etc) construindo
+    // um Date e re-extraindo as partes — JS normaliza datas invalidas
+    // pra dias seguintes, entao se nao bater eh invalida.
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) {
+        return '';
+    }
     return `${yyyy}-${mm}-${dd}`;
 }
 

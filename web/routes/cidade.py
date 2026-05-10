@@ -1658,7 +1658,10 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                 id_clause = "cpf_cnpj = %s AND municipio = %s"
                 id_params = [cpf_cnpj, municipio]
 
-                # Empenhos recentes no municipio
+                # Empenhos recentes no municipio. ORDER BY estavel
+                # (data DESC NULLS LAST, id DESC) bate com o que o endpoint
+                # paginado /api/fornecedor/empenhos usa em pg 2+ — evita
+                # duplicar/pular rows quando ha empenhos com a mesma data.
                 cur.execute(f"""
                     SELECT id, numero_empenho, data_empenho, elemento_despesa,
                            valor_empenhado, valor_pago,
@@ -1666,7 +1669,7 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     FROM tce_pb_despesa
                     WHERE {id_clause}
                       AND valor_pago > 0
-                    ORDER BY data_empenho DESC
+                    ORDER BY data_empenho DESC NULLS LAST, id DESC
                     LIMIT 50
                 """, id_params)
                 emp_cols = [d[0] for d in cur.description]
@@ -1984,7 +1987,9 @@ _EMP_FORN_Q_MAX = 100
 
 
 def _empforn_parse_iso_date(s):
-    """YYYY-MM-DD ou None."""
+    """YYYY-MM-DD valido (calendar-wise) ou None. Valida via fromisoformat
+    pra rejeitar 2026-02-31 etc que passariam pelo regex e quebrariam
+    o cast ::date em PG."""
     if s is None:
         return None
     s = str(s).strip()
@@ -1992,6 +1997,11 @@ def _empforn_parse_iso_date(s):
         return None
     import re as _re
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    try:
+        from datetime import date as _date
+        _date.fromisoformat(s)
+    except ValueError:
         return None
     return s
 

@@ -3,13 +3,22 @@ function _reattachDialogLinks(body) {
     body.querySelectorAll('.dialog-link[data-lic-num]').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            openLicitacaoDialog(link.dataset.licNum, link.dataset.licAno || '0', _currentMunicipio, link.textContent);
+            // data-lic-mun override permite empenho-dialog em pagina
+            // /empresa/<cnpj> (global) — onde _currentMunicipio eh '' —
+            // resolver a licitacao com o municipio do proprio empenho.
+            const linkMun = link.dataset.licMun || '';
+            const mun = linkMun || _currentMunicipio;
+            openLicitacaoDialog(link.dataset.licNum, link.dataset.licAno || '0', mun, link.textContent);
         });
     });
     body.querySelectorAll('.dialog-link[data-forn-cnpj]').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            openFornecedorDialog(link.dataset.fornCnpj, link.dataset.fornNome || 'Fornecedor', null, false, link.dataset.fornNomeCredor || '', link.dataset.fornCpfCnpj || '');
+            // data-forn-mun override: empenho-dialog em /empresa/<cnpj>
+            // (global) precisa repassar o municipio do empenho — sem ele,
+            // fornecedor-dialog cai em _currentMunicipio='' e abre vazio.
+            const linkMun = link.dataset.fornMun || null;
+            openFornecedorDialog(link.dataset.fornCnpj, link.dataset.fornNome || 'Fornecedor', linkMun, false, link.dataset.fornNomeCredor || '', link.dataset.fornCpfCnpj || '');
         });
     });
     body.querySelectorAll('tr.clickable-row[data-empenho-id]').forEach(row => {

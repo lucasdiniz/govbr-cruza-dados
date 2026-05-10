@@ -230,7 +230,7 @@ EMPRESA_EMPENHOS_RECENTES_BY_MUN = """
     WHERE cnpj_basico = %(cnpj_basico)s
       AND municipio = %(municipio)s
       AND valor_pago > 0
-    ORDER BY data_empenho DESC
+    ORDER BY data_empenho DESC NULLS LAST, id DESC
     LIMIT 50
 """
 
