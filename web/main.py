@@ -62,6 +62,40 @@ def _host_from_url(value: str) -> str:
 
 
 @app.middleware("http")
+async def head_as_get(request: Request, call_next):
+    """Crawlers (Googlebot, Bing, GSC) usam HEAD pra validar sitemap e
+    URLs rapido sem baixar body. FastAPI/Starlette por padrao soh aceita
+    GET em @router.get() — HEAD retorna 405. Esse middleware muta o
+    method pra GET internamente, deixa a rota processar normal, e descarta
+    o body antes de retornar — RFC 7231 §4.3.2: HEAD deve retornar mesmos
+    headers que GET sem body.
+
+    Sem isso, GSC reportava 'Couldn't fetch' em /sitemap-cidades.xml e
+    /sitemap-empresas-N.xml.
+    """
+    if request.method == "HEAD":
+        request.scope["method"] = "GET"
+        response = await call_next(request)
+        # Consome o body iterator pra evitar leak/hang, descarta bytes.
+        body_iter = getattr(response, "body_iterator", None)
+        if body_iter is not None:
+            try:
+                async for _ in body_iter:
+                    pass
+            except Exception:
+                pass
+        from starlette.responses import Response as _Response
+        # Preserva content-type, content-length, cache-control etc.
+        return _Response(
+            content=b"",
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type,
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def api_origin_guard(request: Request, call_next):
     """Rejeita POST /api/* se Origin nao bate com hosts permitidos.
 
@@ -531,10 +565,23 @@ async def _handle_http_exception(request: Request, exc):
             {"path": str(request.url.path)},
             status_code=404,
         )
-    # outros HTTPException mantem resposta padrao (usado por APIs)
-    if isinstance(exc, _HTTPException):
-        raise exc
-    raise exc
+    # Outros HTTPException (405, 503, etc): devolve resposta padrao do
+    # Starlette (status code + message text). NAO re-raise — isso cairia
+    # no _handle_unexpected e viraria 500 estilizado, escondendo o status
+    # real. Crawlers (Googlebot, Bing) usam HEAD pra validar sitemap;
+    # FastAPI ate aceita HEAD em rotas GET, mas se a rota nao define HEAD
+    # explicitamente algumas versoes retornam 405. Devolvendo o 405 puro,
+    # o crawler interpreta como "rota existe, vou usar GET" em vez de
+    # "servidor quebrado, ignora". (Bug: GSC reportava 'Couldn't fetch'
+    # nos sitemaps porque 500 era retornado em vez de 405/200.)
+    from starlette.responses import PlainTextResponse
+    headers = getattr(exc, "headers", None) or {}
+    detail = getattr(exc, "detail", "") or ""
+    return PlainTextResponse(
+        str(detail) if detail else "",
+        status_code=status_code,
+        headers=headers,
+    )
 
 
 @app.exception_handler(Exception)

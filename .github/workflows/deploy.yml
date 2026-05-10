@@ -989,6 +989,35 @@ jobs:
             exit 1
           fi
 
+          # Coverage check para EMPRESA_PERFIL_MUN (variantes /empresa/<cnpj>/<slug>).
+          # Mesma logica: rejeita se < 80%, evitando expor mass-503.
+          QUALIFYING_MUN=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT COUNT(*) FROM (
+              SELECT 1
+              FROM tce_pb_despesa d
+              JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
+              JOIN estabelecimento est
+                ON est.cnpj_basico = epb.cnpj_basico
+               AND est.cnpj_ordem = '0001'
+              WHERE d.cnpj_basico IS NOT NULL
+                AND d.municipio IS NOT NULL
+                AND d.valor_pago > 0
+              GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+            ) sub
+          ")
+          CACHED_MUN=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
+            "SELECT COUNT(*) FROM web_cache WHERE query_id = 'EMPRESA_PERFIL_MUN';")
+          if [ "$QUALIFYING_MUN" -gt 0 ]; then
+            COVERAGE_MUN_PCT=$((CACHED_MUN * 100 / QUALIFYING_MUN))
+            echo "Coverage MUN: $CACHED_MUN/$QUALIFYING_MUN = ${COVERAGE_MUN_PCT}%"
+            if [ "$COVERAGE_MUN_PCT" -lt 80 ]; then
+              echo "::error::Cobertura EMPRESA_PERFIL_MUN ${COVERAGE_MUN_PCT}% < 80%. Rode warm_cache=true para popular as URLs /empresa/<cnpj>/<slug>."
+              exit 1
+            fi
+          else
+            echo "::warning::Sem pares (empresa, municipio) qualificados — cache MUN nao sera expandido."
+          fi
+
           # 2. Escreve drop-in (idempotente — overwrite OK).
           DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
           DROPIN="$DROPIN_DIR/sitemap-empresas.conf"
@@ -1053,6 +1082,23 @@ jobs:
             exit 1
           fi
 
+          # Verifica shards de empresas-municipios listados no index.
+          INDEX_HAS_MUN=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/sitemap-empresas-municipios-' || true)
+          echo "sitemap.xml-index lista $INDEX_HAS_MUN shards de empresas-municipios"
+          if [ "$INDEX_HAS_MUN" -lt 1 ]; then
+            echo "::warning::sitemap-index nao lista shards de empresas-municipios. Cache MUN pode estar vazio (warming nao rodou)."
+          else
+            SHARD1_MUN_URLS=$(curl -s --max-time 60 \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/sitemap-empresas-municipios-1.xml | grep -c '/empresa/' || true)
+            echo "sitemap-empresas-municipios-1.xml expoe $SHARD1_MUN_URLS URLs /empresa/<cnpj>/<slug>"
+            if [ "$SHARD1_MUN_URLS" -lt 100 ]; then
+              echo "::warning::Shard 1 (municipios) so retornou $SHARD1_MUN_URLS pares (esperado >100)."
+            fi
+          fi
+
           # 5. E2E smoke test: amostra CNPJs DO SITEMAP QUALIFYING SET (NAO
           # do web_cache). Pega justamente o caso "URL exposta mas sem
           # cache" que o cache-only retornaria 503. Tolera 1/10 fail
@@ -1090,6 +1136,68 @@ jobs:
             sudo systemctl daemon-reload
             sudo systemctl restart cruza-web
             exit 1
+          fi
+
+          # 5b. E2E smoke pra /empresa/<cnpj>/<slug> (variantes scoped por
+          # municipio). Mesma logica: amostra do qualifying set, tolera 2/10.
+          if [ "${QUALIFYING_MUN:-0}" -gt 0 ]; then
+            PARES=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -F'|' -c "
+              SELECT
+                est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv,
+                d.municipio
+              FROM tce_pb_despesa d
+              JOIN mv_empresa_pb epb ON epb.cnpj_basico = d.cnpj_basico
+              JOIN estabelecimento est
+                ON est.cnpj_basico = epb.cnpj_basico
+               AND est.cnpj_ordem = '0001'
+              WHERE d.cnpj_basico IS NOT NULL
+                AND d.municipio IS NOT NULL
+                AND d.valor_pago > 0
+              GROUP BY est.cnpj_basico, est.cnpj_ordem, est.cnpj_dv, d.municipio
+              ORDER BY random() LIMIT 10;
+            ")
+            FAIL_MUN=0
+            OK_MUN=0
+            TESTED_MUN=0
+            while IFS='|' read -r cnpj municipio; do
+              [ -z "$cnpj" ] && continue
+              # Slug via Python helper, mesmo do warmer/sitemap.
+              # Passa municipio como argv pra evitar shell injection
+              # (nomes de municipio podem conter aspas/$ — quebrariam o
+              # python -c '''$mun''' interpolado). (P2 Opus 4.7 PR #62.)
+              slug=$(python -c "import sys; from web.utils.slug import municipio_slug; print(municipio_slug(sys.argv[1]))" "$municipio")
+              [ -z "$slug" ] && continue
+              TESTED_MUN=$((TESTED_MUN + 1))
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                --max-time 10 \
+                -H "Host: transparenciapb.org" \
+                "http://127.0.0.1:8000/empresa/$cnpj/$slug")
+              if [ "$STATUS" = "200" ]; then
+                echo "  /empresa/$cnpj/$slug -> 200 OK"
+                OK_MUN=$((OK_MUN + 1))
+              else
+                echo "  /empresa/$cnpj/$slug -> $STATUS (FAIL)"
+                FAIL_MUN=$((FAIL_MUN + 1))
+              fi
+            done <<< "$PARES"
+            echo "E2E smoke MUN: $OK_MUN/$TESTED_MUN OK, $FAIL_MUN/$TESTED_MUN FAIL (de 10 pares amostrados)"
+            # Falha tambem se < 10 efetivamente testados — slug helper
+            # silenciosamente retornando vazio inflaria OK_MUN/TESTED_MUN
+            # ratio sem realmente testar. (P2 Opus 4.7 PR #62.)
+            if [ "$TESTED_MUN" -lt 10 ]; then
+              echo "::error::E2E smoke MUN: so $TESTED_MUN/10 pares foram efetivamente testados (slug helper falhou pra $((10 - TESTED_MUN))). Rollback automatico."
+              sudo rm -f "$DROPIN"
+              sudo systemctl daemon-reload
+              sudo systemctl restart cruza-web
+              exit 1
+            fi
+            if [ "$OK_MUN" -lt 8 ]; then
+              echo "::error::E2E smoke MUN FAIL — so $OK_MUN/10 pares respondem 200. Cache MUN parcial. Rollback automatico."
+              sudo rm -f "$DROPIN"
+              sudo systemctl daemon-reload
+              sudo systemctl restart cruza-web
+              exit 1
+            fi
           fi
 
           # 6. IndexNow: notifica Bing/Yandex das URLs novas. CRITICO setar

@@ -42,4 +42,33 @@
     {% if estabelecimento.dt_inicio_atividade %}
         <p class="text-sm text-muted">Inicio de atividade: {{ estabelecimento.dt_inicio_atividade }}</p>
     {% endif %}
+    {# Cadastro RFB extendido: porte / capital social / natureza juridica
+       (descricao) / contato. Preferimos os campos do estabelecimento
+       solicitado; se forem nulos numa filial, recaimos sobre os da
+       matriz para nao deixar a hero pelada. #}
+    {% set ddd = estabelecimento.ddd1 or (matriz.ddd1 if matriz else None) %}
+    {% set tel = estabelecimento.telefone1 or (matriz.telefone1 if matriz else None) %}
+    {% set mail = estabelecimento.email or (matriz.email if matriz else None) %}
+    <ul class="empresa-hero-meta text-sm">
+        {% if porte_label %}
+            <li><span class="meta-label">Porte:</span> {{ porte_label|clean_text }}</li>
+        {% endif %}
+        {% if estabelecimento.capital_social and estabelecimento.capital_social|float > 0 %}
+            <li><span class="meta-label">Capital social:</span> {{ estabelecimento.capital_social|short_brl }}</li>
+        {% endif %}
+        {% if estabelecimento.desc_natureza_juridica %}
+            <li><span class="meta-label">Natureza juridica:</span> {{ estabelecimento.desc_natureza_juridica|clean_text }}{% if estabelecimento.natureza_juridica %} <code class="text-muted">({{ estabelecimento.natureza_juridica }})</code>{% endif %}</li>
+        {% elif estabelecimento.natureza_juridica %}
+            <li><span class="meta-label">Natureza juridica:</span> <code>{{ estabelecimento.natureza_juridica }}</code></li>
+        {% endif %}
+        {% if tel %}
+            <li><span class="meta-label">Telefone:</span> {% if ddd %}({{ ddd }}) {% endif %}{{ tel|clean_text }}</li>
+        {% endif %}
+        {% if mail %}
+            <li><span class="meta-label">Email:</span> <span class="empresa-hero-email">{{ mail|clean_text }}</span></li>
+        {% endif %}
+        {% if estabelecimento.ente_federativo %}
+            <li><span class="meta-label">Ente federativo:</span> {{ estabelecimento.ente_federativo|clean_text }}</li>
+        {% endif %}
+    </ul>
 </header>

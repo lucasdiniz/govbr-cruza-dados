@@ -1,0 +1,44 @@
+{# KPI grid para um (empresa, municipio).
+   Vars esperadas:
+     municipio: nome canonico
+     stats_municipio: dict {total_pago, total_empenhado, qtd_empenhos,
+                            qtd_sem_licitacao, primeiro_empenho,
+                            ultimo_empenho}
+     kpi_total_pago_mun, kpi_total_empenhado_mun, kpi_qtd_empenhos_mun,
+     kpi_qtd_sem_licitacao_mun, kpi_pct_sem_licitacao_mun (calculados em
+     compute_empresa_municipio_perfil_dict). #}
+{% if kpi_qtd_empenhos_mun and kpi_qtd_empenhos_mun > 0 %}
+<section class="empresa-section" id="resumo-municipio">
+    <h2>Pagamentos em {{ municipio|clean_text }}, PB</h2>
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <p class="kpi-label">Total pago</p>
+            <p class="kpi-value">{{ kpi_total_pago_mun|short_brl }}</p>
+            <p class="kpi-hint text-sm text-muted">Soma de empenhos pagos identificados no TCE-PB.</p>
+        </div>
+        <div class="kpi-card">
+            <p class="kpi-label">Total empenhado</p>
+            <p class="kpi-value">{{ kpi_total_empenhado_mun|short_brl }}</p>
+            <p class="kpi-hint text-sm text-muted">Inclui empenhos nao integralmente pagos.</p>
+        </div>
+        <div class="kpi-card">
+            <p class="kpi-label">Empenhos</p>
+            <p class="kpi-value">{{ kpi_qtd_empenhos_mun|short_number }}</p>
+            <p class="kpi-hint text-sm text-muted">Quantidade de empenhos com pagamento &gt; 0.</p>
+        </div>
+        <div class="kpi-card {% if kpi_pct_sem_licitacao_mun and kpi_pct_sem_licitacao_mun >= 50 %}kpi-card-warn{% endif %}">
+            <p class="kpi-label">Sem licitacao</p>
+            <p class="kpi-value">{{ '%.0f' % (kpi_pct_sem_licitacao_mun or 0) }}%</p>
+            <p class="kpi-hint text-sm text-muted">{{ kpi_qtd_sem_licitacao_mun|short_number }} de {{ kpi_qtd_empenhos_mun|short_number }} empenhos.</p>
+        </div>
+    </div>
+    {% if stats_municipio.primeiro_empenho or stats_municipio.ultimo_empenho %}
+    <p class="text-sm text-muted" style="margin-top:.5rem">
+        Periodo:
+        {% if stats_municipio.primeiro_empenho %}{{ stats_municipio.primeiro_empenho }}{% endif %}
+        {% if stats_municipio.primeiro_empenho and stats_municipio.ultimo_empenho %} &mdash; {% endif %}
+        {% if stats_municipio.ultimo_empenho %}{{ stats_municipio.ultimo_empenho }}{% endif %}
+    </p>
+    {% endif %}
+</section>
+{% endif %}

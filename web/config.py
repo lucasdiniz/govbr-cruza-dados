@@ -14,11 +14,14 @@ TIMEOUT_QUERY_HEAVY = 90
 
 # Timeout do warmer compute_empresa_perfil_dict (web/warm_cache.py).
 # Maior que TIMEOUT_PROFILE porque mega-empresas (BB cnpj_basico=00000000,
-# Caixa 00360305, INSS 29979036) tem milhoes de empenhos em tce_pb_despesa
-# — GROUP BY municipio e GROUP BY elemento_despesa estouram 3s. Warmer
-# roda offline, vale esperar mais. Route nao chama compute (cache-only),
-# entao TIMEOUT_PROFILE=3s do route nao eh afetado.
-TIMEOUT_PROFILE_WARM = 120
+# Caixa 00360305, INSS 29979036) tem MILHOES de empenhos em tce_pb_despesa
+# — GROUP BY municipio e GROUP BY elemento_despesa em prod podem demorar
+# minutos. 600s = 10min eh teto generoso (warmer roda offline, paralelo,
+# vale esperar). Empresa que demorar mais que isso fica de fora — provavelmente
+# bug no plano de query ou estatisticas stale.
+# Route nao chama compute (cache-only), entao TIMEOUT_PROFILE=3s do route
+# nao eh afetado.
+TIMEOUT_PROFILE_WARM = 600
 
 # Limites de resultado
 LIMIT_AUTOCOMPLETE = 20

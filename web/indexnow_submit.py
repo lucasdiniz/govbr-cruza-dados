@@ -146,7 +146,9 @@ def main() -> int:
     from web.routes.seo import (
         EMPRESA_SHARD_SIZE,
         _build_cidades_sitemap,
+        _build_empresas_municipios_shard_sitemap,
         _build_empresas_shard_sitemap,
+        _empresas_municipios_qualificadas_count,
         _empresas_qualificadas_count,
     )
     import math as _math
@@ -192,6 +194,36 @@ def main() -> int:
                         log.exception("Falha ao gerar sitemap-empresas shard %d", n)
             except Exception:
                 log.exception("Falha ao contar empresas pro sitemap")
+
+            # Pares (empresa, municipio) — variantes /empresa/<cnpj>/<slug>.
+            try:
+                total_em = _empresas_municipios_qualificadas_count()
+                num_shards_em = (
+                    _math.ceil(total_em / EMPRESA_SHARD_SIZE) if total_em > 0 else 0
+                )
+                log.info(
+                    "empresas-municipios qualificados=%d, shards=%d (size=%d)",
+                    total_em, num_shards_em, EMPRESA_SHARD_SIZE,
+                )
+                for n in range(1, num_shards_em + 1):
+                    try:
+                        shard_xml = _build_empresas_municipios_shard_sitemap(
+                            site_url, n
+                        )
+                        shard_urls = _extract_urls_from_sitemap(shard_xml)
+                        urls.extend(shard_urls)
+                        log.info(
+                            "sitemap-empresas-municipios-%d: %d URLs",
+                            n, len(shard_urls),
+                        )
+                    except Exception:
+                        log.exception(
+                            "Falha ao gerar sitemap-empresas-municipios shard %d", n
+                        )
+            except Exception:
+                log.exception(
+                    "Falha ao contar empresas-municipios pro sitemap"
+                )
         else:
             log.info(
                 "SITEMAP_INCLUDE_EMPRESAS != '1' — submetendo so cidades+estaticas"

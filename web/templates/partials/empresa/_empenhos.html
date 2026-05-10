@@ -1,0 +1,46 @@
+{# Tabela de empenhos recentes (ate 50). Esperada a var `empenhos`. #}
+{% if empenhos %}
+<section class="empresa-section" id="empenhos-recentes">
+    <h2>Empenhos recentes</h2>
+    <p class="text-sm text-muted">
+        Ultimos {{ empenhos|length }} empenhos pagos identificados no TCE-PB
+        (ordenados pela data do empenho, mais recentes primeiro).
+    </p>
+    <div class="tbl-wrap">
+        <table class="stack-mobile data-table empresa-empenhos-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Numero</th>
+                    <th>Elemento de despesa</th>
+                    <th>Modalidade / Licitacao</th>
+                    <th class="text-right">Empenhado</th>
+                    <th class="text-right">Pago</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in empenhos %}
+                {% set sem_lic = (not e.numero_licitacao) or (e.numero_licitacao == '000000000') or ((e.modalidade_licitacao or '')|lower).startswith('sem licit') %}
+                <tr>
+                    <td data-label="Data">{{ e.data_empenho or '—' }}</td>
+                    <td data-label="Numero"><code>{{ e.numero_empenho|clean_text or '—' }}</code></td>
+                    <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>
+                    <td data-label="Modalidade">
+                        {% if sem_lic %}
+                            <span class="badge badge-yellow" title="Empenho sem licitacao identificada">Sem licitacao</span>
+                        {% else %}
+                            {{ e.modalidade_licitacao|clean_text or '—' }}
+                            {% if e.numero_licitacao and e.numero_licitacao != '000000000' %}
+                                <br><span class="text-sm text-muted"><code>{{ e.numero_licitacao }}</code></span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td data-label="Empenhado" class="text-right num">{{ e.valor_empenhado|short_brl }}</td>
+                    <td data-label="Pago" class="text-right num"><strong>{{ e.valor_pago|short_brl }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
