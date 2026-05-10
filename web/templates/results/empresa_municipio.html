@@ -144,7 +144,24 @@
 // senao corremos o risco de chamar dialog.show() antes da custom-element
 // upgrade resolver, o que da TypeError. main.js tambem espera por isso
 // pra wirear handlers.
+//
+// IMPORTANTE: setamos _currentMunicipio/_currentUf imediatamente no
+// DOMContentLoaded (nao dentro do whenMD3Ready). Esses globals (declarados
+// em dialog-nav.js, escopo compartilhado entre scripts classicos) sao
+// usados por dialog-links.js + fornecedor/licitacao dialogs como fallback
+// quando nenhum override eh passado. Sem isso, click numa licitacao dentro
+// do empenho-dialog manda municipio="" pra /api/licitacao/detalhes (que
+// devolve {} = dialog vazio).
 document.addEventListener("DOMContentLoaded", () => {
+    try {
+        // eslint-disable-next-line no-undef
+        _currentMunicipio = {{ municipio|tojson }};
+        // eslint-disable-next-line no-undef
+        _currentUf = "PB";
+    } catch (_) {
+        // dialog-nav.js ainda nao carregou — improvavel apos
+        // DOMContentLoaded mas seguro ignorar.
+    }
     const restore = () => {
         if (typeof restoreDialogFromUrl === 'function') {
             restoreDialogFromUrl();
