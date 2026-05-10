@@ -442,6 +442,8 @@ def compute_empresa_municipio_perfil_dict(
     cnpj_completo: str,
     municipio: str,
     timeout_sec: int = TIMEOUT_PROFILE,
+    cadastral_cache: dict[str, Any] | None = None,
+    agregados_cache: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Computa o perfil de uma empresa SCOPED a um municipio especifico.
 
@@ -454,6 +456,13 @@ def compute_empresa_municipio_perfil_dict(
         municipio: nome canonico do municipio (NAO slug). Caller deve
             ter resolvido via slug_to_municipio.
         timeout_sec: idem compute_empresa_perfil_dict.
+        cadastral_cache: dict ja com cadastrais resolvidos (estabelecimento,
+            matriz, socios, sancoes, pgfn, acordos_leniencia,
+            municipios_pagantes). Se passado, EVITA refazer 5-7 queries
+            cadastrais. Otimizacao critica pro warmer: BB com 200 munis
+            faria 200x as mesmas queries — pre-fetch global e reuso aqui
+            corta isso. Se None, fetcha do DB normalmente.
+        agregados_cache: row de mv_empresa_pb. Se passado, evita 1 query.
 
     Raises: EmpresaNotFoundError se empresa nao em mv_empresa_pb,
             sem cadastro RFB, ou sem pagamentos no municipio dado.
@@ -466,23 +475,29 @@ def compute_empresa_municipio_perfil_dict(
     cnpj_basico = cnpj_completo[:8]
     cnpj_ordem = cnpj_completo[8:12]
 
-    agg_cols, agg_rows = execute_query(
-        EMPRESA_AGREGADOS_PB_BY_BASICO,
-        (cnpj_basico,),
-        timeout_sec=timeout_sec,
-    )
-    if not agg_rows:
-        raise EmpresaNotFoundError(f"sem dados PB: {cnpj_completo}")
-    agregados = _convert_row(_row_to_dict(agg_cols, agg_rows[0]))
+    if agregados_cache is not None:
+        agregados = agregados_cache
+    else:
+        agg_cols, agg_rows = execute_query(
+            EMPRESA_AGREGADOS_PB_BY_BASICO,
+            (cnpj_basico,),
+            timeout_sec=timeout_sec,
+        )
+        if not agg_rows:
+            raise EmpresaNotFoundError(f"sem dados PB: {cnpj_completo}")
+        agregados = _convert_row(_row_to_dict(agg_cols, agg_rows[0]))
 
     with get_conn() as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(f"SET statement_timeout = '{timeout_sec * 1000}'")
             try:
-                cadastral = _fetch_cadastral_block(
-                    cur, cnpj_completo, cnpj_basico, cnpj_ordem
-                )
+                if cadastral_cache is not None:
+                    cadastral = cadastral_cache
+                else:
+                    cadastral = _fetch_cadastral_block(
+                        cur, cnpj_completo, cnpj_basico, cnpj_ordem
+                    )
                 pag = _fetch_pagamentos_municipio(
                     cur, cnpj_basico, municipio,
                     with_sancao_outros=bool(cadastral["sancoes"]),

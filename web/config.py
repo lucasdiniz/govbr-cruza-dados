@@ -1,8 +1,12 @@
 """Constantes do frontend web."""
+import os
 
 # Connection pool
 POOL_MIN = 2
-POOL_MAX = 4
+# POOL_MAX bumpado pra suportar warmer paralelo (8 workers em
+# WARM_CACHE_WORKERS_MUN). Em runtime web, FastAPI nao usa nem perto
+# disso (poucos requests/segundo). 16 conns no PG ainda eh barato.
+POOL_MAX = int(os.getenv("WEB_POOL_MAX", "16"))
 
 # Timeouts (segundos) — usados como statement_timeout no PostgreSQL
 TIMEOUT_PROFILE = 3

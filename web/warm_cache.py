@@ -964,9 +964,20 @@ def _get_qualifying_empresas_municipios(conn) -> list[tuple[str, str]]:
 def _warm_one_empresa_municipio(par: tuple[str, str]) -> tuple[bool, str | None]:
     """Computa o perfil de uma empresa em um municipio especifico e armazena
     em web_cache. par = (cnpj_completo, municipio_nome).
+
+    OTIMIZACAO: reusa cache global EMPRESA_PERFIL:<cnpj> pra cadastrais
+    (estabelecimento, matriz, socios, sancoes, pgfn, leniencia) e
+    agregados (mv_empresa_pb). Evita 5-7 queries redundantes por par.
+    BB com 200 munis fazia 1400 queries cadastrais — agora faz 7 (uma
+    leitura do cache global) + 200x5 queries scoped = 1007 vs 2400+.
+
+    Se o cache global nao existe (warmer ainda nao processou esse cnpj
+    ou cache foi dropado), fallback pro compute completo.
     """
     from web.config import TIMEOUT_PROFILE_WARM
+    from web.db import read_web_cache
     from web.routes.empresa import (
+        CACHE_QUERY_ID as EMPRESA_CACHE_QID,
         CACHE_QUERY_ID_MUN as EMPRESA_MUN_CACHE_QID,
         EmpresaNotFoundError,
         compute_empresa_municipio_perfil_dict,
@@ -978,9 +989,40 @@ def _warm_one_empresa_municipio(par: tuple[str, str]) -> tuple[bool, str | None]
     if not slug:
         return False, "no_slug"
 
+    # Tenta reusar cadastrais do cache global (preenchido pelo phase
+    # anterior _warm_empresas_phase). Read sub-ms.
+    cadastral_cache = None
+    agregados_cache = None
+    try:
+        cached = read_web_cache(EMPRESA_CACHE_QID, cnpj_completo)
+        if cached is not None:
+            cols, rows = cached
+            if rows and rows[0]:
+                global_data = rows[0][0]
+                if isinstance(global_data, dict):
+                    cadastral_cache = {
+                        "estabelecimento": global_data.get("estabelecimento") or {},
+                        "matriz": global_data.get("matriz"),
+                        "socios": global_data.get("socios") or [],
+                        "sancoes": global_data.get("sancoes") or [],
+                        "pgfn": global_data.get("pgfn") or [],
+                        "acordos_leniencia": global_data.get("acordos_leniencia") or [],
+                        "municipios_pagantes": global_data.get("municipios_pagantes") or [],
+                        "top_elementos": global_data.get("top_elementos") or [],
+                        "monthly_global": global_data.get("monthly_global") or [],
+                    }
+                    agregados_cache = global_data.get("agregados") or {}
+    except Exception:
+        # Falha de leitura nao eh fatal — fallback pro compute completo.
+        cadastral_cache = None
+        agregados_cache = None
+
     try:
         data = compute_empresa_municipio_perfil_dict(
-            cnpj_completo, municipio_nome, timeout_sec=TIMEOUT_PROFILE_WARM
+            cnpj_completo, municipio_nome,
+            timeout_sec=TIMEOUT_PROFILE_WARM,
+            cadastral_cache=cadastral_cache,
+            agregados_cache=agregados_cache,
         )
     except EmpresaNotFoundError as e:
         return False, f"not_found:{e}"
@@ -1030,7 +1072,13 @@ def warm_cycle_empresas_municipios(
     fail = 0
     skipped = 0
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+    # Workers maior aqui: empresa-municipio eh I/O bound (5 queries por
+    # par, todas com index hits sub-ms na maioria dos casos). 4 workers
+    # subutilizam o DB; bump pra 8 (B4 tem 4 vCPU mas postgres async I/O
+    # se beneficia de mais conexoes paralelas). Override via env
+    # WARM_CACHE_WORKERS_MUN.
+    workers_mun = int(os.getenv("WARM_CACHE_WORKERS_MUN", str(PARALLEL_WORKERS * 2)))
+    with ThreadPoolExecutor(max_workers=workers_mun) as ex:
         futures = {ex.submit(_warm_one_empresa_municipio, p): p for p in pares}
         done = 0
         for fut in as_completed(futures):
