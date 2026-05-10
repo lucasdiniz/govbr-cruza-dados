@@ -615,9 +615,10 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 def _get_qualifying_empresas(conn) -> list[str]:
     """Lista cnpj_completo (14 digits) das empresas qualificadas.
 
-    Usa EMPRESAS_QUALIFICADAS_PARA_SITEMAP de web.queries.empresa que ja
-    aplica filtro (total_pb_geral >= 10k OR ceis_vigente OR pgfn > 0) e
-    LIMIT 45000.
+    Usa EMPRESAS_QUALIFICADAS_PARA_SITEMAP de web.queries.empresa que retorna
+    TODAS as empresas em mv_empresa_pb com matriz cadastrada em
+    estabelecimento (cnpj_ordem='0001'). Sem LIMIT — warmer cacheia tudo
+    pra cobertura total do sitemap-index.
     """
     with conn.cursor() as cur:
         cur.execute(EMPRESAS_QUALIFICADAS_PARA_SITEMAP)

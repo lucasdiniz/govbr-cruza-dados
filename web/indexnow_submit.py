@@ -132,15 +132,28 @@ def main() -> int:
         return 2
     host = parsed.netloc
 
-    # Gera sitemap localmente (mesma logica do endpoint /sitemap.xml).
-    # Importamos aqui pra evitar custo de DB se fizermos --dry-run sem env.
-    # _build_sitemap_xml chama _municipios_pb() que usa web.db.get_conn();
-    # como esse script e standalone (nao roda dentro do FastAPI app), o pool
-    # nao foi inicializado pelo lifespan handler — fazemos manual aqui.
+    # Gera sitemap localmente — agora usa sitemap-INDEX pattern (ver
+    # web/routes/seo.py refactor pra suportar 100K+ URLs sem hit no
+    # limite de 50K do protocolo sitemap.org). Iteramos sub-sitemaps:
+    #   1. /sitemap-cidades.xml  (static + cidades, ~228 URLs)
+    #   2. /sitemap-empresas-{n}.xml  (N shards de ate 49K cada, so se
+    #                                  SITEMAP_INCLUDE_EMPRESAS=1)
+    # Junta URLs de todos os sub-sitemaps e submete em batches de 500.
+    #
+    # NAO chamamos _build_sitemap_index — esse retorna apenas links pros
+    # sub-sitemaps, nao URLs finais. IndexNow espera URLs de paginas reais.
     from web import db as web_db
-    from web.routes.seo import _build_sitemap_xml
+    from web.routes.seo import (
+        EMPRESA_SHARD_SIZE,
+        _build_cidades_sitemap,
+        _build_empresas_shard_sitemap,
+        _empresas_qualificadas_count,
+    )
+    import math as _math
 
     pool_inited = False
+    urls: list[str] = []
+    flag_empresas = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
     try:
         try:
             web_db.init_pool()
@@ -149,14 +162,47 @@ def main() -> int:
             log.exception(
                 "Falha ao inicializar pool DB; sitemap vai usar so URLs estaticas"
             )
-        xml = _build_sitemap_xml(site_url)
+
+        # Sub-sitemap das cidades (sempre presente)
+        try:
+            cidades_xml = _build_cidades_sitemap(site_url)
+            cidades_urls = _extract_urls_from_sitemap(cidades_xml)
+            urls.extend(cidades_urls)
+            log.info("sitemap-cidades: %d URLs", len(cidades_urls))
+        except Exception:
+            log.exception("Falha ao gerar sitemap-cidades")
+
+        # Sub-sitemaps de empresas (so quando flag=1 — drop-in systemd
+        # passou pelo subprocess via export SITEMAP_INCLUDE_EMPRESAS=1).
+        if flag_empresas:
+            try:
+                total = _empresas_qualificadas_count()
+                num_shards = _math.ceil(total / EMPRESA_SHARD_SIZE) if total > 0 else 0
+                log.info(
+                    "empresas qualificadas=%d, shards=%d (size=%d)",
+                    total, num_shards, EMPRESA_SHARD_SIZE,
+                )
+                for n in range(1, num_shards + 1):
+                    try:
+                        shard_xml = _build_empresas_shard_sitemap(site_url, n)
+                        shard_urls = _extract_urls_from_sitemap(shard_xml)
+                        urls.extend(shard_urls)
+                        log.info("sitemap-empresas-%d: %d URLs", n, len(shard_urls))
+                    except Exception:
+                        log.exception("Falha ao gerar sitemap-empresas shard %d", n)
+            except Exception:
+                log.exception("Falha ao contar empresas pro sitemap")
+        else:
+            log.info(
+                "SITEMAP_INCLUDE_EMPRESAS != '1' — submetendo so cidades+estaticas"
+            )
     finally:
         if pool_inited:
             try:
                 web_db.close_pool()
             except Exception:
                 log.exception("Falha ao fechar pool DB (ignorado)")
-    urls = _extract_urls_from_sitemap(xml)
+
     if args.limit:
         urls = urls[: args.limit]
 

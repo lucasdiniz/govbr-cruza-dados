@@ -1,7 +1,22 @@
-"""Rotas de SEO: /robots.txt e /sitemap.xml."""
+"""Rotas de SEO: /robots.txt, /sitemap.xml e shards.
+
+Sitemap-index pattern: /sitemap.xml e um INDEX que aponta pra
+sub-sitemaps (urlsets paginados). Suporta volume sem hit no limite
+de 50K URLs por arquivo do protocolo sitemap.org:
+
+    /sitemap.xml                    <- sitemapindex (lista de sub-sitemaps)
+      ├─ /sitemap-cidades.xml       <- urlset (static + cidades)
+      ├─ /sitemap-empresas-1.xml    <- urlset (empresas 1-49000)
+      ├─ /sitemap-empresas-2.xml    <- urlset (empresas 49001-98000)
+      └─ ...
+
+Empresas so listadas quando SITEMAP_INCLUDE_EMPRESAS=1 (drop-in systemd
+gerenciado pelo deploy.yml).
+"""
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import secrets
@@ -24,9 +39,18 @@ _log = logging.getLogger("transparencia.seo")
 _INDEXNOW_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{8,128}$")
 
 
-# Cache em memória pra sitemap (gera lista de municípios uma vez por hora).
-_SITEMAP_CACHE: dict[str, Any] = {"ts": 0.0, "xml": ""}
+# Cache em memoria pra cada urlset/index (1h TTL). Cada shard e cacheado
+# separadamente — restart do cruza-web limpa tudo, primeira request rebuilda.
 _SITEMAP_TTL = 3600  # 1h
+_SITEMAP_CACHE: dict[str, Any] = {
+    "index": {"ts": 0.0, "xml": ""},
+    "cidades": {"ts": 0.0, "xml": ""},
+    "empresas": {},  # {shard_n: {"ts": ..., "xml": ...}}
+}
+
+# Tamanho de cada shard de empresas. Limite do protocolo eh 50K URLs por
+# arquivo; 49K deixa folga pra evitar overflow se o filtro mudar.
+EMPRESA_SHARD_SIZE = 49000
 
 
 def _site_origin(request: Request) -> str:
@@ -94,10 +118,78 @@ def _municipios_pb() -> list[tuple[str, str]]:
         return []
 
 
+def _empresas_qualificadas_count() -> int:
+    """Total de empresas que vao pro sitemap (sem filtros, todas com matriz
+    cadastrada). Usado pra calcular num_shards no sitemap-index.
+
+    Cache em memoria (1h) via _SITEMAP_CACHE['empresas_count']. Restart
+    do cruza-web limpa.
+    """
+    cached = _SITEMAP_CACHE.get("empresas_count")
+    now = time.time()
+    if cached and (now - cached["ts"] < _SITEMAP_TTL):
+        return int(cached["value"])
+
+    from web.queries.empresa import EMPRESAS_QUALIFICADAS_COUNT
+
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(EMPRESAS_QUALIFICADAS_COUNT)
+                row = cur.fetchone()
+                count = int(row[0]) if row else 0
+        _SITEMAP_CACHE["empresas_count"] = {"ts": now, "value": count}
+        return count
+    except Exception:
+        _log.exception("Falha ao contar empresas pro sitemap")
+        return 0
+
+
+def _empresas_pb_paginated(shard_n: int, shard_size: int) -> list[tuple[str, str]]:
+    """Retorna empresas do shard N (1-indexed). LIMIT/OFFSET na query.
+
+    shard_size = EMPRESA_SHARD_SIZE. Pra shard 1, OFFSET=0; shard 2,
+    OFFSET=shard_size; etc. ORDER BY estavel garante que mesma posicao
+    no warmer e no sitemap referem mesma empresa.
+    """
+    from web.queries.empresa import EMPRESAS_QUALIFICADAS_PAGINATED
+
+    if shard_n < 1:
+        return []
+    offset = (shard_n - 1) * shard_size
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    EMPRESAS_QUALIFICADAS_PAGINATED,
+                    {"limit": shard_size, "offset": offset},
+                )
+                out: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for razao, cnpj_completo in cur.fetchall():
+                    if not cnpj_completo:
+                        continue
+                    cnpj_str = str(cnpj_completo).strip()
+                    if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+                        continue
+                    if cnpj_str in seen:
+                        continue
+                    seen.add(cnpj_str)
+                    out.append((str(razao or ""), cnpj_str))
+                return out
+    except Exception:
+        _log.exception("Falha ao carregar shard %d de empresas", shard_n)
+        return []
+
+
 def _empresas_pb() -> list[tuple[str, str]]:
-    """Lista empresas qualificadas (heuristica em web.queries.empresa).
-    Retorna [(razao_social, cnpj_completo), ...]. Cnpj eh string de 14
-    digitos numericos puros (forma canonica usada pela rota /empresa/{cnpj}).
+    """LEGACY: lista TODAS empresas em uma chamada. Usado pelo warmer
+    (web/warm_cache.py:_get_qualifying_empresas) que ja eh single-shot.
+
+    NAO use no sitemap — use _empresas_pb_paginated com sharding.
+    Retorna [(razao_social, cnpj_completo), ...].
     """
     from web.queries.empresa import EMPRESAS_QUALIFICADAS_PARA_SITEMAP
 
@@ -138,16 +230,10 @@ def _lastmod_iso() -> str:
     return datetime.now(timezone(timedelta(hours=-3))).strftime("%Y-%m-%d")
 
 
-def _build_sitemap_xml(origin: str) -> str:
-    """Gera <urlset> com homepage + paginas estaticas + paginas /search/cidade
-    pra cada municipio PB. Usa <lastmod> = data de refresh dos dados pra
-    sinalizar a Google quando paginas precisam ser recrawladas."""
-    lastmod = _lastmod_iso()
+def _build_static_pages_xml(origin: str, lastmod: str) -> list[str]:
+    """Retorna list de <url> blocks pra paginas estaticas. Usado pelo
+    sitemap-cidades (que combina static + cidades em um arquivo)."""
     parts: list[str] = []
-    parts.append('<?xml version="1.0" encoding="UTF-8"?>')
-    parts.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
-
-    # Paginas estaticas com prioridades manuais
     static_pages = [
         ("/", "1.0", "daily"),
         ("/mapa", "0.9", "daily"),
@@ -162,9 +248,16 @@ def _build_sitemap_xml(origin: str) -> str:
         parts.append(f"    <changefreq>{freq}</changefreq>")
         parts.append(f"    <priority>{prio}</priority>")
         parts.append("  </url>")
+    return parts
 
-    # Pagina /cidade/<slug> pra cada municipio PB. URLs amigaveis: substituem
-    # /search/cidade?q=... no sitemap. /search permanece funcional via 301.
+
+def _build_cidades_sitemap(origin: str) -> str:
+    """urlset com paginas estaticas + /cidade/<slug>. Sub-sitemap referenciado
+    pelo /sitemap.xml index. Cacheado em _SITEMAP_CACHE['cidades']."""
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    parts.extend(_build_static_pages_xml(origin, lastmod))
     municipios = _municipios_pb()
     for _muni, slug in municipios:
         loc = f"{origin}/cidade/{slug}"
@@ -174,77 +267,171 @@ def _build_sitemap_xml(origin: str) -> str:
         parts.append("    <changefreq>weekly</changefreq>")
         parts.append("    <priority>0.7</priority>")
         parts.append("  </url>")
-
-    # Pagina /empresa/<cnpj> pra cada empresa qualificada (filtro em
-    # web.queries.empresa.EMPRESAS_QUALIFICADAS_PARA_SITEMAP). URL canonica
-    # usa 14 digitos numericos puros (sem mascara).
-    #
-    # GATED por env var: empresas SO entram no sitemap quando
-    # SITEMAP_INCLUDE_EMPRESAS=1. Padrao OFF porque, sem web_cache pre-
-    # populado pelas paginas /empresa/<cnpj>, expor 45K URLs ao IndexNow/
-    # Google causa thundering herd que derruba o site inteiro (incidente
-    # com PR #57). Workflow:
-    #   1. Deploy do codigo com flag OFF
-    #   2. python -m web.warm_cache --empresas (popula web_cache)
-    #   3. SITEMAP_INCLUDE_EMPRESAS=1 + reload (separar deploy)
-    #   4. IndexNow re-dispara automatico via deploy.yml
-    if os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1":
-        empresas = _empresas_pb()
-        for _razao, cnpj_completo in empresas:
-            loc = f"{origin}/empresa/{cnpj_completo}"
-            parts.append("  <url>")
-            parts.append(f"    <loc>{xml_escape(loc)}</loc>")
-            parts.append(f"    <lastmod>{lastmod}</lastmod>")
-            parts.append("    <changefreq>weekly</changefreq>")
-            parts.append("    <priority>0.5</priority>")
-            parts.append("  </url>")
-
     parts.append("</urlset>")
+    return "\n".join(parts)
+
+
+def _build_empresas_shard_sitemap(origin: str, shard_n: int) -> str:
+    """urlset com /empresa/<cnpj> pra empresas do shard N (1-indexed).
+    LIMIT EMPRESA_SHARD_SIZE OFFSET (n-1)*EMPRESA_SHARD_SIZE.
+    Cacheado em _SITEMAP_CACHE['empresas'][shard_n]."""
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    empresas = _empresas_pb_paginated(shard_n, EMPRESA_SHARD_SIZE)
+    for _razao, cnpj_completo in empresas:
+        loc = f"{origin}/empresa/{cnpj_completo}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>weekly</changefreq>")
+        parts.append("    <priority>0.5</priority>")
+        parts.append("  </url>")
+    parts.append("</urlset>")
+    return "\n".join(parts)
+
+
+def _build_sitemap_index(origin: str) -> str:
+    """sitemapindex que aponta pra /sitemap-cidades.xml + N
+    /sitemap-empresas-{n}.xml. Empresas so sao listadas se
+    SITEMAP_INCLUDE_EMPRESAS=1.
+
+    Numero de shards = ceil(qualifying_count / EMPRESA_SHARD_SIZE).
+    """
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+
+    # Sub-sitemap das cidades
+    parts.append("  <sitemap>")
+    parts.append(f"    <loc>{xml_escape(origin)}/sitemap-cidades.xml</loc>")
+    parts.append(f"    <lastmod>{lastmod}</lastmod>")
+    parts.append("  </sitemap>")
+
+    # Sub-sitemaps de empresas (so se flag ativada).
+    if os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1":
+        total = _empresas_qualificadas_count()
+        if total > 0:
+            num_shards = math.ceil(total / EMPRESA_SHARD_SIZE)
+            for n in range(1, num_shards + 1):
+                parts.append("  <sitemap>")
+                parts.append(f"    <loc>{xml_escape(origin)}/sitemap-empresas-{n}.xml</loc>")
+                parts.append(f"    <lastmod>{lastmod}</lastmod>")
+                parts.append("  </sitemap>")
+
+    parts.append("</sitemapindex>")
     return "\n".join(parts)
 
 
 @router.get("/sitemap.xml")
 async def sitemap_xml(request: Request) -> Response:
-    """Sitemap dinamico cached por 1h.
+    """Sitemap-INDEX raiz. Aponta pra sub-sitemaps que contem URLs.
 
-    Importante: NAO cacheamos sitemap parcial (sem URLs de cidade ou
-    empresa) — caso contrario, uma falha transitoria de DB no primeiro
-    hit pos-restart serviria por 1h um sitemap incompleto a Google/IndexNow.
-    Em build parcial, servimos o resultado mas mantemos cache invalido
-    para a proxima request tentar de novo.
+    Cache 1h em _SITEMAP_CACHE['index']. Restart limpa.
 
-    Heuristica de completude:
-    - Sitemap completo tem static (5) + cidades (~223) + empresas (>=1
-      QUANDO flag SITEMAP_INCLUDE_EMPRESAS=1).
-    - Threshold combina: precisa de >= 100 cidades. Empresas opcional
-      (so quando flag ativada).
-    - Se DB de empresas falhar mas cidades estao OK e flag OFF, cacheia.
-      Se flag ON e empresas vier vazio, recusa cache.
+    Heuristica de completude (anti-cache parcial):
+    - Cidades sub-sitemap sempre presente.
+    - Empresas shards (>= 1) so quando flag SITEMAP_INCLUDE_EMPRESAS=1
+      E mv_empresa_pb tem rows.
+    - Se flag ON mas empresas count = 0 (DB falhou ou MV vazia),
+      recusamos cache pra proxima request reativar.
     """
     origin = _site_origin(request)
     now = time.time()
-    if _SITEMAP_CACHE["xml"] and (now - _SITEMAP_CACHE["ts"] < _SITEMAP_TTL):
-        xml = _SITEMAP_CACHE["xml"]
+    cached = _SITEMAP_CACHE["index"]
+    if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
+        return Response(
+            content=cached["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    xml = _build_sitemap_index(origin)
+    flag_on = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
+    has_empresa_shards = "/sitemap-empresas-" in xml
+    is_complete = (not flag_on) or has_empresa_shards
+    if is_complete:
+        _SITEMAP_CACHE["index"] = {"ts": now, "xml": xml}
     else:
-        xml = _build_sitemap_xml(origin)
+        _log.warning(
+            "Sitemap-index parcial (flag_empresas=%s mas sem shards) — "
+            "nao cacheando",
+            flag_on,
+        )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@router.get("/sitemap-cidades.xml")
+async def sitemap_cidades_xml(request: Request) -> Response:
+    """Sub-sitemap: paginas estaticas + /cidade/<slug>. Cacheado 1h."""
+    origin = _site_origin(request)
+    now = time.time()
+    cached = _SITEMAP_CACHE["cidades"]
+    if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
+        xml = cached["xml"]
+    else:
+        xml = _build_cidades_sitemap(origin)
         cidades_n = xml.count("/cidade/")
-        empresas_n = xml.count("/empresa/")
-        flag_on = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
-        # Se flag esta OFF, sitemap eh "completo" sem empresas (so cidades).
-        # Se flag esta ON, exige tambem empresas >= 1.
-        is_complete = cidades_n >= 100 and (not flag_on or empresas_n >= 1)
-        if is_complete:
-            _SITEMAP_CACHE["xml"] = xml
-            _SITEMAP_CACHE["ts"] = now
+        if cidades_n >= 100:
+            _SITEMAP_CACHE["cidades"] = {"ts": now, "xml": xml}
         else:
             _log.warning(
-                "Sitemap parcial gerado (cidades=%d, empresas=%d, "
-                "flag_empresas=%s) — nao cacheando, proxima request "
-                "tentara recarregar do DB",
+                "Sitemap-cidades parcial (cidades=%d) — nao cacheando",
                 cidades_n,
-                empresas_n,
-                flag_on,
             )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# Pattern: /sitemap-empresas-{n}.xml onde n = inteiro 1..num_shards
+_EMPRESAS_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
+
+
+@router.get("/sitemap-empresas-{shard_n}.xml")
+async def sitemap_empresas_shard_xml(request: Request, shard_n: str) -> Response:
+    """Sub-sitemap shard de empresas. shard_n eh 1-indexed.
+
+    Validacao defensiva: regex 1-9999. Shards inexistentes (alem do
+    numero de shards atual) retornam urlset vazio (200 valido) — Google
+    tolera, e evita 404 transitorio se sitemap-index aponta pra shard
+    que ainda nao foi cacheado.
+
+    Cache 1h por shard em _SITEMAP_CACHE['empresas'][n].
+    """
+    if not _EMPRESAS_SHARD_RE.match(shard_n):
+        raise HTTPException(status_code=404)
+    n = int(shard_n)
+
+    origin = _site_origin(request)
+    now = time.time()
+    shard_cache = _SITEMAP_CACHE["empresas"].get(n)
+    if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
+        xml = shard_cache["xml"]
+    else:
+        xml = _build_empresas_shard_sitemap(origin, n)
+        urls_n = xml.count("/empresa/")
+        # NUNCA cachear shard vazio. Cenario: MV cresce de 143K pra 200K
+        # entre 2 requests. Shard 4 (antes past-end, vazio) agora tem
+        # ~49K URLs reais. Se cacheamos vazio, Google lê 0 URLs por ate
+        # 1h apos crescimento — perde ~49K paginas indexaveis. Query past-
+        # end com OFFSET alto eh barata (LIMIT 49000 + index hit) entao
+        # rebuilda em ~ms. (P2 do Opus 4.7 review do PR #60.)
+        if urls_n > 0:
+            _SITEMAP_CACHE["empresas"][n] = {"ts": now, "xml": xml}
+        elif n == 1:
+            _log.warning(
+                "Sitemap-empresas shard 1 vazio — nao cacheando "
+                "(DB pode ter falhado)"
+            )
+        # else (n > 1, vazio): nao cacheia, mas serve urlset vazio agora.
+        # Proxima request rebuilda — se MV cresceu, vai retornar URLs.
     return Response(
         content=xml,
         media_type="application/xml",

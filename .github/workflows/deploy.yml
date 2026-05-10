@@ -962,18 +962,19 @@ jobs:
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
 
-          # 1. Coverage check: cache cobre >= 80% das empresas qualificadas
-          # (mesma definicao de EMPRESAS_QUALIFICADAS_PARA_SITEMAP).
-          # Sem isso, o "sanity check" de 100 rows aprovaria expor 45K
-          # URLs no sitemap com 99.8% retornando 503 — Google penaliza
+          # 1. Coverage check: cache cobre >= 80% das empresas qualificadas.
+          # SEM filtros (todos cnpj_basico em mv_empresa_pb que tem matriz
+          # cadastrada em estabelecimento). Match com EMPRESAS_QUALIFICADAS_COUNT.
+          # Sem isso, o "sanity check" de 100 rows aprovaria expor 143K
+          # URLs no sitemap com 99.9% retornando 503 — Google penaliza
           # mass-503 com deindex e cuts de crawl rate. (P1 reviewers
           # GPT-5.5 + Opus-4.7 do PR #59.)
           QUALIFYING=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
-            SELECT LEAST(45000, COUNT(*))
-            FROM mv_empresa_pb
-            WHERE total_pb_geral >= 10000
-               OR flag_ceis_vigente
-               OR total_divida_pgfn > 0
+            SELECT COUNT(*)
+            FROM mv_empresa_pb epb
+            JOIN estabelecimento est
+              ON est.cnpj_basico = epb.cnpj_basico
+             AND est.cnpj_ordem = '0001'
           ")
           CACHED=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
             "SELECT COUNT(*) FROM web_cache WHERE query_id = 'EMPRESA_PERFIL';")
@@ -1024,15 +1025,28 @@ jobs:
             sleep 2
           done
 
-          # 4. Verifica sitemap.xml inclui /empresa/ (rebuild via 1a request)
-          EMPRESA_URLS=$(curl -s --max-time 60 \
+          # 4. Verifica sitemap-index inclui shards de empresa (1+).
+          # Index aponta pra /sitemap-empresas-{n}.xml. Pelo menos 1 shard
+          # = pelo menos 1 empresa exposta. Sub-sitemaps cacheados
+          # individualmente; smoke test (5) vai validar URLs reais.
+          INDEX_HAS_EMPRESA=$(curl -s --max-time 60 \
             -H "Host: transparenciapb.org" \
-            http://127.0.0.1:8000/sitemap.xml | grep -c '/empresa/' || true)
-          echo "sitemap.xml expoe $EMPRESA_URLS URLs /empresa/"
-          # Threshold permissivo aqui — sitemap reflete mv_empresa_pb diretamente,
-          # nao o cache. Coverage check em (1) ja garante que estes URLs vao 200.
-          if [ "$EMPRESA_URLS" -lt 100 ]; then
-            echo "::error::Sitemap so retornou $EMPRESA_URLS empresas (esperado >100). Drop-in pode nao ter sido picked up pelo cruza-web. Rollback automatico."
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/sitemap-empresas-' || true)
+          echo "sitemap.xml-index lista $INDEX_HAS_EMPRESA shards de empresa"
+          if [ "$INDEX_HAS_EMPRESA" -lt 1 ]; then
+            echo "::error::sitemap-index nao lista nenhum shard de empresa. Drop-in pode nao ter sido picked up. Rollback automatico."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+          # Verifica que pelo menos shard 1 retorna URLs.
+          SHARD1_URLS=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap-empresas-1.xml | grep -c '/empresa/' || true)
+          echo "sitemap-empresas-1.xml expoe $SHARD1_URLS URLs /empresa/"
+          if [ "$SHARD1_URLS" -lt 100 ]; then
+            echo "::error::Shard 1 so retornou $SHARD1_URLS empresas (esperado >100). Rollback automatico."
             sudo rm -f "$DROPIN"
             sudo systemctl daemon-reload
             sudo systemctl restart cruza-web
@@ -1044,15 +1058,13 @@ jobs:
           # cache" que o cache-only retornaria 503. Tolera 1/10 fail
           # (corresponde ao not_found rate esperado em mv_empresa_pb vs
           # estabelecimento divergente). (P1 reviewers PR #59.)
+          # Query identica a EMPRESAS_QUALIFICADAS_PARA_SITEMAP (sem filtros).
           CNPJS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
             SELECT est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv
             FROM mv_empresa_pb epb
             JOIN estabelecimento est
               ON est.cnpj_basico = epb.cnpj_basico
              AND est.cnpj_ordem = '0001'
-            WHERE epb.total_pb_geral >= 10000
-               OR epb.flag_ceis_vigente
-               OR epb.total_divida_pgfn > 0
             ORDER BY random() LIMIT 10;
           ")
           FAIL=0
@@ -1090,7 +1102,7 @@ jobs:
           source .env 2>/dev/null || true
           set +a
           if [ -n "${INDEXNOW_KEY:-}" ]; then
-            echo "=== IndexNow re-submit (sitemap com $EMPRESA_URLS URLs novas) ==="
+            echo "=== IndexNow re-submit (sitemap com $INDEX_HAS_EMPRESA shards × ${SHARD1_URLS}+ URLs/shard) ==="
             SITEMAP_INCLUDE_EMPRESAS=1 python -m web.indexnow_submit 2>&1 || \
               echo "::warning::IndexNow submit falhou — Bing vai descobrir via crawl normal"
           else
