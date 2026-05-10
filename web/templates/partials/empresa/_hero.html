@@ -40,7 +40,7 @@
         </p>
     {% endif %}
     {% if estabelecimento.dt_inicio_atividade %}
-        <p class="text-sm text-muted">Inicio de atividade: {{ estabelecimento.dt_inicio_atividade }}</p>
+        <p class="text-sm text-muted">Inicio de atividade: {{ estabelecimento.dt_inicio_atividade|date_br }}</p>
     {% endif %}
     {# Cadastro RFB extendido: porte / capital social / natureza juridica
        (descricao) / contato. Preferimos os campos do estabelecimento

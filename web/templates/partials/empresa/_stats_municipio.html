@@ -35,9 +35,9 @@
     {% if stats_municipio.primeiro_empenho or stats_municipio.ultimo_empenho %}
     <p class="text-sm text-muted" style="margin-top:.5rem">
         Periodo:
-        {% if stats_municipio.primeiro_empenho %}{{ stats_municipio.primeiro_empenho }}{% endif %}
+        {% if stats_municipio.primeiro_empenho %}{{ stats_municipio.primeiro_empenho|date_br }}{% endif %}
         {% if stats_municipio.primeiro_empenho and stats_municipio.ultimo_empenho %} &mdash; {% endif %}
-        {% if stats_municipio.ultimo_empenho %}{{ stats_municipio.ultimo_empenho }}{% endif %}
+        {% if stats_municipio.ultimo_empenho %}{{ stats_municipio.ultimo_empenho|date_br }}{% endif %}
     </p>
     {% endif %}
 </section>

@@ -22,7 +22,7 @@
                 {% for e in empenhos %}
                 {% set sem_lic = (not e.numero_licitacao) or (e.numero_licitacao == '000000000') or ((e.modalidade_licitacao or '')|lower).startswith('sem licit') %}
                 <tr>
-                    <td data-label="Data">{{ e.data_empenho or '—' }}</td>
+                    <td data-label="Data">{{ e.data_empenho|date_br }}</td>
                     <td data-label="Numero"><code>{{ e.numero_empenho|clean_text or '—' }}</code></td>
                     <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>
                     <td data-label="Modalidade">

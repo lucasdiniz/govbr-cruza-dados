@@ -10,8 +10,8 @@
                 {% if a.orgao_sancionador %}<strong> {{ a.orgao_sancionador|clean_text }}</strong>{% endif %}
             </p>
             <p class="text-sm text-muted">
-                {% if a.dt_inicio_acordo %}Inicio: {{ a.dt_inicio_acordo }}{% endif %}
-                {% if a.dt_fim_acordo %} &mdash; fim: {{ a.dt_fim_acordo }}{% endif %}
+                {% if a.dt_inicio_acordo %}Inicio: {{ a.dt_inicio_acordo|date_br }}{% endif %}
+                {% if a.dt_fim_acordo %} &mdash; fim: {{ a.dt_fim_acordo|date_br }}{% endif %}
             </p>
             {% if a.numero_processo %}
             <p class="text-sm">Processo: <code>{{ a.numero_processo }}</code></p>

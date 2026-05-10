@@ -24,7 +24,7 @@
                     <td data-label="Situacao">{{ d.situacao_inscricao|clean_text }}</td>
                     <td data-label="Receita">{{ d.receita_principal|clean_text }}</td>
                     <td data-label="Valor" class="text-right num">{{ d.valor_consolidado|short_brl }}</td>
-                    <td data-label="Inscricao em">{{ d.dt_inscricao or '-' }}</td>
+                    <td data-label="Inscricao em">{{ d.dt_inscricao|date_br }}</td>
                     <td data-label="Ajuizado">{{ d.indicador_ajuizado or '-' }}</td>
                 </tr>
                 {% endfor %}

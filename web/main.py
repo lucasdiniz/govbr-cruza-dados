@@ -157,9 +157,34 @@ def _clean_text(value: Any) -> Any:
     return cleaned
 
 
+def _format_date_br(value: Any) -> str:
+    """Formata data ISO YYYY-MM-DD pra DD/MM/AAAA (formato BR).
+
+    Aceita:
+    - string ISO 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS'
+    - date/datetime objects
+    - None / vazio -> '-'
+    Robusto: se nao parse-avel, retorna o valor original (defesa).
+    """
+    if value is None or value == "":
+        return "-"
+    s = str(value)
+    # Aceita ISO completa ou date-only. Pega so os 10 primeiros chars
+    # (YYYY-MM-DD).
+    iso = s[:10]
+    if len(iso) != 10 or iso[4] != "-" or iso[7] != "-":
+        return s  # nao parece ISO, devolve original
+    try:
+        yyyy, mm, dd = iso.split("-")
+        return f"{dd}/{mm}/{yyyy}"
+    except (ValueError, IndexError):
+        return s
+
+
 templates.env.filters["short_number"] = _format_short_number
 templates.env.filters["short_brl"] = _format_short_brl
 templates.env.filters["clean_text"] = _clean_text
+templates.env.filters["date_br"] = _format_date_br
 
 
 # ----------- Metadata de colunas para tabelas de achados (Fase 1/cidadao) -----------

@@ -19,7 +19,7 @@
                     <td data-label="Nome">{{ s.nome|clean_text }}</td>
                     <td data-label="CPF/CNPJ"><code class="text-sm">{{ s.cpf_cnpj_socio or '-' }}</code></td>
                     <td data-label="Qualificacao">{{ s.desc_qualificacao|clean_text or s.qualificacao or '-' }}</td>
-                    <td data-label="Entrada">{{ s.dt_entrada or '-' }}</td>
+                    <td data-label="Entrada">{{ s.dt_entrada|date_br }}</td>
                 </tr>
                 {% if s.nome_representante %}
                 <tr class="empresa-rep-row">
