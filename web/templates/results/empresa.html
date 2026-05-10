@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ razao_social|clean_text }} (CNPJ {{ cnpj_fmt }}){% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
+{% block og_title %}{{ razao_social|clean_text }} - CNPJ {{ cnpj_fmt }} | TransparenciaPB{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block json_ld_extra %}
+{% set origin = request_origin(request) if request else '' %}
+{% set page_url = origin + '/empresa/' + cnpj %}
+{% set logr = estabelecimento.logradouro or (matriz.logradouro if matriz else None) %}
+{% set num = estabelecimento.numero or (matriz.numero if matriz else None) %}
+{% set bai = estabelecimento.bairro or (matriz.bairro if matriz else None) %}
+{% set cep = estabelecimento.cep or (matriz.cep if matriz else None) %}
+{% set mun = estabelecimento.municipio or (matriz.municipio if matriz else None) %}
+{% set uf = estabelecimento.uf or (matriz.uf if matriz else None) %}
+{% set street_parts = [] %}
+{% if estabelecimento.tipo_logradouro %}{% set street_parts = street_parts + [estabelecimento.tipo_logradouro] %}{% endif %}
+{% if logr %}{% set street_parts = street_parts + [logr] %}{% endif %}
+{% set street_address = (street_parts | join(' ')) %}{% if num %}{% set street_address = street_address + ', ' + (num|string) %}{% endif %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": {{ (page_url ~ '#organization') | tojson }},
+      "name": {{ razao_social | clean_text | tojson }},
+      "url": {{ page_url | tojson }},
+      "identifier": [
+        {
+          "@type": "PropertyValue",
+          "propertyID": "CNPJ",
+          "value": {{ cnpj | tojson }}
+        }
+      ],
+      {% if estabelecimento.nome_fantasia %}"alternateName": {{ estabelecimento.nome_fantasia | clean_text | tojson }},{% endif %}
+      {% if estabelecimento.dt_inicio_atividade %}"foundingDate": {{ estabelecimento.dt_inicio_atividade | tojson }},{% endif %}
+      "address": {
+        "@type": "PostalAddress",
+        {% if street_address %}"streetAddress": {{ street_address | clean_text | tojson }},{% endif %}
+        {% if bai %}"addressLocality": {{ bai | clean_text | tojson }},{% endif %}
+        {% if mun %}"addressRegion": {{ ((mun ~ (', ' ~ uf if uf else '')) | clean_text) | tojson }},{% endif %}
+        {% if cep %}"postalCode": {{ cep | tojson }},{% endif %}
+        "addressCountry": "BR"
+      },
+      "sameAs": [
+        {{ ("https://cnpj.biz/" ~ cnpj) | tojson }},
+        {{ ("https://www.gov.br/receitafederal/pt-br/servicos/cadastro/cnpj/consultar-situacao-cadastral") | tojson }}
+      ]
+    },
+    {
+      "@type": "Dataset",
+      "name": {{ ("Perfil publico de " ~ razao_social ~ " (CNPJ " ~ cnpj_fmt ~ ")") | clean_text | tojson }},
+      "description": {{ meta_description | tojson }},
+      "url": {{ page_url | tojson }},
+      "isAccessibleForFree": true,
+      "inLanguage": "pt-BR",
+      "creator": {"@id": "{{ origin }}/#organization"},
+      "license": "https://creativecommons.org/licenses/by/4.0/",
+      "keywords": [
+        "CNPJ",
+        "transparencia publica",
+        "Paraiba",
+        "fornecedor publico",
+        "CEIS", "CNEP", "PGFN"
+      ],
+      "spatialCoverage": {
+        "@type": "Place",
+        "name": "Paraiba, Brasil"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Empresas", "item": "{{ origin }}/sobre"},
+        {"@type": "ListItem", "position": 3, "name": {{ razao_social | clean_text | tojson }}, "item": {{ page_url | tojson }} }
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+<article class="empresa-page">
+    {% include "partials/empresa/_hero.html" %}
+    {% include "partials/empresa/_resumo_pagamentos.html" %}
+    {% include "partials/empresa/_flags.html" %}
+    {% include "partials/empresa/_sancoes.html" %}
+    {% include "partials/empresa/_pgfn.html" %}
+    {% include "partials/empresa/_leniencia.html" %}
+    {% include "partials/empresa/_municipios_pagantes.html" %}
+    {% include "partials/empresa/_socios.html" %}
+
+    <section class="empresa-section empresa-fontes">
+        <h2>Fontes oficiais</h2>
+        <p class="text-sm text-muted">
+            Este perfil cruza dados publicos da Receita Federal (CNPJ), CGU (CEIS, CNEP, Acordos de Leniencia),
+            PGFN (divida ativa), TCE-PB (despesas municipais) e dados.pb.gov.br (orcamento estadual).
+            Todos os dados sao oficiais e publicos. Indicamos sinais de atencao &mdash; nao conclusoes juridicas.
+        </p>
+        <p class="text-sm">
+            <a href="/sobre">Metodologia e fontes</a> &middot;
+            <a href="/contato">Reportar correcao</a>
+        </p>
+    </section>
+</article>
+{% endblock %}

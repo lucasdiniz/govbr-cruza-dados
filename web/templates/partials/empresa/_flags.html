@@ -1,0 +1,33 @@
+{# Flags de risco visiveis (do mv_empresa_pb) #}
+{% set flags = [] %}
+{% if agregados.flag_capital_desproporcional %}
+    {% set flags = flags + [('Capital social desproporcional', 'Capital social muito baixo comparado ao volume recebido em pagamentos publicos. Pode indicar empresa fachada ou subdimensionada.')] %}
+{% endif %}
+{% if agregados.flag_multi_municipal %}
+    {% set flags = flags + [('Atua em 3+ municipios', 'Empresa recebeu pagamentos de tres ou mais prefeituras paraibanas. Padrao multi-municipal merece verificacao quando associado a outros indicios.')] %}
+{% endif %}
+{% if agregados.flag_predomina_sem_licitacao %}
+    {% set flags = flags + [('Predomina sem licitacao', 'Mais da metade dos empenhos foram registrados como dispensa, inexigibilidade ou sem numero de licitacao.')] %}
+{% endif %}
+{% if agregados.flag_inativa %}
+    {% set flags = flags + [('Cadastro inativo na RFB', 'Situacao cadastral na Receita Federal nao consta como Ativa.')] %}
+{% endif %}
+{% if agregados.flag_ceis_vigente %}
+    {% set flags = flags + [('Sancao vigente (CEIS)', 'Empresa esta no Cadastro de Empresas Inidoneas e Suspensas com sancao vigente.')] %}
+{% endif %}
+{% if flags %}
+<section class="empresa-section" id="sinais">
+    <h2>Sinais de atencao</h2>
+    <ul class="empresa-flags">
+        {% for label, descr in flags %}
+        <li class="empresa-flag-item">
+            <strong>{{ label }}</strong>
+            <span class="text-sm text-muted"> &mdash; {{ descr }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    <p class="text-sm text-muted">
+        Estes sinais sao automaticos e <em>nao</em> conclusoes juridicas. Sempre verifique a fonte original.
+    </p>
+</section>
+{% endif %}

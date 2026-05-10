@@ -1,0 +1,38 @@
+{# Quadro societario (CPFs vem mascarados pela RFB - seguro expor) #}
+{% if socios %}
+<section class="empresa-section" id="socios">
+    <h2>Quadro societario</h2>
+    <p class="text-sm text-muted">CPFs sao publicados parcialmente mascarados pela Receita Federal.</p>
+    <div class="tbl-wrap">
+        <table class="stack-mobile">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>CPF/CNPJ</th>
+                    <th>Qualificacao</th>
+                    <th>Entrada</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in socios %}
+                <tr>
+                    <td data-label="Nome">{{ s.nome|clean_text }}</td>
+                    <td data-label="CPF/CNPJ"><code class="text-sm">{{ s.cpf_cnpj_socio or '-' }}</code></td>
+                    <td data-label="Qualificacao">{{ s.desc_qualificacao|clean_text or s.qualificacao or '-' }}</td>
+                    <td data-label="Entrada">{{ s.dt_entrada or '-' }}</td>
+                </tr>
+                {% if s.nome_representante %}
+                <tr class="empresa-rep-row">
+                    <td colspan="4" class="text-sm text-muted">
+                        Representante: <strong>{{ s.nome_representante|clean_text }}</strong>
+                        {% if s.cpf_representante %} &mdash; <code>{{ s.cpf_representante }}</code>{% endif %}
+                        {% if s.desc_qualif_representante %} &mdash; {{ s.desc_qualif_representante|clean_text }}{% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}

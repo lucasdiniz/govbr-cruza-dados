@@ -94,6 +94,36 @@ def _municipios_pb() -> list[tuple[str, str]]:
         return []
 
 
+def _empresas_pb() -> list[tuple[str, str]]:
+    """Lista empresas qualificadas (heuristica em web.queries.empresa).
+    Retorna [(razao_social, cnpj_completo), ...]. Cnpj eh string de 14
+    digitos numericos puros (forma canonica usada pela rota /empresa/{cnpj}).
+    """
+    from web.queries.empresa import EMPRESAS_QUALIFICADAS_PARA_SITEMAP
+
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(EMPRESAS_QUALIFICADAS_PARA_SITEMAP)
+                out: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for razao, cnpj_completo in cur.fetchall():
+                    if not cnpj_completo:
+                        continue
+                    cnpj_str = str(cnpj_completo).strip()
+                    if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+                        continue
+                    if cnpj_str in seen:
+                        continue
+                    seen.add(cnpj_str)
+                    out.append((str(razao or ""), cnpj_str))
+                return out
+    except Exception:
+        _log.exception("Falha ao listar empresas PB pro sitemap")
+        return []
+
+
 def _lastmod_iso() -> str:
     """Data ISO (YYYY-MM-DD) usada como <lastmod> nas paginas de cidade.
 
@@ -143,6 +173,19 @@ def _build_sitemap_xml(origin: str) -> str:
         parts.append(f"    <lastmod>{lastmod}</lastmod>")
         parts.append("    <changefreq>weekly</changefreq>")
         parts.append("    <priority>0.7</priority>")
+        parts.append("  </url>")
+
+    # Pagina /empresa/<cnpj> pra cada empresa qualificada (filtro em
+    # web.queries.empresa.EMPRESAS_QUALIFICADAS_PARA_SITEMAP). URL canonica
+    # usa 14 digitos numericos puros (sem mascara).
+    empresas = _empresas_pb()
+    for _razao, cnpj_completo in empresas:
+        loc = f"{origin}/empresa/{cnpj_completo}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>weekly</changefreq>")
+        parts.append("    <priority>0.5</priority>")
         parts.append("  </url>")
 
     parts.append("</urlset>")
