@@ -687,3 +687,83 @@ async def glossario(request: Request):
 async def sobre(request: Request):
     """Pagina /sobre: metodologia + fontes + limitacoes (E-E-A-T pra SEO)."""
     return templates.TemplateResponse(request, "sobre.html")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Casos investigativos — relatorios em markdown renderizados como HTML
+# ─────────────────────────────────────────────────────────────────────────
+# Cada entrada referencia um relatorio em /relatorios/*.md. Hard-coded para
+# manter controle sobre quais relatorios sao publicos no site (vs. so no
+# GitHub).
+CASOS: dict[str, dict[str, str]] = {
+    "socorro-gadelha": {
+        "file": "relatorios/relatorio_caso_socorro_gadelha_pb.md",
+        "title": "Caso Socorro Gadelha — Secretaria expulsa pela CGU em cargo municipal de mesma pasta",
+        "description": (
+            "Maria do Socorro Gadelha Campos de Lira foi destituida pela CGU em "
+            "29/12/2022 por violar a moralidade administrativa. Segue Secretaria "
+            "Municipal de Habitacao Social de Joao Pessoa (gestao Cicero Lucena, PP) "
+            "ha mais de 4 anos. Em 26/08/2025 a ALPB aprovou conceder a ela a "
+            "Medalha Epitacio Pessoa. Caso identificado pelo cruzamento CEAF x folha "
+            "no transparenciapb.org."
+        ),
+        "painel_url": (
+            "/cidade/joao-pessoa?d=servidor&d_cpf6=256054"
+            "&d_nome=MARIA+DO+SOCORRO+GADELHA+CAMPOS+DE+LIRA"
+            "&d_snome=MARIA+DO+SOCORRO+GADELHA+CAMPOS+DE+LIRA"
+            "&d_cnpjs=13519354&d_tab=dialog-section-3"
+        ),
+        "data_publicacao": "2026-05-11",
+    },
+}
+
+_REPO_ROOT = _dir.parent  # web/ -> repo root
+
+
+def _render_markdown(md_text: str) -> str:
+    """Renderiza markdown -> HTML com extensoes uteis (tabelas, attrs, toc)."""
+    import markdown as _md
+    return _md.markdown(
+        md_text,
+        extensions=[
+            "tables",
+            "fenced_code",
+            "attr_list",
+            "sane_lists",
+            "smarty",
+            "toc",
+        ],
+        output_format="html5",
+    )
+
+
+@app.get("/caso/{slug}")
+async def caso(request: Request, slug: str):
+    """Renderiza um relatorio investigativo em /relatorios/*.md como pagina web.
+
+    URL canonica para divulgacao do caso (X/Twitter, Instagram, e-mail
+    pra redacoes). Substitui o link direto pro GitHub e mantem o trafego
+    no dominio proprio.
+    """
+    meta = CASOS.get(slug)
+    if not meta:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Caso nao encontrado"}, status_code=404)
+
+    md_path = _REPO_ROOT / meta["file"]
+    if not md_path.is_file():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Relatorio nao localizado"}, status_code=500)
+
+    md_text = md_path.read_text(encoding="utf-8")
+    html = _render_markdown(md_text)
+
+    return templates.TemplateResponse(
+        request,
+        "caso.html",
+        {
+            "slug": slug,
+            "meta": meta,
+            "conteudo_html": html,
+        },
+    )

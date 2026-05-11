@@ -17,6 +17,7 @@ web = [
     "jinja2>=3.1",
     "uvicorn[standard]>=0.29",
     "pillow>=10.0",
+    "markdown>=3.5",
 ]
 dev = [
     "pytest>=8.0",

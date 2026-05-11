@@ -249,6 +249,7 @@ def _build_static_pages_xml(origin: str, lastmod: str) -> list[str]:
         ("/sobre", "0.6", "monthly"),
         ("/glossario", "0.5", "monthly"),
         ("/contato", "0.4", "yearly"),
+        ("/caso/socorro-gadelha", "0.8", "monthly"),
     ]
     for path, prio, freq in static_pages:
         parts.append("  <url>")

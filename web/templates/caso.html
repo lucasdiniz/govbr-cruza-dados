@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.title }}{% endblock %}
+{% block meta_description %}{{ meta.description }}{% endblock %}
+{% block og_title %}{{ meta.title }}{% endblock %}
+{% block og_description %}{{ meta.description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block json_ld_extra %}
+{% set _origin = request_origin(request) if request else '' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "@id": "{{ _origin }}/caso/{{ slug }}#article",
+      "url": "{{ _origin }}/caso/{{ slug }}",
+      "headline": {{ meta.title|tojson }},
+      "description": {{ meta.description|tojson }},
+      "datePublished": "{{ meta.data_publicacao }}",
+      "inLanguage": "pt-BR",
+      "isPartOf": {"@id": "{{ _origin }}/#website"},
+      "publisher": {"@id": "{{ _origin }}/#organization"}
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "{{ _origin }}/caso/{{ slug }}#breadcrumb",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ _origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Casos", "item": "{{ _origin }}/caso/{{ slug }}"}
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .caso-page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+    color: var(--text, #e4e7ee);
+    line-height: 1.65;
+  }
+  .caso-eyebrow {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid rgba(255, 80, 80, 0.5);
+    color: #ff6e6e;
+    border-radius: 999px;
+    margin-bottom: 1.25rem;
+  }
+  .caso-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 1.5rem 0 2rem;
+    padding: 1.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+  }
+  .caso-cta a {
+    flex: 1 1 auto;
+    min-width: 220px;
+    text-align: center;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .caso-cta .cta-primary {
+    background: #4f7cff;
+    color: #fff;
+  }
+  .caso-cta .cta-primary:hover { background: #6b91ff; }
+  .caso-cta .cta-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text, #e4e7ee);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .caso-cta .cta-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+
+  /* Markdown rendering */
+  .caso-content {
+    font-size: 1.04rem;
+  }
+  .caso-content h1 {
+    font-size: 1.95rem;
+    line-height: 1.25;
+    margin: 0 0 1.5rem;
+    color: #fff;
+  }
+  .caso-content h2 {
+    font-size: 1.45rem;
+    line-height: 1.3;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+  .caso-content h3 {
+    font-size: 1.18rem;
+    margin: 2rem 0 0.75rem;
+    color: #fff;
+  }
+  .caso-content h4 {
+    font-size: 1rem;
+    margin: 1.5rem 0 0.5rem;
+    color: rgba(255,255,255,0.9);
+  }
+  .caso-content p { margin: 0 0 1.1rem; }
+  .caso-content strong { color: #fff; font-weight: 700; }
+  .caso-content em { color: rgba(255,255,255,0.85); }
+
+  .caso-content a {
+    color: #7da3ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-word;
+  }
+  .caso-content a:hover { color: #a3bfff; }
+
+  .caso-content blockquote {
+    margin: 1.25rem 0;
+    padding: 0.85rem 1.1rem;
+    background: rgba(255, 200, 80, 0.06);
+    border-left: 3px solid rgba(255, 200, 80, 0.55);
+    border-radius: 0 6px 6px 0;
+    color: rgba(255,255,255,0.92);
+    font-size: 0.97rem;
+  }
+  .caso-content blockquote p:last-child { margin-bottom: 0; }
+
+  .caso-content ul, .caso-content ol {
+    padding-left: 1.4rem;
+    margin: 0 0 1.1rem;
+  }
+  .caso-content li { margin-bottom: 0.35rem; }
+
+  .caso-content hr {
+    border: 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 2.5rem 0;
+  }
+
+  .caso-content code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: rgba(255,255,255,0.08);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+  .caso-content pre {
+    background: rgba(0,0,0,0.4);
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .caso-content pre code { background: transparent; padding: 0; }
+
+  .caso-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    font-size: 0.94rem;
+    overflow-x: auto;
+    display: block;
+  }
+  @media (min-width: 720px) {
+    .caso-content table { display: table; }
+  }
+  .caso-content th, .caso-content td {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    vertical-align: top;
+  }
+  .caso-content th {
+    background: rgba(255,255,255,0.04);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .caso-content tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .caso-footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.6);
+  }
+  .caso-footer a { color: #7da3ff; }
+
+  @media (max-width: 600px) {
+    .caso-page { padding: 1.25rem 1rem 3rem; }
+    .caso-content h1 { font-size: 1.6rem; }
+    .caso-content h2 { font-size: 1.25rem; }
+    .caso-content { font-size: 1rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<article class="caso-page">
+  <p class="caso-eyebrow">Caso investigativo</p>
+
+  <nav class="caso-cta" aria-label="Acoes principais">
+    <a class="cta-primary" href="{{ meta.painel_url }}">Ver no painel de Joao Pessoa</a>
+    <a class="cta-secondary" href="https://github.com/lucasdiniz/govbr-cruza-dados/blob/main/{{ meta.file }}" target="_blank" rel="noopener">Ver no GitHub</a>
+  </nav>
+
+  <div class="caso-content">
+    {{ conteudo_html | safe }}
+  </div>
+
+  <footer class="caso-footer">
+    <p>
+      Relatorio mantido em codigo aberto.
+      <a href="https://github.com/lucasdiniz/govbr-cruza-dados/blob/main/{{ meta.file }}" target="_blank" rel="noopener">Ver historico no GitHub</a>
+      &middot;
+      <a href="/sobre">Sobre a metodologia</a>
+      &middot;
+      <a href="/contato">Reportar erro</a>
+    </p>
+  </footer>
+</article>
+{% endblock %}
