@@ -22,6 +22,27 @@ document.addEventListener('DOMContentLoaded', () => {
     initDenunciaDialog();
     initReportSections();
 
+    // Outbound link tracking: listener delegado captura clicks em <a href>
+    // que apontem pra dominios externos (TCE-PB, PNCP, dados.pb, Portal da
+    // Transparencia, IBGE, TSE, etc). Capture-phase para nao perder se
+    // outro handler stopar a propagacao. Origem strip de query+hash pra
+    // nao logar identificadores sensiveis em params.
+    document.addEventListener('click', (e) => {
+        const a = e.target.closest('a[href]');
+        if (!a) return;
+        let url;
+        try { url = new URL(a.getAttribute('href'), window.location.origin); }
+        catch (_) { return; }
+        if (url.origin === window.location.origin) return;
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+        if (typeof trackEvent === 'function') {
+            trackEvent('outbound-click', {
+                dominio: url.hostname,
+                href: (url.origin + url.pathname).slice(0, 500),
+            });
+        }
+    }, { capture: true });
+
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
         head.addEventListener('click', () => {
@@ -88,6 +109,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const applyDateFilter = () => {
         const range = _validateDateInputs();
         if (!range) return;
+        if (typeof trackEvent === 'function') {
+            trackEvent('date-filter-aplicado', {
+                preset: 'custom',
+                de: range.inicio,
+                ate: range.fim,
+                municipio: _currentMunicipio || '',
+            });
+        }
         runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
             _setDateInputs(range.inicio, range.fim);
             _resetCityPanelsLoading();
@@ -104,6 +133,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btnLimparData')?.addEventListener('click', () => {
+        if (typeof trackEvent === 'function') {
+            trackEvent('date-filter-aplicado', {
+                preset: 'all',
+                municipio: _currentMunicipio || '',
+            });
+        }
         runDateRefresh('Voltando para todo o historico...', async () => {
             _setDateInputs('', '');
             _resetCityPanelsLoading();
@@ -115,6 +150,14 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
             const preset = btn.dataset.datePreset || 'all';
             const { inicio, fim } = _datePresetRange(preset);
+            if (typeof trackEvent === 'function') {
+                trackEvent('date-filter-aplicado', {
+                    preset,
+                    de: inicio || '',
+                    ate: fim || '',
+                    municipio: _currentMunicipio || '',
+                });
+            }
             runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
                 _setDateInputs(inicio, fim);
                 _resetCityPanelsLoading();

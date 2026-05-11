@@ -198,7 +198,10 @@
                     <div slot="headline">Fonte extra grande</div>
                 </md-menu-item>
                 <md-divider role="separator"></md-divider>
-                <md-menu-item href="/contato">
+                <md-menu-item href="/contato"
+                              data-umami-event="nav-clicado"
+                              data-umami-event-target="contato"
+                              data-umami-event-from="overflow-menu">
                     <div slot="headline">Contato</div>
                 </md-menu-item>
             </md-menu>
@@ -213,9 +216,18 @@
                 Fontes: Portal da Transpar&ecirc;ncia, Receita Federal, CGU (CEIS/CNEP/CEAF), TCE-PB, dados.pb.gov.br, PNCP, PGFN, IBGE, TSE.
                 {% if DATA_REFRESH_DATE %}Dados atualizados em <strong>{{ DATA_REFRESH_DATE | default('', true) }}</strong>.{% endif %}
                 <button type="button" class="link-btn" id="credibilityOpen" aria-haspopup="dialog">Ver fontes e metodologia</button>
-                &middot; <a href="/sobre" class="footer-link">Sobre</a>
-                &middot; <a href="/glossario" class="footer-link">Gloss&aacute;rio</a>
-                &middot; <a href="/contato" class="footer-link">Contato</a>
+                &middot; <a href="/sobre" class="footer-link"
+                           data-umami-event="nav-clicado"
+                           data-umami-event-target="sobre"
+                           data-umami-event-from="footer">Sobre</a>
+                &middot; <a href="/glossario" class="footer-link"
+                           data-umami-event="nav-clicado"
+                           data-umami-event-target="glossario"
+                           data-umami-event-from="footer">Gloss&aacute;rio</a>
+                &middot; <a href="/contato" class="footer-link"
+                           data-umami-event="nav-clicado"
+                           data-umami-event-target="contato"
+                           data-umami-event-from="footer">Contato</a>
                 &middot; <button type="button" id="tourRestart" class="link-btn footer-link" style="display:none">Como usar</button>
             </span>
         </div>
