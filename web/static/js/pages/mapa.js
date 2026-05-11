@@ -310,7 +310,11 @@
                 });
                 btn.classList.add('active');
                 btn.setAttribute('aria-pressed', 'true');
+                const prev = state.metric;
                 state.metric = btn.dataset.metric;
+                if (typeof trackEvent === 'function' && prev !== state.metric) {
+                    trackEvent('mapa-metrica-mudou', { metrica: state.metric });
+                }
                 const note = document.getElementById('mapa-cutoff-note');
                 if (note) {
                     note.style.display = state.metric === 'pago_per_capita' ? 'none' : '';

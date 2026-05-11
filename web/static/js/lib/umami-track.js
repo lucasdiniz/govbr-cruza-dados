@@ -13,19 +13,28 @@
 //     (strings curtas, numbers); evite payloads grandes.
 //
 // Eventos atuais (ver tambem README dos componentes):
-//   cidade-buscar         - {via: 'autocomplete'|'enter'|'autocomplete-keyboard'}
+//   cidade-buscar         - {via: 'autocomplete'}
 //   mapa-cidade-click     - {cidade, metrica}
+//   mapa-metrica-mudou    - {metrica}
 //   dialog-aberto         - {tipo, municipio, ...id-fields conforme tipo}:
 //                             tipo=empenho     -> {empenho}
 //                             tipo=servidor    -> {cpf6, nome}
 //                             tipo=fornecedor  -> {cnpj, nome}
 //                             tipo=licitacao   -> {numero, ano, modalidade}
 //                             tipo=heatmap     -> {ano, mes}
+//   empresa-visita        - {cnpj, nome, escopo: 'global'|'municipio', municipio?}
+//   date-filter-aplicado  - {preset, de?, ate?, municipio?}
+//   outbound-click        - {dominio, href}  (origem+pathname; sem query/hash)
 //   modo-toggle           - {to: 'auditor'|'citizen'}
 //   font-size-change      - {level: 'normal'|'lg'|'xl'}
 //   compartilhar          - {via: 'share-api'|'clipboard'|'fallback'}
 //   contato-enviado       -
-//   tour-iniciado         - {origem: 'restart'|'auto'}
+//   tour-iniciado         - {pagina: 'cidade'|'home'}
+//   nav-clicado           - {target, from}  (auto-track via data-umami-event;
+//                            target ∈ sobre|glossario|contato; from ∈
+//                            footer|overflow-menu)
+//   credibilidade-aberto  -
+//   denuncia-info-aberto  -
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {

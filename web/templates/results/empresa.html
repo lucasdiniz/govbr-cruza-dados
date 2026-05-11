@@ -143,6 +143,13 @@
 // declara o global — mantemos vazio. Deep-link de empenho via
 // ?d=empenho&id=... eh restaurado quando dialog estiver pronto.
 document.addEventListener("DOMContentLoaded", () => {
+    if (typeof trackEvent === 'function') {
+        trackEvent('empresa-visita', {
+            cnpj: {{ cnpj | tojson }},
+            nome: {{ (razao_social | clean_text) | tojson }},
+            escopo: 'global',
+        });
+    }
     if (typeof window.whenMD3Ready === 'function') {
         window.whenMD3Ready(() => {
             if (typeof restoreDialogFromUrl === 'function') {
