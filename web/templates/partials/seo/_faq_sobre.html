@@ -1,0 +1,34 @@
+{# FAQs dinamicas pra /sobre. Estaticas — nao precisam de variaveis. #}
+{% from "partials/seo/_faq.html" import faq_section %}
+{% set _sobre_faqs = [
+    {
+        'q': 'O que e o TransparenciaPB?',
+        'a': 'TransparenciaPB e uma ferramenta independente que cruza dados publicos oficiais do TCE-PB, Receita Federal, CGU, PNCP, dados.pb.gov.br e Portal da Transparencia para tornar visivel como cada uma das 223 prefeituras da Paraiba gasta o dinheiro publico. Apresentamos dados oficiais com sinais de atencao — nao substituem investigacao formal nem conclusoes juridicas.',
+    },
+    {
+        'q': 'De onde vem os dados?',
+        'a': 'Todos os dados sao publicos e oficiais. Coletamos diretamente das fontes: TCE-PB (despesas municipais, licitacoes, servidores, receitas), Receita Federal (cadastro CNPJ — empresa, estabelecimento, socios), CGU (sancoes CEIS/CNEP/CEAF, acordos de leniencia), PGFN (divida ativa da Uniao), PNCP (contratacoes publicas), dados.pb.gov.br (orcamento estadual) e Portal da Transparencia (SIAPE, CPGF, Bolsa Familia).',
+    },
+    {
+        'q': 'Os dados sao confiaveis?',
+        'a': 'Sim, os dados sao oficiais. A confiabilidade depende da fonte original: TCE-PB tem prazos de envio e correcao pelas prefeituras; cadastro RFB tem latencia ate ~30 dias; sancoes CEIS sao atualizadas semanalmente pela CGU. Sempre indicamos a data do snapshot. Os cruzamentos que fazemos sao deterministicos (mesmo CNPJ/CPF) — nao usamos heuristicas que poderiam gerar falsos positivos.',
+    },
+    {
+        'q': 'Posso usar para fazer denuncia?',
+        'a': 'Os dados aqui sao um ponto de partida, nao conclusao. Para denuncias formais, recomendamos: (1) confirmar nas fontes oficiais (link de cada item leva a fonte); (2) reunir contexto adicional; (3) acionar Ministerio Publico, TCU, TCE ou Controladoria. As sinais de atencao que destacamos (sancoes ativas, divida PGFN, sem licitacao) nao implicam ilicito — sao informacoes objetivas pra triagem.',
+    },
+    {
+        'q': 'Como reportar uma irregularidade ou dado errado?',
+        'a': 'Para reportar dado incorreto na nossa plataforma, use a pagina de contato. Para reportar irregularidade administrativa, acione: Ministerio Publico da Paraiba (mppb.mp.br), TCE-PB (tce.pb.gov.br), CGU (gov.br/cgu) ou Camara Municipal/Vereador.',
+    },
+    {
+        'q': 'O codigo eh aberto?',
+        'a': 'Sim. O codigo-fonte do TransparenciaPB e publico no GitHub. Documentamos metodologia, queries e estrutura de dados.',
+    },
+    {
+        'q': 'Por que so prefeituras paraibanas?',
+        'a': 'O TCE-PB publica dados unitarios de despesa por empenho desde 2003 — uma cobertura unica no Brasil. Aplicar essa metodologia em outros estados depende de cada TCE liberar a mesma granularidade de dados. Hoje, e a Paraiba.',
+    }
+] %}
+
+{{ faq_section(_sobre_faqs, title='Perguntas frequentes', anchor='faq-sobre') }}

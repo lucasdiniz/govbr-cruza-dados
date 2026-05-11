@@ -1,0 +1,71 @@
+{# Macro reutilizavel pra renderizar FAQs com SEO + UX:
+
+   1. JSON-LD FAQPage (rich results no Google)
+   2. Markup visivel acessivel (<details> nativo, colapsavel sem JS)
+
+   IMPORTANTE: Google penaliza FAQ schema quando o conteudo nao esta
+   visivel na pagina (politica oct/2023). Por isso renderizamos AMBOS:
+   schema E HTML <details>. Conteudo identico nos dois.
+
+   Uso:
+       {% set faqs = [
+           {'q': 'Pergunta?', 'a': 'Resposta.'},
+           {'q': '...', 'a': '...'},
+       ] %}
+       {{ faq_section(faqs, title='Perguntas frequentes', anchor='faq-empresa') }}
+
+   - title: string opcional (header h2)
+   - anchor: string opcional pra id do <section> (deep-link friendly)
+#}
+
+{% macro faq_jsonld(faqs) -%}
+{%- if faqs %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {%- for f in faqs %}
+    {
+      "@type": "Question",
+      "name": {{ f.q | tojson }},
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": {{ f.a | tojson }}
+      }
+    }{%- if not loop.last %},{% endif %}
+    {%- endfor %}
+  ]
+}
+</script>
+{%- endif %}
+{%- endmacro %}
+
+{% macro faq_visible(faqs, title=None, anchor=None) -%}
+{%- if faqs %}
+<section class="faq-section"{% if anchor %} id="{{ anchor }}"{% endif %} aria-labelledby="{{ (anchor or 'faq') }}-title">
+    {%- if title %}
+    <h2 id="{{ (anchor or 'faq') }}-title" class="faq-section-title">{{ title }}</h2>
+    {%- endif %}
+    <div class="faq-list">
+        {%- for f in faqs %}
+        <details class="faq-item">
+            <summary class="faq-question">{{ f.q }}</summary>
+            <div class="faq-answer">
+                {%- if f.a_html %}
+                {{ f.a_html | safe }}
+                {%- else %}
+                <p>{{ f.a }}</p>
+                {%- endif %}
+            </div>
+        </details>
+        {%- endfor %}
+    </div>
+</section>
+{%- endif %}
+{%- endmacro %}
+
+{% macro faq_section(faqs, title=None, anchor=None) -%}
+{{- faq_jsonld(faqs) -}}
+{{- faq_visible(faqs, title=title, anchor=anchor) -}}
+{%- endmacro %}
