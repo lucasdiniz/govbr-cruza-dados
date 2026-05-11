@@ -34,6 +34,7 @@ function initFontSizeToggle() {
         const cur = currentLevel();
         const next = LEVELS[(LEVELS.indexOf(cur) + 1) % LEVELS.length];
         applyLevel(next);
+        if (typeof trackEvent === 'function') trackEvent('font-size-change', { level: next });
         if (navigator.vibrate) navigator.vibrate(8);
     });
 

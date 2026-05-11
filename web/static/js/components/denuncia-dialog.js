@@ -10,6 +10,7 @@ function initDenunciaDialog() {
     ready.then(() => {
         btn.addEventListener('click', () => {
             dialog.show ? dialog.show() : dialog.setAttribute('open', '');
+            if (typeof trackEvent === 'function') trackEvent('denuncia-info-aberto');
         });
         dialog.querySelectorAll('[data-md-dialog-close]').forEach((closer) => {
             closer.addEventListener('click', () => dialog.close());

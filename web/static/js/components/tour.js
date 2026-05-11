@@ -137,7 +137,13 @@ function initTour() {
 
     // Mostra link "Como usar" no rodape sempre que o tour esta disponivel.
     if (restartBtn) {
-        restartBtn.addEventListener('click', () => { current = 0; start(); });
+        restartBtn.addEventListener('click', () => {
+            current = 0;
+            start();
+            if (typeof trackEvent === 'function') {
+                trackEvent('tour-iniciado', { pagina: isCityPage ? 'cidade' : 'home' });
+            }
+        });
     }
 
     // O tour continua disponivel no botao "?", mas nao abre sozinho:

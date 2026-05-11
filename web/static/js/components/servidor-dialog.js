@@ -26,6 +26,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'servidor' });
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);
     if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;

@@ -11,6 +11,7 @@ function initCredibilityDialog() {
     ready.then(() => {
         btn.addEventListener('click', () => {
             dialog.show ? dialog.show() : dialog.setAttribute('open', '');
+            if (typeof trackEvent === 'function') trackEvent('credibilidade-aberto');
         });
         dialog.querySelectorAll('[data-md-dialog-close]').forEach((closer) => {
             closer.addEventListener('click', () => dialog.close());

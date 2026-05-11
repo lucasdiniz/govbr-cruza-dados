@@ -26,6 +26,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'licitacao' });
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
     if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
