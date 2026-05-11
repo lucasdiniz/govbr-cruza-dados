@@ -23,6 +23,7 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'heatmap' });
 
     let data;
     try {

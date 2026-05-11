@@ -58,6 +58,7 @@ function setupAutocomplete(inputId, listId, endpoint, onSelect) {
         input.value = value;
         clearList();
         if (status) status.textContent = `Abrindo relatorio de ${value}...`;
+        if (typeof trackEvent === 'function') trackEvent('cidade-buscar', { via: 'autocomplete' });
         onSelect(value);
     };
 

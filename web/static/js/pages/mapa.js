@@ -228,6 +228,9 @@
         layer.bindTooltip(tooltipHTML(feat), { sticky: true, className: 'mapa-tooltip' });
         layer.on('click', () => {
             const name = feat.properties.name;
+            if (typeof trackEvent === 'function') {
+                trackEvent('mapa-cidade-click', { cidade: name, metrica: state.metric });
+            }
             const slug = (typeof window.municipioSlug === 'function') ? window.municipioSlug(name) : '';
             if (slug) {
                 window.location.href = `/cidade/${slug}`;

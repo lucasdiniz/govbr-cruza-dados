@@ -7,6 +7,7 @@ async function triggerShare(data) {
     if (isTouch && navigator.share) {
         try {
             await navigator.share({ title, text, url });
+            if (typeof trackEvent === 'function') trackEvent('compartilhar', { via: 'share-api' });
             return;
         } catch (err) {
             if (err && err.name === 'AbortError') return;
@@ -17,6 +18,7 @@ async function triggerShare(data) {
         try {
             await navigator.clipboard.writeText(url);
             showToast('Link copiado para a area de transferencia');
+            if (typeof trackEvent === 'function') trackEvent('compartilhar', { via: 'clipboard' });
             return;
         } catch { /* noop */ }
     }
@@ -30,7 +32,11 @@ async function triggerShare(data) {
         ta.select();
         const ok = document.execCommand('copy');
         document.body.removeChild(ta);
-        if (ok) { showToast('Link copiado'); return; }
+        if (ok) {
+            showToast('Link copiado');
+            if (typeof trackEvent === 'function') trackEvent('compartilhar', { via: 'fallback' });
+            return;
+        }
     } catch { /* noop */ }
     showToast('Nao foi possivel compartilhar. Copie a URL da barra de enderecos.');
 }

@@ -359,6 +359,9 @@ templates.env.globals["UMAMI_WEBSITE_ID"] = os.environ.get(
 # When adding a new component, append it here in the position that respects
 # any cross-file references (most files don't have hard ordering needs).
 JS_FILES: list[str] = [
+    # umami-track: wrapper safe pra window.umami.track. Precisa carregar
+    # ANTES de qualquer componente que dispare trackEvent() — primeiro item.
+    "lib/umami-track.js",
     "components/search-tabs.js",
     "components/mode-toggle.js",
     # md3-ready helper. Must load early so any later script can register
@@ -423,7 +426,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "101"
+templates.env.globals["ASSET_VERSION"] = "102"
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -64,8 +64,10 @@ function initOverflowMenu() {
         if (!item) return;
         if (item.dataset.mode && typeof window.__setAppMode === 'function') {
             window.__setAppMode(item.dataset.mode);
+            if (typeof trackEvent === 'function') trackEvent('modo-toggle', { to: item.dataset.mode });
         } else if (item.dataset.fontlevel && typeof window.__setFontLevel === 'function') {
             window.__setFontLevel(item.dataset.fontlevel);
+            if (typeof trackEvent === 'function') trackEvent('font-size-change', { level: item.dataset.fontlevel });
         }
         // Selected-state refresh after the menu finishes closing so reopens
         // show the new state.

@@ -33,6 +33,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'fornecedor' });
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);

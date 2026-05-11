@@ -35,6 +35,7 @@ function initModeToggle() {
     btn.addEventListener('click', () => {
         const next = getMode() === 'auditor' ? 'citizen' : 'auditor';
         setMode(next);
+        if (typeof trackEvent === 'function') trackEvent('modo-toggle', { to: next });
         if (navigator.vibrate) { try { navigator.vibrate(10); } catch(e) {} }
         const msg = next === 'auditor'
             ? 'Modo auditor ligado — termos técnicos e dados completos'

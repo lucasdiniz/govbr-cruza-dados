@@ -230,6 +230,7 @@
                 setStatus('Mensagem enviada. Obrigado!', 'ok');
                 form.reset();
                 refreshMailto();
+                if (typeof trackEvent === 'function') trackEvent('contato-enviado');
             } else if (r.status === 422 && data.error) {
                 // Servidor pode ser mais estrito que o cliente (ex: regex
                 // de email mais restrita). Foca o campo email — chute mais
