@@ -1,43 +1,66 @@
 {# FAQs dinamicas pra /cidade/<slug>. Personalizadas com o nome do
-   municipio pra capturar long-tail "gastos prefeitura X", "fornecedores X",
-   etc. Mantemos perguntas factuais — sem promessas sobre que vai estar
-   listado na pagina (cache pode ter scope diferente).
-
-   Caller deve passar:
-       perfil.municipio: string canonica
-
-   FAQs ficam ABAIXO da secao "fontes oficiais" do bloco content.
-#}
+   municipio. Links contextuais via campo 'links'. #}
 {% from "partials/seo/_faq.html" import faq_section %}
 {% set _mun_nome = perfil.municipio %}
 {% set _cidade_faqs = [
     {
         'q': 'Quanto a prefeitura de ' ~ _mun_nome ~ ' gastou em despesas?',
         'a': 'A pagina mostra o total de empenhos pagos pela prefeitura de ' ~ _mun_nome ~ ', com base nos dados oficiais do TCE-PB desde 2022. Voce pode filtrar por periodo (ano atual, ultimos 12 meses, ou intervalo customizado) usando o filtro de data no topo da pagina.',
+        'links': [
+            {'label': 'Filtro de periodo', 'href': '#dateFilterBar'},
+        ],
     },
     {
         'q': 'Quem sao os maiores fornecedores da prefeitura de ' ~ _mun_nome ~ '?',
-        'a': 'A secao "Maiores fornecedores" lista empresas e prestadores ordenados pelo total recebido. Clique em uma linha para abrir o detalhe (CNPJ, sancoes, divida PGFN, historico de pagamentos no municipio). Os dados vem do TCE-PB cruzados com cadastro RFB.',
+        'a': 'A secao "Maiores fornecedores" lista empresas e prestadores ordenados pelo total recebido. Clique em uma linha para abrir o detalhe (CNPJ, sancoes, divida PGFN, historico de pagamentos no municipio).',
+        'links': [
+            {'label': 'Maiores fornecedores', 'href': '#fornecedores'},
+            {'label': 'Concentracao de fornecedores', 'href': '#concentracao-fornecedores'},
+        ],
     },
     {
         'q': 'A prefeitura de ' ~ _mun_nome ~ ' contrata empresas sancionadas (CEIS/CNEP)?',
-        'a': 'A pagina destaca contratos com empresas que estavam sancionadas no momento do empenho. Sancoes vem dos cadastros oficiais da CGU (CEIS - empresas inidoneas/suspensas; CNEP - empresas sancionadas pela Lei Anticorrupcao). Verde = sem sancao registrada; vermelho = sancao ativa cobrindo o periodo do empenho.',
+        'a': 'A pagina destaca contratos com empresas sancionadas na CGU (CEIS - empresas inidoneas/suspensas; CNEP - empresas sancionadas pela Lei Anticorrupcao). Verde = sem sancao registrada; vermelho = sancao ativa cobrindo o periodo do empenho.',
+        'links': [
+            {'label': 'Relatorio completo', 'href': '#relatorio'},
+            {'label': 'Glossario', 'href': '/glossario'},
+        ],
     },
     {
         'q': 'Quantos servidores trabalham na prefeitura de ' ~ _mun_nome ~ '?',
         'a': 'A secao "Servidores" lista os trabalhadores publicos registrados no TCE-PB (ultimos 2 anos), com cargo e maior salario observado. Voce pode clicar pra ver historico do servidor e eventuais vinculos com empresas que recebem da propria prefeitura — sinal de atencao para conflitos de interesse.',
+        'links': [
+            {'label': 'Servidores', 'href': '#servidores'},
+            {'label': 'Relatorio completo', 'href': '#relatorio'},
+        ],
     },
     {
         'q': 'Como saber se uma empresa que recebe da prefeitura de ' ~ _mun_nome ~ ' tem divida ativa?',
         'a': 'Clique no fornecedor pra abrir o detalhe. Mostramos divida PGFN (federal) e flags de cadastro RFB (situacao cadastral irregular, baixada, suspensa). Para divida estadual/municipal, consulte os portais especificos.',
+        'links': [
+            {'label': 'Maiores fornecedores', 'href': '#fornecedores'},
+            {'label': 'Glossario', 'href': '/glossario'},
+        ],
     },
     {
         'q': 'Os dados de ' ~ _mun_nome ~ ' sao oficiais?',
-        'a': 'Sim. Todos os dados de despesa, licitacao, servidores e receitas vem do TCE-PB (Tribunal de Contas do Estado da Paraiba) — fonte oficial. Cadastro CNPJ vem da Receita Federal. Sancoes vem da CGU. Atualizamos periodicamente; sempre indicamos a data do ultimo snapshot.',
+        'a': 'Sim. Despesas, licitacoes, servidores e receitas vem do TCE-PB. Cadastro CNPJ vem da Receita Federal. Sancoes vem da CGU. Atualizamos periodicamente; sempre indicamos a data do ultimo snapshot.',
+        'links': [
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+            {'label': 'Receita Federal', 'href': 'https://www.gov.br/receitafederal', 'external': True},
+            {'label': 'CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+            {'label': 'Mais sobre as fontes', 'href': '/sobre#fontes'},
+        ],
     },
     {
         'q': 'Como reportar uma irregularidade em ' ~ _mun_nome ~ '?',
-        'a': 'Os dados aqui sao um ponto de partida. Para denuncia formal: Ministerio Publico da Paraiba (mppb.mp.br), TCE-PB (tce.pb.gov.br), Camara Municipal de ' ~ _mun_nome ~ ', ou Controladoria-Geral da Uniao (gov.br/cgu).',
+        'a': 'Os dados aqui sao um ponto de partida. Para denuncia formal: Ministerio Publico da Paraiba, TCE-PB, Camara Municipal de ' ~ _mun_nome ~ ', ou Controladoria-Geral da Uniao. Encontrou dado incorreto na plataforma? Use a pagina de contato.',
+        'links': [
+            {'label': 'MP-PB', 'href': 'https://www.mppb.mp.br/', 'external': True},
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+            {'label': 'CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+            {'label': 'Contato (correcao de dado)', 'href': '/contato'},
+        ],
     }
 ] %}
 

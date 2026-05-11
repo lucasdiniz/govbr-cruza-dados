@@ -1,9 +1,8 @@
 {# FAQs pra /empresa/<cnpj>/<municipio>. Escopa cada pergunta no
-   municipio especifico — long-tail "[empresa] em [cidade]", "[empresa]
-   prefeitura [cidade]", etc.
+   municipio especifico. Links contextuais via campo 'links'.
 
    Caller passa:
-       razao_social, cnpj_fmt, municipio,
+       razao_social, cnpj, cnpj_fmt, municipio, municipio_slug,
        kpi_total_pago_mun, kpi_qtd_empenhos_mun, kpi_pct_sem_licitacao_mun,
        sancoes
 #}
@@ -19,26 +18,42 @@
     {
         'q': 'Quanto a empresa ' ~ _emp_nome ~ ' recebeu da prefeitura de ' ~ _mun_nome ~ '?',
         'a': ('Segundo dados oficiais do TCE-PB, ' ~ _emp_nome ~ ' recebeu R$ ' ~ ("{:,.2f}".format(_total_mun)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ' da prefeitura de ' ~ _mun_nome ~ '. A pagina detalha cada empenho (data, valor empenhado, valor pago, elemento de despesa, licitacao vinculada).') if _total_mun > 0 else (_emp_nome ~ ' aparece como fornecedora da prefeitura de ' ~ _mun_nome ~ '. Veja na pagina o detalhamento dos empenhos.'),
+        'links': [
+            {'label': 'Resumo no municipio', 'href': '#resumo-municipio'},
+            {'label': 'Tabela de empenhos', 'href': '#empenhos-recentes'},
+        ],
     },
     {
         'q': 'Quantos empenhos a empresa ' ~ _emp_nome ~ ' tem em ' ~ _mun_nome ~ '?',
         'a': ('A empresa tem ' ~ _qtd_emp ~ ' empenho(s) registrados no TCE-PB para a prefeitura de ' ~ _mun_nome ~ ' (desde 2022, com valor pago > 0). Voce pode paginar a tabela completa, buscar por numero/elemento/historico, ou filtrar por periodo.') if _qtd_emp > 0 else 'A tabela de empenhos na pagina mostra os pagamentos registrados. Use os filtros (data, busca textual) pra refinar.',
+        'links': [
+            {'label': 'Tabela completa com paginacao', 'href': '#empenhos-recentes'},
+        ],
     },
     {
         'q': 'Os contratos sao com licitacao ou sem licitacao?',
         'a': ('Aproximadamente ' ~ ('%.1f' % _pct_sl) ~ '% dos empenhos para ' ~ _emp_nome ~ ' em ' ~ _mun_nome ~ ' foram registrados sem licitacao formal (dispensa, inexigibilidade ou sem identificacao no TCE-PB). A pagina destaca cada caso com badge "Sem licitacao".') if _qtd_emp > 0 else 'A coluna "Modalidade / Licitacao" na tabela indica para cada empenho se houve licitacao formal ou se foi sem concorrencia (dispensa, inexigibilidade, etc).',
+        'links': [
+            {'label': 'Tabela de empenhos (com badge "sem licitacao")', 'href': '#empenhos-recentes'},
+        ],
     },
     {
-        'q': _emp_nome ~ ' estava sancionada quando recebeu pagamentos de ' ~ _mun_nome ~ '?',
-        'a': ('Sim. A empresa tem ' ~ _qtd_sanc ~ ' sancao(es) registrada(s) na CGU (CEIS/CNEP). A pagina destaca empenhos que ocorreram durante periodo(s) de sancao ativa — sinal de atencao pra fiscalizacao.') if _qtd_sanc > 0 else (_emp_nome ~ ' nao tem sancoes ativas registradas no CEIS/CNEP da CGU. Verifique sempre na fonte oficial (gov.br/cgu) para confirmacao.'),
-    },
-    {
-        'q': 'Como acessar o detalhamento de um empenho especifico?',
-        'a': 'Clique em qualquer linha da tabela de empenhos para abrir o detalhe completo: numero, data, valor empenhado/liquidado/pago, classificacao orcamentaria (funcao, programa, elemento), origem do recurso (unidade gestora, fonte), historico descritivo e licitacao vinculada (quando houver).',
+        'q': _emp_nome ~ ' tem sancoes registradas na CGU?',
+        'a': ('Sim. ' ~ _emp_nome ~ ' tem ' ~ _qtd_sanc ~ ' sancao(es) registrada(s) no CEIS/CNEP da CGU. A tabela de empenhos na pagina sinaliza visualmente cada empenho que ocorreu durante periodo de sancao com abrangencia que afeta a contratacao com este municipio — verifique caso a caso.') if _qtd_sanc > 0 else (_emp_nome ~ ' nao tem sancoes registradas no CEIS/CNEP da CGU. Verifique sempre na fonte oficial (gov.br/cgu) para confirmacao.'),
+        'links': ([
+            {'label': 'Tabela de empenhos', 'href': '#empenhos-recentes'},
+            {'label': 'Sancoes no perfil global', 'href': '/empresa/' ~ cnpj ~ '#sancoes'},
+        ] if _qtd_sanc > 0 else [
+            {'label': 'Portal da CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+        ]),
     },
     {
         'q': 'Como ver o perfil global de ' ~ _emp_nome ~ ' em toda a Paraiba?',
-        'a': 'Clique no link "Ver perfil global da empresa" no topo da pagina ou acesse /empresa/' ~ cnpj ~ '. Mostra agregados de todos os municipios pagantes da PB, sancoes globais, divida PGFN e cadastro RFB completo.',
+        'a': 'Acesse o perfil global da empresa pra ver agregados de todos os municipios pagantes da PB, sancoes globais, divida PGFN e cadastro RFB completo. Veja tambem o panorama completo de ' ~ _mun_nome ~ ' com todos os fornecedores e servidores da prefeitura.',
+        'links': [
+            {'label': 'Perfil global de ' ~ _emp_nome, 'href': '/empresa/' ~ cnpj},
+            {'label': 'Panorama de ' ~ _mun_nome, 'href': '/cidade/' ~ municipio_slug},
+        ],
     }
 ] %}
 

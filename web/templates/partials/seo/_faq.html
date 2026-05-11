@@ -1,21 +1,45 @@
 {# Macro reutilizavel pra renderizar FAQs com SEO + UX:
 
-   1. JSON-LD FAQPage (rich results no Google)
+   1. JSON-LD FAQPage (structured data — schema valido pra todos os
+      search engines: Bing, Yandex, voice assistants, Brave Search etc)
    2. Markup visivel acessivel (<details> nativo, colapsavel sem JS)
 
+   NOTA SOBRE GOOGLE FAQ RICH RESULTS:
+   Google restringe FAQPage rich results (accordion no SERP) para sites
+   "well-known and authoritative" de saude ou governo. transparenciapb
+   nao se qualifica como rich result eligible por enquanto. Ainda assim,
+   FAQ schema:
+   - Eh structured data valida (todos os crawlers entendem o contexto)
+   - Bing/Yandex/Brave: rich results possiveis (regras diferentes)
+   - Voice assistants (Google Assistant, Siri, Alexa): usam structured data
+   - Long-tail keywords: cada Q vira keyword indexavel no body
+
    IMPORTANTE: Google penaliza FAQ schema quando o conteudo nao esta
-   visivel na pagina (politica oct/2023). Por isso renderizamos AMBOS:
+   visivel na pagina (politica oct/2023). Renderizamos AMBOS:
    schema E HTML <details>. Conteudo identico nos dois.
 
-   Uso:
-       {% set faqs = [
-           {'q': 'Pergunta?', 'a': 'Resposta.'},
-           {'q': '...', 'a': '...'},
-       ] %}
-       {{ faq_section(faqs, title='Perguntas frequentes', anchor='faq-empresa') }}
+   Cada FAQ eh um dict:
+       {
+           'q': 'Pergunta?',           # plain text (auto-escapado)
+           'a': 'Resposta plain.',     # plain text (auto-escapado em <p>)
+           'links': [                  # opcional — links contextuais.
+               {'label': 'Texto', 'href': '/url'},  # auto-escapado
+               ...
+           ],
+       }
 
-   - title: string opcional (header h2)
-   - anchor: string opcional pra id do <section> (deep-link friendly)
+   `a` eh sempre o texto plain (sem HTML) — eh o que vai no JSON-LD
+   `acceptedAnswer.text`. Google ignora HTML em FAQPage answers de
+   qualquer modo.
+
+   `links` eh opcional. Quando presente, eh renderizado APOS o paragrafo
+   da resposta como linha de "Veja tambem: [link1] [link2]". Links sao
+   APENAS visiveis (nao vao pro JSON-LD — manda Google ler so texto).
+   Cada link tem label (texto auto-escapado) e href (auto-escapado em
+   atributo).
+
+   Internal linking via `links` ajuda crawl, deep-link UX, e mantem
+   sanitization simples (sem string concat de HTML).
 #}
 
 {% macro faq_jsonld(faqs) -%}
@@ -52,10 +76,14 @@
         <details class="faq-item">
             <summary class="faq-question">{{ f.q }}</summary>
             <div class="faq-answer">
-                {%- if f.a_html %}
-                {{ f.a_html | safe }}
-                {%- else %}
                 <p>{{ f.a }}</p>
+                {%- if f.links %}
+                <p class="faq-links">
+                    <span class="faq-links-label">Veja tambem:</span>
+                    {%- for lk in f.links %}
+                    <a href="{{ lk.href }}"{% if lk.external %} target="_blank" rel="noopener"{% endif %}>{{ lk.label }}</a>{% if not loop.last %} <span class="faq-links-sep">&middot;</span>{% endif %}
+                    {%- endfor %}
+                </p>
                 {%- endif %}
             </div>
         </details>

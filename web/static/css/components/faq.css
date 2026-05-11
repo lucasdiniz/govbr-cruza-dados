@@ -92,6 +92,39 @@
     margin-bottom: 0;
 }
 
+/* Linha de links contextuais apos a resposta (internal linking + UX) */
+.faq-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .35rem .25rem;
+    margin-top: .65rem !important;
+    padding-top: .5rem;
+    border-top: 1px solid var(--md-sys-color-outline-variant, rgba(255,255,255,.08));
+    font-size: .85rem;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.faq-links-label {
+    font-weight: 600;
+    margin-right: .25rem;
+}
+
+.faq-links a {
+    color: var(--md-sys-color-primary, #3b82f6);
+    text-decoration: none;
+}
+
+.faq-links a:hover,
+.faq-links a:focus-visible {
+    text-decoration: underline;
+}
+
+.faq-links-sep {
+    color: var(--md-sys-color-outline, rgba(255,255,255,.3));
+    user-select: none;
+}
+
 @media (max-width: 600px) {
     .faq-section {
         margin: 1.5rem 0;
