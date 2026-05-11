@@ -142,10 +142,9 @@
        Snippet so eh emitido quando AMBAS as vars estao setadas no ambiente
        (UMAMI_SCRIPT_URL + UMAMI_WEBSITE_ID), entao o site funciona sem
        analytics enquanto o painel nao for provisionado.
-       data-do-not-track=true respeita o header DNT do navegador.
-       data-cache=true reusa cache local de page sessions ate 30min. #}
+       data-do-not-track=true respeita o header DNT do navegador. #}
     {% if UMAMI_SCRIPT_URL and UMAMI_WEBSITE_ID %}
-    <script async defer src="{{ UMAMI_SCRIPT_URL }}" data-website-id="{{ UMAMI_WEBSITE_ID }}" data-do-not-track="true" data-cache="true"></script>
+    <script async defer src="{{ UMAMI_SCRIPT_URL }}" data-website-id="{{ UMAMI_WEBSITE_ID }}" data-do-not-track="true"></script>
     {% endif %}
     {% block head_extra %}{% endblock %}
 </head>
