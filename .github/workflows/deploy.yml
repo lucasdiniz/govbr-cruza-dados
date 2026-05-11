@@ -640,6 +640,15 @@ jobs:
 
       # ── Deploy web services ──
       - name: Deploy web frontend and cache warmer
+        env:
+          # Passados via env: + sudo --preserve-env no setup-goaccess.sh
+          # logo abaixo. Os secrets entram no shell SO via variavel de
+          # ambiente, nao por substituicao literal, prevenindo injection
+          # se a senha tiver caracteres como $ ` " \.
+          # Outras secrets/env-vars do step continuam funcionando normal.
+          GOACCESS_USER: ${{ secrets.GOACCESS_USER }}
+          GOACCESS_PASSWORD: ${{ secrets.GOACCESS_PASSWORD }}
+          GOACCESS_DOMAIN: ${{ secrets.GOACCESS_DOMAIN }}
         run: |
           set -e
           cd ${{ env.PROJECT_DIR }}
@@ -657,6 +666,25 @@ jobs:
           # limit (10x 429 em 5min = ban 1h via iptables). Idempotente:
           # so reload se config mudou.
           sudo bash deploy/setup-fail2ban.sh
+
+          # Setup GoAccess: dashboard real-time de trafego em /_traffic/
+          # (basic-auth protected). Idempotente: pula instalacao se
+          # GOACCESS_PASSWORD vazio E .htpasswd-traffic nao existe.
+          # Pra ativar pela 1a vez, defina o secret GOACCESS_PASSWORD
+          # (e opcionalmente GOACCESS_USER) no repositorio.
+          #
+          # Secrets sao passados via env: block (no step, acima) + sudo
+          # --preserve-env, em vez de substituicao direta no shell. Isso
+          # protege contra shell injection se a senha contiver caracteres
+          # como $, ", `, \, etc. — substituicao via ${{ secrets.X }}
+          # dentro do run: e' parseada como shell antes do bash executar.
+          #
+          # Soft-fail: o dashboard e' admin-only, opcional. Se a instalacao
+          # falhar (PPA fora do ar, apt lock, etc.), logamos e seguimos o
+          # deploy — o site publico nao depende disso.
+          sudo --preserve-env=GOACCESS_USER,GOACCESS_PASSWORD,GOACCESS_DOMAIN \
+            bash deploy/setup-goaccess.sh \
+            || echo "WARNING: setup-goaccess.sh falhou (non-fatal — dashboard admin)."
 
           # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
           # a janela onde nginx serve novo dist/ enquanto workers velhos
