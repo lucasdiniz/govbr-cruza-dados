@@ -30,9 +30,12 @@ CONF_SRC="${REPO_DIR}/deploy/cruza-goaccess.conf"
 CONF_DST="/etc/goaccess/cruza-goaccess.conf"
 SERVICE_SRC="${REPO_DIR}/deploy/cruza-goaccess.service"
 SERVICE_DST="/etc/systemd/system/cruza-goaccess.service"
+TAIL_SERVICE_SRC="${REPO_DIR}/deploy/cruza-traffic-tail.service"
+TAIL_SERVICE_DST="/etc/systemd/system/cruza-traffic-tail.service"
 HTPASSWD="/etc/nginx/.htpasswd-traffic"
 OUT_DIR="/var/www/traffic"
 DB_DIR="/var/lib/goaccess"
+GEOIP_DB="${DB_DIR}/dbip-country-lite.mmdb"
 
 log() { echo "[goaccess] $*"; }
 
@@ -85,14 +88,42 @@ chmod 700 "${DB_DIR}"
 
 # ─── 4. basic-auth ───
 # - Se GOACCESS_PASSWORD fornecido: cria/atualiza .htpasswd-traffic com a senha.
-# - Senao mas o file ja existe: preserva (idempotente).
+# - Senao mas o file ja existe: preserva conteudo mas garante perms.
 if [[ -n "${GOACCESS_PASSWORD}" ]]; then
     htpasswd -bc "${HTPASSWD}" "${GOACCESS_USER}" "${GOACCESS_PASSWORD}"
-    chown root:www-data "${HTPASSWD}"
-    chmod 640 "${HTPASSWD}"
     log "basic-auth atualizado pra user '${GOACCESS_USER}'."
 else
     log "basic-auth preservado (${HTPASSWD} ja existente)."
+fi
+# Idempotente: re-aplica perms mesmo quando preserva (handles edge case de
+# file recriado fora do script com ownership errado).
+chown root:www-data "${HTPASSWD}"
+chmod 640 "${HTPASSWD}"
+
+# ─── 4b. GeoIP database (db-ip.com free lite, sem signup) ───
+# Atualizada mensalmente; idempotente — pula download se ja existe e tem
+# menos de 30 dias. Pra forcar refresh: sudo rm ${GEOIP_DB}.
+needs_geoip=0
+if [[ ! -f "${GEOIP_DB}" ]]; then
+    needs_geoip=1
+elif [[ -n "$(find "${GEOIP_DB}" -mtime +30 2>/dev/null)" ]]; then
+    log "GeoIP DB tem >30 dias — atualizando..."
+    needs_geoip=1
+fi
+if [[ "${needs_geoip}" -eq 1 ]]; then
+    YYYYMM="$(date +%Y-%m)"
+    URL="https://download.db-ip.com/free/dbip-country-lite-${YYYYMM}.mmdb.gz"
+    log "Baixando GeoIP de ${URL}..."
+    if wget -q -O "${GEOIP_DB}.gz" "${URL}"; then
+        gunzip -f "${GEOIP_DB}.gz"
+        chown www-data:www-data "${GEOIP_DB}"
+        chmod 644 "${GEOIP_DB}"
+        log "GeoIP DB instalado em ${GEOIP_DB}"
+    else
+        log "AVISO: download do GeoIP falhou. Painel Geo Location vai ficar vazio."
+        log "       URL tentada: ${URL}"
+        rm -f "${GEOIP_DB}.gz"
+    fi
 fi
 
 # ─── 5. Config do goaccess (substitui dominio) ───
@@ -108,23 +139,39 @@ else
     rm -f "${tmp_conf}"
 fi
 
-# ─── 6. Systemd unit ───
+# ─── 6. Systemd units ───
 service_changed=0
 if ! cmp -s "${SERVICE_SRC}" "${SERVICE_DST}" 2>/dev/null; then
     install -m 0644 "${SERVICE_SRC}" "${SERVICE_DST}"
     log "  ${SERVICE_DST} atualizado"
     service_changed=1
 fi
-if [[ "${service_changed}" -eq 1 ]]; then
+
+tail_service_changed=0
+if ! cmp -s "${TAIL_SERVICE_SRC}" "${TAIL_SERVICE_DST}" 2>/dev/null; then
+    install -m 0644 "${TAIL_SERVICE_SRC}" "${TAIL_SERVICE_DST}"
+    log "  ${TAIL_SERVICE_DST} atualizado"
+    tail_service_changed=1
+fi
+
+if [[ "${service_changed}" -eq 1 || "${tail_service_changed}" -eq 1 ]]; then
     systemctl daemon-reload
 fi
 systemctl enable cruza-goaccess >/dev/null 2>&1 || true
+systemctl enable cruza-traffic-tail >/dev/null 2>&1 || true
 
-# Restart se: service unit mudou, config mudou, ou nao esta ativo.
+# Restart goaccess se: unit mudou, config mudou, ou nao esta ativo.
 if [[ "${service_changed}" -eq 1 || "${conf_changed}" -eq 1 ]] \
    || ! systemctl is-active --quiet cruza-goaccess; then
     systemctl restart cruza-goaccess
     log "cruza-goaccess restart"
+fi
+
+# Restart tail se: unit mudou ou nao esta ativo.
+if [[ "${tail_service_changed}" -eq 1 ]] \
+   || ! systemctl is-active --quiet cruza-traffic-tail; then
+    systemctl restart cruza-traffic-tail
+    log "cruza-traffic-tail restart"
 fi
 
 # ─── 7. Reload nginx (caso /_traffic/* tenha sido adicionado neste deploy) ───
@@ -141,10 +188,18 @@ fi
 sleep 2
 if systemctl is-active --quiet cruza-goaccess; then
     log "✓ cruza-goaccess ativo."
-    log "  Dashboard: https://${GOACCESS_DOMAIN}/_traffic/"
-    log "  Logs:      journalctl -u cruza-goaccess -f"
+    log "  Dashboard:  https://${GOACCESS_DOMAIN}/_traffic/"
+    log "  Raw logs:   https://${GOACCESS_DOMAIN}/_traffic/raw"
+    log "  Logs:       journalctl -u cruza-goaccess -f"
 else
     log "ERRO: cruza-goaccess nao subiu. Ultimas linhas:"
     journalctl -u cruza-goaccess --no-pager -n 30 | sed 's/^/  /'
     exit 1
+fi
+
+if systemctl is-active --quiet cruza-traffic-tail; then
+    log "✓ cruza-traffic-tail ativo (raw access.log no /_traffic/raw)."
+else
+    log "AVISO: cruza-traffic-tail nao subiu — /_traffic/raw nao vai funcionar."
+    journalctl -u cruza-traffic-tail --no-pager -n 10 | sed 's/^/  /'
 fi
