@@ -33,7 +33,12 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
-    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'fornecedor' });
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'fornecedor',
+        cnpj: exactDoc,
+        nome: fornecedorNome || nomeCredor || '',
+        municipio: municipioOverride || _currentMunicipio || '',
+    });
 
     const viewMunicipio = municipioOverride || _currentMunicipio;
     const data = await _fetchFornecedorDetails(cnpjBasico, viewMunicipio, nomeCredor, cpfCnpj);

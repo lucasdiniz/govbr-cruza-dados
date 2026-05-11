@@ -15,7 +15,12 @@
 // Eventos atuais (ver tambem README dos componentes):
 //   cidade-buscar         - {via: 'autocomplete'|'enter'|'autocomplete-keyboard'}
 //   mapa-cidade-click     - {cidade, metrica}
-//   dialog-aberto         - {tipo: 'empenho'|'servidor'|'fornecedor'|'licitacao'|'heatmap'}
+//   dialog-aberto         - {tipo, municipio, ...id-fields conforme tipo}:
+//                             tipo=empenho     -> {empenho}
+//                             tipo=servidor    -> {cpf6, nome}
+//                             tipo=fornecedor  -> {cnpj, nome}
+//                             tipo=licitacao   -> {numero, ano, modalidade}
+//                             tipo=heatmap     -> {ano, mes}
 //   modo-toggle           - {to: 'auditor'|'citizen'}
 //   font-size-change      - {level: 'normal'|'lg'|'xl'}
 //   compartilhar          - {via: 'share-api'|'clipboard'|'fallback'}
