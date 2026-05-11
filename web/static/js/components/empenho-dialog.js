@@ -15,7 +15,11 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     body.innerHTML = '<p class="text-sm text-muted">Carregando...</p>';
     if (!dialog.open) dialog.show();
     document.body.classList.add('dialog-open');
-    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', { tipo: 'empenho' });
+    if (isInitialOpen) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'empenho',
+        empenho: String(empenhoId || ''),
+        municipio: _currentMunicipio || '',
+    });
 
     const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });
     if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
