@@ -151,7 +151,7 @@ HASH_SALT=${HASH_SALT}
 PORT=3001
 HOSTNAME=127.0.0.1
 NODE_ENV=production
-# BASE_PATH e baked in pelo Next.js no momento do `pnpm run build` (ver passo
+# BASE_PATH e baked in pelo Next.js no momento do "pnpm run build" (ver passo
 # 7 abaixo). Mantemos ele tambem em runtime pra qualquer codigo server-side
 # que leia process.env.BASE_PATH.
 BASE_PATH=${UMAMI_BASE_PATH}
@@ -161,6 +161,18 @@ EOF
 chown "root:${UMAMI_USER}" "${ENV_TMP}"
 chmod 0640 "${ENV_TMP}"
 mv -f "${ENV_TMP}" "${UMAMI_ENV_FILE}"
+
+# Sanity check: garantir que /etc/umami.env eh sourceable num subshell.
+# Defensiva contra bugs do tipo "heredoc unquoted interpretou backtick/$() e
+# injetou output de comando no env file". Quando isso acontece, o `source`
+# dentro do build step explode com "command not found" e o build inteiro
+# aborta com soft-fail no deploy.yml — fica silencioso. Validar AGORA falha
+# cedo, com a saida do arquivo no log, o que torna o bug obvio.
+if ! ( set -e; set -a; source "${UMAMI_ENV_FILE}"; set +a ) >/dev/null 2>&1; then
+    log "ERRO: ${UMAMI_ENV_FILE} nao e sourceable. Conteudo (cat -An):"
+    cat -An "${UMAMI_ENV_FILE}" >&2
+    exit 1
+fi
 
 # ─── 6) Clone / checkout do Umami ───────────────────────────────────────────
 if [[ ! -d "${UMAMI_DIR}/.git" ]]; then
