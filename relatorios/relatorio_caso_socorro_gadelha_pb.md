@@ -16,7 +16,7 @@ A sanção foi registrada no Cadastro de Expulsões da Administração Federal (
 
 Apesar dessa punição federal, a servidora segue há mais de quatro anos no cargo de **Secretária Municipal de Habitação Social** (Semhab) de João Pessoa, na gestão do prefeito Cícero Lucena (PP) — nomeada em janeiro de 2021, mantida durante todo o primeiro mandato, recolocada após a reeleição de outubro de 2024 e ainda no cargo em maio de 2026. Em 26 de agosto de 2025, a Assembleia Legislativa da Paraíba aprovou (Projeto de Resolução nº 356/2025, de autoria do deputado estadual Hervázio Bezerra, PSB) a concessão a ela da Medalha Epitácio Pessoa "pelos relevantes serviços prestados à sociedade brasileira, especialmente no âmbito da habitação social".
 
-O currículo oficial submetido por ela própria à ALPB para justificar a honraria **omite** o cargo do qual foi punida pela CGU (Secretária-Executiva do Ministério do Desenvolvimento Regional).
+O currículo oficial submetido por ela própria à ALPB para justificar a honraria lista o cargo federal de **Secretária Nacional de Habitação (Dezembro/2017 – Janeiro/2019), Ministério das Cidades**, mas não informa que a exoneração desse mesmo vínculo foi objeto de PAD, convertida pela CGU em destituição e registrada no CEAF sob nº 278654.
 
 O caso foi sinalizado **automaticamente** pelo painel municipal de João Pessoa no transparenciapb.org, no card "Servidores já expulsos da Adm. Federal" do bloco de triagem rápida.
 
@@ -33,7 +33,7 @@ O caso foi sinalizado **automaticamente** pelo painel municipal de João Pessoa 
 | Ministro signatário | Wagner de Campos Rosario |
 | Tempo no cargo municipal após a sanção (até a data deste relatório) | > 40 meses |
 | Tempo até a homenagem pela ALPB após a sanção | ≈ 31 meses |
-| Cargo federal punido | Secretária-Executiva, Ministério do Desenvolvimento Regional |
+| Cargo federal objeto da sanção | Secretária Nacional de Habitação, Ministério das Cidades (DAS 101.6; CEAF registra como "Secretária-Executivo", MDR) |
 | Cargo municipal atual | Secretária Municipal de Habitação Social, Prefeitura de João Pessoa |
 | Prefeito responsável pela nomeação e manutenção | Cícero Lucena (PP) |
 
@@ -74,7 +74,7 @@ Cada elemento da narrativa foi confirmado em fonte oficial. As fontes estão con
 | **Ago/1982 – Mar/2011** | Bancária da Caixa Econômica Federal. | CV oficial. |
 | **Jul/2007 – Jan/2009** | Cedida pela Caixa, exerce a presidência da Companhia Estadual de Habitação Popular da Paraíba (CEHAP). | CV oficial. |
 | **Jan/2013 – Jan/2018** | Secretária Municipal de Habitação Social de João Pessoa, gestão Luciano Cartaxo. | CV oficial. |
-| **29/12/2017** | Nomeada Secretária Nacional de Habitação do Ministério das Cidades pelo Ministro Chefe da Casa Civil Eliseu Padilha (governo Temer). | DOU 29/12/2017. |
+| **28/12/2017** | Nomeada Secretária Nacional de Habitação do Ministério das Cidades pelo Ministro Chefe da Casa Civil Eliseu Padilha, por meio da Portaria nº 1.186, publicada no DOU em 29/12/2017 (Edição 249, Seção 2, p. 1). | DOU 29/12/2017, Seção 2, p. 1. |
 | **01/01/2019** | **Exonerada** do cargo de Secretária Nacional de Habitação do Ministério das Cidades (DAS 101.6). Portaria nº 438 do Ministro Chefe da Casa Civil Onyx Dornelles Lorenzoni (governo Bolsonaro), publicada no DOU em 11/01/2019, Seção 2. **Exoneração comum, sem mancha.** | DOU 11/01/2019, Seção 2. |
 | **2019 – Ago/2020** | Volta a ocupar a Secretaria Municipal de Habitação Social de João Pessoa (gestão Luciano Cartaxo), conforme próprio CV. Há discrepância potencial entre o CV (que indica retorno em janeiro de 2019) e a exoneração federal em 01/01/2019. | CV oficial. |
 | **2020** | CGU instaura o Processo Administrativo Disciplinar nº 00190.101924/2020-94. | Portaria CGU 3.655/2022 (texto). |
@@ -121,7 +121,7 @@ Trecho dispositivo da portaria do Ministro Chefe da Casa Civil Onyx Dornelles Lo
 
 > "Nº 438 - EXONERAR MARIA DO SOCORRO GADELHA CAMPOS DE LIRA do cargo de Secretária Nacional de Habitação do Ministério das Cidades, código DAS 101.6, a partir de 1º de janeiro de 2019."
 
-Observação técnica: a exoneração originária foi de cargo do extinto Ministério das Cidades; o registro CEAF lista o cargo final como "Secretária-Executivo" no Ministério do Desenvolvimento Regional (órgão sucessor a partir de 01/01/2019, MP 870/2019). Essa distinção é meramente nominal — a sanção da CGU se aplica à mesma pessoa física e à mesma matrícula (2933908).
+Observação técnica: a Portaria nº 438 exonera exatamente o cargo listado no currículo oficial — **Secretária Nacional de Habitação do Ministério das Cidades, DAS 101.6**. O registro CEAF representa administrativamente esse vínculo como "Secretária-Executivo" no Ministério do Desenvolvimento Regional (órgão sucessor do Ministério das Cidades a partir de 01/01/2019, MP 870/2019). A distinção é nominal/administrativa: a sanção da CGU recai sobre a mesma pessoa física, a mesma matrícula (2933908) e a mesma exoneração originária.
 
 ---
 
@@ -135,7 +135,7 @@ Ementa textual:
 
 > "Concessão da Medalha Epitácio Pessoa a Secretária Municipal de João Pessoa/PB, Sra. Maria Do Socorro Gadelha Campos Lira em reconhecimento aos relevantes serviços prestados à sociedade brasileira, especialmente no âmbito da habitação social."
 
-### 5.2. Omissão no Currículo Oficial Submetido à ALPB
+### 5.2. O que o Currículo Oficial Não Diz
 
 O currículo oficial submetido pela homenageada à ALPB como peça instrutória do Projeto de Resolução 356/2025 lista as seguintes experiências profissionais (na ordem):
 
@@ -146,7 +146,15 @@ O currículo oficial submetido pela homenageada à ALPB como peça instrutória 
 - Secretária Municipal de Habitação Social (Janeiro/2013 – Janeiro/2018): Prefeitura de João Pessoa.
 - Diretora Nacional de Programas (Abril/2012 – Dezembro/2012): Ministério das Cidades.
 
-O CV **não lista** o cargo de Secretária-Executiva do Ministério do Desenvolvimento Regional — exatamente o cargo cuja exoneração foi convertida em destituição pela CGU.
+Portanto, o problema não é a ausência do cargo federal: ele está listado no CV como Secretária Nacional de Habitação (Dezembro/2017 – Janeiro/2019), Ministério das Cidades. Esse é o mesmo vínculo que a Portaria nº 438 exonerou e que a CGU posteriormente alcançou ao converter a exoneração em destituição.
+
+O que o currículo **não menciona** é o desfecho disciplinar desse cargo federal:
+
+- Que a exoneração foi objeto do Processo Administrativo Disciplinar nº 00190.101924/2020-94.
+- Que a CGU converteu a saída em **destituição de cargo em comissão**, com fundamento no Art. 135 da Lei nº 8.112/90.
+- Que a sanção está registrada no CEAF sob o nº 278654.
+
+Essa omissão é eticamente relevante porque o currículo não foi apresentado como currículo de emprego comum, mas como peça instrutória de processo legislativo destinado a justificar a concessão de honraria pública.
 
 ---
 
@@ -167,7 +175,7 @@ O CV **não lista** o cargo de Secretária-Executiva do Ministério do Desenvolv
 | Autoria do PR 356/2025 (dep. Hervázio Bezerra, PSB) | https://sapl3.al.pb.leg.br/materia/130965/autoria |
 | CV oficial submetido à ALPB | https://sapl3.al.pb.leg.br/media/sapl/public/materialegislativa/2025/130965/socorro_merged_1.pdf |
 | Lei nº 8.112/90 (estatuto dos servidores civis da União) | https://www.planalto.gov.br/ccivil_03/leis/l8112cons.htm |
-| Nomeação dela como Secretária Nacional de Habitação em 29/12/2017 | https://jornaldaparaiba.com.br/politica/padilha-nomeia-socorro-gadelha-para-secretaria-nacional-de-habitacao |
+| Portaria nº 1.186 de 28/12/2017 (nomeação como Secretária Nacional de Habitação) — DOU 29/12/2017 | https://www.in.gov.br/web/dou/-/portarias-de-28-de-dezembro-de-2017-1498133 |
 
 ---
 
@@ -182,7 +190,7 @@ A sanção de destituição prevista no Art. 135 da Lei 8.112/90 produz efeitos 
 O Ministério Público do Estado da Paraíba pode avaliar a abertura de procedimento para verificar:
 - Se a manutenção em cargo de confiança municipal configura ofensa aos princípios constitucionais da Administração Pública (Art. 37, CF/88).
 - Se a homenagem aprovada pela ALPB conheceu a íntegra do histórico funcional da homenageada.
-- Eventual responsabilização por omissão de informações em peça instrutória de processo legislativo (CV apresentado à ALPB).
+- Eventual responsabilização por omissão da **sanção disciplinar** — não do cargo, que está listado — em peça instrutória de processo legislativo (CV apresentado à ALPB).
 
 ### 7.3. Eventual Apuração Pelo TCE-PB
 
