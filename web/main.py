@@ -324,6 +324,26 @@ templates.env.globals["BING_SITE_VERIFICATION"] = os.environ.get(
     "BING_SITE_VERIFICATION", ""
 ).strip()
 
+# Umami analytics (self-hosted em /_traffic/analytics/, ver
+# deploy/setup-umami.sh + deploy/cruza-umami.service).
+# O snippet so eh emitido em base.html quando AMBAS as vars estao setadas,
+# entao o app continua funcionando sem analytics enquanto o painel nao for
+# provisionado / nao tiver website cadastrado.
+#
+#   UMAMI_SCRIPT_URL    URL (relativa ou absoluta) do tracker JS, ex:
+#                       /_traffic/analytics/script.js
+#   UMAMI_WEBSITE_ID    UUID do "Website" cadastrado no painel Umami
+#                       (login admin -> Settings -> Websites -> Add).
+#
+# Manter a URL como env var (em vez de hardcoded) permite desligar o
+# tracker via .env sem mudanca de codigo.
+templates.env.globals["UMAMI_SCRIPT_URL"] = os.environ.get(
+    "UMAMI_SCRIPT_URL", ""
+).strip()
+templates.env.globals["UMAMI_WEBSITE_ID"] = os.environ.get(
+    "UMAMI_WEBSITE_ID", ""
+).strip()
+
 # JS load order. Each entry is a path relative to /static/js/, emitted as
 # an individual <script> tag in base.html. Order matters because the scripts
 # are plain (non-module) and rely on cross-file globals — files are loaded

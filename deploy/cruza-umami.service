@@ -1,0 +1,35 @@
+[Unit]
+Description=Umami Analytics - self-hosted (transparenciapb.org)
+After=postgresql.service network.target
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=umami
+Group=umami
+WorkingDirectory=/opt/umami
+# HOME explicito pra pnpm/npm acharem o store local e o .npmrc.
+Environment=HOME=/opt/umami
+# Secrets (DATABASE_URL, APP_SECRET, HASH_SALT) sao gerados/persistidos
+# pelo setup-umami.sh em /etc/umami.env (root:umami 0640). PORT e HOSTNAME
+# tambem vem dali (bind 127.0.0.1:3001 — nginx faz proxy reverso pra
+# analytics.transparenciapb.org).
+EnvironmentFile=/etc/umami.env
+# `pnpm start` chama `next start`, que respeita PORT e HOSTNAME do env.
+# Saida vai pro journal (capturado por journalctl -u cruza-umami).
+ExecStart=/usr/bin/pnpm start
+Restart=always
+RestartSec=5
+
+# Hardening basico. Umami so precisa ler /opt/umami + /etc/umami.env
+# e conectar no Postgres local. /opt/umami precisa de write pra pnpm
+# atualizar lockfile/cache; nada mais.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/umami
+
+[Install]
+WantedBy=multi-user.target
+
