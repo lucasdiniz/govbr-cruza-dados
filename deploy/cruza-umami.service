@@ -1,0 +1,39 @@
+[Unit]
+Description=Umami Analytics - self-hosted (transparenciapb.org)
+After=postgresql.service network.target
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=umami
+Group=umami
+WorkingDirectory=/opt/umami
+# HOME explicito pra pnpm/npm acharem o store local e o .npmrc.
+Environment=HOME=/opt/umami
+# Secrets (DATABASE_URL, APP_SECRET, HASH_SALT) sao gerados/persistidos
+# pelo setup-umami.sh em /etc/umami.env (root:umami 0640). PORT tambem
+# vem dali, mas o hostname precisa ser CLI flag (next start le PORT do env
+# mas nao le HOSTNAME — ele so eh respeitado via --hostname/-H, ver
+# https://nextjs.org/docs/app/api-reference/cli/next#next-start-options).
+# Sem -H 127.0.0.1, Umami bindaria em 0.0.0.0:3001 e seria acessivel
+# fora do proxy nginx caso a porta fique aberta na rede.
+EnvironmentFile=/etc/umami.env
+# `pnpm exec next start` chama o binario do Next direto (em vez de via
+# script `pnpm start`), facilitando o forward de flags --hostname/--port.
+# A saida vai pro journal (capturado por journalctl -u cruza-umami).
+ExecStart=/usr/bin/pnpm exec next start --hostname 127.0.0.1 --port 3001
+Restart=always
+RestartSec=5
+
+# Hardening basico. Umami so precisa ler /opt/umami + /etc/umami.env
+# e conectar no Postgres local. /opt/umami precisa de write pra pnpm
+# atualizar lockfile/cache; nada mais.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/umami
+
+[Install]
+WantedBy=multi-user.target
+

@@ -137,6 +137,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
+    {# Umami analytics (self-hosted, cookieless, sem necessidade de consent
+       banner LGPD/GDPR). Carrega async/defer pra nao bloquear renderizacao.
+       Snippet so eh emitido quando AMBAS as vars estao setadas no ambiente
+       (UMAMI_SCRIPT_URL + UMAMI_WEBSITE_ID), entao o site funciona sem
+       analytics enquanto o painel nao for provisionado.
+       data-do-not-track=true respeita o header DNT do navegador. #}
+    {% if UMAMI_SCRIPT_URL and UMAMI_WEBSITE_ID %}
+    <script async defer src="{{ UMAMI_SCRIPT_URL }}" data-website-id="{{ UMAMI_WEBSITE_ID }}" data-do-not-track="true"></script>
+    {% endif %}
     {% block head_extra %}{% endblock %}
 </head>
 <body class="dark-page {% block body_class %}{% endblock %}">

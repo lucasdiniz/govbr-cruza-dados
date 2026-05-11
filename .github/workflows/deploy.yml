@@ -686,6 +686,22 @@ jobs:
             bash deploy/setup-goaccess.sh \
             || echo "WARNING: setup-goaccess.sh falhou (non-fatal — dashboard admin)."
 
+          # Setup Umami analytics (self-hosted em /_traffic/analytics/).
+          # Idempotente: instala Node 22 + pnpm se ausentes, cria DB+role
+          # umami no Postgres, gera secrets, clona umami-software/umami no
+          # tag pinado, builda (skip se ja built com mesmo tag+BASE_PATH),
+          # roda Prisma migrations e instala cruza-umami.service.
+          #
+          # Primeiro build leva ~3min (pnpm install + next build). Builds
+          # subsequentes pulam (marker .next/.cruza-build-marker).
+          #
+          # Soft-fail: analytics e' admin-only / observabilidade, opcional.
+          # Site publico nao depende — se setup falhar, /_traffic/analytics/
+          # retorna 502 e o tracker no <head> (snippet condicional em
+          # base.html) so emite quando UMAMI_WEBSITE_ID estiver setado.
+          sudo bash deploy/setup-umami.sh \
+            || echo "WARNING: setup-umami.sh falhou (non-fatal — analytics admin)."
+
           # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
           # a janela onde nginx serve novo dist/ enquanto workers velhos
           # geram HTML com URLs antigas (404 nos hashed assets).
@@ -727,6 +743,7 @@ jobs:
           echo "=== Web services deployed ==="
           systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
           systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
+          systemctl is-active cruza-umami >/dev/null 2>&1 && echo "cruza-umami: RUNNING" || echo "cruza-umami: not active (admin-only, OK)"
           echo "cruza-warm-cache: oneshot instalado (executado sob demanda)"
 
       # ── SEO: notificar IndexNow (Bing/Yandex/Yahoo/Seznam/Naver) ──
