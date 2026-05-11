@@ -1,0 +1,85 @@
+{# FAQs dinamicas pra /empresa/<cnpj> (perfil global). Links contextuais
+   via campo 'links'.
+
+   Caller passa:
+       razao_social, cnpj_fmt, cnpj, agregados, sancoes, pgfn,
+       kpi_total_pb, kpi_qtd_municipios, kpi_total_divida_pgfn,
+       municipios_pagantes
+#}
+{% from "partials/seo/_faq.html" import faq_section %}
+{% set _emp_nome = razao_social %}
+{% set _total_pb = kpi_total_pb or 0 %}
+{% set _qtd_mun = kpi_qtd_municipios or 0 %}
+{% set _divida = kpi_total_divida_pgfn or 0 %}
+{% set _qtd_sanc = sancoes|length if sancoes else 0 %}
+
+{# Top 1 municipio pagante (pra link contextual). Pode ser None. #}
+{% set _top_mun = (municipios_pagantes[0] if municipios_pagantes else None) %}
+
+{% set _empresa_faqs = [
+    {
+        'q': 'Quanto a empresa ' ~ _emp_nome ~ ' recebeu de prefeituras na Paraiba?',
+        'a': ('Segundo dados do TCE-PB, ' ~ _emp_nome ~ ' (CNPJ ' ~ cnpj_fmt ~ ') recebeu o equivalente a R$ ' ~ ("{:,.2f}".format(_total_pb)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ' em pagamentos municipais somando todos os municipios da PB. A pagina detalha a distribuicao por municipio, periodo e categoria de gasto.') if _total_pb > 0 else ('Os dados oficiais do TCE-PB indicam que ' ~ _emp_nome ~ ' (CNPJ ' ~ cnpj_fmt ~ ') aparece no nosso recorte de empresas com pagamentos municipais na Paraiba. Veja na pagina os municipios pagantes e historico detalhado.'),
+        'links': [
+            {'label': 'Resumo de pagamentos', 'href': '#resumo-pagamentos'},
+            {'label': 'Municipios pagantes', 'href': '#municipios-pagantes'},
+            {'label': 'Empenhos detalhados', 'href': '#empenhos-recentes'},
+        ],
+    },
+    {
+        'q': 'Em quais municipios da Paraiba ' ~ _emp_nome ~ ' e fornecedora?',
+        'a': ('A empresa ' ~ _emp_nome ~ ' aparece em ' ~ _qtd_mun ~ ' municipio(s) paraibano(s). A secao "Municipios pagantes" lista cada um com o total recebido — clique para abrir o detalhe scoped (empenhos recentes, monthly chart, top elementos de despesa).') if _qtd_mun > 0 else ('A pagina lista todos os municipios da PB onde ' ~ _emp_nome ~ ' recebeu pagamentos. Em alguns casos a lista pode estar vazia se nao houver dados nos snapshots atuais.'),
+        'links': ([
+            {'label': 'Lista completa de municipios', 'href': '#municipios-pagantes'},
+            {'label': 'Acesse direto: ' ~ _top_mun.municipio, 'href': '/empresa/' ~ cnpj ~ '/' ~ _top_mun.slug}
+        ] if (_top_mun and _top_mun.slug) else [
+            {'label': 'Municipios pagantes', 'href': '#municipios-pagantes'},
+        ]),
+    },
+    {
+        'q': _emp_nome ~ ' tem divida ativa na PGFN?',
+        'a': ('Sim. ' ~ _emp_nome ~ ' tem divida ativa registrada na Procuradoria-Geral da Fazenda Nacional. O total inscrito e R$ ' ~ ("{:,.2f}".format(_divida)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ '. A secao "Divida ativa" mostra detalhes (data de inscricao, tipo, status).') if _divida > 0 else (_emp_nome ~ ' nao possui divida ativa registrada na PGFN segundo o snapshot atual da Procuradoria-Geral da Fazenda Nacional. Note que dividas estaduais/municipais nao sao cobertas por esse cadastro.'),
+        'links': [
+            {'label': 'Divida PGFN (na pagina)', 'href': '#pgfn'},
+            {'label': 'Sinais de atencao', 'href': '#sinais'},
+            {'label': 'Glossario', 'href': '/glossario'},
+        ],
+    },
+    {
+        'q': _emp_nome ~ ' esta sancionada (CEIS, CNEP ou inidonea)?',
+        'a': ('Sim. ' ~ _emp_nome ~ ' possui ' ~ _qtd_sanc ~ ' sancao(es) registrada(s) na CGU. A secao "Sancoes" detalha cada uma (orgao sancionador, periodo de vigencia, fundamentacao legal). Sancao ativa significa restricao de contratacao com o setor publico — verifique a abrangencia.') if _qtd_sanc > 0 else (_emp_nome ~ ' nao possui sancoes ativas registradas no CEIS (Cadastro de Empresas Inidoneas) nem no CNEP (Cadastro Nacional de Empresas Punidas) segundo a CGU. Isso nao exclui sancoes municipais ou estaduais nao reportadas.'),
+        'links': [
+            {'label': 'Sancoes na pagina', 'href': '#sancoes'},
+            {'label': 'Acordos de leniencia', 'href': '#leniencia'},
+            {'label': 'Portal da CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+        ],
+    },
+    {
+        'q': 'Quem sao os socios da ' ~ _emp_nome ~ '?',
+        'a': 'A secao "Socios" lista os representantes da pessoa juridica conforme cadastro RFB (Receita Federal). Para cada um mostramos nome, qualificacao (administrador, diretor, etc) e data de entrada. CPFs sao parcialmente mascarados conforme exigencia da LGPD.',
+        'links': [
+            {'label': 'Quadro societario', 'href': '#socios'},
+        ],
+    },
+    {
+        'q': 'Os dados sobre ' ~ _emp_nome ~ ' sao oficiais?',
+        'a': 'Sim. Cadastro CNPJ (razao social, socios, endereco, situacao) vem da Receita Federal. Pagamentos vem do TCE-PB. Sancoes da CGU (CEIS/CNEP/CEAF). Divida da PGFN. dados.pb.gov.br para orcamento estadual. Indicamos a data do snapshot. Para verificacao adicional, consulte os portais oficiais.',
+        'links': [
+            {'label': 'Receita Federal', 'href': 'https://www.gov.br/receitafederal', 'external': True},
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+            {'label': 'CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+            {'label': 'Metodologia', 'href': '/sobre#fontes'},
+        ],
+    },
+    {
+        'q': 'Como verificar se ' ~ _emp_nome ~ ' pode contratar com o setor publico?',
+        'a': 'Verifique sancoes ativas no CEIS/CNEP (restringem contratacao), regularidade fiscal (PGFN, Receita Federal), cadastro RFB ativo (situacao cadastral != "baixada/suspensa") e certidoes especificas (FGTS, trabalhista). A pagina sinaliza os pontos publicos — certidoes formais devem ser obtidas dos orgaos.',
+        'links': [
+            {'label': 'Sancoes', 'href': '#sancoes'},
+            {'label': 'Divida PGFN', 'href': '#pgfn'},
+            {'label': 'Sinais', 'href': '#sinais'},
+        ],
+    }
+] %}
+
+{{ faq_section(_empresa_faqs, title='Perguntas frequentes sobre ' ~ _emp_nome, anchor='faq-empresa') }}

@@ -1,0 +1,72 @@
+{# FAQs dinamicas pra /sobre. Estaticas — nao precisam de variaveis.
+
+   Links internos (campo 'links' do FAQ dict):
+   - /contato pra reportar
+   - /glossario pra termos
+   - anchors de outras secoes do /sobre
+   - links externos (MPPB, TCE, CGU, Receita Federal) marcados com external=true
+#}
+{% from "partials/seo/_faq.html" import faq_section %}
+{% set _sobre_faqs = [
+    {
+        'q': 'O que e o TransparenciaPB?',
+        'a': 'TransparenciaPB e uma ferramenta independente que cruza dados publicos oficiais do TCE-PB, Receita Federal, CGU, PNCP, dados.pb.gov.br e Portal da Transparencia para tornar visivel como cada uma das 223 prefeituras da Paraiba gasta o dinheiro publico. Apresentamos dados oficiais com sinais de atencao — nao substituem investigacao formal nem conclusoes juridicas.',
+        'links': [
+            {'label': 'Metodologia completa', 'href': '/sobre#o-que-fazemos'},
+            {'label': 'Glossario de termos', 'href': '/glossario'},
+        ],
+    },
+    {
+        'q': 'De onde vem os dados?',
+        'a': 'Todos os dados sao publicos e oficiais. Coletamos diretamente das fontes: TCE-PB (despesas, licitacoes, servidores, receitas), Receita Federal (CNPJ, socios, endereco), CGU (sancoes CEIS/CNEP/CEAF, acordos de leniencia), PGFN (divida ativa), dados.pb.gov.br (orcamento estadual) e Portal da Transparencia (SIAPE, CPGF, Bolsa Familia).',
+        'links': [
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+            {'label': 'Receita Federal', 'href': 'https://www.gov.br/receitafederal', 'external': True},
+            {'label': 'CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+            {'label': 'PGFN', 'href': 'https://www.gov.br/pgfn', 'external': True},
+            {'label': 'dados.pb.gov.br', 'href': 'https://dados.pb.gov.br/', 'external': True},
+        ],
+    },
+    {
+        'q': 'Os dados sao confiaveis?',
+        'a': 'Os dados sao oficiais. A confiabilidade depende da fonte original: TCE-PB tem prazos de envio e correcao pelas prefeituras; cadastro RFB tem latencia ate ~30 dias; sancoes CEIS sao atualizadas semanalmente pela CGU. Sempre indicamos a data do snapshot. Os cruzamentos sao deterministicos (mesmo CNPJ/CPF) — nao usamos heuristicas que poderiam gerar falsos positivos.',
+        'links': [
+            {'label': 'Limites e atualizacao', 'href': '/sobre#limites'},
+        ],
+    },
+    {
+        'q': 'Posso usar para fazer denuncia?',
+        'a': 'Os dados aqui sao um ponto de partida, nao conclusao. Para denuncias formais, recomendamos confirmar nas fontes oficiais, reunir contexto adicional, e acionar Ministerio Publico, TCU, TCE ou Controladoria. As sinais de atencao nao implicam ilicito — sao informacoes objetivas pra triagem.',
+        'links': [
+            {'label': 'MP-PB', 'href': 'https://www.mppb.mp.br/', 'external': True},
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+            {'label': 'CGU', 'href': 'https://www.gov.br/cgu', 'external': True},
+        ],
+    },
+    {
+        'q': 'Como reportar uma irregularidade ou dado errado?',
+        'a': 'Para dado incorreto na nossa plataforma, use a pagina de contato. Para irregularidade administrativa, acione MP-PB, TCE-PB, CGU ou Camara Municipal.',
+        'links': [
+            {'label': 'Pagina de contato', 'href': '/contato'},
+            {'label': 'MP-PB', 'href': 'https://www.mppb.mp.br/', 'external': True},
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+        ],
+    },
+    {
+        'q': 'O codigo eh aberto?',
+        'a': 'Sim. O codigo-fonte do TransparenciaPB e publico no GitHub. Documentamos metodologia, queries e estrutura de dados.',
+        'links': [
+            {'label': 'Repositorio no GitHub', 'href': 'https://github.com/lucasdiniz/govbr-cruza-dados', 'external': True},
+            {'label': 'Glossario', 'href': '/glossario'},
+        ],
+    },
+    {
+        'q': 'Por que so prefeituras paraibanas?',
+        'a': 'O TCE-PB publica dados unitarios de despesa por empenho desde 2003 — uma cobertura unica no Brasil. Aplicar essa metodologia em outros estados depende de cada TCE liberar a mesma granularidade de dados. Hoje, e a Paraiba.',
+        'links': [
+            {'label': 'TCE-PB', 'href': 'https://tce.pb.gov.br/', 'external': True},
+        ],
+    }
+] %}
+
+{{ faq_section(_sobre_faqs, title='Perguntas frequentes', anchor='faq-sobre') }}
