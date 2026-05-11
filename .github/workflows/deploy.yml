@@ -406,6 +406,13 @@ jobs:
             echo "SITE_URL=${{ secrets.SITE_URL }}"
             echo "GOOGLE_SITE_VERIFICATION=${{ secrets.GOOGLE_SITE_VERIFICATION }}"
             echo "BING_SITE_VERIFICATION=${{ secrets.BING_SITE_VERIFICATION }}"
+            echo ""
+            echo "# --- Umami analytics ---"
+            echo "# SCRIPT_URL eh path same-origin (hardcoded, nao secret); WEBSITE_ID"
+            echo "# vem do painel /_traffic/analytics/ apos criar o website. Quando"
+            echo "# AMBAS estao setadas, o snippet em base.html eh emitido."
+            echo "UMAMI_SCRIPT_URL=/_traffic/analytics/script.js"
+            echo "UMAMI_WEBSITE_ID=${{ secrets.UMAMI_WEBSITE_ID }}"
           } >> .env
 
           # Ensure data dir
