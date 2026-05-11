@@ -5,6 +5,8 @@
 #   - transparenciapb-429: bana IPs que excedem rate limit (10x 429 em 5min)
 #   - transparenciapb-exploit-paths: bana IPs que pedem /.env, /.git, /wp-*,
 #     /phpunit, /cgi-bin/.%2e, etc. (3 hits em 10min = ban 24h)
+#   - recidive: meta-jail que bana repeat offenders de qualquer outro jail
+#     (3 bans em 24h = ban 1 semana em todas as portas)
 #
 # Chamado pelo deploy.yml apos setup-letsencrypt.sh. Em deploys subsequentes
 # sem mudancas nos arquivos, eh no-op (cmp + reload).
@@ -27,6 +29,12 @@ FEXP_FILTER_DST="/etc/fail2ban/filter.d/transparenciapb-exploit-paths.conf"
 FEXP_JAIL_SRC="${REPO_DIR}/deploy/fail2ban-transparenciapb-exploit-paths.jail.conf"
 FEXP_JAIL_DST="/etc/fail2ban/jail.d/transparenciapb-exploit-paths.conf"
 
+# Jail 3: recidive (meta — bana repeat offenders de outros jails)
+# Filter eh standard do fail2ban (/etc/fail2ban/filter.d/recidive.conf),
+# so precisamos do jail config.
+FREC_JAIL_SRC="${REPO_DIR}/deploy/fail2ban-recidive.jail.conf"
+FREC_JAIL_DST="/etc/fail2ban/jail.d/recidive.conf"
+
 log() { echo "[fail2ban] $*"; }
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -47,7 +55,8 @@ for pair in \
     "${F429_FILTER_SRC}:${F429_FILTER_DST}" \
     "${F429_JAIL_SRC}:${F429_JAIL_DST}" \
     "${FEXP_FILTER_SRC}:${FEXP_FILTER_DST}" \
-    "${FEXP_JAIL_SRC}:${FEXP_JAIL_DST}"; do
+    "${FEXP_JAIL_SRC}:${FEXP_JAIL_DST}" \
+    "${FREC_JAIL_SRC}:${FREC_JAIL_DST}"; do
     src="${pair%:*}"
     dst="${pair#*:}"
     if [[ ! -f "${src}" ]]; then
@@ -72,7 +81,7 @@ elif [[ "${changed}" -eq 1 ]]; then
 fi
 
 # Status dos jails
-for jail in transparenciapb-429 transparenciapb-exploit-paths; do
+for jail in transparenciapb-429 transparenciapb-exploit-paths recidive; do
     if fail2ban-client status "${jail}" >/dev/null 2>&1; then
         log "Jail ${jail} ativo:"
         fail2ban-client status "${jail}" | sed 's/^/  /'
