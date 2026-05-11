@@ -72,9 +72,16 @@ if ! command -v htpasswd >/dev/null 2>&1; then
 fi
 
 # ─── 3. Diretorios de output + persistencia ───
+# /var/www/traffic: nginx (www-data) le pra servir o HTML; sem world-read
+# pra nao expor dashboard via outras locations futuras (defense-in-depth).
+# /var/lib/goaccess: dados persistidos. GoAccess >=1.7 ja anonimiza IPs no
+# parse-time antes de gravar (anonymize-ip true). Mesmo assim, mode 700
+# pra que so o proprio service (www-data) acesse — outros locais users na
+# VM nao precisam ler.
 mkdir -p "${OUT_DIR}" "${DB_DIR}" /etc/goaccess
 chown -R www-data:www-data "${OUT_DIR}" "${DB_DIR}"
-chmod 755 "${OUT_DIR}" "${DB_DIR}"
+chmod 750 "${OUT_DIR}"
+chmod 700 "${DB_DIR}"
 
 # ─── 4. basic-auth ───
 # - Se GOACCESS_PASSWORD fornecido: cria/atualiza .htpasswd-traffic com a senha.
