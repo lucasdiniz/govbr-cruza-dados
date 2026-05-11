@@ -1,0 +1,31 @@
+[Unit]
+Description=Cruza-dados — tail recent access.log lines for /_traffic/raw
+After=nginx.service
+Wants=nginx.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+SupplementaryGroups=adm
+# Loop infinito: a cada 5s, escreve as ultimas 1000 linhas do access.log
+# em /var/www/traffic/raw.txt (write atomico via .tmp + mv).
+# Ratio CPU/IO: marginal (tail eh O(n) em bytes lidos do fim do arquivo).
+ExecStart=/bin/bash -c 'while true; do tail -n 1000 /var/log/nginx/access.log > /var/www/traffic/raw.txt.tmp 2>/dev/null && mv -f /var/www/traffic/raw.txt.tmp /var/www/traffic/raw.txt; sleep 5; done'
+
+Restart=on-failure
+RestartSec=10
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/traffic
+
+# Memoria: tail -n 1000 nem chega a 1MB. Cap baixo pra liberar RAM.
+MemoryHigh=50M
+MemoryMax=100M
+
+[Install]
+WantedBy=multi-user.target
