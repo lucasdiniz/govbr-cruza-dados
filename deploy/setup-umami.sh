@@ -88,11 +88,26 @@ else
     log "Node $(node -v) ja instalado, ok."
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
-    log "Instalando pnpm globalmente..."
-    npm install -g pnpm
-else
-    log "pnpm $(pnpm -v) ja instalado, ok."
+# pnpm: pinado em major 9. pnpm 10+ bloqueia build scripts de pacotes
+# nao-trusted por padrao (ERR_PNPM_IGNORED_BUILDS), e Umami v3.1.0 nao
+# declara um packageManager nem onlyBuiltDependencies nem .npmrc — entao
+# com pnpm 11 o `pnpm install --frozen-lockfile` falha porque os
+# postinstall do @prisma/engines, esbuild, @swc/core, etc. nao rodam,
+# resultando em Prisma sem binarios e build aborta. Pin em 9 evita isso.
+PNPM_MAJOR="${PNPM_MAJOR:-9}"
+NEED_PNPM=1
+if command -v pnpm >/dev/null 2>&1; then
+    PNPM_CUR_MAJOR=$(pnpm -v | cut -d. -f1)
+    if [[ "${PNPM_CUR_MAJOR}" == "${PNPM_MAJOR}" ]]; then
+        NEED_PNPM=0
+        log "pnpm $(pnpm -v) ja instalado (major ${PNPM_MAJOR}), ok."
+    else
+        log "pnpm $(pnpm -v) instalado mas precisa do major ${PNPM_MAJOR}, vai reinstalar."
+    fi
+fi
+if [[ "${NEED_PNPM}" -eq 1 ]]; then
+    log "Instalando pnpm@${PNPM_MAJOR} globalmente..."
+    npm install -g "pnpm@${PNPM_MAJOR}"
 fi
 
 # ─── 3) Postgres: DB + role ─────────────────────────────────────────────────
