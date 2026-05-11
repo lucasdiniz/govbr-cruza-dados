@@ -1,0 +1,37 @@
+[Unit]
+Description=GoAccess real-time traffic dashboard (cruza-dados)
+Documentation=https://goaccess.io/
+After=nginx.service
+Wants=nginx.service
+
+[Service]
+Type=simple
+# www-data ja eh dono de /var/log/nginx/access.log (root:adm 640), entao
+# adicionamos como Supplementary group adm pra garantir leitura mesmo se o
+# packaging do nginx mudar o owner pra root no futuro.
+User=www-data
+Group=www-data
+SupplementaryGroups=adm
+
+ExecStart=/usr/bin/goaccess \
+    --config-file=/etc/goaccess/cruza-goaccess.conf \
+    --no-global-config
+
+Restart=on-failure
+RestartSec=10
+
+# Memoria: --persist --restore carrega state na inicializacao. Observed ~30-80MB
+# em prod tipico; 400M de teto eh folga generosa sem comprometer Postgres+uvicorn
+# numa VM B4 (16GB).
+MemoryHigh=200M
+MemoryMax=400M
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/traffic /var/lib/goaccess
+
+[Install]
+WantedBy=multi-user.target

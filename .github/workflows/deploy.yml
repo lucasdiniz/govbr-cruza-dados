@@ -658,6 +658,17 @@ jobs:
           # so reload se config mudou.
           sudo bash deploy/setup-fail2ban.sh
 
+          # Setup GoAccess: dashboard real-time de trafego em /_traffic/
+          # (basic-auth protected). Idempotente: pula instalacao se
+          # GOACCESS_PASSWORD vazio E .htpasswd-traffic nao existe.
+          # Pra ativar pela 1a vez, defina o secret GOACCESS_PASSWORD
+          # (e opcionalmente GOACCESS_USER) no repositorio.
+          sudo env \
+            GOACCESS_USER="${{ secrets.GOACCESS_USER }}" \
+            GOACCESS_PASSWORD="${{ secrets.GOACCESS_PASSWORD }}" \
+            GOACCESS_DOMAIN="${{ secrets.GOACCESS_DOMAIN }}" \
+            bash deploy/setup-goaccess.sh
+
           # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
           # a janela onde nginx serve novo dist/ enquanto workers velhos
           # geram HTML com URLs antigas (404 nos hashed assets).
