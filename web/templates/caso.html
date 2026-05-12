@@ -119,6 +119,19 @@
   }
   .caso-cta .cta-secondary:hover { background: rgba(255, 255, 255, 0.1); }
 
+  /* Titulo extraido do markdown e renderizado antes do hero, para o H1
+     ficar imediatamente abaixo do eyebrow 'Caso investigativo' e acima
+     da imagem hero. */
+  .caso-titulo h1 {
+    font-size: 1.95rem;
+    line-height: 1.25;
+    margin: 0 0 1.5rem;
+    color: #fff;
+  }
+  @media (max-width: 600px) {
+    .caso-titulo h1 { font-size: 1.6rem; }
+  }
+
   /* Markdown rendering */
   .caso-content {
     font-size: 1.04rem;
@@ -267,6 +280,10 @@
 {% block content %}
 <article class="caso-page">
   <p class="caso-eyebrow">Caso investigativo</p>
+
+  {% if titulo_html %}
+  <div class="caso-titulo">{{ titulo_html | safe }}</div>
+  {% endif %}
 
   {% if meta.hero_image %}
   <figure class="caso-hero">

@@ -771,12 +771,20 @@ async def caso(request: Request, slug: str):
     md_text = md_path.read_text(encoding="utf-8")
     html = _render_markdown(md_text)
 
+    # Extrai o H1 do markdown renderizado para colocar antes do hero;
+    # o resto do conteudo segue depois do hero e dos CTAs.
+    import re as _re
+    h1_match = _re.search(r"<h1[^>]*>.*?</h1>", html, flags=_re.DOTALL)
+    titulo_html = h1_match.group(0) if h1_match else ""
+    corpo_html = html[h1_match.end():] if h1_match else html
+
     return templates.TemplateResponse(
         request,
         "caso.html",
         {
             "slug": slug,
             "meta": meta,
-            "conteudo_html": html,
+            "titulo_html": titulo_html,
+            "conteudo_html": corpo_html,
         },
     )
