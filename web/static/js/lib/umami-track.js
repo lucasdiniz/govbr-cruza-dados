@@ -48,3 +48,45 @@ window.trackEvent = function trackEvent(name, props) {
         // noop: analytics nunca pode quebrar a pagina
     }
 };
+
+// ─── Self-identify pra debug/marcacao manual ────────────────────────────────
+// Permite marcar SEU proprio browser nas listas de visitantes do painel Umami
+// pra distinguir sessoes de teste/equipe do trafego real.
+//
+// Uso (uma vez por browser, no DevTools Console):
+//   setUmamiIdentity('lucas')          -> tagga todos eventos com id='lucas'
+//   clearUmamiIdentity()               -> remove a tag
+//
+// A identidade fica em localStorage ('umami.identity') e eh re-aplicada
+// automaticamente em cada pageview / navegacao. No painel Umami, sessoes
+// com identity setada aparecem com o id atrelado (visivel em
+// Sessions > Detalhes).
+//
+// O umami tracker carrega assincrono, entao fazemos poll ate window.umami
+// existir antes de chamar identify(). Limite 5s pra desistir.
+window.setUmamiIdentity = function setUmamiIdentity(name) {
+    try { localStorage.setItem('umami.identity', String(name)); } catch (_) {}
+    try {
+        if (window.umami && typeof window.umami.identify === 'function') {
+            window.umami.identify(String(name));
+        }
+    } catch (_) {}
+};
+window.clearUmamiIdentity = function clearUmamiIdentity() {
+    try { localStorage.removeItem('umami.identity'); } catch (_) {}
+};
+(function _applyIdentityWhenReady() {
+    let me;
+    try { me = localStorage.getItem('umami.identity'); } catch (_) { return; }
+    if (!me) return;
+    let tries = 0;
+    const tick = () => {
+        if (window.umami && typeof window.umami.identify === 'function') {
+            try { window.umami.identify(me); } catch (_) {}
+            return;
+        }
+        if (++tries > 50) return;
+        setTimeout(tick, 100);
+    };
+    tick();
+})();
