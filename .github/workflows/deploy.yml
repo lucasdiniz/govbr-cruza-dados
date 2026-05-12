@@ -648,7 +648,7 @@ jobs:
       # ── Deploy web services ──
       - name: Deploy web frontend and cache warmer
         env:
-          # Passados via env: + sudo --preserve-env no setup-goaccess.sh
+          # Passados via env: + arquivo temp (chmod 600) no setup-goaccess.sh
           # logo abaixo. Os secrets entram no shell SO via variavel de
           # ambiente, nao por substituicao literal, prevenindo injection
           # se a senha tiver caracteres como $ ` " \.
@@ -680,17 +680,29 @@ jobs:
           # Pra ativar pela 1a vez, defina o secret GOACCESS_PASSWORD
           # (e opcionalmente GOACCESS_USER) no repositorio.
           #
-          # Secrets sao passados via env: block (no step, acima) + sudo
-          # --preserve-env, em vez de substituicao direta no shell. Isso
-          # protege contra shell injection se a senha contiver caracteres
-          # como $, ", `, \, etc. — substituicao via ${{ secrets.X }}
-          # dentro do run: e' parseada como shell antes do bash executar.
+          # Secrets sao passados via arquivo temp (chmod 600) em vez de
+          # `sudo --preserve-env=GOACCESS_PASSWORD`, porque sudo loga no
+          # audit do journal o conteudo de cada var preservada
+          # (`ENV=GOACCESS_PASSWORD=<senha> COMMAND=...`). Escrevemos as
+          # vars com printf %q (shell-quoted, safe contra $, `, ", \) em
+          # /tmp/<random>, dropamos pra sudo bash -c '. arquivo; bash
+          # setup-goaccess.sh', e o trap remove o arquivo no exit. O
+          # audit log fica com apenas `COMMAND=/bin/bash -c . /tmp/...; bash
+          # deploy/setup-goaccess.sh` — sem a senha.
           #
           # Soft-fail: o dashboard e' admin-only, opcional. Se a instalacao
           # falhar (PPA fora do ar, apt lock, etc.), logamos e seguimos o
           # deploy — o site publico nao depende disso.
-          sudo --preserve-env=GOACCESS_USER,GOACCESS_PASSWORD,GOACCESS_DOMAIN \
-            bash deploy/setup-goaccess.sh \
+          GOACCESS_SECRETS_FILE=$(mktemp)
+          chmod 600 "$GOACCESS_SECRETS_FILE"
+          trap 'rm -f "$GOACCESS_SECRETS_FILE"' EXIT
+          {
+            printf 'export GOACCESS_USER=%q\n'     "${GOACCESS_USER:-}"
+            printf 'export GOACCESS_PASSWORD=%q\n' "${GOACCESS_PASSWORD:-}"
+            printf 'export GOACCESS_DOMAIN=%q\n'   "${GOACCESS_DOMAIN:-}"
+          } > "$GOACCESS_SECRETS_FILE"
+
+          sudo bash -c ". '$GOACCESS_SECRETS_FILE'; bash deploy/setup-goaccess.sh" \
             || echo "WARNING: setup-goaccess.sh falhou (non-fatal — dashboard admin)."
 
           # Setup Umami analytics (self-hosted em /_traffic/analytics/).
