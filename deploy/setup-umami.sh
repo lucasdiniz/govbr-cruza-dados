@@ -63,6 +63,15 @@ if [[ "${EUID}" -ne 0 ]]; then
     exit 1
 fi
 
+# Saimos da cwd herdada antes de qualquer pnpm/npm. O deploy.yml roda este
+# script com cwd = /home/govbr/govbr-project, que tem um package.json
+# (build-assets pipeline). pnpm 9.15.9 com cwd nesse dir aborta com
+# "packages field missing or empty" — mesmo um `pnpm -v` simples falha. O
+# script tem `set -euo pipefail`, entao isso mata o setup logo na primeira
+# checagem de versao. Cwd neutro (/tmp) resolve sem outros efeitos colaterais
+# (REPO_DIR ja foi resolvido acima como caminho absoluto).
+cd /tmp
+
 # ─── 1) system user ──────────────────────────────────────────────────────────
 if ! id -u "${UMAMI_USER}" >/dev/null 2>&1; then
     log "Criando system user ${UMAMI_USER} com home=${UMAMI_DIR}..."
