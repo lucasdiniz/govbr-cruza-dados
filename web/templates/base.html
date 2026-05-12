@@ -142,9 +142,15 @@
        Snippet so eh emitido quando AMBAS as vars estao setadas no ambiente
        (UMAMI_SCRIPT_URL + UMAMI_WEBSITE_ID), entao o site funciona sem
        analytics enquanto o painel nao for provisionado.
-       data-do-not-track=true respeita o header DNT do navegador. #}
+       data-do-not-track=true respeita o header DNT do navegador.
+       data-before-send aponta pra window.umamiBeforeSend (definido em
+       lib/umami-track.js) que injeta identity do localStorage em TODO
+       payload — incluindo o pageview inicial. Sem isso, ha race
+       condition: init() do tracker dispara pageview antes do nosso
+       identify() rodar -> sessao anonima criada -> distinct_id NAO
+       atrelado. #}
     {% if UMAMI_SCRIPT_URL and UMAMI_WEBSITE_ID %}
-    <script async defer src="{{ UMAMI_SCRIPT_URL }}" data-website-id="{{ UMAMI_WEBSITE_ID }}" data-do-not-track="true"></script>
+    <script async defer src="{{ UMAMI_SCRIPT_URL }}" data-website-id="{{ UMAMI_WEBSITE_ID }}" data-do-not-track="true" data-before-send="umamiBeforeSend"></script>
     {% endif %}
     {% block head_extra %}{% endblock %}
 </head>

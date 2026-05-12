@@ -57,13 +57,37 @@ window.trackEvent = function trackEvent(name, props) {
 //   setUmamiIdentity('lucas')          -> tagga todos eventos com id='lucas'
 //   clearUmamiIdentity()               -> remove a tag
 //
-// A identidade fica em localStorage ('umami.identity') e eh re-aplicada
-// automaticamente em cada pageview / navegacao. No painel Umami, sessoes
-// com identity setada aparecem com o id atrelado (visivel em
-// Sessions > Detalhes).
+// A identidade fica em localStorage ('umami.identity') e eh re-injetada
+// em CADA payload via o hook data-before-send do tracker (ver base.html).
+// Esse hook intercepta todos os sends — incluindo o pageview inicial do
+// init() — antes do fetch acontecer, eliminando race condition entre o
+// tracker dispatchar pageview ANTES de identify() rodar.
 //
-// O umami tracker carrega assincrono, entao fazemos poll ate window.umami
-// existir antes de chamar identify(). Limite 5s pra desistir.
+// O alternativo seria poll de window.umami + chamar identify(), mas isso
+// tem race: o init() do tracker dispara track() (pageview inicial) ANTES
+// do nosso poll chamar identify, entao a sessao anonima eh criada e
+// pageviews ficam la em vez de na sessao identificada.
+//
+// Mantemos tambem a chamada explicita a umami.identify() no setUmamiIdentity,
+// pra que quando o user roda no DevTools imediatamente uma session record
+// com distinct_id seja criada no DB (alem dos payloads subsequentes).
+
+// Hook before-send: intercepta TODO payload (event/identify/performance) e
+// injeta payload.id do localStorage se setado. Roda ANTES do fetch pro
+// /api/send, entao mesmo o pageview inicial (que o init() dispara
+// sincronamente) vai com id atrelado.
+window.umamiBeforeSend = function umamiBeforeSend(_type, payload) {
+    try {
+        const me = localStorage.getItem('umami.identity');
+        if (me && payload && typeof payload === 'object') {
+            payload.id = me;
+        }
+    } catch (_) {
+        // localStorage indisponivel (private mode etc) — payload segue inalterado
+    }
+    return payload;
+};
+
 window.setUmamiIdentity = function setUmamiIdentity(name) {
     try { localStorage.setItem('umami.identity', String(name)); } catch (_) {}
     try {
@@ -75,18 +99,3 @@ window.setUmamiIdentity = function setUmamiIdentity(name) {
 window.clearUmamiIdentity = function clearUmamiIdentity() {
     try { localStorage.removeItem('umami.identity'); } catch (_) {}
 };
-(function _applyIdentityWhenReady() {
-    let me;
-    try { me = localStorage.getItem('umami.identity'); } catch (_) { return; }
-    if (!me) return;
-    let tries = 0;
-    const tick = () => {
-        if (window.umami && typeof window.umami.identify === 'function') {
-            try { window.umami.identify(me); } catch (_) {}
-            return;
-        }
-        if (++tries > 50) return;
-        setTimeout(tick, 100);
-    };
-    tick();
-})();
