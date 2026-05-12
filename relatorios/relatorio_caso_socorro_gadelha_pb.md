@@ -10,9 +10,6 @@
 
 ## 1. Resumo Executivo
 
-![Maria do Socorro Gadelha Campos de Lira, Secretária Municipal de Habitação Social de João Pessoa, em audiência pública na Câmara Municipal em 04/06/2024.](/static/img/casos/socorro-foto.jpg)
-*Maria do Socorro Gadelha Campos de Lira, atual Secretária Municipal de Habitação Social de João Pessoa, em audiência pública na Câmara Municipal em 04/06/2024. Foto: Câmara Municipal de João Pessoa.*
-
 A servidora **Maria do Socorro Gadelha Campos de Lira** (CPF nº ***.256.054-**, matrícula federal nº 2933908) foi punida pela Controladoria-Geral da União (CGU) em 29 de dezembro de 2022 (publicação no DOU em 02/01/2023) com a sanção de **destituição de cargo em comissão**, com base no Art. 127, V, c/c Art. 135 da Lei nº 8.112/90, por **descumprir os deveres de zelo, observância às normas legais e regulamentares e moralidade administrativa** previstos nos incisos I, III e IX do Art. 116 da mesma Lei. O ato — Portaria CGU nº 3.655, de 29/12/2022 — converteu retroativamente sua exoneração de 1º de janeiro de 2019 (Portaria nº 438 do Ministro Chefe da Casa Civil) na penalidade de destituição, no Processo Administrativo Disciplinar nº 00190.101924/2020-94.
 
 A sanção foi registrada no Cadastro de Expulsões da Administração Federal (CEAF) sob o número 278654.

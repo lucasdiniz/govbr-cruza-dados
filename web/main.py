@@ -715,6 +715,18 @@ CASOS: dict[str, dict[str, str]] = {
         ),
         "data_publicacao": "2026-05-11",
         "og_image": "/static/img/casos/socorro-foto.jpg",
+        "hero_image": "/static/img/casos/socorro-foto.jpg",
+        "hero_alt": (
+            "Maria do Socorro Gadelha Campos de Lira, Secretária Municipal de "
+            "Habitação Social de João Pessoa, em audiência pública na Câmara "
+            "Municipal em 04/06/2024."
+        ),
+        "hero_caption": (
+            "Maria do Socorro Gadelha Campos de Lira, atual Secretária "
+            "Municipal de Habitação Social de João Pessoa, em audiência "
+            "pública na Câmara Municipal em 04/06/2024. "
+            "Foto: Câmara Municipal de João Pessoa."
+        ),
     },
 }
 
