@@ -170,6 +170,11 @@ NODE_ENV=production
 # 7 abaixo). Mantemos ele tambem em runtime pra qualquer codigo server-side
 # que leia process.env.BASE_PATH.
 BASE_PATH=${UMAMI_BASE_PATH}
+# SALT_ROTATION=none -> salt fixo (visitantes anonimos mantem o mesmo
+# session_id permanentemente). Suportado via patch local em src/lib/crypto.ts
+# aplicado pelo setup-umami.sh passo 6b. Default upstream eh 'month'.
+# Outros valores aceitos pelo Umami: 'day', 'week', 'month'.
+SALT_ROTATION=none
 # Telemetria do Next.js — desabilitada.
 NEXT_TELEMETRY_DISABLED=1
 EOF
@@ -211,12 +216,52 @@ else
 fi
 chown -R "${UMAMI_USER}:${UMAMI_USER}" "${UMAMI_DIR}"
 
-# ─── 7) Build (skip se marker == versao+base-path atual) ────────────────────
+# ─── 6b) TPB patch: SALT_ROTATION=none (salt fixo) ──────────────────────────
+# Umami v3.1.0 src/lib/crypto.ts:getSalt() so suporta nativamente day/week/
+# month (qualquer outro valor cai em startOfMonth — comportamento default).
+# Patch idempotente adiciona early-return pra `none`, retornando uma string
+# constante. Combinado com SALT_ROTATION=none no /etc/umami.env, faz com
+# que session_id de visitantes anonimos NAO rotacione ao trocar de mes —
+# mesmo (website, ip, user_agent) gera o mesmo session_id pra sempre.
+#
+# Trade-off LGPD: Umami escolheu rotacionar mensalmente como mecanismo
+# privacy-by-default (visitantes "esquecidos" a cada mes). Com salt fixo
+# o tracking vira longitudinal permanente — equivalente a fingerprint
+# estavel sem cookie. Aceito porque (a) so dados publicos/agregados sao
+# expostos no painel, (b) o painel inteiro fica behind basic-auth +
+# login admin, e (c) IP anonymization continua ativa pela hash.
+#
+# O patch checa marker antes de aplicar — sucessivas execucoes ficam
+# no-op. Se Umami atualizar e mudar a assinatura de getSalt, o script
+# aborta com mensagem clara em vez de silenciosamente ignorar.
+log "Aplicando patch SALT_ROTATION=none em src/lib/crypto.ts..."
+CRYPTO_TS="${UMAMI_DIR}/src/lib/crypto.ts"
+sudo -u "${UMAMI_USER}" python3 - "${CRYPTO_TS}" <<'PYEOF'
+import sys
+p = sys.argv[1]
+text = open(p, 'r', encoding='utf-8').read()
+marker = "transparenciapb-fixed-salt-v1"
+if marker in text:
+    print("[patch crypto.ts] already applied, skipping.")
+    sys.exit(0)
+needle = "export function getSalt(saltRotation: string, createdAt: Date): string {\n"
+if needle not in text:
+    print("[patch crypto.ts] ERRO: assinatura getSalt nao bate — Umami upgrade pode ter quebrado o patch.", file=sys.stderr)
+    sys.exit(1)
+inject = "  // TPB patch: salt fixo quando SALT_ROTATION=none\n  if (saltRotation === 'none') return 'transparenciapb-fixed-salt-v1';\n"
+new_text = text.replace(needle, needle + inject, 1)
+open(p, 'w', encoding='utf-8').write(new_text)
+print("[patch crypto.ts] patched.")
+PYEOF
+
+# ─── 7) Build (skip se marker == versao+base-path+patch atual) ──────────────
 # BASE_PATH eh baked in pelo Next.js durante `pnpm run build` (next.config.js
-# usa process.env.BASE_PATH). Trocar UMAMI_BASE_PATH exige rebuild — por
-# isso o marker carrega versao+base-path.
+# usa process.env.BASE_PATH). Trocar UMAMI_BASE_PATH exige rebuild. O sufixo
+# "salt-patch-v1" no BUILD_KEY garante que builds anteriores (antes do patch
+# em src/lib/crypto.ts) sao invalidados — qualquer mudanca no patch precisa
+# bumpar o sufixo aqui pra forcar rebuild.
 NEED_BUILD=1
-BUILD_KEY="${UMAMI_VERSION}|${UMAMI_BASE_PATH}"
+BUILD_KEY="${UMAMI_VERSION}|${UMAMI_BASE_PATH}|salt-patch-v1"
 if [[ -f "${BUILD_MARKER}" ]]; then
     if [[ "$(cat "${BUILD_MARKER}")" == "${BUILD_KEY}" ]]; then
         NEED_BUILD=0
