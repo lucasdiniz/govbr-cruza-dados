@@ -714,6 +714,7 @@ CASOS: dict[str, dict[str, str]] = {
             "&d_cnpjs=13519354&d_tab=dialog-section-3"
         ),
         "data_publicacao": "2026-05-11",
+        "og_image": "/static/img/casos/socorro-foto.jpg",
     },
 }
 

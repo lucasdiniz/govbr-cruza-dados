@@ -10,6 +10,9 @@
 
 ## 1. Resumo Executivo
 
+![Maria do Socorro Gadelha Campos de Lira, Secretária Municipal de Habitação Social de João Pessoa, em audiência pública na Câmara Municipal em 04/06/2024.](/static/img/casos/socorro-foto.jpg)
+*Maria do Socorro Gadelha Campos de Lira, atual Secretária Municipal de Habitação Social de João Pessoa, em audiência pública na Câmara Municipal em 04/06/2024. Foto: Câmara Municipal de João Pessoa.*
+
 A servidora **Maria do Socorro Gadelha Campos de Lira** (CPF nº ***.256.054-**, matrícula federal nº 2933908) foi punida pela Controladoria-Geral da União (CGU) em 29 de dezembro de 2022 (publicação no DOU em 02/01/2023) com a sanção de **destituição de cargo em comissão**, com base no Art. 127, V, c/c Art. 135 da Lei nº 8.112/90, por **descumprir os deveres de zelo, observância às normas legais e regulamentares e moralidade administrativa** previstos nos incisos I, III e IX do Art. 116 da mesma Lei. O ato — Portaria CGU nº 3.655, de 29/12/2022 — converteu retroativamente sua exoneração de 1º de janeiro de 2019 (Portaria nº 438 do Ministro Chefe da Casa Civil) na penalidade de destituição, no Processo Administrativo Disciplinar nº 00190.101924/2020-94.
 
 A sanção foi registrada no Cadastro de Expulsões da Administração Federal (CEAF) sob o número 278654.
@@ -155,6 +158,9 @@ O que o currículo **não menciona** é o desfecho disciplinar desse cargo feder
 - Que a sanção está registrada no CEAF sob o nº 278654.
 
 Essa omissão é eticamente relevante porque o currículo não foi apresentado como currículo de emprego comum, mas como peça instrutória de processo legislativo destinado a justificar a concessão de honraria pública.
+
+![Recorte da seção 'Experiência Profissional' do currículo oficial submetido por Maria do Socorro Gadelha à ALPB em março de 2025 como peça instrutória do Projeto de Resolução 356/2025. A linha 'Secretária Nacional de Habitação (Dezembro/2017-Janeiro/2019), Ministério das Cidades' aparece destacada. O documento cita o cargo, mas não menciona em nenhum ponto que a exoneração foi convertida em destituição disciplinar pela CGU em 29/12/2022 (Portaria 3.655), nem cita o registro 278654 no CEAF.](/static/img/casos/socorro-cv.png)
+*Recorte do CV oficial submetido pela homenageada à ALPB como peça instrutória do Projeto de Resolução 356/2025. O cargo federal está listado, mas a sanção disciplinar não. Fonte: SAPL/ALPB.*
 
 ---
 

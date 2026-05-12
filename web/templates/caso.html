@@ -5,6 +5,19 @@
 {% block og_description %}{{ meta.description }}{% endblock %}
 {% block og_type %}article{% endblock %}
 
+{% block og_image %}
+{% if meta.og_image %}
+<meta property="og:image" content="{{ request_origin(request) if request else '' }}{{ meta.og_image }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:alt" content="{{ meta.title }}">
+<meta name="twitter:image" content="{{ request_origin(request) if request else '' }}{{ meta.og_image }}">
+{% else %}
+{{ super() }}
+{% endif %}
+{% endblock %}
+
 {% block json_ld_extra %}
 {% set _origin = request_origin(request) if request else '' %}
 <script type="application/ld+json">
@@ -119,6 +132,27 @@
   .caso-content p { margin: 0 0 1.1rem; }
   .caso-content strong { color: #fff; font-weight: 700; }
   .caso-content em { color: rgba(255,255,255,0.85); }
+
+  .caso-content img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 1.5rem auto 0.5rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  /* Paragrafos que comecam com <em> logo apos uma imagem viram legenda
+     (markdown nao tem <figure>, entao a convencao eh: imagem + paragrafo
+     em italico = caption). */
+  .caso-content p > em:only-child {
+    display: block;
+    text-align: center;
+    font-size: 0.88rem;
+    color: rgba(255,255,255,0.6);
+    margin: 0 auto 1.5rem;
+    max-width: 90%;
+    line-height: 1.4;
+  }
 
   .caso-content a {
     color: #7da3ff;
