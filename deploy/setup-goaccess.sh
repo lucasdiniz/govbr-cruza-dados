@@ -35,7 +35,11 @@ TAIL_SERVICE_DST="/etc/systemd/system/cruza-traffic-tail.service"
 HTPASSWD="/etc/nginx/.htpasswd-traffic"
 OUT_DIR="/var/www/traffic"
 DB_DIR="/var/lib/goaccess"
-GEOIP_DB="${DB_DIR}/dbip-country-lite.mmdb"
+GEOIP_DB="${DB_DIR}/dbip-city-lite.mmdb"
+# Country DB legado (db-ip.com gratuita, sem signup). Removida apos
+# upgrade pra City DB que oferece resolucao cidade/regiao alem de pais
+# (uteis pra entender em qual cidade da PB o trafego se concentra).
+LEGACY_COUNTRY_DB="${DB_DIR}/dbip-country-lite.mmdb"
 
 log() { echo "[goaccess] $*"; }
 
@@ -100,9 +104,18 @@ fi
 chown root:www-data "${HTPASSWD}"
 chmod 640 "${HTPASSWD}"
 
-# ─── 4b. GeoIP database (db-ip.com free lite, sem signup) ───
+# ─── 4b. GeoIP database (db-ip.com free lite City, sem signup) ─────
+# A City DB inclui resolucao geografica de pais + regiao + cidade ate
+# o nivel de "Joao Pessoa", "Campina Grande", etc. Util pra entender
+# concentracao geografica do trafego dentro do estado-foco (PB).
+# Tamanho: ~70MB (vs ~3MB da Country). Aceitavel num VPS.
 # Atualizada mensalmente; idempotente — pula download se ja existe e tem
 # menos de 30 dias. Pra forcar refresh: sudo rm ${GEOIP_DB}.
+#
+# Upgrade atomico: baixamos pra mktemp, validamos com gunzip -t, e SO
+# ENTAO movemos pro destino + removemos a Country DB legada. Se algum
+# passo falhar (wget 404, gunzip corrompido), nao perdemos o fallback —
+# o painel Geo continua funcionando com a DB que ja estava la.
 needs_geoip=0
 if [[ ! -f "${GEOIP_DB}" ]]; then
     needs_geoip=1
@@ -112,17 +125,27 @@ elif [[ -n "$(find "${GEOIP_DB}" -mtime +30 2>/dev/null)" ]]; then
 fi
 if [[ "${needs_geoip}" -eq 1 ]]; then
     YYYYMM="$(date +%Y-%m)"
-    URL="https://download.db-ip.com/free/dbip-country-lite-${YYYYMM}.mmdb.gz"
-    log "Baixando GeoIP de ${URL}..."
-    if wget -q -O "${GEOIP_DB}.gz" "${URL}"; then
-        gunzip -f "${GEOIP_DB}.gz"
-        chown www-data:www-data "${GEOIP_DB}"
-        chmod 644 "${GEOIP_DB}"
-        log "GeoIP DB instalado em ${GEOIP_DB}"
+    URL="https://download.db-ip.com/free/dbip-city-lite-${YYYYMM}.mmdb.gz"
+    TMP_GZ="$(mktemp --tmpdir dbip-city-XXXXXX.mmdb.gz)"
+    TMP_MMDB="${TMP_GZ%.gz}"
+    log "Baixando GeoIP City de ${URL}..."
+    if wget -q -O "${TMP_GZ}" "${URL}" \
+        && gunzip -t "${TMP_GZ}" 2>/dev/null \
+        && gunzip -f "${TMP_GZ}" \
+        && [[ -s "${TMP_MMDB}" ]]; then
+        chown www-data:www-data "${TMP_MMDB}"
+        chmod 644 "${TMP_MMDB}"
+        mv -f "${TMP_MMDB}" "${GEOIP_DB}"
+        log "GeoIP City DB instalado em ${GEOIP_DB}"
+        # SO depois do mv bem sucedido eh seguro remover a Country legada.
+        if [[ -f "${LEGACY_COUNTRY_DB}" ]]; then
+            log "Removendo Country DB legado (${LEGACY_COUNTRY_DB})."
+            rm -f "${LEGACY_COUNTRY_DB}"
+        fi
     else
-        log "AVISO: download do GeoIP falhou. Painel Geo Location vai ficar vazio."
+        log "AVISO: download/validacao do GeoIP City falhou. Mantendo DB anterior."
         log "       URL tentada: ${URL}"
-        rm -f "${GEOIP_DB}.gz"
+        rm -f "${TMP_GZ}" "${TMP_MMDB}" 2>/dev/null
     fi
 fi
 

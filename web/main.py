@@ -364,6 +364,13 @@ JS_FILES: list[str] = [
     "lib/umami-track.js",
     # scroll-deep: depende do trackEvent helper acima.
     "lib/scroll-deep.js",
+    # page-engagement: tempo na pagina + scroll max no pagehide.
+    # Depende do trackEvent helper. Init em pages/main.js.
+    "lib/page-engagement.js",
+    # dialog-engagement: pareia dialog-aberto com dialog-fechado.
+    # Listener self-attaching via lib/umami-track.js -> document
+    # 'tpb:tracked' CustomEvent. Init em pages/main.js.
+    "lib/dialog-engagement.js",
     "components/search-tabs.js",
     "components/mode-toggle.js",
     # md3-ready helper. Must load early so any later script can register
@@ -428,7 +435,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "108"
+templates.env.globals["ASSET_VERSION"] = "109"
 
 
 # ─────────────────────────────────────────────────────────────────────────

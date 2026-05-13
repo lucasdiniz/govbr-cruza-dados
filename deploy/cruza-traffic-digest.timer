@@ -1,0 +1,15 @@
+[Unit]
+Description=Timer diario do digest de trafego (transparenciapb)
+Documentation=https://github.com/lucasdiniz/govbr-cruza-dados/blob/main/deploy/cruza-traffic-digest.sh
+
+[Timer]
+# Diariamente as 07:00 America/Recife (UTC-3). Logrotate do nginx roda
+# em ~06:25, entao access.log.1 ja contem ontem inteiro quando o timer
+# dispara.
+OnCalendar=*-*-* 10:00:00 UTC
+Persistent=true
+# Se a VM ficar off no horario, roda assim que voltar.
+AccuracySec=15min
+
+[Install]
+WantedBy=timers.target

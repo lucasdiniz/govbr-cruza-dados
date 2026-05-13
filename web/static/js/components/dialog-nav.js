@@ -27,6 +27,21 @@ function _dialogPop() {
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog || !_dialogStack.length) return;
     const prev = _dialogStack.pop();
+
+    // Engagement tracking: dispara `dialog-restored` ANTES de substituir
+    // o body.innerHTML. O listener de dialog-engagement faz flush() das
+    // metricas (dwell/scroll/tabs) do tipo atual lendo as dimensions do
+    // .dialog-body ainda intactas — i.e. ainda exibindo o conteudo do
+    // dialog que estamos saindo. Depois disso o body eh trocado e o
+    // listener tambem chama start(prev.tipo) pra reiniciar tracking limpo.
+    // Sem essa ordem, flush() leria scrollHeight/clientHeight do conteudo
+    // ja restaurado e atribuiria scroll_max errado ao tipo que estamos
+    // fechando (achado do review: gpt-5.5).
+    _currentDialogType = prev.tipo || '';
+    if (typeof trackEvent === 'function' && _currentDialogType) {
+        trackEvent('dialog-restored', { tipo: _currentDialogType });
+    }
+
     dialog.querySelector('.dialog-title').textContent = prev.title;
     const body = dialog.querySelector('.dialog-body');
     body.innerHTML = prev.html;
@@ -34,10 +49,6 @@ function _dialogPop() {
     _decorateDialogBody(body);
     if (prev.activePanelId) _activateDialogSection(body, prev.activePanelId, { focus: false, scroll: false });
     if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
-    // Restaura tipo do nivel anterior pra que drill chain subsequente
-    // (ex: voltar pra fornecedor e abrir outro empenho) tenha drilled_from
-    // correto.
-    _currentDialogType = prev.tipo || '';
     // Atualiza URL pro state do nivel anterior (sem nova history entry).
     // Race guard: bumpa seq pra cancelar fetches inflight da camada que
     // estamos saindo.

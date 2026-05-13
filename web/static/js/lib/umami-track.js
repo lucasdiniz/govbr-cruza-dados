@@ -50,6 +50,36 @@
 //   empenho-table-sort    - {coluna, direcao: 'asc'|'desc'}
 //   api-error             - {endpoint, status}  (drilldown falhou;
 //                            status=0 = network error)
+//   pagina-saida          - {pagina, tempo_ms, scroll_max_pct}
+//                           Disparado UMA UNICA VEZ por page load quando
+//                           a aba fica oculta (visibilitychange) ou no
+//                           pagehide. Mede tempo real de engajamento
+//                           (vs scroll-deep que so dispara em marcos
+//                           discretos) e profundidade maxima do scroll.
+//                           Implementado em lib/page-engagement.js;
+//                           respeita o mesmo whitelist de paginas do
+//                           scroll-deep (cidade, empresa, caso, etc).
+//   dialog-fechado        - {tipo, dwell_ms, tabs_visitadas, scroll_max_pct,
+//                            drilled_to?}
+//                           Pareado com dialog-aberto. Mede engagement
+//                           real por dialog: quanto tempo o user ficou,
+//                           quantas tabs DISTINTAS explorou, quanto do
+//                           conteudo rolou. `drilled_to` so presente
+//                           quando o dialog "fechou" porque o user
+//                           navegou pra outro tipo de dialog (chain sem
+//                           fechar o md-dialog), ou clicou voltar e
+//                           restaurou o nivel anterior
+//                           (`drilled_to='back-<tipo>'`). Implementado
+//                           em lib/dialog-engagement.js.
+//   dialog-restored       - {tipo} Disparado quando o user clica
+//                           "voltar" do dialog stack e o conteudo de um
+//                           dialog anterior eh re-renderizado.
+//                           tipo = nivel restaurado. Permite distinguir
+//                           "abri novo" (dialog-aberto) de "voltei"
+//                           (dialog-restored). dialog-engagement usa pra
+//                           flushar a sessao do nivel atual marcando
+//                           drilled_to='back-<tipo>' e comecar nova
+//                           sessao com o tipo restaurado.
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {
@@ -61,6 +91,18 @@ window.trackEvent = function trackEvent(name, props) {
         }
     } catch (_) {
         // noop: analytics nunca pode quebrar a pagina
+    }
+    // Dispatch CustomEvent espelhando o track. Permite que listeners
+    // internos (dialog-engagement, futuros agregadores) reajam a eventos
+    // SEM precisar ser invocados explicitamente por cada call-site. O
+    // dispatch acontece mesmo em dev sem Umami carregado — desacopla
+    // analytics do estado do tracker.
+    try {
+        document.dispatchEvent(new CustomEvent('tpb:tracked', {
+            detail: { name: String(name), props: (props && typeof props === 'object') ? props : null },
+        }));
+    } catch (_) {
+        // CustomEvent nao suportado / document indisponivel — ignora.
     }
 };
 
