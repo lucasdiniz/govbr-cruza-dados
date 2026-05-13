@@ -4,7 +4,9 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     if (!dialog) return;
     const fromUrl = !!options.fromUrl;
     const isInitialOpen = !dialog.open;
+    const drilledFrom = isInitialOpen ? '' : _currentDialogType;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    _currentDialogType = 'servidor';
     // URL state push/replace.
     if (typeof _dialogStateApply === 'function') {
         const cnpjsStr = (Array.isArray(cnpjs) ? cnpjs : [])
@@ -31,6 +33,13 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         cpf6: String(cpf6 || ''),
         nome: servidorNome || nome || '',
         municipio: _currentMunicipio || '',
+    });
+    else if (drilledFrom) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'servidor',
+        cpf6: String(cpf6 || ''),
+        nome: servidorNome || nome || '',
+        municipio: _currentMunicipio || '',
+        drilled_from: drilledFrom,
     });
 
     const data = await _fetchServidorDetails(cpf6, nome, cnpjs, _currentMunicipio);

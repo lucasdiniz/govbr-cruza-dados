@@ -196,9 +196,23 @@ function _decorateDialogBody(body) {
         if (!active) return;
         const id = active.dataset.dialogTarget;
         if (id && id !== body._activeDialogSectionId) {
+            const previousId = body._activeDialogSectionId || '';
             setActive(id, { scroll: true });
             // Reflete a tab atual no URL pra share-link incluir o estado.
             if (typeof _dialogUrlUpdateTab === 'function') _dialogUrlUpdateTab(id);
+            if (typeof trackEvent === 'function') {
+                // Label da tab (kebab-like) vem de _dialogSectionNavLabel,
+                // baseada no h4 da secao — estavel e semantica. Preferimos
+                // ela em vez do id da secao (autogen tipo "dialog-section-3"
+                // sem significado).
+                trackEvent('dialog-tab-change', {
+                    tipo: _currentDialogType || '',
+                    para: (active.textContent || '').trim().slice(0, 40),
+                    de: previousId
+                        ? (sections.find(s => s.id === previousId)?.dataset.dialogLabel || '').slice(0, 40)
+                        : '',
+                });
+            }
         }
     });
 

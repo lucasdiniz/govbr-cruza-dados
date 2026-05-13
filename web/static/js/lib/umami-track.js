@@ -17,12 +17,17 @@
 //   cidade-visita         - {municipio, uf}  (top-of-funnel da cidade)
 //   mapa-cidade-click     - {cidade, metrica}
 //   mapa-metrica-mudou    - {metrica}
-//   dialog-aberto         - {tipo, municipio, ...id-fields conforme tipo}:
+//   dialog-aberto         - {tipo, municipio, ...id-fields conforme tipo,
+//                            drilled_from? (tipo do dialog anterior quando
+//                            usuario navegou de um dialog pra outro sem
+//                            fechar — ex: fornecedor->empenho)}:
 //                             tipo=empenho     -> {empenho}
 //                             tipo=servidor    -> {cpf6, nome}
 //                             tipo=fornecedor  -> {cnpj, nome}
 //                             tipo=licitacao   -> {numero, ano, modalidade}
 //                             tipo=heatmap     -> {ano, mes}
+//   dialog-tab-change     - {tipo, de, para}  (label das tabs do dialog
+//                            quando user troca via click/keyboard/swipe)
 //   empresa-visita        - {cnpj, nome, escopo: 'global'|'municipio', municipio?}
 //   pagina-caso-visita    - {slug}
 //   date-filter-aplicado  - {preset, de?, ate?, municipio?}

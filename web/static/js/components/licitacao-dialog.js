@@ -9,7 +9,9 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     if (!dialog) return;
     const fromUrl = !!options.fromUrl;
     const isInitialOpen = !dialog.open;
+    const drilledFrom = isInitialOpen ? '' : _currentDialogType;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    _currentDialogType = 'licitacao';
     if (typeof _dialogStateApply === 'function') {
         _dialogStateApply({
             d: 'licitacao',
@@ -32,6 +34,14 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         ano: String(anoLicitacao || ''),
         modalidade: modalidade || '',
         municipio: municipio || _currentMunicipio || '',
+    });
+    else if (drilledFrom) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'licitacao',
+        numero: String(numeroLicitacao || ''),
+        ano: String(anoLicitacao || ''),
+        modalidade: modalidade || '',
+        municipio: municipio || _currentMunicipio || '',
+        drilled_from: drilledFrom,
     });
 
     const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
