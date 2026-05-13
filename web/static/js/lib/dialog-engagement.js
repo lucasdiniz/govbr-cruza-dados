@@ -122,6 +122,7 @@
                 const de = typeof props.de === 'string' ? props.de.trim() : '';
                 const para = typeof props.para === 'string' ? props.para.trim() : '';
                 if (!active.initialTabLabel && de) active.initialTabLabel = de;
+                if (!active.initialTabLabel && !de && para) active.initialTabLabel = para;
                 if (para && para !== active.initialTabLabel) active.tabsVisited.add(para);
                 active.tabsCount = 1 + active.tabsVisited.size;
                 return;

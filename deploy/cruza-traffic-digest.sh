@@ -124,9 +124,9 @@ exploits=$(awk -F\" '
         print $1, path
     }
 ' "${FILTERED}" \
-    | grep -iE '\.env|\.git|wp-admin|wp-login|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html' \
+    | { grep -iE '\.env|\.git|wp-admin|wp-login|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html' || true; } \
     | sort | uniq -c | sort -rn | head -10 \
-    | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}') || true
+    | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}')
 
 # IPs identificados (>100 hits + sao usuarios reais provaveis pelo UA)
 # Heuristica simples — Mozilla + nao-bot UA
