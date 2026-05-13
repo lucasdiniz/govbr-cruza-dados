@@ -63,7 +63,7 @@ on:
         type: string
         default: ''
       rewarm_cache_keys:
-        description: 'Lista CSV de prefixos/substrings de query_id para SHADOW rewarm (ZERO-DOWNTIME) no web_cache (ex: "Q65,HEATMAP"). Warm escreve em <qid>__pending; live rows continuam servindo. Apos warm completar com 100% sucesso, swap atomico promove shadow → live. Auto-expansao: se uma source dep (PERFIL/TOP_FORN/TOP_SERV) for shadow-warmed, KPI_SUMMARY (mesmo prefixo) entra em shadow tb. Apenas [a-zA-Z0-9_:] permitidos.'
+        description: 'Lista CSV de query_ids para SHADOW rewarm (ZERO-DOWNTIME) no web_cache (ex: "Q65,HEATMAP"). Match EXATO de qid ou base (NAO substring): "PERFIL" casa PERFIL/ANO:PERFIL/12M:PERFIL mas NAO casa EMPRESA_PERFIL. Warm escreve em <qid>__pending; live rows continuam servindo. Apos warm completar com 100% sucesso, swap atomico promove shadow → live. Auto-expansao: shadow de PERFIL/TOP_FORN/TOP_SERV (qq prefixo) entra KPI_SUMMARY (mesmo prefixo) tambem. Apenas [a-zA-Z0-9_:] permitidos.'
         required: false
         type: string
         default: ''
@@ -835,40 +835,64 @@ jobs:
 
       # ── Configure warm cache skip mode ──
       # Define WARM_SKIP_RECENT_HOURS no drop-in systemd:
-      #   -1 (default): warm skipa qualquer entrada cacheada (qualquer idade).
-      #                 Dados sao estaticos pos-ETL, reprocessar eh waste.
-      #   0           : rebuild completo (sem skip), forcado quando drop_cache=true.
+      #   -1 (default web-only): warm skipa qualquer entrada cacheada (any age).
+      #                          Dados sao estaticos pos-ETL, reprocessar eh waste.
+      #   0           : rebuild completo (sem skip).
       #   N > 0       : legacy resume mode (skip cacheados nas ultimas N horas).
-      # Se drop_cache=true, override pra 0 (cache acabou de ser TRUNCATE-ado).
+      #
+      # Override automatico pra SKIP_HRS=0 quando:
+      #   - drop_cache=true (cache acabou de ser TRUNCATE-ado, sem o que skip)
+      #   - etl_phase in (all, sql, incremental) — ETL/MVs/views mudaram, cache
+      #     ja existente esta STALE; precisa rebuild. (P1 GPT 5.5 review PR #105.)
+      # Operador pode forcar `-1` via input warm_skip_hours mesmo nesses casos
+      # se souber que os dados realmente nao mudaram (raro).
       - name: Configure warm cache skip mode
         if: |
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
+          # Sanitiza warm_skip_hours: aceita inteiro (com -1 sinalizando
+          # "skip if cached at all"). Default -1 do input ja eh seguro;
+          # validacao via regex pra opt-in explicito.
+          RAW_SKIP="${{ inputs.warm_skip_hours }}"
+          if echo "$RAW_SKIP" | grep -qE '^-?[0-9]+$'; then
+            USER_SKIP="$RAW_SKIP"
+          else
+            USER_SKIP=-1
+            echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), usando default -1"
+          fi
+
           if [ "${{ inputs.drop_cache }}" = "true" ]; then
             SKIP_HRS=0
             echo "Full rebuild mode (drop_cache=true → SKIP_HRS=0)"
+          elif [ "${{ inputs.etl_phase }}" = "all" ] \
+            || [ "${{ inputs.etl_phase }}" = "sql" ] \
+            || [ "${{ inputs.etl_phase }}" = "incremental" ]; then
+            # ETL mudou dados/MVs. Default -1 deixaria cache stale eternamente.
+            # Override forca rebuild — a menos que operador explicitamente
+            # passe warm_skip_hours=-1 (sabe que dados nao mudaram de fato).
+            if [ "$USER_SKIP" = "-1" ] && [ "$RAW_SKIP" = "-1" ]; then
+              SKIP_HRS=0
+              echo "ETL fase '${{ inputs.etl_phase }}' mudou dados/MVs → forcando SKIP_HRS=0 (rebuild completo)"
+              echo "  (pra preservar cache mesmo apos ETL, passe warm_skip_hours=-1 explicitamente)"
+            else
+              SKIP_HRS="$USER_SKIP"
+              echo "ETL fase '${{ inputs.etl_phase }}' mudou dados, mas operador escolheu SKIP_HRS=$SKIP_HRS explicitamente"
+            fi
           else
-            # Sanitiza warm_skip_hours: aceita inteiro (com -1 sinalizando
-            # "skip if cached at all"). Default -1 do input ja eh seguro;
-            # validacao via regex pra opt-in explicito.
-            RAW_SKIP="${{ inputs.warm_skip_hours }}"
-            if echo "$RAW_SKIP" | grep -qE '^-?[0-9]+$'; then
-              SKIP_HRS="$RAW_SKIP"
-            else
-              SKIP_HRS=-1
-              echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), usando default -1"
-            fi
-            if [ "$SKIP_HRS" -lt 0 ]; then
-              echo "Default skip-if-cached: warm pula qualquer muni com entrada existente"
-            elif [ "$SKIP_HRS" -eq 0 ]; then
-              echo "Rebuild completo: warm reprocessa tudo"
-            else
-              echo "Legacy resume mode: pula munis cacheados nas ultimas ${SKIP_HRS}h"
-            fi
+            SKIP_HRS="$USER_SKIP"
+          fi
+
+          if [ "$SKIP_HRS" -lt 0 ]; then
+            echo "Mode: skip-if-cached (warm pula qualquer muni com entrada existente)"
+          elif [ "$SKIP_HRS" -eq 0 ]; then
+            echo "Mode: rebuild completo (warm reprocessa tudo)"
+          else
+            echo "Mode: legacy resume (pula cacheados nas ultimas ${SKIP_HRS}h)"
           fi
           # Tb passa WARM_REWARM_KEYS pro warm (lido pelo warm_cache.py
           # como REWARM_KEYS — patterns substring pra shadow rewarm).
@@ -1071,16 +1095,17 @@ jobs:
       # code + OLD cache (servindo rapido); apos restart, cruza-web sobe com
       # NEW code + cache JA QUENTE (queries pre-computadas em web_cache).
       #
-      # `if: always()` garante restart mesmo se Warm cache step retornou
-      # falha parcial (>5% queries com erro). Postflight tem `needs.deploy
-      # == success`; o continue-on-error do warm permite que o job continue
-      # ate aqui. NAO usamos always() puro porque queremos pular restart se
-      # algum step CRITICO anterior (ex: ETL, sync code) falhou — nesse
-      # caso o codigo em disco pode estar inconsistente e seria pior
-      # promove-lo. Por isso usamos `success() || failure()` (skipa em
-      # `cancelled()`).
+      # `if: success()` (sem `failure()`) — restart so se NENHUM step
+      # critico anterior falhou. Warm tem `continue-on-error: true`, entao
+      # falha parcial do warm (>5% queries) NAO transforma o job em failure()
+      # — restart ainda roda nesse caso, que eh o desejado. Mas se algum step
+      # ANTES do warm falhou catastroficamente (ETL crash, sync de codigo
+      # quebrado, build de assets falhou), o job esta em failure() e o
+      # restart SKIPa — promover codigo inconsistente seria pior que manter
+      # o cruza-web no estado anterior. Comportamento corrigido apos review
+      # GPT 5.5 + Opus 4.7 (PR #105).
       - name: Restart cruza-web (after warm)
-        if: success() || failure()
+        if: success()
         run: |
           set -euo pipefail
           echo "=== Restart cruza-web (codigo NOVO + cache QUENTE) ==="

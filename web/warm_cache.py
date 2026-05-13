@@ -98,17 +98,24 @@ def _skip_mode_label() -> str:
 # Durante o warm, resultados novos sao escritos em <query_id>__pending; live
 # rows continuam sendo lidos pelo cruza-web normalmente. Apos warm completar
 # com sucesso (fail == 0 pra essa qid), swap atomico move shadow → live numa
-# transacao curta com UPSERT (nao DELETE+RENAME) pra ser safe com warms
-# parciais (ex: --mun X promove apenas X sem apagar outras munis em live):
+# UNICA transacao cobrindo TODOS os qids elegiveis (atomicity all-or-nothing):
 #
 #   BEGIN;
+#     -- repete por qid em shadow com fail==0:
 #     INSERT INTO web_cache (qid, muni, ...) SELECT '<qid>', muni, ...
 #       FROM web_cache WHERE query_id = '<qid>__pending'
 #       ON CONFLICT (query_id, municipio) DO UPDATE SET ...;
 #     DELETE FROM web_cache WHERE query_id = '<qid>__pending';
 #   COMMIT;
 #
-# Disparado via env WARM_REWARM_KEYS (CSV de substring patterns), populado
+# A unica transacao garante que readers do cruza-web nunca vejam derived
+# (KPI_SUMMARY) na versao NEW enquanto source (PERFIL) ainda esta OLD, ou
+# vice-versa — todos os qids do shadow swap "rolam" simultaneamente do
+# ponto de vista de reads concorrentes (read committed semantics).
+# UPSERT (nao DELETE+RENAME) preserva munis fora do escopo do warm
+# (importante em warms parciais via --mun X).
+#
+# Disparado via env WARM_REWARM_KEYS (CSV de patterns exatos), populado
 # pelo deploy.yml a partir do input `rewarm_cache_keys`. Diferenca pro
 # `invalidate_cache_keys` (que faz hard DELETE): shadow rewarm zera o
 # downtime durante o warm (que pode demorar 12-18h).
@@ -155,14 +162,19 @@ def _skip_mode_label() -> str:
 # shadow KPI_SUMMARY le shadow PERFIL (sem misturar).
 #
 # ─── Limitacoes ──────────────────────────────────────────────────────────
-#   - Swap exige fail == 0 pra essa qid. Senao mantem shadow pra retry
-#     no proximo deploy (que reusa o shadow se ainda existir).
+#   - Swap exige fail == 0 pra essa qid. Senao swap abortado e shadow rows
+#     daquele ciclo sao descartados no inicio do PROXIMO deploy (via Reset
+#     shadow rows step). Nao ha "reuso de shadow parcial" entre deploys —
+#     decisao tomada pra evitar shadow stale quando SQL muda entre deploys
+#     (P1 Opus 4.7 review PR #105). Pra que swap aconteca, todos os munis
+#     da qid precisam ter sucesso num unico ciclo do warm.
 #   - Shadow rows sao DELETADOS no inicio de cada deploy ("Reset shadow
 #     rows" step no deploy.yml), evitando stale entre deploys que
 #     mudaram a SQL.
-#   - Match eh por substring (igual invalidate_cache_keys), entao
-#     pattern "PERFIL" casa PERFIL, ANO:PERFIL, 12M:PERFIL E
-#     EMPRESA_PERFIL. Use prefixos pra escopar (ANO:PERFIL).
+#   - Match eh EXATO (pattern == query_id OR pattern == base), NAO substring.
+#     Pattern "PERFIL" casa "PERFIL", "ANO:PERFIL", "12M:PERFIL" mas
+#     NAO casa "EMPRESA_PERFIL". Use prefixos explicitos pra escopar
+#     (ANO:Q65 vs Q65 sem prefixo).
 # ─────────────────────────────────────────────────────────────────────────
 
 # Sufixo aplicado a query_id pra denotar shadow rows. Reads do cruza-web
@@ -170,7 +182,7 @@ def _skip_mode_label() -> str:
 # _effective_qid.
 SHADOW_SUFFIX = "__pending"
 
-# Patterns de query_id em modo shadow (substring match). Vazio = sem shadow.
+# Patterns de query_id em modo shadow (match EXATO de qid ou base). Vazio = sem shadow.
 REWARM_KEYS = {
     k.strip() for k in os.getenv("WARM_REWARM_KEYS", "").split(",") if k.strip()
 }
@@ -201,23 +213,29 @@ def _qid_prefix(qid: str) -> str:
 def _is_shadow_for(query_id: str) -> bool:
     """True se este query_id deve usar shadow rows ao inves de live.
 
-    Regras:
-      1. Match direto por substring contra REWARM_KEYS.
-      2. Auto-expansao: se query_id eh derived (base em
-         CACHE_DEPENDENCY_GRAPH) E alguma source dep (mesmo prefixo) casa
-         REWARM_KEYS → derived entra em shadow tb.
+    Match semantics (exact base/qid, NAO substring):
+      - Pattern == query_id literal (ex: "ANO:Q65" casa exato).
+      - Pattern == base (qid sem prefixo): ex: "Q65" casa "Q65",
+        "ANO:Q65", "12M:Q65". MAS "PERFIL" NAO casa "EMPRESA_PERFIL"
+        (base de EMPRESA_PERFIL eh "EMPRESA_PERFIL" inteiro).
+      - Auto-expansao: se query_id eh derived (base em
+        CACHE_DEPENDENCY_GRAPH) E alguma source dep (mesmo prefixo) casa
+        REWARM_KEYS → derived entra em shadow tb.
+
+    Por que match exato e nao substring: evita "PERFIL" disparar warm
+    de ~143K empresas via EMPRESA_PERFIL (P1 GPT 5.5 review PR #105).
     """
     if not REWARM_KEYS:
         return False
-    if any(p in query_id for p in REWARM_KEYS):
-        return True
     base = _qid_base(query_id)
+    if any(p == query_id or p == base for p in REWARM_KEYS):
+        return True
     deps = CACHE_DEPENDENCY_GRAPH.get(base)
     if deps:
         prefix = _qid_prefix(query_id)
         for dep_base in deps:
             dep_qid = f"{prefix}{dep_base}"
-            if any(p in dep_qid for p in REWARM_KEYS):
+            if any(p == dep_qid or p == dep_base for p in REWARM_KEYS):
                 return True
     return False
 
@@ -242,114 +260,129 @@ def _record_shadow_result(query_id: str, ok: int, fail: int) -> None:
     _shadow_results[query_id] = (prev_ok + ok, prev_fail + fail)
 
 
-def _swap_shadow(query_id: str) -> tuple[bool, str]:
-    """Atomically promove shadow rows → live rows pra essa query_id.
-
-    Transacao curta com UPSERT (nao DELETE+RENAME) pra que warms parciais
-    (ex: warm_cache --mun "Joao Pessoa") promovam APENAS as munis processadas
-    sem apagar outras munis ja cacheadas em live:
-
-      BEGIN
-        INSERT live FROM shadow rows ON CONFLICT(query_id, muni) DO UPDATE
-        DELETE shadow rows
-      COMMIT
-
-    Em warms full (todos os munis em shadow), o efeito eh equivalente ao
-    DELETE+RENAME — todas as live rows da qid sao substituidas.
-
-    Caller deve verificar fail == 0 ANTES de chamar — swap com fail > 0
-    promoveria shadow incompleto, podendo (a) deixar munis ausentes do
-    shadow sem refresh (UPSERT nao apaga; old data permaneceria) ou
-    (b) gerar inconsistencia parcial. Politica atual: so swap se fail==0.
-
-    Returns (success, message). Em erro DB, rollback + (False, msg).
-    """
-    shadow_qid = f"{query_id}{SHADOW_SUFFIX}"
-    conn = psycopg2.connect(DSN)
-    conn.autocommit = False
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                INSERT INTO {CACHE_TABLE}
-                    (query_id, municipio, columns, rows, row_count, updated_at)
-                SELECT %s, municipio, columns, rows, row_count, now()
-                FROM {CACHE_TABLE}
-                WHERE query_id = %s
-                ON CONFLICT (query_id, municipio) DO UPDATE SET
-                    columns = EXCLUDED.columns,
-                    rows = EXCLUDED.rows,
-                    row_count = EXCLUDED.row_count,
-                    updated_at = EXCLUDED.updated_at
-                """,
-                (query_id, shadow_qid),
-            )
-            promoted = cur.rowcount
-            cur.execute(
-                f"DELETE FROM {CACHE_TABLE} WHERE query_id = %s", (shadow_qid,)
-            )
-            cleaned = cur.rowcount
-        conn.commit()
-        return True, f"promoted {promoted} shadow → live, cleaned {cleaned} shadow rows"
-    except Exception as e:
-        conn.rollback()
-        return False, f"swap failed: {str(e).splitlines()[0]}"
-    finally:
-        conn.close()
-
-
 def _swap_all_pending_shadows(verbose: bool = True) -> tuple[int, int]:
     """Apos warm cycle, swap atomico de cada qid que estava em shadow E
-    completou sem falhas. Mantem shadow rows pra qids com falhas (pra
-    retry no proximo deploy).
+    completou sem falhas (fail == 0).
+
+    Importante (alinhado com Reset shadow step no deploy.yml):
+      - Qids com fail > 0: shadow NAO promovido nesse ciclo. As rows shadow
+        ficam no banco mas serao APAGADAS no inicio do proximo deploy
+        (Reset). Sem reuso entre deploys — evita shadow stale quando SQL
+        muda entre deploys.
+      - Swap ATOMICO entre todas as qids: uma unica transacao cobre
+        UPSERT+DELETE pra todos os qids elegíveis. Elimina janela onde
+        derived (KPI) e source (PERFIL) ficam temporariamente em versoes
+        diferentes em live. (P2 Opus 4.7 + GPT 5.5 review PR #105.)
 
     Returns (swapped_count, kept_count).
     """
     if not _shadow_results:
         return 0, 0
-    swapped = kept = 0
-    if verbose:
-        print(
-            f"\n--- Shadow swap: {len(_shadow_results)} qids candidatas ---",
-            flush=True,
-        )
+
+    swappable: list[str] = []
+    skipped_zero: list[str] = []
+    aborted: list[tuple[str, int, int]] = []
     for qid, (ok, fail) in sorted(_shadow_results.items()):
         if fail > 0:
-            kept += 1
-            if verbose:
-                print(
-                    f"  KEEP shadow {qid}: {ok} ok, {fail} fail — swap "
-                    f"abortado, retry no proximo deploy",
-                    flush=True,
-                )
+            aborted.append((qid, ok, fail))
             continue
         if ok == 0:
-            # Sem rows na shadow: warm pulou tudo (ja cacheado em deploy
-            # anterior). Limpa shadow vazio sem swap.
-            kept += 1
-            if verbose:
-                print(
-                    f"  SKIP shadow {qid}: 0 rows escritas (warm encontrou "
-                    f"tudo ja na shadow de deploy anterior — verifique "
-                    f"se reset rodou)",
-                    flush=True,
-                )
+            skipped_zero.append(qid)
             continue
-        success, msg = _swap_shadow(qid)
-        if success:
-            swapped += 1
-            if verbose:
-                print(f"  SWAP {qid}: {msg}", flush=True)
-        else:
-            kept += 1
-            if verbose:
-                print(f"  FAIL {qid}: {msg}", flush=True)
+        swappable.append(qid)
+
     if verbose:
         print(
-            f"--- Shadow swap done: {swapped} swapped, {kept} kept ---",
+            f"\n--- Shadow swap: {len(swappable)} swap, "
+            f"{len(aborted)} abort (fail>0), {len(skipped_zero)} skip (0 rows) ---",
             flush=True,
         )
-    return swapped, kept
+        for qid, ok, fail in aborted:
+            print(
+                f"  ABORT {qid}: {ok} ok, {fail} fail — shadow descartado "
+                f"no proximo deploy (rerun com mesmo rewarm_cache_keys)",
+                flush=True,
+            )
+        for qid in skipped_zero:
+            print(
+                f"  SKIP {qid}: 0 rows escritas (warm filtrou tudo — "
+                f"verifique se Reset shadow rows step rodou)",
+                flush=True,
+            )
+
+    if not swappable:
+        if verbose:
+            print("--- Shadow swap done: 0 swapped ---", flush=True)
+        return 0, len(aborted) + len(skipped_zero)
+
+    # SWAP ATOMICO entre todos os qids: uma unica transacao. Garante que
+    # readers do cruza-web nunca vejam KPI v=NEW + PERFIL v=OLD durante
+    # a transicao. Read-committed do PG ainda permite que uma request
+    # individual veja snapshot consistente pos-COMMIT. (P2 review.)
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = False
+    swapped = 0
+    failed_qids: list[tuple[str, str]] = []
+    try:
+        with conn.cursor() as cur:
+            for qid in swappable:
+                shadow_qid = f"{qid}{SHADOW_SUFFIX}"
+                try:
+                    cur.execute(
+                        f"""
+                        INSERT INTO {CACHE_TABLE}
+                            (query_id, municipio, columns, rows, row_count, updated_at)
+                        SELECT %s, municipio, columns, rows, row_count, now()
+                        FROM {CACHE_TABLE}
+                        WHERE query_id = %s
+                        ON CONFLICT (query_id, municipio) DO UPDATE SET
+                            columns = EXCLUDED.columns,
+                            rows = EXCLUDED.rows,
+                            row_count = EXCLUDED.row_count,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        (qid, shadow_qid),
+                    )
+                    promoted = cur.rowcount
+                    cur.execute(
+                        f"DELETE FROM {CACHE_TABLE} WHERE query_id = %s",
+                        (shadow_qid,),
+                    )
+                    cleaned = cur.rowcount
+                    if verbose:
+                        print(
+                            f"  SWAP {qid}: promoted {promoted}, cleaned {cleaned}",
+                            flush=True,
+                        )
+                    swapped += 1
+                except Exception as e:
+                    msg = str(e).splitlines()[0]
+                    failed_qids.append((qid, msg))
+                    if verbose:
+                        print(f"  FAIL {qid}: {msg}", flush=True)
+                    # Re-raise pra rollback de TODA a transacao —
+                    # consistencia all-or-nothing entre as qids.
+                    raise
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        if verbose:
+            print(
+                f"--- Shadow swap ROLLBACK (atomico): {len(swappable)} qids "
+                f"NAO promovidos. Re-run com mesmo rewarm_cache_keys. ---",
+                flush=True,
+            )
+        return 0, len(swappable) + len(aborted) + len(skipped_zero)
+    finally:
+        conn.close()
+
+    if verbose:
+        print(
+            f"--- Shadow swap done: {swapped} swapped, "
+            f"{len(aborted) + len(skipped_zero)} kept/skipped ---",
+            flush=True,
+        )
+    return swapped, len(aborted) + len(skipped_zero)
 
 # Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
 # porque rodamos em background e queremos popular o cache mesmo para queries
@@ -1181,10 +1214,11 @@ def main():
             ok_e, fail_e, skip_e = _warm_empresas_phase()
             ok_em, fail_em, skip_em = _warm_empresas_municipios_phase()
         # Shadow swap: apos TODO trabalho do ciclo terminar, fazemos os
-        # swaps atomicos das qids que estavam em shadow E completaram
-        # sem falhas. Mantemos shadow das que falharam (retry no proximo
-        # deploy via mesmo rewarm_cache_keys, que reusa o shadow porque
-        # _filter_cached_munis filtra pelo __pending tb).
+        # swaps atomicos (UMA transacao cobrindo todos os qids elegiveis)
+        # das qids que estavam em shadow E completaram sem falhas.
+        # Qids com fail > 0 ficam SEM swap nesse ciclo; o "Reset shadow
+        # rows" step no proximo deploy descarta o shadow stale antes de
+        # reprocessar.
         # Importante: swap acontece UMA VEZ por ciclo, depois das fases
         # PB + empresas + empresas_municipios. Garante que KPI_SUMMARY
         # (derived) ja foi computado contra o shadow de PERFIL antes do
