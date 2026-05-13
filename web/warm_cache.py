@@ -1164,9 +1164,11 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
         flush=True,
     )
     # Registra resultado pra swap atomico no fim do ciclo (shadow mode).
-    # Importamos CACHE_QUERY_ID = "EMPRESA_PERFIL" do escopo de _warm_one_empresa,
-    # mas aqui usamos literal pra evitar import circular topo-do-modulo.
-    _record_shadow_result("EMPRESA_PERFIL", ok, fail)
+    # Usa a constante canonica de web.routes.empresa em vez de literal pra
+    # nao desincronizar se a constante mudar (P2 Opus 4.7 review PR #105).
+    # Import diferido pra evitar cycle no topo do modulo.
+    from web.routes.empresa import CACHE_QUERY_ID as _EMPRESA_QID
+    _record_shadow_result(_EMPRESA_QID, ok, fail)
     return ok, fail, skipped
 
 
@@ -1519,7 +1521,9 @@ def warm_cycle_empresas_municipios(
         f"({elapsed/60:.1f}min)",
         flush=True,
     )
-    _record_shadow_result("EMPRESA_PERFIL_MUN", ok, fail)
+    # Mesma logica: usa constante canonica em vez de literal.
+    from web.routes.empresa import CACHE_QUERY_ID_MUN as _EMPRESA_MUN_QID
+    _record_shadow_result(_EMPRESA_MUN_QID, ok, fail)
     return ok, fail, skipped
 
 
