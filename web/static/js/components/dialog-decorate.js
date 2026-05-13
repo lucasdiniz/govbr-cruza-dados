@@ -29,6 +29,77 @@ function _dialogSectionNavLabel(rawText) {
     return text.split(' ').slice(0, 2).join(' ');
 }
 
+// Shared stylesheet injected into every <md-tabs> shadow root so its tab
+// strip becomes a natural-width, horizontally scrollable row instead of
+// equally-distributed flex slices. Constructed once and adopted multiple
+// times (CSSStyleSheet objects are reusable across shadow roots).
+let _mdTabsScrollSheet = null;
+function _getMdTabsScrollSheet() {
+    if (_mdTabsScrollSheet) return _mdTabsScrollSheet;
+    if (typeof CSSStyleSheet !== 'function') return null;
+    try {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(`
+            .tabs {
+                width: max-content;
+                min-width: 100%;
+                justify-content: flex-start;
+            }
+            ::slotted(*) {
+                flex: 0 0 auto;
+            }
+        `);
+        _mdTabsScrollSheet = sheet;
+        return sheet;
+    } catch (err) {
+        // Older browsers without constructable stylesheets — fall back to
+        // <style> injection below.
+        return null;
+    }
+}
+
+function _ensureTabsScrollable(tabs) {
+    if (!tabs || tabs._scrollFixApplied) return;
+    const apply = () => {
+        if (!tabs.shadowRoot || tabs._scrollFixApplied) return;
+        const sheet = _getMdTabsScrollSheet();
+        if (sheet && 'adoptedStyleSheets' in tabs.shadowRoot) {
+            tabs.shadowRoot.adoptedStyleSheets = [
+                ...tabs.shadowRoot.adoptedStyleSheets,
+                sheet,
+            ];
+        } else {
+            const style = document.createElement('style');
+            style.textContent = `
+                .tabs { width: max-content; min-width: 100%; justify-content: flex-start; }
+                ::slotted(*) { flex: 0 0 auto; }
+            `;
+            tabs.shadowRoot.appendChild(style);
+        }
+        tabs._scrollFixApplied = true;
+    };
+
+    if (tabs.shadowRoot) {
+        // Already upgraded; apply immediately.
+        apply();
+        return;
+    }
+
+    // Not yet upgraded — wait for the custom element definition and the
+    // first render. Some browsers create the shadowRoot synchronously on
+    // upgrade, others after the first render pass, so we re-check inside
+    // updateComplete.
+    if (typeof customElements !== 'undefined' && typeof customElements.whenDefined === 'function') {
+        customElements.whenDefined('md-tabs').then(() => {
+            if (typeof tabs.updateComplete?.then === 'function') {
+                tabs.updateComplete.then(apply, () => {});
+            } else {
+                apply();
+            }
+        }, () => {});
+    }
+}
+
 function _decorateDialogBody(body) {
     if (!body) return;
     if (body._dialogNavScrollHandler) {
@@ -69,6 +140,17 @@ function _decorateDialogBody(body) {
     const introNote = body.querySelector(':scope > .dialog-history-note');
     if (introNote) introNote.insertAdjacentElement('afterend', nav);
     else body.prepend(nav);
+
+    // Material Web's <md-tabs> bundles `.tabs { width: 100% }` +
+    // `::slotted(*) { flex: 1 }` in its shadow DOM, which on narrow viewports
+    // squeezes each tab to viewport/N width. With `white-space: nowrap` the
+    // labels then overflow into adjacent tabs and visually glue together
+    // ("ResumoPagamentosSancoes..."). We can't reach those rules from light
+    // DOM CSS (no exposed parts/custom-properties), so we inject a small
+    // adoptedStyleSheet into md-tabs's shadow root to give each tab its
+    // natural width and let the host's existing `overflow: auto` provide
+    // horizontal scroll on mobile.
+    _ensureTabsScrollable(tabs);
 
     const tabEls = Array.from(tabs.querySelectorAll('md-secondary-tab'));
     const setActive = (id, opts = {}) => {
