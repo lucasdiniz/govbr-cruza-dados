@@ -56,7 +56,7 @@ function initPageEngagement() {
     const pagina = _pageEngagementKind();
     if (pagina === 'outro') return;
 
-    let maxScrollPct = 0;
+    let maxScrolledPx = 0;
     let visibleSinceMs = performance.now();
     let totalVisibleMs = 0;
     // True apos visibilitychange->hidden (o trecho visivel desde visibleSinceMs
@@ -71,17 +71,8 @@ function initPageEngagement() {
 
     const updateScroll = () => {
         scrollTicking = false;
-        const doc = document.documentElement;
-        const total = Math.max(doc.scrollHeight, doc.offsetHeight, 1);
-        if (total <= window.innerHeight) {
-            // Pagina cabe na viewport — define scroll_max_pct como 100
-            // (o usuario "viu tudo" sem precisar rolar).
-            maxScrollPct = 100;
-            return;
-        }
-        const scrolled = (window.scrollY || window.pageYOffset || 0) + window.innerHeight;
-        const pct = Math.min(100, Math.round((scrolled / total) * 100));
-        if (pct > maxScrollPct) maxScrollPct = pct;
+        const px = (window.scrollY || window.pageYOffset || 0) + window.innerHeight;
+        if (px > maxScrolledPx) maxScrolledPx = px;
     };
 
     const onScroll = () => {
@@ -148,11 +139,25 @@ function initPageEngagement() {
             hiddenFireTimer = null;
         }
         fired = false;
-        maxScrollPct = 0;
+        maxScrolledPx = 0;
         totalVisibleMs = 0;
         visibleTimeAccounted = false;
         visibleSinceMs = performance.now();
         updateScroll();
+    }
+
+    // Computa scroll_max_pct SO no fire(), usando scrollHeight ATUAL.
+    // Evita o bug de "travar em 100%" quando a pagina inicial cabia na
+    // viewport mas cresceu depois (imagens lazy, fontes, expansoes).
+    function computeScrollMaxPct() {
+        const doc = document.documentElement;
+        const total = Math.max(doc.scrollHeight, doc.offsetHeight, 1);
+        if (total <= window.innerHeight) return 100;
+        const px = Math.max(
+            maxScrolledPx,
+            (window.scrollY || window.pageYOffset || 0) + window.innerHeight
+        );
+        return Math.min(100, Math.round((px / total) * 100));
     }
 
     function fire() {
@@ -168,14 +173,14 @@ function initPageEngagement() {
         if (!visibleTimeAccounted) {
             totalVisibleMs += performance.now() - visibleSinceMs;
         }
-        // Refresh scroll max uma ultima vez (caso scroll handler ainda
+        // Refresh scroll position uma ultima vez (caso scroll handler ainda
         // estivesse pendente em requestAnimationFrame).
         updateScroll();
         if (typeof trackEvent === 'function') {
             trackEvent('pagina-saida', {
                 pagina,
                 tempo_ms: Math.round(totalVisibleMs),
-                scroll_max_pct: maxScrollPct,
+                scroll_max_pct: computeScrollMaxPct(),
             });
         }
     }

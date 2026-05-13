@@ -34,23 +34,21 @@
 //     no dialog-aberto, nao o id do md-dialog.
 
 (function () {
-    let active = null;   // { tipo, t0, tabsCount, maxScrollPct, initialTabLabel?, tabsVisited:Set }
+    let active = null;   // { tipo, t0, tabsVisited:Set, maxScrolledPx, initialTabLabel? }
     let scrollEl = null;
     let scrollTicking = false;
+    let _inited = false;
+
+    function readScrolledPx() {
+        if (!scrollEl) return 0;
+        return scrollEl.scrollTop + scrollEl.clientHeight;
+    }
 
     function updateMaxScroll() {
         scrollTicking = false;
         if (!active || !scrollEl) return;
-        const total = Math.max(scrollEl.scrollHeight, 1);
-        const view = scrollEl.clientHeight;
-        if (total <= view) {
-            // Conteudo cabe no viewport do dialog — considera 100%.
-            if (active.maxScrollPct < 100) active.maxScrollPct = 100;
-            return;
-        }
-        const scrolled = scrollEl.scrollTop + view;
-        const pct = Math.min(100, Math.round((scrolled / total) * 100));
-        if (pct > active.maxScrollPct) active.maxScrollPct = pct;
+        const px = readScrolledPx();
+        if (px > active.maxScrolledPx) active.maxScrolledPx = px;
     }
 
     function onDialogScroll() {
@@ -59,17 +57,33 @@
         requestAnimationFrame(updateMaxScroll);
     }
 
+    // Computa scroll_max_pct SO no flush(), nao no start(). Isso evita
+    // o bug de "travar em 100%" quando o body comeca como placeholder
+    // ("Carregando...") que cabe na viewport: se calculassemos no
+    // start() e setassemos maxScrollPct=100, o valor nao reduziria
+    // quando o conteudo real chegasse (que pode ser muito maior).
+    // Avaliamos AGORA usando scrollHeight ATUAL.
+    function computeScrollMaxPct() {
+        if (!scrollEl || !active) return 0;
+        const total = Math.max(scrollEl.scrollHeight, 1);
+        const view = scrollEl.clientHeight;
+        if (total <= view) return 100;
+        const px = Math.max(active.maxScrolledPx, readScrolledPx());
+        return Math.min(100, Math.round((px / total) * 100));
+    }
+
     function flush(drilledTo) {
         if (!active) return;
         const dwellMs = Math.max(0, Math.round(performance.now() - active.t0));
-        // Captura ultima leitura do scroll antes de emitir
-        updateMaxScroll();
+        // tabs_visitadas conta distintas (initialTabLabel + Set de
+        // tabs `para`). Se nunca trocou de tab, sai 1.
+        const tabsCount = 1 + active.tabsVisited.size;
         if (typeof trackEvent === 'function') {
             const props = {
                 tipo: active.tipo,
                 dwell_ms: dwellMs,
-                tabs_visitadas: active.tabsCount,
-                scroll_max_pct: active.maxScrollPct,
+                tabs_visitadas: tabsCount,
+                scroll_max_pct: computeScrollMaxPct(),
             };
             if (drilledTo) props.drilled_to = drilledTo;
             trackEvent('dialog-fechado', props);
@@ -78,9 +92,6 @@
     }
 
     function start(tipo) {
-        // Inicializa scroll listener no body do empresa-dialog. O elemento
-        // eh estavel ao longo de drilldowns (so o innerHTML muda), entao
-        // attach uma vez e reaproveita.
         if (!scrollEl) {
             const dialog = document.getElementById('empresa-dialog');
             const body = dialog ? dialog.querySelector('.dialog-body') : null;
@@ -92,18 +103,20 @@
         active = {
             tipo: String(tipo || 'unknown'),
             t0: performance.now(),
-            tabsCount: 1, // tab inicial sempre conta
-            maxScrollPct: 0,
-            initialTabLabel: null,
             tabsVisited: new Set(),
+            maxScrolledPx: 0,
+            initialTabLabel: null,
         };
-        // Faz uma leitura imediata pra capturar conteudos curtos
-        // (que cabem na viewport, scroll_max=100 sem o usuario rolar).
-        updateMaxScroll();
     }
 
     function init() {
         if (typeof document === 'undefined') return;
+        // Idempotencia: HMR / hot-reload / chamadas duplicadas de
+        // bootstrap podem invocar initDialogEngagement() multiplas
+        // vezes. Sem este guard duplicariamos listeners (tabs contadas
+        // 2x, dialog-fechado disparado 2x por close).
+        if (_inited) return;
+        _inited = true;
 
         document.addEventListener('tpb:tracked', (e) => {
             const detail = e && e.detail;
@@ -112,9 +125,14 @@
             const props = detail.props || {};
 
             if (name === 'dialog-aberto' && props.tipo) {
-                // Drilldown: dialog ja estava aberto e usuario abriu outro
-                // tipo. Fecha a sessao anterior marcando drilled_to.
                 if (active) flush(String(props.tipo));
+                start(props.tipo);
+                return;
+            }
+            if (name === 'dialog-restored' && props.tipo) {
+                // Back-button: flush atual marcando como 'back-<tipo>'
+                // pra distinguir nas metricas de drilldown puro.
+                if (active) flush('back-' + String(props.tipo));
                 start(props.tipo);
                 return;
             }
@@ -124,14 +142,10 @@
                 if (!active.initialTabLabel && de) active.initialTabLabel = de;
                 if (!active.initialTabLabel && !de && para) active.initialTabLabel = para;
                 if (para && para !== active.initialTabLabel) active.tabsVisited.add(para);
-                active.tabsCount = 1 + active.tabsVisited.size;
                 return;
             }
         });
 
-        // Quando o md-dialog efetivamente fecha (post-animacao), emitimos
-        // o evento final. Esperamos pelo MD3 ready pra garantir que o
-        // 'closed' event listener nao seja conectado antes do upgrade.
         const attachClose = () => {
             const dialog = document.getElementById('empresa-dialog');
             if (!dialog) return;

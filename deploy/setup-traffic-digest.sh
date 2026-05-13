@@ -79,12 +79,24 @@ EXISTING_EMAIL_TO=""
 EXISTING_EMAIL_FROM=""
 EXISTING_SUBJECT=""
 
+# Le valores existentes do env file SEM usar `source` (anti-injection).
+# Mesmo parser do cruza-traffic-digest.sh — exige formato KEY="VALUE".
 if [[ -f "${ENV_FILE}" ]]; then
-    # shellcheck disable=SC1090
-    source "${ENV_FILE}" || true
-    EXISTING_EMAIL_TO="${TRAFFIC_DIGEST_EMAIL_TO:-}"
-    EXISTING_EMAIL_FROM="${TRAFFIC_DIGEST_EMAIL_FROM:-}"
-    EXISTING_SUBJECT="${TRAFFIC_DIGEST_SUBJECT:-}"
+    while IFS= read -r _envline; do
+        [[ -z "${_envline}" || "${_envline:0:1}" == "#" ]] && continue
+        if [[ "${_envline}" =~ ^([A-Z_]+)=\"(.*)\"$ ]]; then
+            _k="${BASH_REMATCH[1]}"
+            _v="${BASH_REMATCH[2]}"
+            _v="${_v//\\\\/\\}"
+            _v="${_v//\\\"/\"}"
+            case "${_k}" in
+                TRAFFIC_DIGEST_EMAIL_TO)   EXISTING_EMAIL_TO="${_v}"   ;;
+                TRAFFIC_DIGEST_EMAIL_FROM) EXISTING_EMAIL_FROM="${_v}" ;;
+                TRAFFIC_DIGEST_SUBJECT)    EXISTING_SUBJECT="${_v}"    ;;
+            esac
+        fi
+    done < "${ENV_FILE}"
+    unset _envline _k _v
 fi
 
 FINAL_EMAIL_TO="${EMAIL_TO:-${EXISTING_EMAIL_TO:-}}"
@@ -94,12 +106,33 @@ FINAL_SUBJECT="${SUBJECT:-${EXISTING_SUBJECT:-}}"
 if [[ -z "${EMAIL_TO}" && -z "${EMAIL_FROM}" && -z "${SUBJECT}" && -f "${ENV_FILE}" ]]; then
     log "TRAFFIC_DIGEST_EMAIL_TO vazio no env do deploy — preservando ${ENV_FILE} existente."
 else
+    # Anti header-injection: rejeita newlines/CR (\n, \r) nos valores.
+    # Esses chars sao perigosos em headers de email (From/To/Subject).
+    for _val in "${FINAL_EMAIL_TO}" "${FINAL_EMAIL_FROM}" "${FINAL_SUBJECT}"; do
+        if [[ "${_val}" == *$'\n'* || "${_val}" == *$'\r'* ]]; then
+            log "ERRO: valor de email contem newline/CR — rejeitado por seguranca."
+            exit 1
+        fi
+    done
+    unset _val
+
+    # Escapa \\ e \" pra formato KEY="VALUE" parseavel pelo digest.
+    _quote_env() {
+        local v="$1"
+        v="${v//\\/\\\\}"
+        v="${v//\"/\\\"}"
+        printf '"%s"' "$v"
+    }
+
     log "Escrevendo ${ENV_FILE}"
     {
-        echo "# Gerado por deploy/setup-traffic-digest.sh — editavel mas pode ser sobrescrito"
-        if [[ -n "${FINAL_EMAIL_TO}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_TO=${FINAL_EMAIL_TO}"; fi
-        if [[ -n "${FINAL_EMAIL_FROM}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_FROM=${FINAL_EMAIL_FROM}"; fi
-        if [[ -n "${FINAL_SUBJECT}" ]]; then echo "TRAFFIC_DIGEST_SUBJECT=${FINAL_SUBJECT}"; fi
+        echo "# MANAGED BY deploy/setup-traffic-digest.sh"
+        echo "# Formato: KEY=\"valor\" (sempre quoted; backslash e aspas duplas"
+        echo "# internas precisam estar escaped). Newlines/CR sao rejeitados."
+        echo "# Edicoes manuais podem ser sobrescritas no proximo deploy."
+        if [[ -n "${FINAL_EMAIL_TO}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_TO=$(_quote_env "${FINAL_EMAIL_TO}")"; fi
+        if [[ -n "${FINAL_EMAIL_FROM}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_FROM=$(_quote_env "${FINAL_EMAIL_FROM}")"; fi
+        if [[ -n "${FINAL_SUBJECT}" ]]; then echo "TRAFFIC_DIGEST_SUBJECT=$(_quote_env "${FINAL_SUBJECT}")"; fi
     } > "${ENV_FILE}"
     chmod 640 "${ENV_FILE}"
     chown root:root "${ENV_FILE}"

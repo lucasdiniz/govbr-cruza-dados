@@ -63,12 +63,23 @@
 //                            drilled_to?}
 //                           Pareado com dialog-aberto. Mede engagement
 //                           real por dialog: quanto tempo o user ficou,
-//                           quantas tabs explorou (contador, nao lista),
-//                           quanto do conteudo rolou. `drilled_to` so
-//                           presente quando o dialog "fechou" porque o
-//                           user navegou pra outro tipo de dialog (chain
-//                           sem fechar o md-dialog). Implementado em
-//                           lib/dialog-engagement.js.
+//                           quantas tabs DISTINTAS explorou, quanto do
+//                           conteudo rolou. `drilled_to` so presente
+//                           quando o dialog "fechou" porque o user
+//                           navegou pra outro tipo de dialog (chain sem
+//                           fechar o md-dialog), ou clicou voltar e
+//                           restaurou o nivel anterior
+//                           (`drilled_to='back-<tipo>'`). Implementado
+//                           em lib/dialog-engagement.js.
+//   dialog-restored       - {tipo} Disparado quando o user clica
+//                           "voltar" do dialog stack e o conteudo de um
+//                           dialog anterior eh re-renderizado.
+//                           tipo = nivel restaurado. Permite distinguir
+//                           "abri novo" (dialog-aberto) de "voltei"
+//                           (dialog-restored). dialog-engagement usa pra
+//                           flushar a sessao do nivel atual marcando
+//                           drilled_to='back-<tipo>' e comecar nova
+//                           sessao com o tipo restaurado.
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {

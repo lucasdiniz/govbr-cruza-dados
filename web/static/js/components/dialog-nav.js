@@ -38,6 +38,16 @@ function _dialogPop() {
     // (ex: voltar pra fornecedor e abrir outro empenho) tenha drilled_from
     // correto.
     _currentDialogType = prev.tipo || '';
+    // Engagement tracking: emite novo evento `dialog-restored` pro
+    // listener de dialog-engagement saber que o user voltou pra um
+    // dialog anterior (mesma md-dialog, conteudo diferente do que
+    // estava no momento do back). Sem isso, dwell/scroll/tabs do nivel
+    // restaurado ficam atribuidos ao tipo errado (ultimo aberto antes
+    // do back). Como evento separado de dialog-aberto pra permitir
+    // contar "voltei" distinto de "abri novo" nas metricas.
+    if (typeof trackEvent === 'function' && _currentDialogType) {
+        trackEvent('dialog-restored', { tipo: _currentDialogType });
+    }
     // Atualiza URL pro state do nivel anterior (sem nova history entry).
     // Race guard: bumpa seq pra cancelar fetches inflight da camada que
     // estamos saindo.

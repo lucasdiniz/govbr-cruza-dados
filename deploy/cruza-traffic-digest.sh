@@ -38,10 +38,32 @@ YESTERDAY="$(date -u -d 'yesterday' '+%Y-%m-%d')"
 YESTERDAY_NGINX="$(date -u -d 'yesterday' '+%d/%b/%Y')"
 OUT="${OUTDIR}/${YESTERDAY}.md"
 
-# Load env if present
+# Load env if present.
+#
+# Seguranca: nao usamos `source` pra evitar execucao arbitraria de
+# shell caso o arquivo seja editado manualmente com metacharacters
+# ($(...), backticks, pipes). Parseamos linha a linha exigindo formato
+# KEY="VALUE" com whitelist de chaves. Backslash e aspas duplas
+# internas precisam estar escaped (\" / \\) — o setup-traffic-digest.sh
+# grava no formato correto. Newlines/CR no input sao rejeitados na
+# escrita (anti header-injection).
 if [[ -f /etc/cruza-traffic-digest.env ]]; then
-    # shellcheck disable=SC1091
-    set -a; source /etc/cruza-traffic-digest.env; set +a
+    while IFS= read -r _envline; do
+        [[ -z "${_envline}" || "${_envline:0:1}" == "#" ]] && continue
+        if [[ "${_envline}" =~ ^([A-Z_]+)=\"(.*)\"$ ]]; then
+            _k="${BASH_REMATCH[1]}"
+            _v="${BASH_REMATCH[2]}"
+            # Desescape: \\ -> \, \" -> "
+            _v="${_v//\\\\/\\}"
+            _v="${_v//\\\"/\"}"
+            case "${_k}" in
+                TRAFFIC_DIGEST_EMAIL_TO|TRAFFIC_DIGEST_EMAIL_FROM|TRAFFIC_DIGEST_SUBJECT)
+                    export "${_k}=${_v}"
+                    ;;
+            esac
+        fi
+    done < /etc/cruza-traffic-digest.env
+    unset _envline _k _v
 fi
 
 # ── Filtra so as linhas de ontem (UTC). Combined log format: o timestamp
@@ -124,7 +146,7 @@ exploits=$(awk -F\" '
         print $1, path
     }
 ' "${FILTERED}" \
-    | { grep -iE '\.env|\.git|wp-admin|wp-login|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html' || true; } \
+    | { grep -iE '\.env|\.aws|\.git|\.docker|\.ssh|wp-admin|wp-login|wp-json|xmlrpc\.php|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html|/cgi-bin' || true; } \
     | sort | uniq -c | sort -rn | head -10 \
     | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}')
 
