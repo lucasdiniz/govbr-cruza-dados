@@ -6,10 +6,28 @@ function _cachedPost(url, key, payload) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
     }).then(r => {
-        if (!r.ok) throw new Error(r.status);
+        if (!r.ok) {
+            if (typeof trackEvent === 'function') {
+                // Endpoint generico — sem query/IDs sensiveis. Trim pra
+                // limite de 50 chars do Umami event_string_value.
+                trackEvent('api-error', {
+                    endpoint: String(url).slice(0, 50),
+                    status: r.status,
+                });
+            }
+            throw new Error(r.status);
+        }
         return r.json();
-    }).catch(() => {
+    }).catch((err) => {
         delete _detailCache[key];
+        // Network errors (fetch rejected antes de chegar response) — trackeia
+        // como status=0 pra distinguir de HTTP errors.
+        if (typeof trackEvent === 'function' && !err.message?.match(/^\d{3}$/)) {
+            trackEvent('api-error', {
+                endpoint: String(url).slice(0, 50),
+                status: 0,
+            });
+        }
         return {};
     });
     _detailCache[key] = promise;

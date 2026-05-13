@@ -362,6 +362,8 @@ JS_FILES: list[str] = [
     # umami-track: wrapper safe pra window.umami.track. Precisa carregar
     # ANTES de qualquer componente que dispare trackEvent() — primeiro item.
     "lib/umami-track.js",
+    # scroll-deep: depende do trackEvent helper acima.
+    "lib/scroll-deep.js",
     "components/search-tabs.js",
     "components/mode-toggle.js",
     # md3-ready helper. Must load early so any later script can register
@@ -426,7 +428,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "106"
+templates.env.globals["ASSET_VERSION"] = "107"
 
 
 # ─────────────────────────────────────────────────────────────────────────

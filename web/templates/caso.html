@@ -281,6 +281,12 @@
 <article class="caso-page">
   <p class="caso-eyebrow">Caso investigativo</p>
 
+  <script>
+    if (typeof trackEvent === 'function') {
+        trackEvent('pagina-caso-visita', { slug: {{ slug|tojson }} });
+    }
+  </script>
+
   {% if titulo_html %}
   <div class="caso-titulo">{{ titulo_html | safe }}</div>
   {% endif %}
