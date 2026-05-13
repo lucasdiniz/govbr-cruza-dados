@@ -59,6 +59,12 @@ function initPageEngagement() {
     let maxScrollPct = 0;
     let visibleSinceMs = performance.now();
     let totalVisibleMs = 0;
+    // True apos visibilitychange->hidden (o trecho visivel desde visibleSinceMs
+    // ja foi somado a totalVisibleMs). False apos visibilitychange->visible ou
+    // apos reset de bfcache. Impede double-counting quando fire() eh chamado
+    // logo apos o visibilitychange handler — inclui o caso de pagehide sem
+    // visibilitychange anterior (bug documentado em iOS Safari).
+    let visibleTimeAccounted = false;
     let fired = false;
     let scrollTicking = false;
     let hiddenFireTimer = null;
@@ -96,6 +102,7 @@ function initPageEngagement() {
         if (fired) return;
         if (document.visibilityState === 'hidden') {
             totalVisibleMs += performance.now() - visibleSinceMs;
+            visibleTimeAccounted = true;
             // Em mobile/iOS Safari, hidden pode ocorrer em transicoes
             // temporarias (share sheet, app switch curto). Atrasamos um
             // pouco e cancelamos se a aba voltar a visible.
@@ -110,18 +117,43 @@ function initPageEngagement() {
                 hiddenFireTimer = null;
             }
             visibleSinceMs = performance.now();
+            visibleTimeAccounted = false;
         }
     });
 
-    // pagehide eh o fallback / segundo disparo em browsers onde
-    // visibilitychange nao roda no caminho de unload (raro mas existe).
-    window.addEventListener('pagehide', () => {
+    // pagehide eh o fallback quando visibilitychange nao dispara antes do
+    // unload (bug documentado em alguns cenarios iOS Safari). Recebe o
+    // evento pra detectar bfcache (e.persisted=true).
+    window.addEventListener('pagehide', (e) => {
         if (hiddenFireTimer) {
             clearTimeout(hiddenFireTimer);
             hiddenFireTimer = null;
         }
         if (!fired) fire();
+        // Se a pagina entra no bfcache (e.persisted=true), pode ser restaurada
+        // pelo botao Voltar. Reiniciamos o estado pra medir a proxima sessao
+        // de engajamento sem carregar os acumuladores da sessao anterior.
+        if (e.persisted) resetEngagementState();
     });
+
+    // Restauracao do bfcache (iOS Safari/Chrome back-forward): reinicia o
+    // tracking pra medir a sessao de re-visita corretamente.
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) resetEngagementState();
+    });
+
+    function resetEngagementState() {
+        if (hiddenFireTimer) {
+            clearTimeout(hiddenFireTimer);
+            hiddenFireTimer = null;
+        }
+        fired = false;
+        maxScrollPct = 0;
+        totalVisibleMs = 0;
+        visibleTimeAccounted = false;
+        visibleSinceMs = performance.now();
+        updateScroll();
+    }
 
     function fire() {
         if (fired) return;
@@ -130,7 +162,10 @@ function initPageEngagement() {
             clearTimeout(hiddenFireTimer);
             hiddenFireTimer = null;
         }
-        if (document.visibilityState !== 'hidden') {
+        // Se fire() eh chamado pelo pagehide sem visibilitychange anterior
+        // (bug iOS Safari em alguns cenarios de unload), o trecho visivel
+        // desde visibleSinceMs ainda nao foi acumulado em totalVisibleMs.
+        if (!visibleTimeAccounted) {
             totalVisibleMs += performance.now() - visibleSinceMs;
         }
         // Refresh scroll max uma ultima vez (caso scroll handler ainda
