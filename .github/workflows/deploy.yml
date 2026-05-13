@@ -68,10 +68,10 @@ on:
         type: string
         default: ''
       warm_skip_hours:
-        description: 'Modo de skip do warm. Default "-1" (NOVO): pula qualquer muni cacheado (qualquer idade) pq os dados sao estaticos pos-ETL. "0": rebuild completo (sem skip), opt-in. "N > 0": legacy resume mode — pula cacheados nas ultimas N horas. Ignorado se drop_cache=true (forca rebuild). Pra forcar rewarm de uma key especifica sem cache-miss, use rewarm_cache_keys.'
+        description: 'Modo de skip do warm. Vazio (default) = contextual: forca rebuild (0) apos etl_phase in (all/sql/incremental) que mudou dados; pula tudo cacheado (-1) caso contrario. "-1" = skip-if-cached SEMPRE (opt-out explicito do rebuild pos-ETL — use se sabe que dados nao mudaram). "0" = rebuild SEMPRE. "N > 0" = legacy resume mode (pula cacheados nas ultimas N horas). Ignorado se drop_cache=true (forca rebuild). Pra rewarm de key especifica sem cache-miss, use rewarm_cache_keys.'
         required: false
         type: string
-        default: '-1'
+        default: ''
       expose_empresa_sitemap:
         description: 'Toggle das paginas /empresa/<cnpj> no sitemap.xml. "keep" (default) preserva estado atual. "enable" exige cache cheio (warm_cache=true antes ou anteriormente) — escreve drop-in systemd, restart cruza-web, smoke test 3 CNPJs, IndexNow submit. "disable" remove drop-in (URLs somem do sitemap; cache web_cache permanece).'
         required: false
@@ -834,18 +834,29 @@ jobs:
           "
 
       # ── Configure warm cache skip mode ──
-      # Define WARM_SKIP_RECENT_HOURS no drop-in systemd:
-      #   -1 (default web-only): warm skipa qualquer entrada cacheada (any age).
-      #                          Dados sao estaticos pos-ETL, reprocessar eh waste.
-      #   0           : rebuild completo (sem skip).
-      #   N > 0       : legacy resume mode (skip cacheados nas ultimas N horas).
+      # Define WARM_SKIP_RECENT_HOURS no drop-in systemd. Comportamento por input:
       #
-      # Override automatico pra SKIP_HRS=0 quando:
-      #   - drop_cache=true (cache acabou de ser TRUNCATE-ado, sem o que skip)
-      #   - etl_phase in (all, sql, incremental) — ETL/MVs/views mudaram, cache
-      #     ja existente esta STALE; precisa rebuild. (P1 GPT 5.5 review PR #105.)
-      # Operador pode forcar `-1` via input warm_skip_hours mesmo nesses casos
-      # se souber que os dados realmente nao mudaram (raro).
+      #   warm_skip_hours vazio (default): CONTEXTUAL
+      #     - etl_phase in (all, sql, incremental): forca SKIP_HRS=0 (rebuild).
+      #       ETL mudou dados/MVs → cache existente esta stale.
+      #     - resto (web, phase N, etc): SKIP_HRS=-1 (skip-if-cached).
+      #
+      #   warm_skip_hours=-1: skip-if-cached SEMPRE, mesmo apos ETL. Opt-out
+      #     explicito do rebuild forcado, pra quando user sabe que dados nao
+      #     mudaram de fato (raro). Distingue do default vazio: se user passa
+      #     -1 explicitamente, RAW_SKIP=="-1" != "" (default).
+      #
+      #   warm_skip_hours=0: rebuild SEMPRE.
+      #   warm_skip_hours=N>0: legacy resume mode.
+      #
+      #   drop_cache=true: override pra SKIP_HRS=0 (cache acabou de ser
+      #     TRUNCATE-ado).
+      #
+      # Invalido (regex falha): fallback CONTEXTUAL (mesma logica do vazio) —
+      # safe-by-default, evita stale cache silencioso apos ETL.
+      #
+      # Round 2 fixes do review GPT 5.5 PR #105: separar "default contextual"
+      # de "user passou -1 explicito" via input default '' (vazio).
       - name: Configure warm cache skip mode
         if: |
           inputs.warm_cache == true ||
@@ -855,38 +866,49 @@ jobs:
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
-          # Sanitiza warm_skip_hours: aceita inteiro (com -1 sinalizando
-          # "skip if cached at all"). Default -1 do input ja eh seguro;
-          # validacao via regex pra opt-in explicito.
-          RAW_SKIP="${{ inputs.warm_skip_hours }}"
-          if echo "$RAW_SKIP" | grep -qE '^-?[0-9]+$'; then
-            USER_SKIP="$RAW_SKIP"
-          else
-            USER_SKIP=-1
-            echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), usando default -1"
+
+          # Detecta contexto de ETL pesado: dados/MVs mudaram, cache existente
+          # esta stale → default deve ser rebuild completo.
+          ETL_HEAVY=false
+          if [ "${{ inputs.etl_phase }}" = "all" ] \
+            || [ "${{ inputs.etl_phase }}" = "sql" ] \
+            || [ "${{ inputs.etl_phase }}" = "incremental" ]; then
+            ETL_HEAVY=true
           fi
+
+          RAW_SKIP="${{ inputs.warm_skip_hours }}"
 
           if [ "${{ inputs.drop_cache }}" = "true" ]; then
             SKIP_HRS=0
-            echo "Full rebuild mode (drop_cache=true → SKIP_HRS=0)"
-          elif [ "${{ inputs.etl_phase }}" = "all" ] \
-            || [ "${{ inputs.etl_phase }}" = "sql" ] \
-            || [ "${{ inputs.etl_phase }}" = "incremental" ]; then
-            # ETL mudou dados/MVs. Default -1 deixaria cache stale eternamente.
-            # Override forca rebuild — a menos que operador explicitamente
-            # passe warm_skip_hours=-1 (sabe que dados nao mudaram de fato).
-            if [ "$USER_SKIP" = "-1" ] && [ "$RAW_SKIP" = "-1" ]; then
+            REASON="drop_cache=true → TRUNCATE feito, rebuild forcado"
+          elif [ -z "$RAW_SKIP" ]; then
+            # Vazio = default contextual
+            if [ "$ETL_HEAVY" = "true" ]; then
               SKIP_HRS=0
-              echo "ETL fase '${{ inputs.etl_phase }}' mudou dados/MVs → forcando SKIP_HRS=0 (rebuild completo)"
-              echo "  (pra preservar cache mesmo apos ETL, passe warm_skip_hours=-1 explicitamente)"
+              REASON="default contextual: etl_phase '${{ inputs.etl_phase }}' mudou dados → rebuild forcado (passe warm_skip_hours=-1 pra opt-out se sabe que dados nao mudaram)"
             else
-              SKIP_HRS="$USER_SKIP"
-              echo "ETL fase '${{ inputs.etl_phase }}' mudou dados, mas operador escolheu SKIP_HRS=$SKIP_HRS explicitamente"
+              SKIP_HRS=-1
+              REASON="default contextual: nao-ETL → skip-if-cached"
             fi
+          elif echo "$RAW_SKIP" | grep -qE '^-?[0-9]+$'; then
+            # Valor explicito valido — respeita SEMPRE (incluindo -1 apos ETL).
+            SKIP_HRS="$RAW_SKIP"
+            REASON="warm_skip_hours='$RAW_SKIP' (explicito)"
           else
-            SKIP_HRS="$USER_SKIP"
+            # Input invalido: fallback CONTEXTUAL (mesmo do vazio) — safe.
+            # NUNCA fazemos fallback pra -1 silencioso apos ETL, pois deixaria
+            # cache stale sem o operador perceber.
+            if [ "$ETL_HEAVY" = "true" ]; then
+              SKIP_HRS=0
+              REASON="warm_skip_hours invalido ('$RAW_SKIP') + ETL_HEAVY → fallback safe SKIP_HRS=0"
+            else
+              SKIP_HRS=-1
+              REASON="warm_skip_hours invalido ('$RAW_SKIP') + non-ETL → fallback SKIP_HRS=-1"
+            fi
+            echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), aplicando fallback contextual"
           fi
 
+          echo "$REASON"
           if [ "$SKIP_HRS" -lt 0 ]; then
             echo "Mode: skip-if-cached (warm pula qualquer muni com entrada existente)"
           elif [ "$SKIP_HRS" -eq 0 ]; then
