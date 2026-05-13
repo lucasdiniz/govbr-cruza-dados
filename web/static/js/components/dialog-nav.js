@@ -1,7 +1,13 @@
 // === components/dialog-nav.js ===
 // ── Dialog navigation stack ─────────────────────────────────────
 let _currentMunicipio = '';
-const _dialogStack = []; // [{title, html, activePanelId, urlState}]
+const _dialogStack = []; // [{title, html, activePanelId, urlState, tipo}]
+
+// Tipo do dialog atualmente aberto (empenho|servidor|fornecedor|licitacao|
+// heatmap). Vazio quando nenhum dialog aberto. Usado pra trackear drill
+// chains (ex: dialog-aberto vem com drilled_from='fornecedor' quando user
+// abriu um empenho a partir do dialog de fornecedor).
+let _currentDialogType = '';
 
 function _dialogPush() {
     const dialog = document.getElementById('empresa-dialog');
@@ -13,7 +19,7 @@ function _dialogPush() {
     // Salva snapshot do URL state atual (antes de a próxima open()
     // chamar _dialogStateApply replaceState com o novo state).
     const urlState = (history.state && history.state.dialogState) ? { ...history.state.dialogState } : null;
-    _dialogStack.push({ title, html, activePanelId, urlState });
+    _dialogStack.push({ title, html, activePanelId, urlState, tipo: _currentDialogType });
     dialog.querySelector('.dialog-back').style.visibility = 'visible';
 }
 
@@ -28,6 +34,10 @@ function _dialogPop() {
     _decorateDialogBody(body);
     if (prev.activePanelId) _activateDialogSection(body, prev.activePanelId, { focus: false, scroll: false });
     if (!_dialogStack.length) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
+    // Restaura tipo do nivel anterior pra que drill chain subsequente
+    // (ex: voltar pra fornecedor e abrir outro empenho) tenha drilled_from
+    // correto.
+    _currentDialogType = prev.tipo || '';
     // Atualiza URL pro state do nivel anterior (sem nova history entry).
     // Race guard: bumpa seq pra cancelar fetches inflight da camada que
     // estamos saindo.
@@ -47,6 +57,7 @@ function _activateDialogSection(body, id, opts = {}) {
 
 function _dialogReset() {
     _dialogStack.length = 0;
+    _currentDialogType = '';
     const dialog = document.getElementById('empresa-dialog');
     if (dialog) dialog.querySelector('.dialog-back').style.visibility = 'hidden';
     document.body.classList.remove('dialog-open');

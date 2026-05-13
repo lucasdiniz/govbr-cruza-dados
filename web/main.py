@@ -428,7 +428,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "107"
+templates.env.globals["ASSET_VERSION"] = "108"
 
 
 # ─────────────────────────────────────────────────────────────────────────

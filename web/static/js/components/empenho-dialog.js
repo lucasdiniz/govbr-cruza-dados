@@ -4,7 +4,11 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     if (!dialog) return;
     const fromUrl = !!options.fromUrl;
     const isInitialOpen = !dialog.open;
+    // Captura tipo do dialog atual ANTES do push (perdido depois). Vazio
+    // quando isInitialOpen=true.
+    const drilledFrom = isInitialOpen ? '' : _currentDialogType;
     if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
+    _currentDialogType = 'empenho';
     if (typeof _dialogStateApply === 'function') {
         _dialogStateApply({ d: 'empenho', id: String(empenhoId || '') }, fromUrl, isInitialOpen);
     }
@@ -19,6 +23,12 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
         tipo: 'empenho',
         empenho: String(empenhoId || ''),
         municipio: _currentMunicipio || '',
+    });
+    else if (drilledFrom) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'empenho',
+        empenho: String(empenhoId || ''),
+        municipio: _currentMunicipio || '',
+        drilled_from: drilledFrom,
     });
 
     const data = await _cachedPost('/api/empenho/detalhes', `emp:${empenhoId}`, { id: parseInt(empenhoId) });

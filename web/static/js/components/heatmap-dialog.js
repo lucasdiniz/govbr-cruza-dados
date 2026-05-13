@@ -4,8 +4,10 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     if (!dialog) return;
     const fromUrl = !!options.fromUrl;
     const isInitialOpen = !dialog.open;
+    const drilledFrom = (isInitialOpen || options.inPlace) ? '' : _currentDialogType;
     if (dialog.open && !options.inPlace) { _dialogPush(); }
     else if (!dialog.open) { _dialogReset(); }
+    _currentDialogType = 'heatmap';
     if (typeof _dialogStateApply === 'function' && !options.inPlace) {
         _dialogStateApply({
             d: 'heatmap',
@@ -28,6 +30,13 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
         ano: String(ano || ''),
         mes: String(mes || ''),
         municipio: municipio || '',
+    });
+    else if (drilledFrom) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'heatmap',
+        ano: String(ano || ''),
+        mes: String(mes || ''),
+        municipio: municipio || '',
+        drilled_from: drilledFrom,
     });
 
     let data;

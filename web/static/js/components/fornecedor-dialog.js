@@ -11,11 +11,13 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
     }
     const fromUrl = !!options.fromUrl;
     const isInitialOpen = !dialog.open && !switchMun;
+    const drilledFrom = isInitialOpen ? '' : _currentDialogType;
     if (!switchMun) {
         if (dialog.open) { _dialogPush(); } else { _dialogReset(); }
     } else {
         _dialogPush();
     }
+    _currentDialogType = 'fornecedor';
     // URL state (fromUrl=true skips push pra evitar duplicar history entry).
     if (typeof _dialogStateApply === 'function') {
         _dialogStateApply({
@@ -38,6 +40,13 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
         cnpj: exactDoc,
         nome: fornecedorNome || nomeCredor || '',
         municipio: municipioOverride || _currentMunicipio || '',
+    });
+    else if (drilledFrom && !switchMun) trackEvent && trackEvent('dialog-aberto', {
+        tipo: 'fornecedor',
+        cnpj: exactDoc,
+        nome: fornecedorNome || nomeCredor || '',
+        municipio: municipioOverride || _currentMunicipio || '',
+        drilled_from: drilledFrom,
     });
 
     const viewMunicipio = municipioOverride || _currentMunicipio;

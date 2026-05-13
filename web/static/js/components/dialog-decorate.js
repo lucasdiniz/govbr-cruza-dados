@@ -196,9 +196,23 @@ function _decorateDialogBody(body) {
         if (!active) return;
         const id = active.dataset.dialogTarget;
         if (id && id !== body._activeDialogSectionId) {
+            const previousId = body._activeDialogSectionId || '';
             setActive(id, { scroll: true });
             // Reflete a tab atual no URL pra share-link incluir o estado.
             if (typeof _dialogUrlUpdateTab === 'function') _dialogUrlUpdateTab(id);
+            if (typeof trackEvent === 'function') {
+                // Label da tab (kebab-like) vem de _dialogSectionNavLabel,
+                // baseada no h4 da secao — estavel e semantica. Preferimos
+                // ela em vez do id da secao (autogen tipo "dialog-section-3"
+                // sem significado).
+                trackEvent('dialog-tab-change', {
+                    tipo: _currentDialogType || '',
+                    para: (active.textContent || '').trim().slice(0, 40),
+                    de: previousId
+                        ? (sections.find(s => s.id === previousId)?.dataset.dialogLabel || '').slice(0, 40)
+                        : '',
+                });
+            }
         }
     });
 
@@ -338,6 +352,12 @@ function _decorateDialogBody(body) {
         const target = getNeighbor(direction);
         if (!target) { snapBack(); return; }
         const { current } = drag;
+        // Captura label das tabs (de/para) ANTES do setActive trocar
+        // _activeDialogSectionId. Caminho de swipe nao passa pelo
+        // tabs.change listener no setActive direto desta funcao, entao
+        // disparamos dialog-tab-change manualmente aqui.
+        const fromLabel = (current.dataset.dialogLabel || '').slice(0, 40);
+        const toLabel = (target.dataset.dialogLabel || '').slice(0, 40);
         const startX = drag.lastVisibleDx || 0;
         const width = body.clientWidth || window.innerWidth || 360;
         const exitX = direction > 0 ? -width : width;
@@ -361,6 +381,17 @@ function _decorateDialogBody(body) {
             // Hide outgoing FIRST (display:none) so any single-frame snap
             // to the underlying transform during cancel() isn't visible.
             setActive(target.id, { scroll: false });
+            // Mantem paridade com tabs.change listener: atualiza URL state
+            // + dispara analytics. Sem isso, swipe ficaria "invisivel"
+            // pra share-link e pro painel.
+            if (typeof _dialogUrlUpdateTab === 'function') _dialogUrlUpdateTab(target.id);
+            if (typeof trackEvent === 'function') {
+                trackEvent('dialog-tab-change', {
+                    tipo: _currentDialogType || '',
+                    de: fromLabel,
+                    para: toLabel,
+                });
+            }
             try { out.cancel(); } catch { /* already finished */ }
             restoreSectionStyles(current, snapshot);
             // Phase 2: target slides in from the opposite side.
