@@ -1,0 +1,24 @@
+[Unit]
+Description=Digest diario do access.log (transparenciapb)
+After=network.target nginx.service
+Documentation=https://github.com/lucasdiniz/govbr-cruza-dados/blob/main/deploy/cruza-traffic-digest.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cruza-traffic-digest.sh
+# Roda como root pra ler /var/log/nginx/access.log* sem ajustar perms.
+# O script nao expoe rede; so escreve arquivo + opcionalmente chama MTA.
+User=root
+# Hardening basico
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadOnlyPaths=/var/log/nginx /etc
+ReadWritePaths=/var/log/cruza-traffic-digest
+# Limites
+TimeoutStartSec=300
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

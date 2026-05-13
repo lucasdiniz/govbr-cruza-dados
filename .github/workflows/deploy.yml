@@ -656,6 +656,8 @@ jobs:
           GOACCESS_USER: ${{ secrets.GOACCESS_USER }}
           GOACCESS_PASSWORD: ${{ secrets.GOACCESS_PASSWORD }}
           GOACCESS_DOMAIN: ${{ secrets.GOACCESS_DOMAIN }}
+          TRAFFIC_DIGEST_EMAIL_TO: ${{ secrets.TRAFFIC_DIGEST_EMAIL_TO }}
+          TRAFFIC_DIGEST_EMAIL_FROM: ${{ secrets.TRAFFIC_DIGEST_EMAIL_FROM }}
         run: |
           set -e
           cd ${{ env.PROJECT_DIR }}
@@ -692,6 +694,18 @@ jobs:
           sudo --preserve-env=GOACCESS_USER,GOACCESS_PASSWORD,GOACCESS_DOMAIN \
             bash deploy/setup-goaccess.sh \
             || echo "WARNING: setup-goaccess.sh falhou (non-fatal — dashboard admin)."
+
+          # Setup digest diario de trafego: script + systemd timer que roda
+          # diariamente as 07:00 BRT (10:00 UTC), parseia access.log.1 (rotated
+          # log de ontem) e escreve um resumo em markdown em
+          # /var/log/cruza-traffic-digest/YYYY-MM-DD.md. Se TRAFFIC_DIGEST_EMAIL_TO
+          # estiver setado como secret, tenta enviar o resumo via msmtp/mail/
+          # sendmail (admin configura MTA na VM — ver header do setup script).
+          #
+          # Idempotente: cmp + reload-conditional. Soft-fail.
+          sudo --preserve-env=TRAFFIC_DIGEST_EMAIL_TO,TRAFFIC_DIGEST_EMAIL_FROM \
+            bash deploy/setup-traffic-digest.sh \
+            || echo "WARNING: setup-traffic-digest.sh falhou (non-fatal — digest opcional)."
 
           # Setup Umami analytics (self-hosted em /_traffic/analytics/).
           # Idempotente: instala Node 22 + pnpm se ausentes, cria DB+role

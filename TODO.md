@@ -398,6 +398,14 @@ Items #i0a-#i0d listados acima na seção "Framework reutilizavel".
 - Problema mais comum: CNPJ citado sem nome oficial ao lado
 - CNPJs nao encontrados na RFB: ver `relatorio_laranjas_bolsa_familia_pb.md`
 
+### Observabilidade — analytics pipeline
+- [ ] **Ingestao access.log -> PostgreSQL** — Vector/Filebeat ou daemon Python que tail+parse+COPY do nginx access.log
+  pra uma tabela `access_log_raw(ts, ip, ua, path, status, referer, bytes, ua_category, geo_city)`. Habilita SQL ad-hoc
+  sobre todo o trafego com retencao configuravel — resolve o que `/_traffic/raw` (so ultimas 1000 linhas) e a skill
+  `analyze-prod-traffic` (on-demand, sem persistencia) nao cobrem. JOINs com tabela `cidades` permitem perguntar
+  "quantos hits em /cidade/X agrupados por dia/mes". Complementa o digest diario (cruza-traffic-digest) que da resumo
+  mas nao permite drill-down. Esforco: 1-2 dias (parser + schema + retencao + dashboard SQL).
+
 ## Referencia tecnica
 
 ### Banco de dados
