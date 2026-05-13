@@ -66,12 +66,323 @@ PARALLEL_WORKERS = int(os.getenv("WARM_CACHE_WORKERS", "4"))
 # como um todo). cruza-web abre suas proprias conexoes e nao eh afetado.
 WARM_WORK_MEM = "192MB"
 
-# Resume mode: pula queries cacheadas ha menos de N horas.
-# Usado quando os DADOS nao mudaram (ex: etl_phase=web warm_cache=true).
-# 0 = sem skip (rebuild completo), tipico apos ETL/SQL que recriou MVs.
-# 24 = pula tudo cacheado nas ultimas 24h (resume de warm interrompido).
-# Configurado via env var pelo deploy.yml conforme etl_phase.
-SKIP_RECENT_HOURS = int(os.getenv("WARM_SKIP_RECENT_HOURS", "0"))
+# Modo de skip do warm. Dados das fontes governamentais sao ESTATICOS apos o
+# ETL terminar, entao por padrao NAO recomputamos cache ja gerado — apenas
+# preenchemos chaves ausentes ou recem-invalidadas (via TRUNCATE web_cache
+# com drop_cache=true ou DELETE cirurgico com invalidate_cache_keys=...).
+#
+# Valores:
+#   -1 (DEFAULT): skip qualquer entrada cacheada, qualquer idade. Eh o modo
+#                 normal porque os dados sao estaticos. Para forcar rebuild,
+#                 use drop_cache (TRUNCATE) ou invalidate_cache_keys (DELETE).
+#    0: rebuild completo (sem skip). Opt-in explicito; raramente necessario.
+#    N > 0: skip se cacheado nas ultimas N horas (resume mode legacy, usado
+#           quando se quer um upper-bound de idade — ex: forcar reprocessar
+#           tudo cacheado ha >72h).
+SKIP_RECENT_HOURS = int(os.getenv("WARM_SKIP_RECENT_HOURS", "-1"))
+
+
+def _skip_mode_label() -> str:
+    """Etiqueta humana do modo de skip para logs."""
+    if SKIP_RECENT_HOURS < 0:
+        return "skip-if-cached (any age)"
+    if SKIP_RECENT_HOURS == 0:
+        return "rebuild completo"
+    return f"skip se cacheado nas ultimas {SKIP_RECENT_HOURS}h"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SHADOW REWARM — zero-downtime cache key versioning
+# ─────────────────────────────────────────────────────────────────────────
+# Permite re-popular uma chave do cache SEM cache-miss enquanto o warm roda.
+# Durante o warm, resultados novos sao escritos em <query_id>__pending; live
+# rows continuam sendo lidos pelo cruza-web normalmente. Apos warm completar
+# com sucesso (fail == 0 pra essa qid), swap atomico move shadow → live numa
+# UNICA transacao cobrindo TODOS os qids elegiveis (atomicity all-or-nothing):
+#
+#   BEGIN;
+#     -- repete por qid em shadow com fail==0:
+#     INSERT INTO web_cache (qid, muni, ...) SELECT '<qid>', muni, ...
+#       FROM web_cache WHERE query_id = '<qid>__pending'
+#       ON CONFLICT (query_id, municipio) DO UPDATE SET ...;
+#     DELETE FROM web_cache WHERE query_id = '<qid>__pending';
+#   COMMIT;
+#
+# A unica transacao garante que readers do cruza-web nunca vejam derived
+# (KPI_SUMMARY) na versao NEW enquanto source (PERFIL) ainda esta OLD, ou
+# vice-versa — todos os qids do shadow swap "rolam" simultaneamente do
+# ponto de vista de reads concorrentes (read committed semantics).
+# UPSERT (nao DELETE+RENAME) preserva munis fora do escopo do warm
+# (importante em warms parciais via --mun X).
+#
+# Disparado via env WARM_REWARM_KEYS (CSV de patterns exatos), populado
+# pelo deploy.yml a partir do input `rewarm_cache_keys`. Diferenca pro
+# `invalidate_cache_keys` (que faz hard DELETE): shadow rewarm zera o
+# downtime durante o warm (que pode demorar 12-18h).
+#
+# ─── Adicionando shadow rewarm para uma NOVA "LEAF" query ────────────────
+# Leaf = query computada direto do banco/MV, NAO le de outras keys do cache
+# (ex: HEATMAP, Q01-Q310 do registry, PERFIL, EMPRESA_PERFIL).
+#
+#   Nao requer mudancas no codigo. Basta o user passar o pattern em
+#   rewarm_cache_keys; _warm_query_across_munis e _filter_cached_munis ja
+#   consultam _effective_qid internamente.
+#
+# ─── Adicionando shadow rewarm para uma NOVA "DERIVED" query ─────────────
+# Derived = query computada lendo OUTRAS keys do web_cache (ex:
+# KPI_SUMMARY le PERFIL/TOP_FORNECEDORES/TOP_SERVIDORES e agrega em Python).
+#
+#   1. Registre as deps em CACHE_DEPENDENCY_GRAPH abaixo. Bases sao
+#      sem prefixo (PERFIL, nao ANO:PERFIL) — a expansao por prefixo
+#      eh automatica via _is_shadow_for.
+#   2. Na funcao que computa o derived, leia cada dep do cache via
+#        cache = _read_cache(conn, _effective_qid(f"{prefix}DEP"), mun)
+#      (translation shadow/live automatica).
+#   3. Strict no-fallback: se _is_shadow_for(derived_qid) AND
+#      _is_shadow_for(dep_qid) AND cache vazio pra essa muni → retorne
+#      False (a funcao FALHA pra essa muni). Sem isso, computaria
+#      misturando OLD live + NEW shadow e geraria stale apos swap.
+#      Ver _compute_and_cache_kpi_summary como modelo.
+#   4. Em warm_cycle_pb, garanta que as deps rodam ANTES do derived
+#      (ordem das fases). Hoje: PERFIL → TOP_FORN → TOP_SERV →
+#      KPI_SUMMARY.
+#
+# ─── Por que o derived precisa entrar em shadow quando um dep entra? ─────
+# Sem auto-expansao, o cenario seria:
+#   - User pede rewarm_cache_keys=PERFIL
+#   - Warm escreve PERFIL__pending (shadow). Live PERFIL continua VELHO.
+#   - Warm chega no KPI_SUMMARY; le PERFIL do cache → le do live →
+#     PERFIL VELHO. Computa KPI_SUMMARY baseado em VELHO. Escreve em
+#     live KPI_SUMMARY (porque KPI_SUMMARY nao entrou em shadow).
+#   - Swap do PERFIL: live PERFIL = NOVO.
+#   - Live KPI_SUMMARY = computado do VELHO PERFIL → inconsistente
+#     com NOVO PERFIL no UI.
+# Solucao: _is_shadow_for auto-inclui o derived quando alguma dep esta
+# em shadow (mesmo prefixo). Idem strict no-fallback: garante que
+# shadow KPI_SUMMARY le shadow PERFIL (sem misturar).
+#
+# ─── Limitacoes ──────────────────────────────────────────────────────────
+#   - Swap exige fail == 0 pra essa qid. Senao swap abortado e shadow rows
+#     daquele ciclo sao descartados no inicio do PROXIMO deploy (via Reset
+#     shadow rows step). Nao ha "reuso de shadow parcial" entre deploys —
+#     decisao tomada pra evitar shadow stale quando SQL muda entre deploys
+#     (P1 Opus 4.7 review PR #105). Pra que swap aconteca, todos os munis
+#     da qid precisam ter sucesso num unico ciclo do warm.
+#   - Shadow rows sao DELETADOS no inicio de cada deploy ("Reset shadow
+#     rows" step no deploy.yml), evitando stale entre deploys que
+#     mudaram a SQL.
+#   - Match eh EXATO (pattern == query_id OR pattern == base), NAO substring.
+#     Pattern "PERFIL" casa "PERFIL", "ANO:PERFIL", "12M:PERFIL" mas
+#     NAO casa "EMPRESA_PERFIL". Use prefixos explicitos pra escopar
+#     (ANO:Q65 vs Q65 sem prefixo).
+# ─────────────────────────────────────────────────────────────────────────
+
+# Sufixo aplicado a query_id pra denotar shadow rows. Reads do cruza-web
+# leem apenas live (query_id sem sufixo); only o warm le shadow via
+# _effective_qid.
+SHADOW_SUFFIX = "__pending"
+
+# Patterns de query_id em modo shadow (match EXATO de qid ou base). Vazio = sem shadow.
+REWARM_KEYS = {
+    k.strip() for k in os.getenv("WARM_REWARM_KEYS", "").split(",") if k.strip()
+}
+
+# Mapa derived → [source bases]. Adicione aqui novas derived queries pra
+# que a auto-expansao funcione: shadow de uma source dispara shadow do
+# derived (mesmo prefixo). Bases SEM prefixo.
+CACHE_DEPENDENCY_GRAPH: dict[str, list[str]] = {
+    "KPI_SUMMARY": ["PERFIL", "TOP_FORNECEDORES", "TOP_SERVIDORES"],
+}
+
+# Tracking dos resultados de queries que estavam em shadow durante esta
+# execucao do warm. qid (logical, sem __pending) → (ok, fail). Usado no
+# final do ciclo pra decidir quais qids podem ter swap (so se fail == 0).
+_shadow_results: dict[str, tuple[int, int]] = {}
+
+
+def _qid_base(qid: str) -> str:
+    """Retorna o segmento 'base' do query_id, removendo prefixos ANO:/12M:."""
+    return qid.split(":", 1)[-1] if ":" in qid else qid
+
+
+def _qid_prefix(qid: str) -> str:
+    """Retorna o prefixo incluindo ':', ou string vazia."""
+    return qid.split(":", 1)[0] + ":" if ":" in qid else ""
+
+
+def _is_shadow_for(query_id: str) -> bool:
+    """True se este query_id deve usar shadow rows ao inves de live.
+
+    Match semantics (exact base/qid, NAO substring):
+      - Pattern == query_id literal (ex: "ANO:Q65" casa exato).
+      - Pattern == base (qid sem prefixo): ex: "Q65" casa "Q65",
+        "ANO:Q65", "12M:Q65". MAS "PERFIL" NAO casa "EMPRESA_PERFIL"
+        (base de EMPRESA_PERFIL eh "EMPRESA_PERFIL" inteiro).
+      - Auto-expansao: se query_id eh derived (base em
+        CACHE_DEPENDENCY_GRAPH) E alguma source dep (mesmo prefixo) casa
+        REWARM_KEYS → derived entra em shadow tb.
+
+    Por que match exato e nao substring: evita "PERFIL" disparar warm
+    de ~143K empresas via EMPRESA_PERFIL (P1 GPT 5.5 review PR #105).
+    """
+    if not REWARM_KEYS:
+        return False
+    base = _qid_base(query_id)
+    if any(p == query_id or p == base for p in REWARM_KEYS):
+        return True
+    deps = CACHE_DEPENDENCY_GRAPH.get(base)
+    if deps:
+        prefix = _qid_prefix(query_id)
+        for dep_base in deps:
+            dep_qid = f"{prefix}{dep_base}"
+            if any(p == dep_qid or p == dep_base for p in REWARM_KEYS):
+                return True
+    return False
+
+
+def _effective_qid(query_id: str) -> str:
+    """Retorna o query_id efetivo pra leitura/escrita do cache durante warm.
+
+    Em modo shadow: anexa SHADOW_SUFFIX. Live rows (sem sufixo) continuam
+    sendo servidos pelo cruza-web ate o swap final.
+    """
+    return f"{query_id}{SHADOW_SUFFIX}" if _is_shadow_for(query_id) else query_id
+
+
+def _record_shadow_result(query_id: str, ok: int, fail: int) -> None:
+    """Acumula resultado de um shadow warm (chamado por warm_query/warm_kpi).
+
+    Mantido como agregado: chamadas multiplas pra mesma qid somam ok/fail.
+    """
+    if not _is_shadow_for(query_id):
+        return
+    prev_ok, prev_fail = _shadow_results.get(query_id, (0, 0))
+    _shadow_results[query_id] = (prev_ok + ok, prev_fail + fail)
+
+
+def _swap_all_pending_shadows(verbose: bool = True) -> tuple[int, int]:
+    """Apos warm cycle, swap atomico de cada qid que estava em shadow E
+    completou sem falhas (fail == 0).
+
+    Importante (alinhado com Reset shadow step no deploy.yml):
+      - Qids com fail > 0: shadow NAO promovido nesse ciclo. As rows shadow
+        ficam no banco mas serao APAGADAS no inicio do proximo deploy
+        (Reset). Sem reuso entre deploys — evita shadow stale quando SQL
+        muda entre deploys.
+      - Swap ATOMICO entre todas as qids: uma unica transacao cobre
+        UPSERT+DELETE pra todos os qids elegíveis. Elimina janela onde
+        derived (KPI) e source (PERFIL) ficam temporariamente em versoes
+        diferentes em live. (P2 Opus 4.7 + GPT 5.5 review PR #105.)
+
+    Returns (swapped_count, kept_count).
+    """
+    if not _shadow_results:
+        return 0, 0
+
+    swappable: list[str] = []
+    skipped_zero: list[str] = []
+    aborted: list[tuple[str, int, int]] = []
+    for qid, (ok, fail) in sorted(_shadow_results.items()):
+        if fail > 0:
+            aborted.append((qid, ok, fail))
+            continue
+        if ok == 0:
+            skipped_zero.append(qid)
+            continue
+        swappable.append(qid)
+
+    if verbose:
+        print(
+            f"\n--- Shadow swap: {len(swappable)} swap, "
+            f"{len(aborted)} abort (fail>0), {len(skipped_zero)} skip (0 rows) ---",
+            flush=True,
+        )
+        for qid, ok, fail in aborted:
+            print(
+                f"  ABORT {qid}: {ok} ok, {fail} fail — shadow descartado "
+                f"no proximo deploy (rerun com mesmo rewarm_cache_keys)",
+                flush=True,
+            )
+        for qid in skipped_zero:
+            print(
+                f"  SKIP {qid}: 0 rows escritas (warm filtrou tudo — "
+                f"verifique se Reset shadow rows step rodou)",
+                flush=True,
+            )
+
+    if not swappable:
+        if verbose:
+            print("--- Shadow swap done: 0 swapped ---", flush=True)
+        return 0, len(aborted) + len(skipped_zero)
+
+    # SWAP ATOMICO entre todos os qids: uma unica transacao. Garante que
+    # readers do cruza-web nunca vejam KPI v=NEW + PERFIL v=OLD durante
+    # a transicao. Read-committed do PG ainda permite que uma request
+    # individual veja snapshot consistente pos-COMMIT. (P2 review.)
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = False
+    swapped = 0
+    failed_qids: list[tuple[str, str]] = []
+    try:
+        with conn.cursor() as cur:
+            for qid in swappable:
+                shadow_qid = f"{qid}{SHADOW_SUFFIX}"
+                try:
+                    cur.execute(
+                        f"""
+                        INSERT INTO {CACHE_TABLE}
+                            (query_id, municipio, columns, rows, row_count, updated_at)
+                        SELECT %s, municipio, columns, rows, row_count, now()
+                        FROM {CACHE_TABLE}
+                        WHERE query_id = %s
+                        ON CONFLICT (query_id, municipio) DO UPDATE SET
+                            columns = EXCLUDED.columns,
+                            rows = EXCLUDED.rows,
+                            row_count = EXCLUDED.row_count,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        (qid, shadow_qid),
+                    )
+                    promoted = cur.rowcount
+                    cur.execute(
+                        f"DELETE FROM {CACHE_TABLE} WHERE query_id = %s",
+                        (shadow_qid,),
+                    )
+                    cleaned = cur.rowcount
+                    if verbose:
+                        print(
+                            f"  SWAP {qid}: promoted {promoted}, cleaned {cleaned}",
+                            flush=True,
+                        )
+                    swapped += 1
+                except Exception as e:
+                    msg = str(e).splitlines()[0]
+                    failed_qids.append((qid, msg))
+                    if verbose:
+                        print(f"  FAIL {qid}: {msg}", flush=True)
+                    # Re-raise pra rollback de TODA a transacao —
+                    # consistencia all-or-nothing entre as qids.
+                    raise
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        if verbose:
+            print(
+                f"--- Shadow swap ROLLBACK (atomico): {len(swappable)} qids "
+                f"NAO promovidos. Re-run com mesmo rewarm_cache_keys. ---",
+                flush=True,
+            )
+        return 0, len(swappable) + len(aborted) + len(skipped_zero)
+    finally:
+        conn.close()
+
+    if verbose:
+        print(
+            f"--- Shadow swap done: {swapped} swapped, "
+            f"{len(aborted) + len(skipped_zero)} kept/skipped ---",
+            flush=True,
+        )
+    return swapped, len(aborted) + len(skipped_zero)
 
 # Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
 # porque rodamos em background e queremos popular o cache mesmo para queries
@@ -211,13 +522,50 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
 
     periodo='' -> all-time (chaves PERFIL, TOP_FORNECEDORES, TOP_SERVIDORES);
     periodo='ANO'/'12M' -> chaves prefixadas equivalentes.
+
+    Shadow rewarm: KPI_SUMMARY eh "derived" (le PERFIL/TOP_FORN/TOP_SERV
+    do cache pra computar). Se qualquer dep esta em shadow neste deploy
+    (REWARM_KEYS casa), KPI_SUMMARY entra em shadow auto (via
+    _is_shadow_for + CACHE_DEPENDENCY_GRAPH).
+
+    Strict no-fallback: se KPI_SUMMARY esta em shadow E uma dep tb esta
+    em shadow E o shadow da dep ESTA VAZIO pra essa muni → retorna False.
+    Sem isso, computariamos misturando NEW shadow + OLD live e ficaria
+    stale apos o swap dos deps. Munis que falham aqui sao reprocessadas
+    no proximo deploy (junto com a dep que falhou).
     """
     prefix = f"{periodo}:" if periodo else ""
     qid = f"{prefix}KPI_SUMMARY"
     try:
-        perfil_cache = _read_cache(conn, f"{prefix}PERFIL", mun)
-        forn_cache = _read_cache(conn, f"{prefix}TOP_FORNECEDORES", mun)
-        serv_cache = _read_cache(conn, f"{prefix}TOP_SERVIDORES", mun)
+        # Leitura via _effective_qid: em shadow mode (REWARM casa PERFIL),
+        # le PERFIL__pending; senao le live PERFIL. Mesmo pra TOP_*.
+        perfil_qid = f"{prefix}PERFIL"
+        forn_qid = f"{prefix}TOP_FORNECEDORES"
+        serv_qid = f"{prefix}TOP_SERVIDORES"
+        perfil_cache = _read_cache(conn, _effective_qid(perfil_qid), mun)
+        forn_cache = _read_cache(conn, _effective_qid(forn_qid), mun)
+        serv_cache = _read_cache(conn, _effective_qid(serv_qid), mun)
+
+        # Strict no-fallback: se SOMOS shadow E alguma dep tb eh shadow E
+        # o shadow da dep esta vazio pra essa muni, abortamos. Caso
+        # contrario contaminariamos o shadow KPI_SUMMARY com OLD data.
+        if _is_shadow_for(qid):
+            missing: list[str] = []
+            if _is_shadow_for(perfil_qid) and not (perfil_cache and perfil_cache[1]):
+                missing.append("PERFIL")
+            if _is_shadow_for(forn_qid) and not forn_cache:
+                missing.append("TOP_FORNECEDORES")
+            if _is_shadow_for(serv_qid) and not serv_cache:
+                missing.append("TOP_SERVIDORES")
+            if missing:
+                if verbose:
+                    print(
+                        f"  [SKIP] {qid} mun={mun}: shadow deps vazios "
+                        f"({','.join(missing)}) — strict no-fallback",
+                        flush=True,
+                    )
+                return False
+
         perfil = {}
         if perfil_cache and perfil_cache[1]:
             perfil = _row_to_dict(perfil_cache[0], perfil_cache[1][0])
@@ -236,15 +584,17 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
         # tem risco_score=NULL (PERFIL_MUNICIPIO_LIVE forca NULL), entao buscamos
         # do PERFIL all-time (cache sem prefix). Garante que a "Nota de atencao"
         # bate 1:1 com o mapa em todos os filtros temporais.
+        # Tambem via _effective_qid pra honrar shadow do PERFIL all-time
+        # quando REWARM casa.
         score_canonical = perfil.get("risco_score") if not prefix else None
         if score_canonical is None and prefix:
-            alltime_perfil_cache = _read_cache(conn, "PERFIL", mun)
+            alltime_perfil_cache = _read_cache(conn, _effective_qid("PERFIL"), mun)
             if alltime_perfil_cache and alltime_perfil_cache[1]:
                 alltime_perfil = _row_to_dict(alltime_perfil_cache[0], alltime_perfil_cache[1][0])
                 score_canonical = alltime_perfil.get("risco_score")
         summary["score_canonical"] = score_canonical
         with conn.cursor() as cur:
-            _upsert(cur, qid, mun, ["payload"], [[json.dumps(summary, default=str)]])
+            _upsert(cur, _effective_qid(qid), mun, ["payload"], [[json.dumps(summary, default=str)]])
         conn.commit()
         return True
     except Exception as e:
@@ -265,17 +615,23 @@ def _run_query_for_muni(query_id: str, sql: str, mun: str, extra_params: dict | 
 
     Usado pelo loop invertido (1 query × N munis em paralelo). Por design,
     nao printa nada — o caller agrega resultados e decide o que logar.
+
+    Em modo shadow (REWARM_KEYS casa query_id), escreve em
+    <query_id>__pending em vez de live. Caller usa _effective_qid pra
+    decidir; aqui aplicamos _effective_qid antes do upsert pra centralizar
+    a logica.
     """
     conn = _thread_conn()
     if extra_params:
         params = {**extra_params, "municipio": mun}
     else:
         params = {"municipio": mun}
+    write_qid = _effective_qid(query_id)
     try:
         cols, rows = _execute(conn, sql, params, timeout_sec)
         conn.commit()
         with conn.cursor() as cur:
-            _upsert(cur, query_id, mun, cols, rows)
+            _upsert(cur, write_qid, mun, cols, rows)
         conn.commit()
         return True, None
     except Exception as e:
@@ -285,23 +641,40 @@ def _run_query_for_muni(query_id: str, sql: str, mun: str, extra_params: dict | 
 
 
 def _filter_cached_munis(query_id: str, municipios: list[str]) -> tuple[list[str], int]:
-    """Em resume mode (SKIP_RECENT_HOURS > 0), remove munis cujo cache para
-    `query_id` foi atualizado nas ultimas SKIP_RECENT_HOURS horas.
+    """Filtra munis ja cacheados conforme WARM_SKIP_RECENT_HOURS:
+      * -1 (default): skip QUALQUER muni cacheado, qualquer idade. Dados
+        sao estaticos, reprocessar eh waste. Para forcar rebuild use
+        drop_cache=true ou invalidate_cache_keys=... no deploy.yml.
+      *  0: nao pula nada (rebuild completo).
+      *  N > 0: skip munis com cache atualizado nas ultimas N horas.
+
+    Em modo shadow (query_id casa REWARM_KEYS), filtramos pelo
+    _effective_qid (<query_id>__pending), pra permitir RESUME de uma
+    shadow warm interrompida no MESMO deploy. Entre deploys, "Reset
+    shadow rows" no deploy.yml apaga os __pending antes do warm.
 
     Returns (munis_to_process, num_skipped).
     """
-    if SKIP_RECENT_HOURS <= 0:
+    if SKIP_RECENT_HOURS == 0:
         return municipios, 0
 
+    effective_qid = _effective_qid(query_id)
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT municipio FROM {CACHE_TABLE} "
-                f"WHERE query_id = %s AND updated_at > now() - interval %s",
-                (query_id, f"{SKIP_RECENT_HOURS} hours"),
-            )
+            if SKIP_RECENT_HOURS < 0:
+                # Skip qualquer entrada existente, independente de idade.
+                cur.execute(
+                    f"SELECT municipio FROM {CACHE_TABLE} WHERE query_id = %s",
+                    (effective_qid,),
+                )
+            else:
+                cur.execute(
+                    f"SELECT municipio FROM {CACHE_TABLE} "
+                    f"WHERE query_id = %s AND updated_at > now() - interval %s",
+                    (effective_qid, f"{SKIP_RECENT_HOURS} hours"),
+                )
             cached = {r[0] for r in cur.fetchall()}
     finally:
         conn.close()
@@ -320,14 +693,19 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
     apos a primeira muni, os indexes/tables relevantes ficam quentes no
     shared_buffers/host cache, beneficiando as munis seguintes.
 
-    Em resume mode (SKIP_RECENT_HOURS > 0), pula munis ja cacheados
-    recentemente para essa query.
+    Por padrao (WARM_SKIP_RECENT_HOURS=-1), pula munis ja cacheados,
+    qualquer idade — dados sao estaticos. Ver _filter_cached_munis para
+    detalhes dos modos suportados.
     """
     original_total = len(municipios)
     municipios, skipped = _filter_cached_munis(query_id, municipios)
     if not municipios:
         if verbose:
-            print(f"  {query_id}: skipped {skipped}/{original_total} (resume mode)", flush=True)
+            print(
+                f"  {query_id}: skipped {skipped}/{original_total} "
+                f"({_skip_mode_label()})",
+                flush=True,
+            )
         return skipped, 0  # contam como ok porque ja estao cacheados
 
     total = len(municipios)
@@ -378,8 +756,9 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
         rate = total / elapsed if elapsed > 0 else 0
         suffix = f" ({timeouts} timeouts)" if timeouts else ""
         skip_msg = f", {skipped} skipped" if skipped else ""
+        shadow_msg = " [SHADOW]" if _is_shadow_for(query_id) else ""
         print(
-            f"  {query_id}: {ok}/{total} ok, {fail} fail{suffix}{skip_msg} "
+            f"  {query_id}{shadow_msg}: {ok}/{total} ok, {fail} fail{suffix}{skip_msg} "
             f"({elapsed:.0f}s, {rate:.1f}/s)",
             flush=True,
         )
@@ -393,6 +772,8 @@ def _warm_query_across_munis(query_id: str, sql: str, municipios: list[str],
             if len(failed_munis) > 10:
                 print(f"    ... +{len(failed_munis) - 10} outras falhas (ver journal)", flush=True)
     # Skipped contam como ok no agregado: ja estao cacheados.
+    # Em shadow mode, registra resultado pra decisao de swap no fim do ciclo.
+    _record_shadow_result(query_id, ok, fail)
     return ok + skipped, fail
 
 
@@ -404,7 +785,11 @@ def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose:
     municipios, skipped = _filter_cached_munis(qid, municipios)
     if not municipios:
         if verbose:
-            print(f"  {qid}: skipped {skipped}/{original_total} (resume mode)", flush=True)
+            print(
+                f"  {qid}: skipped {skipped}/{original_total} "
+                f"({_skip_mode_label()})",
+                flush=True,
+            )
         return skipped, 0
 
     total = len(municipios)
@@ -446,13 +831,20 @@ def _warm_kpi_summary_across_munis(municipios: list[str], periodo: str, verbose:
     elapsed = time.time() - t0
     if verbose:
         skip_msg = f", {skipped} skipped" if skipped else ""
-        print(f"  {qid}: {ok}/{total} ok, {fail} fail{skip_msg} ({elapsed:.0f}s)", flush=True)
+        shadow_msg = " [SHADOW]" if _is_shadow_for(qid) else ""
+        print(
+            f"  {qid}{shadow_msg}: {ok}/{total} ok, {fail} fail{skip_msg} "
+            f"({elapsed:.0f}s)",
+            flush=True,
+        )
         if failed_munis:
             shown = failed_munis[:10]
             for mun_failed in shown:
                 print(f"    FAIL {qid} {mun_failed}", flush=True)
             if len(failed_munis) > 10:
                 print(f"    ... +{len(failed_munis) - 10} outras falhas", flush=True)
+    # Registra resultado pra decisao de swap no fim do ciclo (shadow mode).
+    _record_shadow_result(qid, ok, fail)
     return ok + skipped, fail
 
 
@@ -686,7 +1078,7 @@ def _warm_one_empresa(cnpj_completo: str) -> tuple[bool, str | None]:
         with conn.cursor() as cur:
             _upsert(
                 cur,
-                EMPRESA_CACHE_QID,
+                _effective_qid(EMPRESA_CACHE_QID),
                 cnpj_completo,
                 ["payload"],
                 [[data]],
@@ -771,10 +1163,13 @@ def warm_cycle_empresas(cnpjs: list[str], verbose: bool = True) -> tuple[int, in
         f"({elapsed/60:.1f}min)",
         flush=True,
     )
+    # Registra resultado pra swap atomico no fim do ciclo (shadow mode).
+    # Usa a constante canonica de web.routes.empresa em vez de literal pra
+    # nao desincronizar se a constante mudar (P2 Opus 4.7 review PR #105).
+    # Import diferido pra evitar cycle no topo do modulo.
+    from web.routes.empresa import CACHE_QUERY_ID as _EMPRESA_QID
+    _record_shadow_result(_EMPRESA_QID, ok, fail)
     return ok, fail, skipped
-
-
-
 
 
 def main():
@@ -820,6 +1215,19 @@ def main():
         if not skip_empresas_flag:
             ok_e, fail_e, skip_e = _warm_empresas_phase()
             ok_em, fail_em, skip_em = _warm_empresas_municipios_phase()
+        # Shadow swap: apos TODO trabalho do ciclo terminar, fazemos os
+        # swaps atomicos (UMA transacao cobrindo todos os qids elegiveis)
+        # das qids que estavam em shadow E completaram sem falhas.
+        # Qids com fail > 0 ficam SEM swap nesse ciclo; o "Reset shadow
+        # rows" step no proximo deploy descarta o shadow stale antes de
+        # reprocessar.
+        # Importante: swap acontece UMA VEZ por ciclo, depois das fases
+        # PB + empresas + empresas_municipios. Garante que KPI_SUMMARY
+        # (derived) ja foi computado contra o shadow de PERFIL antes do
+        # swap dos deps.
+        _swap_all_pending_shadows(verbose=True)
+        # Reset tracking pra eventual proximo ciclo (mode --loop).
+        _shadow_results.clear()
         return ok_p + ok_e + ok_em, fail_p + fail_e + fail_em, skip_e + skip_em
 
     if args.daemon:
@@ -889,7 +1297,7 @@ def _warm_empresas_phase() -> tuple[int, int, int]:
         )
         return 0, 0, 0
 
-    # Resume mode: skip CNPJs cacheados nas ultimas WARM_SKIP_RECENT_HOURS.
+    # Skip mode: pula CNPJs ja cacheados conforme WARM_SKIP_RECENT_HOURS.
     # Mesma logica de cidades — reusa _filter_cached_munis (generico em
     # query_id e lista de keys).
     cnpjs, skipped_resume = _filter_cached_munis(
@@ -897,8 +1305,8 @@ def _warm_empresas_phase() -> tuple[int, int, int]:
     )
     if skipped_resume > 0:
         print(
-            f"[empresas] Resume mode: {skipped_resume} ja cacheadas nas "
-            f"ultimas {SKIP_RECENT_HOURS}h, processando {len(cnpjs)} restantes."
+            f"[empresas] {_skip_mode_label()}: {skipped_resume} ja cacheadas, "
+            f"processando {len(cnpjs)} restantes."
         )
 
     if not cnpjs:
@@ -1035,7 +1443,7 @@ def _warm_one_empresa_municipio(par: tuple[str, str]) -> tuple[bool, str | None]
         with conn.cursor() as cur:
             _upsert(
                 cur,
-                EMPRESA_MUN_CACHE_QID,
+                _effective_qid(EMPRESA_MUN_CACHE_QID),
                 key,
                 ["payload"],
                 [[data]],
@@ -1113,6 +1521,9 @@ def warm_cycle_empresas_municipios(
         f"({elapsed/60:.1f}min)",
         flush=True,
     )
+    # Mesma logica: usa constante canonica em vez de literal.
+    from web.routes.empresa import CACHE_QUERY_ID_MUN as _EMPRESA_MUN_QID
+    _record_shadow_result(_EMPRESA_MUN_QID, ok, fail)
     return ok, fail, skipped
 
 
@@ -1157,9 +1568,8 @@ def _warm_empresas_municipios_phase() -> tuple[int, int, int]:
     )
     if skipped_resume > 0:
         print(
-            f"[empresas-mun] Resume mode: {skipped_resume} ja cacheados nas "
-            f"ultimas {SKIP_RECENT_HOURS}h, processando {len(remaining_keys)} "
-            f"restantes."
+            f"[empresas-mun] {_skip_mode_label()}: {skipped_resume} ja "
+            f"cacheados, processando {len(remaining_keys)} restantes."
         )
 
     if not remaining_keys:

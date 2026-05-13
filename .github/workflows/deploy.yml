@@ -58,15 +58,20 @@ on:
         type: boolean
         default: false
       invalidate_cache_keys:
-        description: 'Lista CSV de prefixos/substrings de query_id para DELETE cirurgico no web_cache (ex: "PERFIL,KPI_SUMMARY,TOP_SERVIDORES"). Aplica DELETE WHERE query_id LIKE "%term%" para cada termo. Usado quando uma fix afeta so algumas queries — evita drop_cache=true full. Apenas [a-zA-Z0-9_:] permitidos por seguranca.'
+        description: 'Lista CSV de prefixos/substrings de query_id para DELETE cirurgico (HARD) no web_cache (ex: "PERFIL,KPI_SUMMARY"). Apaga LIVE rows: site sofre cache miss ate o warm reconstruir. Use APENAS se a data live esta BROKEN (ex: bug na query produziu lixo). Pra atualizar com zero downtime, prefira `rewarm_cache_keys`. Apenas [a-zA-Z0-9_:] permitidos.'
+        required: false
+        type: string
+        default: ''
+      rewarm_cache_keys:
+        description: 'Lista CSV de query_ids para SHADOW rewarm (ZERO-DOWNTIME) no web_cache (ex: "Q65,HEATMAP"). Match EXATO de qid ou base (NAO substring): "PERFIL" casa PERFIL/ANO:PERFIL/12M:PERFIL mas NAO casa EMPRESA_PERFIL. Warm escreve em <qid>__pending; live rows continuam servindo. Apos warm completar com 100% sucesso, swap atomico promove shadow → live. Auto-expansao: shadow de PERFIL/TOP_FORN/TOP_SERV (qq prefixo) entra KPI_SUMMARY (mesmo prefixo) tambem. Apenas [a-zA-Z0-9_:] permitidos.'
         required: false
         type: string
         default: ''
       warm_skip_hours:
-        description: 'Janela em horas que warm_cache pula (resume mode). Default 24: pula munis cacheados nas ultimas 24h. Aumente quando o ultimo warm foi ha mais tempo mas voce so quer reprocessar queries especificas via invalidate_cache_keys (ex: 72 = pula tudo cacheado nas ultimas 72h). Ignorado se drop_cache=true (forca SKIP_HRS=0).'
+        description: 'Modo de skip do warm. Vazio (default) = contextual: forca rebuild (0) apos etl_phase in (all/sql/incremental) que mudou dados; pula tudo cacheado (-1) caso contrario. "-1" = skip-if-cached SEMPRE (opt-out explicito do rebuild pos-ETL — use se sabe que dados nao mudaram). "0" = rebuild SEMPRE. "N > 0" = legacy resume mode (pula cacheados nas ultimas N horas). Ignorado se drop_cache=true (forca rebuild). Pra rewarm de key especifica sem cache-miss, use rewarm_cache_keys.'
         required: false
         type: string
-        default: '24'
+        default: ''
       expose_empresa_sitemap:
         description: 'Toggle das paginas /empresa/<cnpj> no sitemap.xml. "keep" (default) preserva estado atual. "enable" exige cache cheio (warm_cache=true antes ou anteriormente) — escreve drop-in systemd, restart cruza-web, smoke test 3 CNPJs, IndexNow submit. "disable" remove drop-in (URLs somem do sitemap; cache web_cache permanece).'
         required: false
@@ -130,12 +135,15 @@ jobs:
           # Resize UP para B4 (16GB) sempre que houver trabalho pesado:
           #   - qualquer etl_phase != web (ETL/SQL/N usam mais RAM e CPU)
           #   - warm_cache=true (1 ciclo de warm leva ~20h, beneficia muito de B4)
-          # Caso contrario (etl_phase=web sem warm), mantem B2 (8GB) para economizar.
+          #   - rewarm_cache_keys != '' (warm shadow tb roda — precisa B4)
+          # Caso contrario (etl_phase=web sem warm sem rewarm), mantem B2 (8GB).
           # Disco segue a VM: Premium para trabalho pesado, Standard para web.
-          if [ "${{ inputs.etl_phase }}" = "web" ] && [ "${{ inputs.warm_cache }}" != "true" ]; then
+          if [ "${{ inputs.etl_phase }}" = "web" ] \
+             && [ "${{ inputs.warm_cache }}" != "true" ] \
+             && [ -z "${{ inputs.rewarm_cache_keys }}" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
-            echo "etl_phase=web warm_cache=false → B2 + Standard SSD (web)"
+            echo "etl_phase=web warm_cache=false rewarm=empty → B2 + Standard SSD (web)"
           else
             echo "target_size=${{ env.VM_SIZE_ETL }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_HEAVY }}" >> "$GITHUB_OUTPUT"
@@ -742,48 +750,27 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl enable cruza-web
 
-          # Restart cruza-web to pick up new code AND new asset manifest.
-          # Importante: build acima + restart aqui = sem gap onde workers
-          # com manifest antigo coexistem com nginx servindo dist/ novo.
-          sudo systemctl restart cruza-web
+          # IMPORTANTE: o restart de cruza-web acontece SO no final, apos o warm
+          # terminar (step "Restart cruza-web (after warm)"). Isso evita o usuario
+          # ver 12-18h de cache miss enquanto o warm reconstroi web_cache: o
+          # processo OLD continua servindo OLD cache; quando o warm termina o
+          # restart faz cruza-web pegar codigo NOVO + cache JA QUENTE.
+          #
+          # Mas no PRIMEIRO deploy (cruza-web ainda nao rodando), precisamos
+          # subir alguma coisa pra o resto da pipeline (SEO IndexNow, smoke
+          # tests) ter cruza-web up. `systemctl start` eh no-op se ja ativo.
+          if ! systemctl is-active --quiet cruza-web; then
+            echo "cruza-web nao estava ativo — starting (primeiro deploy?)"
+            sudo systemctl start cruza-web
+          else
+            echo "cruza-web ja ativo — restart adiado pra apos o warm"
+          fi
 
-          echo "=== Web services deployed ==="
+          echo "=== Web services deployed (cruza-web restart adiado pra apos warm) ==="
           systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
-          systemctl is-active cruza-web && echo "cruza-web: RUNNING" || echo "cruza-web: FAILED"
+          systemctl is-active cruza-web && echo "cruza-web: RUNNING (codigo OLD ate restart pos-warm)" || echo "cruza-web: FAILED"
           systemctl is-active cruza-umami >/dev/null 2>&1 && echo "cruza-umami: RUNNING" || echo "cruza-umami: not active (admin-only, OK)"
           echo "cruza-warm-cache: oneshot instalado (executado sob demanda)"
-
-      # ── SEO: notificar IndexNow (Bing/Yandex/Yahoo/Seznam/Naver) ──
-      # Roda apos cruza-web restart pra que /<INDEXNOW_KEY>.txt esteja
-      # acessivel quando os crawlers vierem validar. Submissao usa o
-      # sitemap dinamico (web.routes.seo._build_sitemap_xml), que ja
-      # inclui as 223 cidades + paginas estaticas. Tolerante a falha:
-      # `continue-on-error: true` + `|| true` no script garantem que
-      # IndexNow flaky nao quebra o deploy. Skip silencioso se a env
-      # var INDEXNOW_KEY nao estiver no .env.
-      - name: SEO - IndexNow submit (Bing/Yandex/Yahoo)
-        if: inputs.etl_phase == 'web' || inputs.etl_phase == 'all'
-        continue-on-error: true
-        run: |
-          set -e
-          cd ${{ env.PROJECT_DIR }}
-          source venv/bin/activate
-          # `set -a` faz `source .env` exportar as vars pro ambiente do
-          # subprocesso (sem isso, `python -m` nao enxergaria INDEXNOW_KEY
-          # mesmo com a var setada no .env). web/indexnow_submit.py tambem
-          # chama load_dotenv() como defesa em profundidade.
-          set -a
-          source .env 2>/dev/null || true
-          set +a
-          if [ -z "${INDEXNOW_KEY:-}" ]; then
-            echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
-            exit 0
-          fi
-          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
-          # Aguarda alguns segundos pra garantir que o cruza-web reiniciou
-          # e a rota /<key>.txt esta servindo (caso crawlers validem na hora).
-          sleep 5
-          python -m web.indexnow_submit 2>&1 || echo "::warning::IndexNow submit falhou — verificar log acima"
 
       # ── Atualizar estatisticas das tabelas hot ANTES do warm ──
       # Sem stats atualizadas, o planner pode escolher planos ruins (ex: hash
@@ -795,7 +782,8 @@ jobs:
         if: |
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
-          inputs.etl_phase == 'sql'
+          inputs.etl_phase == 'sql' ||
+          inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
           cd ${{ env.PROJECT_DIR }}
@@ -845,50 +833,165 @@ jobs:
             END \$\$;
           "
 
-      # ── Configure warm cache resume mode ──
-      # Se drop_cache=false (default): cache eh preservado, ativa resume mode
-      # (skip 24h) pra retomar warms interrompidos rapidamente. Trabalho ja
-      # feito eh preservado via UPSERT.
-      # Se drop_cache=true: cache foi TRUNCATE-ado, sem o que skip-ar.
-      - name: Configure warm cache resume mode
+      # ── Configure warm cache skip mode ──
+      # Define WARM_SKIP_RECENT_HOURS no drop-in systemd. Comportamento por input:
+      #
+      #   warm_skip_hours vazio (default): CONTEXTUAL
+      #     - etl_phase in (all, sql, incremental): forca SKIP_HRS=0 (rebuild).
+      #       ETL mudou dados/MVs → cache existente esta stale.
+      #     - resto (web, phase N, etc): SKIP_HRS=-1 (skip-if-cached).
+      #
+      #   warm_skip_hours=-1: skip-if-cached SEMPRE, mesmo apos ETL. Opt-out
+      #     explicito do rebuild forcado, pra quando user sabe que dados nao
+      #     mudaram de fato (raro). Distingue do default vazio: se user passa
+      #     -1 explicitamente, RAW_SKIP=="-1" != "" (default).
+      #
+      #   warm_skip_hours=0: rebuild SEMPRE.
+      #   warm_skip_hours=N>0: legacy resume mode.
+      #
+      #   drop_cache=true: override pra SKIP_HRS=0 (cache acabou de ser
+      #     TRUNCATE-ado).
+      #
+      # Invalido (regex falha): fallback CONTEXTUAL (mesma logica do vazio) —
+      # safe-by-default, evita stale cache silencioso apos ETL.
+      #
+      # Round 2 fixes do review GPT 5.5 PR #105: separar "default contextual"
+      # de "user passou -1 explicito" via input default '' (vazio).
+      - name: Configure warm cache skip mode
         if: |
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
-          inputs.etl_phase == 'sql'
+          inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
+          inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
+
+          # Detecta contexto de ETL pesado: dados/MVs mudaram, cache existente
+          # esta stale → default deve ser rebuild completo.
+          ETL_HEAVY=false
+          if [ "${{ inputs.etl_phase }}" = "all" ] \
+            || [ "${{ inputs.etl_phase }}" = "sql" ] \
+            || [ "${{ inputs.etl_phase }}" = "incremental" ]; then
+            ETL_HEAVY=true
+          fi
+
+          RAW_SKIP="${{ inputs.warm_skip_hours }}"
+
           if [ "${{ inputs.drop_cache }}" = "true" ]; then
             SKIP_HRS=0
-            echo "Full rebuild mode (drop_cache=true)"
-          else
-            # Sanitiza input warm_skip_hours: apenas digitos
-            RAW_SKIP="${{ inputs.warm_skip_hours }}"
-            if echo "$RAW_SKIP" | grep -qE '^[0-9]+$'; then
-              SKIP_HRS="$RAW_SKIP"
+            REASON="drop_cache=true → TRUNCATE feito, rebuild forcado"
+          elif [ -z "$RAW_SKIP" ]; then
+            # Vazio = default contextual
+            if [ "$ETL_HEAVY" = "true" ]; then
+              SKIP_HRS=0
+              REASON="default contextual: etl_phase '${{ inputs.etl_phase }}' mudou dados → rebuild forcado (passe warm_skip_hours=-1 pra opt-out se sabe que dados nao mudaram)"
             else
-              SKIP_HRS=24
-              echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), usando default 24"
+              SKIP_HRS=-1
+              REASON="default contextual: nao-ETL → skip-if-cached"
             fi
-            echo "Resume mode: pula munis cacheados nas ultimas ${SKIP_HRS}h"
+          elif echo "$RAW_SKIP" | grep -qE '^-?[0-9]+$'; then
+            # Valor explicito valido — respeita SEMPRE (incluindo -1 apos ETL).
+            SKIP_HRS="$RAW_SKIP"
+            REASON="warm_skip_hours='$RAW_SKIP' (explicito)"
+          else
+            # Input invalido: fallback CONTEXTUAL (mesmo do vazio) — safe.
+            # NUNCA fazemos fallback pra -1 silencioso apos ETL, pois deixaria
+            # cache stale sem o operador perceber.
+            if [ "$ETL_HEAVY" = "true" ]; then
+              SKIP_HRS=0
+              REASON="warm_skip_hours invalido ('$RAW_SKIP') + ETL_HEAVY → fallback safe SKIP_HRS=0"
+            else
+              SKIP_HRS=-1
+              REASON="warm_skip_hours invalido ('$RAW_SKIP') + non-ETL → fallback SKIP_HRS=-1"
+            fi
+            echo "::warning::warm_skip_hours invalido ('$RAW_SKIP'), aplicando fallback contextual"
+          fi
+
+          echo "$REASON"
+          if [ "$SKIP_HRS" -lt 0 ]; then
+            echo "Mode: skip-if-cached (warm pula qualquer muni com entrada existente)"
+          elif [ "$SKIP_HRS" -eq 0 ]; then
+            echo "Mode: rebuild completo (warm reprocessa tudo)"
+          else
+            echo "Mode: legacy resume (pula cacheados nas ultimas ${SKIP_HRS}h)"
+          fi
+          # Tb passa WARM_REWARM_KEYS pro warm (lido pelo warm_cache.py
+          # como REWARM_KEYS — patterns substring pra shadow rewarm).
+          # Sanitiza via regex: aceita CSV de termos [A-Za-z0-9_:]+.
+          REWARM_RAW="${{ inputs.rewarm_cache_keys }}"
+          REWARM_VAL=""
+          if [ -n "$REWARM_RAW" ]; then
+            IFS=',' read -ra RTERMS <<< "$REWARM_RAW"
+            for term in "${RTERMS[@]}"; do
+              term=$(echo "$term" | tr -d ' ')
+              [ -z "$term" ] && continue
+              if ! echo "$term" | grep -qE '^[A-Za-z0-9_:]+$'; then
+                echo "::error::rewarm_cache_keys term invalido: '$term' (apenas [A-Za-z0-9_:] permitidos)"
+                exit 1
+              fi
+              if [ -n "$REWARM_VAL" ]; then
+                REWARM_VAL="$REWARM_VAL,$term"
+              else
+                REWARM_VAL="$term"
+              fi
+            done
+            echo "Shadow rewarm ativo: WARM_REWARM_KEYS=$REWARM_VAL"
           fi
           sudo mkdir -p /etc/systemd/system/cruza-warm-cache.service.d
           cat <<EOF | sudo tee /etc/systemd/system/cruza-warm-cache.service.d/runtime-env.conf > /dev/null
           [Service]
           Environment=WARM_SKIP_RECENT_HOURS=$SKIP_HRS
+          Environment=WARM_REWARM_KEYS=$REWARM_VAL
           EOF
           sudo systemctl daemon-reload
-          echo "WARM_SKIP_RECENT_HOURS=$SKIP_HRS configurado"
+          echo "WARM_SKIP_RECENT_HOURS=$SKIP_HRS, WARM_REWARM_KEYS='$REWARM_VAL' configurados"
 
-      # ── Invalidate selected cache keys ──
-      # DELETE cirurgico no web_cache para queries afetadas por uma fix
-      # especifica. Mais cirurgico que drop_cache=true (que apaga TUDO).
+      # ── Reset shadow rows (limpa __pending de deploys anteriores) ──
+      # Shadow rewarm escreve em <qid>__pending. Se um deploy anterior foi
+      # interrompido OU mudou a SQL entre deploys, os __pending podem estar
+      # stale. Pra garantir que o shadow desse deploy parte do zero, apagamos
+      # TODOS os __pending no inicio. Isso evita: (a) shadow stale ser
+      # "completado" e swapado (promove data velha pra live), (b) warm pular
+      # munis ja em __pending mas computados com SQL antigo.
+      #
+      # Roda sempre que o warm vai rodar (mesmo sem rewarm_cache_keys), pra
+      # higiene geral — orfaos __pending sao sempre indesejados.
+      - name: Reset shadow rows (clean __pending from previous deploys)
+        if: |
+          inputs.warm_cache == true ||
+          inputs.etl_phase == 'all' ||
+          inputs.etl_phase == 'sql' ||
+          inputs.rewarm_cache_keys != ''
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== Reset shadow rows (DELETE %__pending) ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE
+              n bigint;
+            BEGIN
+              IF to_regclass('public.web_cache') IS NOT NULL THEN
+                DELETE FROM web_cache WHERE query_id LIKE '%__pending';
+                GET DIAGNOSTICS n = ROW_COUNT;
+                RAISE NOTICE 'shadow __pending rows deleted: %', n;
+              ELSE
+                RAISE NOTICE 'web_cache nao existe ainda — nada a limpar';
+              END IF;
+            END \$\$;
+          "
+
+      # ── Invalidate selected cache keys (HARD delete, cache miss durante warm) ──
+      # DELETE cirurgico nas rows LIVE. Use APENAS se a data live esta BROKEN
+      # (ex: bug numa query produziu lixo); pra atualizar com zero-downtime,
+      # prefira `rewarm_cache_keys`.
       # Aceita CSV de termos: para cada termo T, executa
       # DELETE FROM web_cache WHERE query_id LIKE '%T%'.
       # Sanitiza input: apenas [a-zA-Z0-9_:] permitidos por termo, para
       # evitar SQL injection via patterns LIKE arbitrarios.
-      # Roda APOS Configure resume mode (que ja deixou skip=24h em modo
-      # nao-drop), porque queremos que o warm subsequente retrate as
-      # chaves deletadas (sem skip).
       - name: Invalidate selected cache keys
         if: inputs.invalidate_cache_keys != ''
         run: |
@@ -956,7 +1059,8 @@ jobs:
         if: |
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
-          inputs.etl_phase == 'sql'
+          inputs.etl_phase == 'sql' ||
+          inputs.rewarm_cache_keys != ''
         continue-on-error: true
         run: |
           set -uo pipefail  # SEM -e: queremos capturar exit do systemctl
@@ -1005,6 +1109,76 @@ jobs:
             exit "$STATUS"
           fi
           echo "=== Cache warming complete ==="
+
+      # ── Restart cruza-web (apos warm) ──
+      # Aqui eh ONDE cruza-web pega o codigo novo. A inversao "warm primeiro,
+      # restart depois" garante que o usuario nao sofre 12-18h de cache miss
+      # enquanto o warm reconstroi: durante o warm, cruza-web rodou com OLD
+      # code + OLD cache (servindo rapido); apos restart, cruza-web sobe com
+      # NEW code + cache JA QUENTE (queries pre-computadas em web_cache).
+      #
+      # `if: success()` (sem `failure()`) — restart so se NENHUM step
+      # critico anterior falhou. Warm tem `continue-on-error: true`, entao
+      # falha parcial do warm (>5% queries) NAO transforma o job em failure()
+      # — restart ainda roda nesse caso, que eh o desejado. Mas se algum step
+      # ANTES do warm falhou catastroficamente (ETL crash, sync de codigo
+      # quebrado, build de assets falhou), o job esta em failure() e o
+      # restart SKIPa — promover codigo inconsistente seria pior que manter
+      # o cruza-web no estado anterior. Comportamento corrigido apos review
+      # GPT 5.5 + Opus 4.7 (PR #105).
+      - name: Restart cruza-web (after warm)
+        if: success()
+        run: |
+          set -euo pipefail
+          echo "=== Restart cruza-web (codigo NOVO + cache QUENTE) ==="
+          # restart funciona em servico ativo OU inativo (alias de stop+start).
+          sudo systemctl restart cruza-web
+          # Aguarda port 8000 responder (workers spawnam em ~3-5s).
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 3 -o /dev/null \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/static/manifest.webmanifest; then
+              echo "cruza-web ready (tentativa $i)"
+              break
+            fi
+            sleep 2
+          done
+          systemctl is-active cruza-web && echo "cruza-web: RUNNING (codigo NOVO)" || {
+            echo "::error::cruza-web FAILED apos restart pos-warm"
+            sudo systemctl status cruza-web --no-pager --lines=30 || true
+            exit 1
+          }
+
+      # ── SEO: notificar IndexNow (Bing/Yandex/Yahoo/Seznam/Naver) ──
+      # Roda APOS o restart pos-warm pra garantir que /<INDEXNOW_KEY>.txt
+      # esteja servindo a chave NOVA quando os crawlers vierem validar.
+      # Submissao usa sitemap gerado localmente em Python (NAO via HTTP),
+      # entao independente do estado do cruza-web. Tolerante a falha:
+      # `continue-on-error: true` + `|| true` no script garantem que
+      # IndexNow flaky nao quebra o deploy. Skip silencioso se a env
+      # var INDEXNOW_KEY nao estiver no .env.
+      - name: SEO - IndexNow submit (Bing/Yandex/Yahoo)
+        if: inputs.etl_phase == 'web' || inputs.etl_phase == 'all'
+        continue-on-error: true
+        run: |
+          set -e
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          # `set -a` faz `source .env` exportar as vars pro ambiente do
+          # subprocesso (sem isso, `python -m` nao enxergaria INDEXNOW_KEY
+          # mesmo com a var setada no .env). web/indexnow_submit.py tambem
+          # chama load_dotenv() como defesa em profundidade.
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          if [ -z "${INDEXNOW_KEY:-}" ]; then
+            echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
+            exit 0
+          fi
+          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
+          # cruza-web ja foi restartado no step anterior; rota /<key>.txt
+          # serve a chave nova caso ela tenha mudado.
+          python -m web.indexnow_submit 2>&1 || echo "::warning::IndexNow submit falhou — verificar log acima"
 
       # ── Toggle empresa sitemap (enable/disable/keep) ──
       # Controla SITEMAP_INCLUDE_EMPRESAS via drop-in systemd em
@@ -1313,7 +1487,7 @@ jobs:
     if: |
       always() &&
       needs.deploy.result == 'success' &&
-      (inputs.etl_phase != 'web' || inputs.warm_cache == true)
+      (inputs.etl_phase != 'web' || inputs.warm_cache == true || inputs.rewarm_cache_keys != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -13,9 +13,15 @@ WorkingDirectory=/home/govbr/govbr-project
 EnvironmentFile=/home/govbr/govbr-project/.env
 # Env vars opcionais (configurados via drop-in /etc/systemd/system/cruza-warm-cache.service.d/):
 #   WARM_CACHE_WORKERS=N         (default 4) — paralelismo
-#   WARM_SKIP_RECENT_HOURS=N     (default 0) — resume mode: pula munis cacheados ha < N horas
-#                                              0 = rebuild completo (default seguro)
-#                                              24 = skip cacheados ha <24h (apos web-only deploy)
+#   WARM_SKIP_RECENT_HOURS=N     (default -1) — modo de skip do cache
+#                                              -1 = skip qualquer entrada cacheada (any age) — dados estaticos
+#                                               0 = rebuild completo (sem skip)
+#                                               N > 0 = skip se cacheado nas ultimas N horas (legacy)
+#   WARM_REWARM_KEYS=csv         (default vazio) — patterns substring de query_id
+#                                              para shadow rewarm (zero-downtime). Warm escreve em
+#                                              <qid>__pending; live continua servindo; swap atomico
+#                                              ao fim do ciclo se fail==0. Auto-expansao de deps
+#                                              (PERFIL/TOP_FORN/TOP_SERV → KPI_SUMMARY mesmo prefix).
 # --daemon (sem --loop) roda 1 ciclo completo e termina. Atualizar todos os
 # municipios PB pode demorar varias horas; sem timeout aqui.
 ExecStart=/home/govbr/govbr-project/venv/bin/python -u -m web.warm_cache --daemon
