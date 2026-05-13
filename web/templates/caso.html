@@ -282,9 +282,15 @@
   <p class="caso-eyebrow">Caso investigativo</p>
 
   <script>
-    if (typeof trackEvent === 'function') {
-        trackEvent('pagina-caso-visita', { slug: {{ slug|tojson }} });
-    }
+    // DOMContentLoaded garante que o bundle core.js (carregado no fim
+    // de base.html) ja executou e trackEvent esta definido. Sem isso,
+    // o inline roda durante o parse do HTML quando trackEvent ainda
+    // nao existe e o guard `typeof === 'function'` engole silencioso.
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof trackEvent === 'function') {
+            trackEvent('pagina-caso-visita', { slug: {{ slug|tojson }} });
+        }
+    });
   </script>
 
   {% if titulo_html %}

@@ -51,8 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const wasCollapsed = card.classList.contains('collapsed');
             card.classList.toggle('collapsed');
             // Trackeia somente o expand (interesse), nao o collapse.
+            // Template renderiza id="q-<query.id>" + data-query="<query.id>"
+            // (cidade.html:497). Preferimos dataset.query — vem sem o
+            // prefixo "q-" do id (que existe so pra anchors HTML).
             if (wasCollapsed && typeof trackEvent === 'function') {
-                const tipo = card.dataset.queryId || card.dataset.cardType || card.id || 'unknown';
+                const tipo = card.dataset.query || card.id || 'unknown';
                 trackEvent('finding-card-expand', { tipo: String(tipo).slice(0, 64) });
             }
         });

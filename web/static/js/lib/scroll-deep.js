@@ -35,8 +35,14 @@ function initScrollDeep() {
         requestAnimationFrame(() => {
             ticking = false;
             const doc = document.documentElement;
-            const scrolled = (window.scrollY || window.pageYOffset || 0) + window.innerHeight;
             const total = Math.max(doc.scrollHeight, doc.offsetHeight, 1);
+            // Skip paginas que cabem inteiras na viewport — sem scroll real
+            // possivel, qualquer disparo de 50/75/100% seria espurio e
+            // poluiria a metrica de engagement (objetivo: distinguir
+            // abriu-e-saiu de leu-inteiro). 1.2x da viewport eh o
+            // threshold pra exigir conteudo significativo abaixo da dobra.
+            if (total <= window.innerHeight * 1.2) return;
+            const scrolled = (window.scrollY || window.pageYOffset || 0) + window.innerHeight;
             const pct = (scrolled / total) * 100;
             [50, 75, 100].forEach(mark => {
                 if (!fired.has(mark) && pct >= mark) {
@@ -49,5 +55,7 @@ function initScrollDeep() {
         });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    // Nao chamamos onScroll() no init — exigimos pelo menos UMA rolada
+    // pra evitar disparar 50/75/100 em paginas com scroll mas user
+    // chegou ja perto do final via deep-link/anchor.
 }
