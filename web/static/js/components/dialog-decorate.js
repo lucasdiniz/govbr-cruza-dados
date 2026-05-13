@@ -352,6 +352,12 @@ function _decorateDialogBody(body) {
         const target = getNeighbor(direction);
         if (!target) { snapBack(); return; }
         const { current } = drag;
+        // Captura label das tabs (de/para) ANTES do setActive trocar
+        // _activeDialogSectionId. Caminho de swipe nao passa pelo
+        // tabs.change listener no setActive direto desta funcao, entao
+        // disparamos dialog-tab-change manualmente aqui.
+        const fromLabel = (current.dataset.dialogLabel || '').slice(0, 40);
+        const toLabel = (target.dataset.dialogLabel || '').slice(0, 40);
         const startX = drag.lastVisibleDx || 0;
         const width = body.clientWidth || window.innerWidth || 360;
         const exitX = direction > 0 ? -width : width;
@@ -375,6 +381,17 @@ function _decorateDialogBody(body) {
             // Hide outgoing FIRST (display:none) so any single-frame snap
             // to the underlying transform during cancel() isn't visible.
             setActive(target.id, { scroll: false });
+            // Mantem paridade com tabs.change listener: atualiza URL state
+            // + dispara analytics. Sem isso, swipe ficaria "invisivel"
+            // pra share-link e pro painel.
+            if (typeof _dialogUrlUpdateTab === 'function') _dialogUrlUpdateTab(target.id);
+            if (typeof trackEvent === 'function') {
+                trackEvent('dialog-tab-change', {
+                    tipo: _currentDialogType || '',
+                    de: fromLabel,
+                    para: toLabel,
+                });
+            }
             try { out.cancel(); } catch { /* already finished */ }
             restoreSectionStyles(current, snapshot);
             // Phase 2: target slides in from the opposite side.
