@@ -371,6 +371,10 @@ JS_FILES: list[str] = [
     # Listener self-attaching via lib/umami-track.js -> document
     # 'tpb:tracked' CustomEvent. Init em pages/main.js.
     "lib/dialog-engagement.js",
+    # redes-sociais-popup: CTA once-per-user pra seguir IG+X +
+    # tracking delegado de clicks em [data-rede-social]. Init em
+    # pages/main.js. Inclui deep-link pro app no mobile.
+    "components/redes-sociais-popup.js",
     "components/search-tabs.js",
     "components/mode-toggle.js",
     # md3-ready helper. Must load early so any later script can register
@@ -435,7 +439,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "109"
+templates.env.globals["ASSET_VERSION"] = "110"
 
 
 # ─────────────────────────────────────────────────────────────────────────

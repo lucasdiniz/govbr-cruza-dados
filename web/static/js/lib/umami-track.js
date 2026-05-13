@@ -80,6 +80,23 @@
 //                           flushar a sessao do nivel atual marcando
 //                           drilled_to='back-<tipo>' e comecar nova
 //                           sessao com o tipo restaurado.
+//   redes-popup-mostrado  - {trigger: 'tempo'|'scroll'}
+//                           Popup de CTA pra seguir IG/X foi mostrado.
+//                           Trigger 'tempo' = 30s de pagina visivel;
+//                           'scroll' = scroll >=50% da pagina.
+//                           Aparece UMA VEZ por usuario (localStorage
+//                           dedup); ver lib/components/redes-sociais-popup.js.
+//   redes-popup-dispensado - {via: 'fechar'|'nao-mostrar'}
+//                           User fechou o popup sem clicar em rede.
+//                           'fechar' = X / backdrop / Escape; 'nao-mostrar'
+//                           = link explicito "Nao mostrar mais".
+//   redes-clique          - {rede: 'instagram'|'x',
+//                            origem: 'popup'|'footer'|'caso'}
+//                           User clicou num CTA de rede social. Origem
+//                           identifica de qual surface o click veio
+//                           (popup once-per-user / footer sempre visivel /
+//                           card no fim de /caso/<slug>). Tracking via
+//                           delegacao em [data-rede-social] no document.
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {

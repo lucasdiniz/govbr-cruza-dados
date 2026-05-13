@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollDeep();
     initPageEngagement();
     if (typeof window.initDialogEngagement === 'function') window.initDialogEngagement();
+    if (typeof window.initRedesSociaisPopup === 'function') window.initRedesSociaisPopup();
 
     // Outbound link tracking: listener delegado captura clicks em <a href>
     // que apontem pra dominios externos (TCE-PB, PNCP, dados.pb, Portal da

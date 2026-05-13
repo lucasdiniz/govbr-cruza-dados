@@ -1,0 +1,279 @@
+/* === components/redes-sociais.css === */
+/* Estilos pros 3 surfaces de CTA de redes sociais:
+   1. .footer-redes — links de IG+X no rodape (sempre visiveis)
+   2. .caso-redes-cta — card no fim de /caso/<slug> (alta-intencao)
+   3. .redes-popup-overlay + .redes-popup — popup once-per-user
+
+   Usa tokens MD3 sempre que possivel pra herdar tema dark/light. Onde
+   precisamos de cor de marca (Instagram gradient, X preto), hardcoded.
+*/
+
+/* ─── Footer (rodape de base.html) ────────────────────────────────── */
+.footer-redes {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.6rem;
+    vertical-align: middle;
+}
+
+.footer-redes-label {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.02em;
+}
+
+.footer-redes a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.footer-redes a:hover,
+.footer-redes a:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.footer-redes svg {
+    width: 18px;
+    height: 18px;
+}
+
+@media (max-width: 600px) {
+    .footer-redes {
+        display: flex;
+        margin-left: 0;
+        margin-top: 0.4rem;
+    }
+}
+
+/* ─── Card CTA no fim de /caso/<slug> ──────────────────────────────── */
+.caso-redes-cta {
+    margin: 3rem 0 1rem;
+    padding: 1.5rem 1.25rem;
+    background: linear-gradient(135deg, rgba(79, 124, 255, 0.08), rgba(255, 110, 110, 0.05));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.caso-redes-cta h3 {
+    margin: 0 0 0.6rem;
+    font-size: 1.15rem;
+    color: #fff;
+    font-weight: 700;
+}
+
+.caso-redes-cta p {
+    margin: 0 0 1.25rem;
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.5;
+}
+
+.caso-redes-cta-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.caso-redes-cta .redes-btn {
+    min-width: 200px;
+}
+
+@media (max-width: 600px) {
+    .caso-redes-cta { padding: 1.25rem 1rem; }
+    .caso-redes-cta .redes-btn { flex: 1 1 100%; min-width: 0; }
+}
+
+/* ─── Botoes compartilhados (popup + caso CTA) ────────────────────── */
+.redes-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: filter 120ms ease, transform 120ms ease;
+    color: #fff;
+}
+
+.redes-btn:hover,
+.redes-btn:focus-visible {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.redes-btn svg {
+    flex-shrink: 0;
+}
+
+/* Instagram: gradient roxo->rosa->laranja (cor oficial da marca) */
+.redes-btn-ig {
+    background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+}
+
+/* X: preto solido (rebrand de 2023). Borda sutil pra contraste com bg dark. */
+.redes-btn-x {
+    background: #0f0f0f;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Popup overlay ────────────────────────────────────────────────── */
+.redes-popup-overlay[hidden] {
+    display: none !important;
+}
+
+.redes-popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    animation: redes-popup-fade-in 220ms ease-out;
+}
+
+.redes-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+.redes-popup {
+    position: relative;
+    max-width: 420px;
+    width: 100%;
+    padding: 1.75rem 1.5rem 1.25rem;
+    background: var(--md-sys-color-surface-container-high, #1a1f2c);
+    color: var(--md-sys-color-on-surface, #e4e7ee);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.55);
+    animation: redes-popup-slide-up 280ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.redes-popup:focus { outline: none; }
+
+.redes-popup-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+.redes-popup-close:hover,
+.redes-popup-close:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    outline: none;
+}
+
+.redes-popup-title {
+    margin: 0 0 0.6rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+    padding-right: 2rem; /* espaco pro botao de fechar */
+}
+
+.redes-popup-text {
+    margin: 0 0 1.25rem;
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.5;
+}
+
+.redes-popup-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+.redes-popup-buttons .redes-btn {
+    width: 100%;
+    padding: 0.85rem 1rem;
+}
+
+.redes-popup-actions {
+    display: flex;
+    justify-content: center;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.redes-popup-dismiss {
+    background: transparent;
+    border: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: color 120ms ease, background-color 120ms ease;
+}
+
+.redes-popup-dismiss:hover,
+.redes-popup-dismiss:focus-visible {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.06);
+    outline: none;
+}
+
+body.redes-popup-open {
+    overflow: hidden;
+}
+
+@keyframes redes-popup-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes redes-popup-slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Reduced motion: desativa animacoes */
+@media (prefers-reduced-motion: reduce) {
+    .redes-popup-overlay,
+    .redes-popup {
+        animation: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .redes-popup {
+        max-width: 100%;
+        padding: 1.5rem 1.25rem 1.1rem;
+    }
+    .redes-popup-title { font-size: 1.1rem; }
+}
