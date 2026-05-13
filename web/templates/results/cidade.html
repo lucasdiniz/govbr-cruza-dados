@@ -558,6 +558,12 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    if (typeof trackEvent === 'function') {
+        trackEvent('cidade-visita', {
+            municipio: {{ perfil.municipio|tojson }},
+            uf: {{ (display_uf or 'PB')|tojson }},
+        });
+    }
     // Default da UI eh "Ano atual": passa as datas direto da Jinja para o
     // bootstrap. Antes a logica lia .value dos inputs, mas eles tem apenas
     // data-iso-value nesse momento (a mascara so eh aplicada DENTRO do

@@ -9,6 +9,13 @@ function _initDialogTableSort(root) {
                 if (sortCol === colIndex) { sortAsc = !sortAsc; } else { sortCol = colIndex; sortAsc = true; }
                 headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
                 th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+                if (typeof trackEvent === 'function') {
+                    const coluna = (th.textContent || '').trim().slice(0, 40) || `col-${colIndex}`;
+                    trackEvent('empenho-table-sort', {
+                        coluna,
+                        direcao: sortAsc ? 'asc' : 'desc',
+                    });
+                }
                 const tbody = table.querySelector('tbody');
                 const rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort((a, b) => {

@@ -10,6 +10,9 @@ function initNarrativeAnchors() {
         const target = document.getElementById(targetId);
         if (!target) return;
         e.preventDefault();
+        if (typeof trackEvent === 'function') {
+            trackEvent('narrative-anchor-click', { anchor: targetId });
+        }
         expandReportContext(target);
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         target.classList.remove('anchor-flash');

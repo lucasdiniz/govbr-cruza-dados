@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTour();
     initDenunciaDialog();
     initReportSections();
+    initScrollDeep();
 
     // Outbound link tracking: listener delegado captura clicks em <a href>
     // que apontem pra dominios externos (TCE-PB, PNCP, dados.pb, Portal da
@@ -46,7 +47,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Finding card collapse toggle
     document.querySelectorAll('.finding-card .finding-head').forEach(head => {
         head.addEventListener('click', () => {
-            head.closest('.finding-card').classList.toggle('collapsed');
+            const card = head.closest('.finding-card');
+            const wasCollapsed = card.classList.contains('collapsed');
+            card.classList.toggle('collapsed');
+            // Trackeia somente o expand (interesse), nao o collapse.
+            // Template renderiza id="q-<query.id>" + data-query="<query.id>"
+            // (cidade.html:497). Preferimos dataset.query — vem sem o
+            // prefixo "q-" do id (que existe so pra anchors HTML).
+            if (wasCollapsed && typeof trackEvent === 'function') {
+                const tipo = card.dataset.query || card.id || 'unknown';
+                trackEvent('finding-card-expand', { tipo: String(tipo).slice(0, 64) });
+            }
         });
     });
 

@@ -14,6 +14,7 @@
 //
 // Eventos atuais (ver tambem README dos componentes):
 //   cidade-buscar         - {via: 'autocomplete'}
+//   cidade-visita         - {municipio, uf}  (top-of-funnel da cidade)
 //   mapa-cidade-click     - {cidade, metrica}
 //   mapa-metrica-mudou    - {metrica}
 //   dialog-aberto         - {tipo, municipio, ...id-fields conforme tipo}:
@@ -23,6 +24,7 @@
 //                             tipo=licitacao   -> {numero, ano, modalidade}
 //                             tipo=heatmap     -> {ano, mes}
 //   empresa-visita        - {cnpj, nome, escopo: 'global'|'municipio', municipio?}
+//   pagina-caso-visita    - {slug}
 //   date-filter-aplicado  - {preset, de?, ate?, municipio?}
 //   outbound-click        - {dominio, href}  (origem+pathname; sem query/hash)
 //   modo-toggle           - {to: 'auditor'|'citizen'}
@@ -35,6 +37,14 @@
 //                            footer|overflow-menu)
 //   credibilidade-aberto  -
 //   denuncia-info-aberto  -
+//   scroll-deep           - {percent: 50|75|100, pagina}
+//                           (engagement: leu 50/75/100% do scroll)
+//   narrative-anchor-click - {anchor}  (palavra destacada do resumo da
+//                            cidade que pula pra secao relacionada)
+//   finding-card-expand   - {tipo}  (expand de finding card; collapse nao)
+//   empenho-table-sort    - {coluna, direcao: 'asc'|'desc'}
+//   api-error             - {endpoint, status}  (drilldown falhou;
+//                            status=0 = network error)
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {
