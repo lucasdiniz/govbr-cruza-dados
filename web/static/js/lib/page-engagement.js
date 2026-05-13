@@ -61,6 +61,7 @@ function initPageEngagement() {
     let totalVisibleMs = 0;
     let fired = false;
     let scrollTicking = false;
+    let hiddenFireTimer = null;
 
     const updateScroll = () => {
         scrollTicking = false;
@@ -95,20 +96,40 @@ function initPageEngagement() {
         if (fired) return;
         if (document.visibilityState === 'hidden') {
             totalVisibleMs += performance.now() - visibleSinceMs;
-            // Hidden eh nosso primary fire trigger.
-            fire();
+            // Em mobile/iOS Safari, hidden pode ocorrer em transicoes
+            // temporarias (share sheet, app switch curto). Atrasamos um
+            // pouco e cancelamos se a aba voltar a visible.
+            if (hiddenFireTimer) clearTimeout(hiddenFireTimer);
+            hiddenFireTimer = setTimeout(() => {
+                hiddenFireTimer = null;
+                if (!fired && document.visibilityState === 'hidden') fire();
+            }, 300);
         } else {
+            if (hiddenFireTimer) {
+                clearTimeout(hiddenFireTimer);
+                hiddenFireTimer = null;
+            }
             visibleSinceMs = performance.now();
         }
     });
 
     // pagehide eh o fallback / segundo disparo em browsers onde
     // visibilitychange nao roda no caminho de unload (raro mas existe).
-    window.addEventListener('pagehide', () => { if (!fired) fire(); });
+    window.addEventListener('pagehide', () => {
+        if (hiddenFireTimer) {
+            clearTimeout(hiddenFireTimer);
+            hiddenFireTimer = null;
+        }
+        if (!fired) fire();
+    });
 
     function fire() {
         if (fired) return;
         fired = true;
+        if (hiddenFireTimer) {
+            clearTimeout(hiddenFireTimer);
+            hiddenFireTimer = null;
+        }
         if (document.visibilityState !== 'hidden') {
             totalVisibleMs += performance.now() - visibleSinceMs;
         }

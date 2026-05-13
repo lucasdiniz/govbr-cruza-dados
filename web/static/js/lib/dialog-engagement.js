@@ -34,7 +34,7 @@
 //     no dialog-aberto, nao o id do md-dialog.
 
 (function () {
-    let active = null;   // { tipo, t0, tabsCount, maxScrollPct }
+    let active = null;   // { tipo, t0, tabsCount, maxScrollPct, initialTabLabel?, tabsVisited:Set }
     let scrollEl = null;
     let scrollTicking = false;
 
@@ -94,6 +94,8 @@
             t0: performance.now(),
             tabsCount: 1, // tab inicial sempre conta
             maxScrollPct: 0,
+            initialTabLabel: null,
+            tabsVisited: new Set(),
         };
         // Faz uma leitura imediata pra capturar conteudos curtos
         // (que cabem na viewport, scroll_max=100 sem o usuario rolar).
@@ -117,7 +119,11 @@
                 return;
             }
             if (name === 'dialog-tab-change' && active) {
-                active.tabsCount += 1;
+                const de = typeof props.de === 'string' ? props.de.trim() : '';
+                const para = typeof props.para === 'string' ? props.para.trim() : '';
+                if (!active.initialTabLabel && de) active.initialTabLabel = de;
+                if (para && para !== active.initialTabLabel) active.tabsVisited.add(para);
+                active.tabsCount = 1 + active.tabsVisited.size;
                 return;
             }
         });

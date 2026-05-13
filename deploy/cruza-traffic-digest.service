@@ -14,6 +14,15 @@ ProtectSystem=strict
 ProtectHome=true
 NoNewPrivileges=true
 PrivateTmp=true
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
 ReadOnlyPaths=/var/log/nginx /etc
 ReadWritePaths=/var/log/cruza-traffic-digest
 # Limites

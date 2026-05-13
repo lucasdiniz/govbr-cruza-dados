@@ -75,16 +75,31 @@ fi
 EMAIL_TO="${TRAFFIC_DIGEST_EMAIL_TO:-}"
 EMAIL_FROM="${TRAFFIC_DIGEST_EMAIL_FROM:-}"
 SUBJECT="${TRAFFIC_DIGEST_SUBJECT:-}"
+EXISTING_EMAIL_TO=""
+EXISTING_EMAIL_FROM=""
+EXISTING_SUBJECT=""
 
-if [[ -z "${EMAIL_TO}" && -f "${ENV_FILE}" ]]; then
+if [[ -f "${ENV_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}" || true
+    EXISTING_EMAIL_TO="${TRAFFIC_DIGEST_EMAIL_TO:-}"
+    EXISTING_EMAIL_FROM="${TRAFFIC_DIGEST_EMAIL_FROM:-}"
+    EXISTING_SUBJECT="${TRAFFIC_DIGEST_SUBJECT:-}"
+fi
+
+FINAL_EMAIL_TO="${EMAIL_TO:-${EXISTING_EMAIL_TO:-}}"
+FINAL_EMAIL_FROM="${EMAIL_FROM:-${EXISTING_EMAIL_FROM:-}}"
+FINAL_SUBJECT="${SUBJECT:-${EXISTING_SUBJECT:-}}"
+
+if [[ -z "${EMAIL_TO}" && -z "${EMAIL_FROM}" && -z "${SUBJECT}" && -f "${ENV_FILE}" ]]; then
     log "TRAFFIC_DIGEST_EMAIL_TO vazio no env do deploy — preservando ${ENV_FILE} existente."
 else
     log "Escrevendo ${ENV_FILE}"
     {
         echo "# Gerado por deploy/setup-traffic-digest.sh — editavel mas pode ser sobrescrito"
-        if [[ -n "${EMAIL_TO}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_TO=${EMAIL_TO}"; fi
-        if [[ -n "${EMAIL_FROM}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_FROM=${EMAIL_FROM}"; fi
-        if [[ -n "${SUBJECT}" ]]; then echo "TRAFFIC_DIGEST_SUBJECT=${SUBJECT}"; fi
+        if [[ -n "${FINAL_EMAIL_TO}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_TO=${FINAL_EMAIL_TO}"; fi
+        if [[ -n "${FINAL_EMAIL_FROM}" ]]; then echo "TRAFFIC_DIGEST_EMAIL_FROM=${FINAL_EMAIL_FROM}"; fi
+        if [[ -n "${FINAL_SUBJECT}" ]]; then echo "TRAFFIC_DIGEST_SUBJECT=${FINAL_SUBJECT}"; fi
     } > "${ENV_FILE}"
     chmod 640 "${ENV_FILE}"
     chown root:root "${ENV_FILE}"
@@ -110,8 +125,8 @@ systemctl enable --now cruza-traffic-digest.timer >/dev/null 2>&1 || true
 log "Timer status:"
 systemctl list-timers cruza-traffic-digest.timer --no-pager 2>/dev/null || true
 
-if [[ -n "${EMAIL_TO}" ]]; then
-    log "Email destinatario: ${EMAIL_TO}"
+if [[ -n "${FINAL_EMAIL_TO}" ]]; then
+    log "Email destinatario: ${FINAL_EMAIL_TO}"
     if ! command -v msmtp >/dev/null 2>&1 && ! command -v mail >/dev/null 2>&1 && ! command -v sendmail >/dev/null 2>&1; then
         log "AVISO: nenhum MTA encontrado (msmtp/mail/sendmail). Instale um deles + configure SMTP."
         log "       Sugestao: sudo apt-get install msmtp msmtp-mta + /etc/msmtprc com SMTP relay."

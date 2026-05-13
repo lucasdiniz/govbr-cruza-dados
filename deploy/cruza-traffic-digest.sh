@@ -53,22 +53,41 @@ grep "\[${YESTERDAY_NGINX}:" "${LOG}" > "${FILTERED}" || true
 total_hits=$(wc -l < "${FILTERED}" | tr -d ' ')
 unique_ips=$(awk '{print $1}' "${FILTERED}" | sort -u | wc -l | tr -d ' ')
 
+# Sanitiza strings de header pra evitar header injection via env file.
+sanitize_header() {
+    printf '%s' "$1" | tr -d '\r\n'
+}
+
 # Top paths (excluindo /static/* e /api/*)
-top_paths=$(awk '{print $7}' "${FILTERED}" \
-    | grep -vE '^/static/|^/api/|^/_traffic/' \
-    | sed 's/?.*//' \
+top_paths=$(awk -F\" '
+    {
+        req = $2
+        split(req, a, " ")
+        path = a[2]
+        if (path == "") next
+        sub(/\?.*/, "", path)
+        if (path ~ /^\/static\// || path ~ /^\/api\// || path ~ /^\/_traffic\//) next
+        print path
+    }
+' "${FILTERED}" \
     | sort | uniq -c | sort -rn | head -15 \
     | awk '{printf "  - `%s` (%s hits)\n", $2, $1}')
 
 # Top referers (excluindo own domain + empty)
 top_refs=$(awk -F\" '{print $4}' "${FILTERED}" \
-    | grep -vE '^$|^-$|transparenciapb\.org' \
+    | awk '$0 != "" && $0 != "-" && $0 !~ /transparenciapb\.org/' \
     | sort | uniq -c | sort -rn | head -10 \
-    | awk '{$1=$1; sub(/^[0-9]+ /, ""); print "  - " $0}' \
+    | awk '{count=$1; $1=""; sub(/^ /, ""); printf "  - %s (%s hits)\n", $0, count}' \
     | head -10)
 
 # Status code breakdown
-status_breakdown=$(awk '{print $9}' "${FILTERED}" \
+status_breakdown=$(awk -F\" '
+    {
+        split($3, a, " ")
+        code = a[2]
+        if (code ~ /^[0-9][0-9][0-9]$/) print code
+    }
+' "${FILTERED}" \
     | sort | uniq -c | sort -rn \
     | awk '{printf "  - HTTP %s: %s\n", $2, $1}')
 
@@ -78,17 +97,36 @@ top_ips=$(awk '{print $1}' "${FILTERED}" \
     | awk '{printf "  - %s (%s hits)\n", $2, $1}')
 
 # 4xx/5xx errors — quais paths bombam?
-top_errors=$(awk '$9 ~ /^[45][0-9][0-9]$/ {print $9, $7}' "${FILTERED}" \
-    | sed 's/?.*//' \
+top_errors=$(awk -F\" '
+    {
+        req = $2
+        split(req, a, " ")
+        path = a[2]
+        if (path == "") next
+        split($3, b, " ")
+        code = b[2]
+        if (code !~ /^[45][0-9][0-9]$/) next
+        sub(/\?.*/, "", path)
+        print code, path
+    }
+' "${FILTERED}" \
     | sort | uniq -c | sort -rn | head -10 \
     | awk '{printf "  - HTTP %s `%s` (%s vezes)\n", $2, $3, $1}')
 
 # Exploit attempts (paths suspeitos — mesmas heuristicas do fail2ban
 # transparenciapb-exploit-paths.filter)
-exploits=$(awk '{print $1, $7}' "${FILTERED}" \
+exploits=$(awk -F\" '
+    {
+        req = $2
+        split(req, a, " ")
+        path = a[2]
+        if (path == "") next
+        print $1, path
+    }
+' "${FILTERED}" \
     | grep -iE '\.env|\.git|wp-admin|wp-login|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html' \
     | sort | uniq -c | sort -rn | head -10 \
-    | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}')
+    | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}') || true
 
 # IPs identificados (>100 hits + sao usuarios reais provaveis pelo UA)
 # Heuristica simples — Mozilla + nao-bot UA
@@ -145,32 +183,33 @@ echo "[digest] Escrito: ${OUT}"
 
 # Envia por email se configurado
 if [[ -n "${TRAFFIC_DIGEST_EMAIL_TO:-}" ]]; then
-    SUBJECT="${TRAFFIC_DIGEST_SUBJECT:-[transparenciapb] Digest de trafego ${YESTERDAY}}"
-    FROM="${TRAFFIC_DIGEST_EMAIL_FROM:-digest@$(hostname -f 2>/dev/null || hostname)}"
+    SUBJECT="$(sanitize_header "${TRAFFIC_DIGEST_SUBJECT:-[transparenciapb] Digest de trafego ${YESTERDAY}}")"
+    FROM="$(sanitize_header "${TRAFFIC_DIGEST_EMAIL_FROM:-digest@$(hostname -f 2>/dev/null || hostname)}")"
+    TO="$(sanitize_header "${TRAFFIC_DIGEST_EMAIL_TO}")"
 
     if command -v msmtp >/dev/null 2>&1; then
         {
             echo "From: ${FROM}"
-            echo "To: ${TRAFFIC_DIGEST_EMAIL_TO}"
+            echo "To: ${TO}"
             echo "Subject: ${SUBJECT}"
             echo "Content-Type: text/plain; charset=UTF-8"
             echo
             cat "${OUT}"
         } | msmtp --read-recipients
-        echo "[digest] Enviado por msmtp para ${TRAFFIC_DIGEST_EMAIL_TO}"
+        echo "[digest] Enviado por msmtp para ${TO}"
     elif command -v mail >/dev/null 2>&1; then
-        mail -s "${SUBJECT}" -a "From: ${FROM}" "${TRAFFIC_DIGEST_EMAIL_TO}" < "${OUT}"
-        echo "[digest] Enviado por mail(1) para ${TRAFFIC_DIGEST_EMAIL_TO}"
+        mail -s "${SUBJECT}" -a "From: ${FROM}" "${TO}" < "${OUT}"
+        echo "[digest] Enviado por mail(1) para ${TO}"
     elif command -v sendmail >/dev/null 2>&1; then
         {
             echo "From: ${FROM}"
-            echo "To: ${TRAFFIC_DIGEST_EMAIL_TO}"
+            echo "To: ${TO}"
             echo "Subject: ${SUBJECT}"
             echo "Content-Type: text/plain; charset=UTF-8"
             echo
             cat "${OUT}"
         } | sendmail -t
-        echo "[digest] Enviado por sendmail para ${TRAFFIC_DIGEST_EMAIL_TO}"
+        echo "[digest] Enviado por sendmail para ${TO}"
     else
         echo "[digest] AVISO: TRAFFIC_DIGEST_EMAIL_TO setado mas nenhum MTA encontrado (msmtp/mail/sendmail). Arquivo gravado em ${OUT}, sem envio."
     fi
