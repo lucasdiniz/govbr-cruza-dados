@@ -39,6 +39,15 @@
     padding: 0;
 }
 
-/* Icon buttons / FAB / dialog / divider / chip-set / tabs / list / menu /
+/* Secondary/primary tabs: MWC bundle defines `:host { padding: 0 16px }` so
+   each tab has 16dp leading/trailing. The universal reset (* { padding: 0 })
+   beats that :host rule (same Chromium quirk explained at the top of this
+   file), so without restoring it here the tab labels render edge-to-edge
+   and visually collapse into each other on narrow viewports. */
+:where(md-secondary-tab, md-primary-tab) {
+    padding-inline: 16px;
+}
+
+/* Icon buttons / FAB / dialog / divider / chip-set / list / menu /
    text-field / etc. handle their own internal layout via shadow CSS; no
    light-tree padding needed (these don't have :host padding rules). */
