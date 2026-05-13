@@ -384,7 +384,7 @@ async function openFornecedorDialog(cnpjBasico, fornecedorNome, municipioOverrid
             munSelect = `<select class="mun-selector" data-forn-cnpj="${_esc(cnpjBasico)}" data-forn-nome="${_esc(fornecedorNome)}" data-forn-nome-credor="${_esc(nomeCredor || '')}" data-forn-cpf-cnpj="${_esc(cpfCnpj || '')}">${opts}</select>`;
         }
 
-        html += `<div class="dialog-section" id="forn-empenhos"><h4>${dualLabel('Pagamentos','Empenhos')} ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
+        html += `<div class="dialog-section" id="forn-empenhos" data-nav-label="Empenhos"><h4>${dualLabel('Pagamentos','Empenhos')} ${munSelect ? 'em' : 'neste municipio'} ${munSelect}</h4>`;
         // Container montado pelo empenhos-controller. Initial empenhos vem
         // do payload do /detalhes (50 mais recentes); paginas 2+ ou
         // filtros chamam /api/fornecedor/empenhos.

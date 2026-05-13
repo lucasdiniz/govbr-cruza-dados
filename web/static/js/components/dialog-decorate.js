@@ -118,7 +118,14 @@ function _decorateDialogBody(body) {
     sections.forEach((section, idx) => {
         if (!section.id) section.id = `dialog-section-${idx + 1}`;
         const heading = section.querySelector('h4');
-        section.dataset.dialogLabel = _dialogSectionNavLabel(heading ? heading.textContent : `Secao ${idx + 1}`);
+        // Allow section authors to override the auto-derived tab label by
+        // setting data-nav-label on the section root. Useful when the h4
+        // contains concatenated citizen/auditor spans + dynamic content
+        // (e.g. a <select>) that no auto-detect regex can safely match.
+        const explicit = section.dataset.navLabel;
+        section.dataset.dialogLabel = explicit
+            ? explicit
+            : _dialogSectionNavLabel(heading ? heading.textContent : `Secao ${idx + 1}`);
         section.setAttribute('aria-labelledby', `${section.id}-tab`);
         section.classList.add('dialog-tab-panel');
         section.setAttribute('role', 'tabpanel');
