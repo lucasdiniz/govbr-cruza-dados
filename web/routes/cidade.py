@@ -684,6 +684,93 @@ async def cidade_by_slug(request: Request, slug: str):
     return await _render_cidade(request, municipio)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# /cidade/<slug>/<yyyy>-<mm> — resumo mensal (cache-only)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+CACHE_QUERY_ID_RESUMO = "CIDADE_RESUMO_MENSAL"
+
+
+def _build_resumo_cache_key(mun_slug: str, yyyy: int, mm: int) -> str:
+    """Cache key canonica pra resumo mensal."""
+    return f"{mun_slug}:{yyyy:04d}-{mm:02d}"
+
+
+@router.get("/cidade/{slug}/{yyyymm}")
+async def cidade_resumo_mensal(request: Request, slug: str, yyyymm: str):
+    """Resumo mensal /cidade/<slug>/<yyyy>-<mm>. Cache-only.
+
+    Validacao em ordem:
+    1. Parse yyyymm (regex + bounds 2018-2099 + 01-12). Falha → 404.
+    2. Resolve slug → nome canonico via slug_to_municipio.
+    3. Canonicaliza slug (case/acentos) → 301 se diferente.
+    4. Lookup web_cache(CIDADE_RESUMO_MENSAL, "<slug>:<yyyy>-<mm>"). Hit → render.
+       Miss → 503 (Retry-After 1h).
+    """
+    from web.main import templates
+    from web.utils.slug import (
+        SlugLookupError,
+        municipio_slug,
+        parse_yyyymm,
+        slug_to_municipio,
+    )
+
+    parsed = parse_yyyymm(yyyymm)
+    if parsed is None:
+        return templates.TemplateResponse(
+            request, "errors/404.html",
+            {"path": str(request.url.path)},
+            status_code=404,
+        )
+    yyyy, mm = parsed
+
+    try:
+        municipio = slug_to_municipio(slug)
+    except SlugLookupError:
+        return Response(
+            status_code=503,
+            headers={"Retry-After": "60"},
+            content="Cache de slugs indisponivel. Tente novamente.",
+            media_type="text/plain; charset=utf-8",
+        )
+    if not municipio:
+        return templates.TemplateResponse(
+            request, "errors/404.html",
+            {"path": str(request.url.path)},
+            status_code=404,
+        )
+
+    canonical_slug = municipio_slug(municipio)
+    if canonical_slug and slug != canonical_slug:
+        return RedirectResponse(
+            url=f"/cidade/{canonical_slug}/{yyyy:04d}-{mm:02d}",
+            status_code=301,
+        )
+
+    cache_key = _build_resumo_cache_key(canonical_slug, yyyy, mm)
+    cached = read_web_cache(CACHE_QUERY_ID_RESUMO, cache_key)
+    if cached is not None:
+        cols, rows = cached
+        if rows and rows[0]:
+            data = rows[0][0]
+            if isinstance(data, dict) and data:
+                return templates.TemplateResponse(
+                    request, "results/cidade_resumo.html", data
+                )
+
+    logging.info("cache miss /cidade/%s/%s — returning 503", canonical_slug, yyyymm)
+    return Response(
+        status_code=503,
+        headers={"Retry-After": "3600"},
+        content=(
+            "Resumo mensal em construcao — esta pagina ainda nao foi pre-processada. "
+            "Tente novamente mais tarde."
+        ),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
 @router.get("/search/cidade")
 async def search_cidade(request: Request, q: str = Query(..., min_length=2)):
     """URL legada (busca por texto livre). Quando consegue resolver o termo

@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from web import db
 from web.routes.cidade import router as cidade_router
 from web.routes.empresa import router as empresa_router
+from web.routes.licitacao import router as licitacao_router
 from web.routes.mapa import router as mapa_router
 from web.routes.og_image import router as og_router
 from web.routes.contato import build_router as build_contato_router
@@ -597,6 +598,7 @@ templates.env.filters["municipio_slug"] = _municipio_slug
 
 app.include_router(cidade_router)
 app.include_router(empresa_router)
+app.include_router(licitacao_router)
 app.include_router(mapa_router)
 app.include_router(og_router)
 app.include_router(build_contato_router(templates))

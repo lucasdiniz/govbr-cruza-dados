@@ -68,6 +68,21 @@ async function openHeatmapMonthDialog(municipio, ano, mes, options = {}) {
     const empenhos = data.empenhos || [];
     let html = _historyNote('Historico completo do mes selecionado — este detalhamento nao muda com o filtro de periodo da pagina.');
 
+    // Link pra pagina dedicada do mes (indexavel, com mais conteudo).
+    // Hide quando ja estamos numa pagina /cidade/<slug>/<yyyy>-<mm>
+    // (auto-detect via URL pra evitar self-link).
+    if (municipio && ano && mes) {
+        const mesPad = String(mes).padStart(2, '0');
+        const yyyymm = `${ano}-${mesPad}`;
+        const munSlug = (typeof _municipio_slug_of === 'function')
+            ? _municipio_slug_of(municipio)
+            : encodeURIComponent(municipio.toLowerCase().replace(/\s+/g, '-'));
+        const isOnPage = location.pathname === `/cidade/${munSlug}/${yyyymm}`;
+        if (!isOnPage) {
+            html += `<p class="text-sm" style="margin:.5rem 0"><a href="/cidade/${munSlug}/${yyyymm}" class="ext-link-inline" title="Ver pagina dedicada deste mes (mais detalhes e SEO)">Ver pagina completa de ${yyyymm} &#8599;</a></p>`;
+        }
+    }
+
     html += '<div class="dialog-section"><h4>Resumo do mes</h4>';
     html += '<div class="stats-grid">';
     html += `<div class="stat"><div class="stat-label">${dualLabel('Reservado','Total empenhado')}</div><div class="stat-value">${_shortBrl(Number(resumo.total_empenhado || 0))}</div></div>`;

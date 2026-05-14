@@ -1,0 +1,58 @@
+{# FAQs dinamicas pra /licitacao/<mun>/<ano>/<ug>/<mod-num>.
+
+   Caller passa o contexto da pagina (modalidade, numero, ano, municipio,
+   detail, proponentes, empenhos, vencedor, valor_contratado).
+#}
+{% from "partials/seo/_faq.html" import faq_section %}
+{% set _lic = modalidade ~ ' ' ~ numero_licitacao ~ '/' ~ ano %}
+{% set _orgao = detail.descricao_ug or 'Prefeitura' %}
+{% set _objeto = (detail.objeto_licitacao or '')|replace('\n',' ')|truncate(160) %}
+{% set _venc_nome = (vencedor.razao_social if vencedor else '') %}
+{% set _venc_valor = (vencedor.valor_ofertado if vencedor else 0) %}
+
+{% set _faqs = [
+    {
+        'q': 'O que foi a licitacao ' ~ _lic ~ ' em ' ~ municipio ~ '?',
+        'a': ('Foi um processo licitatorio publico realizado pelo ' ~ _orgao ~ ' em ' ~ municipio ~ '/PB no ano de ' ~ ano|string ~ '. Objeto: ' ~ (_objeto or 'descricao nao informada pelo TCE-PB') ~ '. Veja na pagina os proponentes, valor contratado e os empenhos efetivamente pagos.') if _objeto else ('Processo licitatorio do ' ~ _orgao ~ ' em ' ~ municipio ~ '/PB. Veja na pagina os proponentes, valor contratado e os empenhos.'),
+        'links': [
+            {'label': 'Objeto detalhado', 'href': '#objeto'},
+            {'label': 'Proponentes', 'href': '#proponentes'},
+            {'label': 'Empenhos vinculados', 'href': '#empenhos'},
+        ],
+    },
+    {
+        'q': 'Quem venceu a licitacao ' ~ _lic ~ ' em ' ~ municipio ~ '?',
+        'a': ('Vencedor: ' ~ _venc_nome ~ '. Valor ofertado: R$ ' ~ ("{:,.2f}".format(_venc_valor|float)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ '. Veja a pagina da empresa pra detalhes do CNPJ, outros empenhos e cruzamento com sancoes CEIS/CNEP.') if _venc_nome else ('A pagina nao identificou um vencedor unico para esta licitacao. Consulte a secao de Proponentes para ver as propostas registradas no TCE-PB.'),
+        'links': ([
+            {'label': 'Empresa vencedora', 'href': '/empresa/' ~ vencedor.cnpj_completo}
+        ] if vencedor and vencedor.cnpj_completo else [
+            {'label': 'Proponentes', 'href': '#proponentes'},
+        ]),
+    },
+    {
+        'q': 'Quanto foi pago em empenhos vinculados a esta licitacao?',
+        'a': ('Foram pagos R$ ' ~ ("{:,.2f}".format(valor_pago_total|float)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ' em ' ~ empenhos|length|string ~ ' empenhos vinculados a ' ~ _lic ~ ' (consulta agregada do TCE-PB). Veja a secao de Empenhos para a lista detalhada com datas, elementos de despesa e valores individuais.') if valor_pago_total > 0 else ('Nao localizamos empenhos pagos vinculados diretamente a ' ~ _lic ~ ' nos dados atuais do TCE-PB. Isso pode indicar contrato ainda em curso, pagamento via outra licitacao, ou divergencia nos snapshots disponiveis.'),
+        'links': [
+            {'label': 'Lista de empenhos', 'href': '#empenhos'},
+        ],
+    },
+    {
+        'q': 'O que significa a modalidade ' ~ modalidade ~ '?',
+        'a': 'A modalidade ' ~ modalidade ~ ' eh um dos tipos de processo licitatorio previstos na Lei 14.133/2021 (Nova Lei de Licitacoes) ou na Lei 8.666/1993. Cada modalidade tem regras especificas sobre publicidade, prazo, criterio de julgamento e limite de valor. Consulte tambem as outras licitacoes da mesma modalidade neste municipio para comparacao.',
+        'links': [
+            {'label': 'Outras licitacoes desta modalidade em ' ~ municipio, 'href': '#outras-modalidade'},
+            {'label': 'Glossario', 'href': '/glossario'},
+        ],
+    },
+    {
+        'q': 'Onde encontrar dados oficiais sobre esta licitacao?',
+        'a': 'Os dados publicados nesta pagina vem do TCE-PB (Tribunal de Contas do Estado da Paraiba) — dados-abertos.tce.pb.gov.br/dados-consolidados. Para o edital original e atos do processo, consulte o portal de transparencia do proprio ' ~ _orgao ~ ' (' ~ municipio ~ '). Erros ou divergencias podem ser reportados pelo nosso canal.',
+        'links': [
+            {'label': 'Site do TCE-PB', 'href': 'https://tce.pb.gov.br', 'external': true},
+            {'label': 'Metodologia', 'href': '/sobre'},
+            {'label': 'Reportar correcao', 'href': '/contato'},
+        ],
+    },
+] %}
+
+{{ faq_section(_faqs, title='Perguntas frequentes', anchor='faq-licitacao') }}

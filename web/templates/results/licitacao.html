@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Licitacao {{ modalidade }} {{ numero_licitacao }}/{{ ano }} - {{ municipio|clean_text }}{% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
+{% block og_title %}Licitacao {{ modalidade }} {{ numero_licitacao }}/{{ ano }} - {{ municipio|clean_text }}/PB | TransparenciaPB{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block json_ld_extra %}
+{% set origin = request_origin(request) if request else '' %}
+{% set page_url = origin + '/licitacao/' + municipio_slug + '/' + (ano|string) + '/' + ug_slug + '/' + mod_num_slug %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": {{ (municipio|clean_text) | tojson }}, "item": "{{ origin }}/cidade/{{ municipio_slug }}"},
+        {"@type": "ListItem", "position": 3, "name": "Licitacoes", "item": "{{ origin }}/cidade/{{ municipio_slug }}#licitacoes"},
+        {"@type": "ListItem", "position": 4, "name": {{ ("Licitacao " ~ modalidade ~ " " ~ numero_licitacao ~ "/" ~ ano) | clean_text | tojson }}, "item": {{ page_url | tojson }} }
+      ]
+    },
+    {
+      "@type": "Article",
+      "headline": {{ ("Licitacao " ~ modalidade ~ " " ~ numero_licitacao ~ "/" ~ ano ~ " - " ~ (detail.descricao_ug or "Prefeitura") ~ " - " ~ municipio) | clean_text | tojson }},
+      "description": {{ meta_description | tojson }},
+      "url": {{ page_url | tojson }},
+      "inLanguage": "pt-BR",
+      "isAccessibleForFree": true,
+      "about": {
+        "@type": "GovernmentOrganization",
+        "name": {{ (detail.descricao_ug or ("Prefeitura de " ~ municipio)) | clean_text | tojson }},
+        "areaServed": {
+          "@type": "AdministrativeArea",
+          "name": {{ (municipio ~ "/PB") | clean_text | tojson }}
+        }
+      },
+      "publisher": {
+        "@type": "Organization",
+        "@id": "{{ origin }}/#organization",
+        "name": "TransparenciaPB",
+        "url": "{{ origin }}/"
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<article class="licitacao-page empresa-page">
+    <header class="empresa-section empresa-hero">
+        <p class="text-sm text-muted">
+            <a href="/cidade/{{ municipio_slug }}">{{ municipio|clean_text }}/PB</a>
+            &middot; <a href="/cidade/{{ municipio_slug }}/{{ ano }}-{% if detail.data_homologacao %}{{ detail.data_homologacao[5:7] }}{% else %}01{% endif %}">{{ ano }}</a>
+            &middot; Licitacao publica
+        </p>
+        <h1>Licitacao {{ modalidade|clean_text }} {{ numero_licitacao|clean_text }}/{{ ano }}</h1>
+        <p class="text-base">
+            <strong>{{ detail.descricao_ug|clean_text or "Prefeitura" }}</strong>
+            &middot; {{ municipio|clean_text }}/PB
+            {% if detail.data_homologacao %} &middot; Homologada em {{ detail.data_homologacao[8:10] }}/{{ detail.data_homologacao[5:7] }}/{{ detail.data_homologacao[0:4] }}{% endif %}
+        </p>
+        <div class="stats-grid" style="margin-top:1rem">
+            <div class="stat-cell">
+                <span class="stat-value">{{ proponentes|length }}</span>
+                <span class="stat-label">Proponentes</span>
+            </div>
+            {% if valor_contratado > 0 %}
+            <div class="stat-cell">
+                <span class="stat-value">R$ {{ "%0.0f"|format(valor_contratado)|replace(",", ".") }}</span>
+                <span class="stat-label">Valor contratado</span>
+            </div>
+            {% endif %}
+            {% if valor_pago_total > 0 %}
+            <div class="stat-cell">
+                <span class="stat-value">R$ {{ "%0.0f"|format(valor_pago_total)|replace(",", ".") }}</span>
+                <span class="stat-label">Total pago aos vencedores</span>
+            </div>
+            {% endif %}
+            <div class="stat-cell">
+                <span class="stat-value">{{ empenhos|length }}</span>
+                <span class="stat-label">Empenhos vinculados</span>
+            </div>
+        </div>
+    </header>
+
+    {% if detail.objeto_licitacao %}
+    <section class="empresa-section" id="objeto">
+        <h2>Objeto da licitacao</h2>
+        <p style="line-height:1.6">{{ detail.objeto_licitacao|clean_text }}</p>
+    </section>
+    {% endif %}
+
+    {% if proponentes %}
+    <section class="empresa-section" id="proponentes">
+        <h2>Proponentes</h2>
+        <p class="text-sm text-muted">Empresas que apresentaram proposta nesta licitacao. Vencedor destacado.</p>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Empresa</th>
+                        <th class="text-right">Valor ofertado</th>
+                        <th>Situacao</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in proponentes %}
+                    <tr {% if loop.first %}class="row-vencedor"{% endif %}>
+                        <td data-label="Empresa" class="stack-title">
+                            {% if p.cnpj_completo %}
+                                <a href="/empresa/{{ p.cnpj_completo }}">{{ p.razao_social|clean_text }}</a>
+                            {% else %}
+                                {{ p.razao_social|clean_text }}
+                            {% endif %}
+                            {% if loop.first %}<span class="badge badge-green">Vencedor</span>{% endif %}
+                        </td>
+                        <td data-label="Valor" class="text-right num">R$ {{ "%0.2f"|format(p.valor_ofertado or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Situacao" class="stack-meta">{{ p.situacao_proposta|clean_text or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if empenhos %}
+    <section class="empresa-section" id="empenhos">
+        <h2>Empenhos vinculados ({{ empenhos|length }})</h2>
+        <p class="text-sm text-muted">Pagamentos efetuados pelo orgao referentes a esta licitacao. Top 50 por valor pago.</p>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Empenho</th>
+                        <th>Credor</th>
+                        <th>Elemento</th>
+                        <th class="text-right">Pago</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in empenhos %}
+                    <tr>
+                        <td data-label="Data" class="stack-meta">{% if e.data_empenho %}{{ e.data_empenho[8:10] }}/{{ e.data_empenho[5:7] }}/{{ e.data_empenho[0:4] }}{% else %}-{% endif %}</td>
+                        <td data-label="Empenho" class="stack-meta"><code>{{ e.numero_empenho|clean_text or "-" }}</code></td>
+                        <td data-label="Credor" class="stack-title">
+                            {% if e.cnpj_completo %}
+                                <a href="/empresa/{{ e.cnpj_completo }}">{{ e.razao_social|clean_text }}</a>
+                            {% else %}
+                                {{ e.razao_social|clean_text }}
+                            {% endif %}
+                        </td>
+                        <td data-label="Elemento" class="stack-meta">{{ e.elemento_despesa|clean_text or "-" }}</td>
+                        <td data-label="Pago" class="text-right num">R$ {{ "%0.2f"|format(e.valor_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if outras_orgao %}
+    <section class="empresa-section" id="outras-orgao">
+        <h2>Outras licitacoes do mesmo orgao em {{ ano }}</h2>
+        <ul>
+            {% for o in outras_orgao %}
+            <li>
+                <a href="/licitacao/{{ municipio_slug }}/{{ o.ano_licitacao }}/{{ ug_slug }}/{{ o.mod_num_slug }}">
+                    {{ o.modalidade|clean_text }} {{ o.numero_licitacao|clean_text }} &mdash; {{ (o.objeto_licitacao or '')|clean_text|truncate(100) }}
+                </a>
+                {% if o.data_homologacao %}<span class="text-sm text-muted">({{ o.data_homologacao[8:10] }}/{{ o.data_homologacao[5:7] }}/{{ o.data_homologacao[0:4] }})</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if outras_modalidade %}
+    <section class="empresa-section" id="outras-modalidade">
+        <h2>Outras {{ modalidade|clean_text|lower }} em {{ municipio|clean_text }}</h2>
+        <ul>
+            {% for o in outras_modalidade %}
+            <li>
+                <a href="/licitacao/{{ municipio_slug }}/{{ o.ano_licitacao }}/{{ o.ug_slug }}/{{ o.mod_num_slug }}">
+                    {{ o.descricao_ug|clean_text or "Prefeitura" }} &middot; {{ o.numero_licitacao|clean_text }} &mdash; {{ (o.objeto_licitacao or '')|clean_text|truncate(80) }}
+                </a>
+                {% if o.data_homologacao %}<span class="text-sm text-muted">({{ o.data_homologacao[8:10] }}/{{ o.data_homologacao[5:7] }}/{{ o.data_homologacao[0:4] }})</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <section class="empresa-section empresa-fontes">
+        <h2>Fontes oficiais</h2>
+        <p class="text-sm text-muted">
+            Dados desta licitacao publica vem do TCE-PB (Tribunal de Contas do Estado da Paraiba).
+            Cadastros de empresas (CNPJ) vem da Receita Federal. Empenhos e pagamentos da prefeitura
+            municipal sao reportados ao TCE conforme a Lei de Acesso a Informacao (Lei 12.527/2011)
+            e a LRF (LC 101/2000).
+        </p>
+        <p class="text-sm">
+            <a href="/sobre">Metodologia e fontes</a> &middot;
+            <a href="/contato">Reportar correcao</a>
+        </p>
+    </section>
+
+    {% include "partials/seo/_faq_licitacao.html" %}
+</article>
+{% endblock %}

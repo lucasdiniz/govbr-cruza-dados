@@ -1212,9 +1212,13 @@ def main():
         ok_p, fail_p = warm_cycle_pb(municipios_pb)
         ok_e = fail_e = skip_e = 0
         ok_em = fail_em = skip_em = 0
+        ok_l = fail_l = skip_l = 0
+        ok_r = fail_r = skip_r = 0
         if not skip_empresas_flag:
             ok_e, fail_e, skip_e = _warm_empresas_phase()
             ok_em, fail_em, skip_em = _warm_empresas_municipios_phase()
+            ok_l, fail_l, skip_l = _warm_licitacoes_phase()
+            ok_r, fail_r, skip_r = _warm_cidade_resumo_phase()
         # Shadow swap: apos TODO trabalho do ciclo terminar, fazemos os
         # swaps atomicos (UMA transacao cobrindo todos os qids elegiveis)
         # das qids que estavam em shadow E completaram sem falhas.
@@ -1222,13 +1226,17 @@ def main():
         # rows" step no proximo deploy descarta o shadow stale antes de
         # reprocessar.
         # Importante: swap acontece UMA VEZ por ciclo, depois das fases
-        # PB + empresas + empresas_municipios. Garante que KPI_SUMMARY
-        # (derived) ja foi computado contra o shadow de PERFIL antes do
-        # swap dos deps.
+        # PB + empresas + empresas_municipios + licitacoes + cidade_resumo.
+        # Garante que KPI_SUMMARY (derived) ja foi computado contra o
+        # shadow de PERFIL antes do swap dos deps.
         _swap_all_pending_shadows(verbose=True)
         # Reset tracking pra eventual proximo ciclo (mode --loop).
         _shadow_results.clear()
-        return ok_p + ok_e + ok_em, fail_p + fail_e + fail_em, skip_e + skip_em
+        return (
+            ok_p + ok_e + ok_em + ok_l + ok_r,
+            fail_p + fail_e + fail_em + fail_l + fail_r,
+            skip_e + skip_em + skip_l + skip_r,
+        )
 
     if args.daemon:
         print(f"Daemon mode: {len(municipios_pb)} PB municipios.")
@@ -1589,6 +1597,302 @@ def _warm_empresas_municipios_phase() -> tuple[int, int, int]:
             pass
 
     return ok, fail, skipped_resume + skip_nf
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Licitacoes — warm /licitacao/<mun>/<ano>/<ug>/<mod-num>
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _warm_licitacoes_phase() -> tuple[int, int, int]:
+    """Fase de warming de licitacoes. Cada licitacao qualificada (>=1
+    proponente PJ) vira uma pagina.
+
+    Returns: (ok, fail, skipped). skipped = ja cacheados (resume) +
+    licitacoes que nao retornaram dados (skip_nf).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from web.queries.licitacao import LICITACOES_QUALIFICADAS_PAGINATED
+    from web.routes.licitacao import (
+        CACHE_QUERY_ID as LIC_CACHE_QID,
+        LicitacaoNotFoundError,
+        _build_cache_key,
+        _build_mod_num_slug,
+        compute_licitacao_dict,
+    )
+    from web.utils.slug import municipio_slug as _mun_slug, numero_slug as _num_slug
+
+    print("--- Licitacoes: enumerando qualificadas ---")
+    boot = psycopg2.connect(DSN)
+    boot.autocommit = True
+    all_lics: list[tuple[str, int, str, str, str, str]] = []
+    try:
+        with boot.cursor() as cur:
+            # Sem paginacao aqui — pegamos todas. Em prod, ajustar pra streaming
+            # se ultrapassar memoria (improvavel com ~80k linhas + 5 strings cada).
+            cur.execute(
+                LICITACOES_QUALIFICADAS_PAGINATED,
+                {"limit": 1000000, "offset": 0},
+            )
+            for municipio, ano, codigo_ug, descricao_ug, modalidade, numero in cur.fetchall():
+                if not (municipio and ano and codigo_ug and modalidade and numero):
+                    continue
+                all_lics.append((
+                    str(municipio), int(ano), str(codigo_ug),
+                    str(descricao_ug or ""), str(modalidade), str(numero),
+                ))
+    finally:
+        boot.close()
+
+    if not all_lics:
+        print("[licitacoes] Nenhuma qualificada. Skipping.")
+        return 0, 0, 0
+
+    # Constroi keys canonicas (com slugs) pra checar cache
+    lic_by_key: dict[str, tuple] = {}
+    keys: list[str] = []
+    for municipio, ano, codigo_ug, descricao_ug, modalidade, numero in all_lics:
+        mun_slug = _mun_slug(municipio)
+        if not mun_slug:
+            continue
+        ug_slug = _num_slug(descricao_ug) or "prefeitura"
+        mod_num_slug = _build_mod_num_slug(modalidade, numero)
+        if not mod_num_slug:
+            continue
+        key = _build_cache_key(mun_slug, ano, ug_slug, mod_num_slug)
+        lic_by_key[key] = (municipio, ano, codigo_ug, modalidade, numero)
+        keys.append(key)
+
+    if not keys:
+        return 0, 0, 0
+
+    remaining_keys, skipped_resume = _filter_cached_munis(LIC_CACHE_QID, keys)
+    if skipped_resume > 0:
+        print(
+            f"[licitacoes] {_skip_mode_label()}: {skipped_resume} ja cacheadas, "
+            f"processando {len(remaining_keys)} restantes."
+        )
+
+    if not remaining_keys:
+        return 0, 0, skipped_resume
+
+    from web import db as web_db
+    web_db.init_pool()
+
+    def _warm_one(key: str) -> tuple[bool, str | None]:
+        try:
+            municipio, ano, codigo_ug, modalidade, numero = lic_by_key[key]
+            data = compute_licitacao_dict(
+                municipio, ano, codigo_ug, modalidade, numero,
+                timeout_sec=TIMEOUT_PROFILE_WARM,
+            )
+            conn = _thread_conn()
+            with conn.cursor() as cur:
+                _upsert(
+                    cur,
+                    _effective_qid(LIC_CACHE_QID),
+                    key,
+                    ["payload"],
+                    [[data]],
+                )
+            conn.commit()
+            return True, None
+        except LicitacaoNotFoundError as e:
+            return False, f"not_found:{e}"
+        except Exception as e:
+            try:
+                _thread_conn().rollback()
+            except Exception:
+                pass
+            return False, f"compute_failed:{str(e).splitlines()[0]}"
+
+    total = len(remaining_keys)
+    print(
+        f"[licitacoes] Warming {total} licitacoes em {PARALLEL_WORKERS} workers...",
+        flush=True,
+    )
+    ok = fail = skipped_nf = 0
+    t0 = time.time()
+    try:
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+            futures = {ex.submit(_warm_one, k): k for k in remaining_keys}
+            done = 0
+            for fut in as_completed(futures):
+                done += 1
+                try:
+                    success, msg = fut.result()
+                except Exception as e:
+                    success, msg = False, f"future_exception:{e}"
+                if success:
+                    ok += 1
+                elif msg and msg.startswith("not_found:"):
+                    skipped_nf += 1
+                else:
+                    fail += 1
+                if done % 200 == 0:
+                    elapsed = time.time() - t0
+                    rate = done / elapsed if elapsed > 0 else 0
+                    eta = (total - done) / rate if rate > 0 else 0
+                    print(
+                        f"[licitacoes] {done}/{total} "
+                        f"({ok} ok, {fail} fail, {skipped_nf} not_found) — "
+                        f"{rate:.1f}/s, eta {eta/60:.1f}min",
+                        flush=True,
+                    )
+    finally:
+        try:
+            web_db.close_pool()
+        except Exception:
+            pass
+
+    elapsed = time.time() - t0
+    print(
+        f"[licitacoes] Completo: {ok} ok, {fail} fail, {skipped_nf} not_found "
+        f"({elapsed/60:.1f}min)",
+        flush=True,
+    )
+    _record_shadow_result(LIC_CACHE_QID, ok, fail)
+    return ok, fail, skipped_resume + skipped_nf
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Cidade Resumo Mensal — warm /cidade/<slug>/<yyyy>-<mm>
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _warm_cidade_resumo_phase() -> tuple[int, int, int]:
+    """Fase de warming de resumo mensal de cidade. ~14k paginas
+    (237 munis × ~60 meses).
+
+    Returns: (ok, fail, skipped).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from web.queries.cidade_resumo import CIDADE_RESUMO_QUALIFICADOS_LIST
+    from web.routes.cidade import CACHE_QUERY_ID_RESUMO, _build_resumo_cache_key
+    from web.routes.cidade_resumo_compute import (
+        CidadeResumoEmpty,
+        compute_cidade_resumo_dict,
+    )
+    from web.utils.slug import municipio_slug as _mun_slug
+
+    print("--- Cidade-resumo: enumerando (mun, ano, mes) qualificados ---")
+    boot = psycopg2.connect(DSN)
+    boot.autocommit = True
+    all_triples: list[tuple[str, int, int]] = []
+    try:
+        with boot.cursor() as cur:
+            cur.execute(CIDADE_RESUMO_QUALIFICADOS_LIST)
+            for municipio, ano, mes, _qtd in cur.fetchall():
+                if not municipio or not ano or not mes:
+                    continue
+                all_triples.append((str(municipio), int(ano), int(mes)))
+    finally:
+        boot.close()
+
+    if not all_triples:
+        print("[cidade-resumo] Nenhum (mun, ano, mes) qualificado. Skipping.")
+        return 0, 0, 0
+
+    triple_by_key: dict[str, tuple[str, int, int]] = {}
+    keys: list[str] = []
+    for municipio, ano, mes in all_triples:
+        mun_slug = _mun_slug(municipio)
+        if not mun_slug:
+            continue
+        key = _build_resumo_cache_key(mun_slug, ano, mes)
+        triple_by_key[key] = (municipio, ano, mes)
+        keys.append(key)
+
+    if not keys:
+        return 0, 0, 0
+
+    remaining_keys, skipped_resume = _filter_cached_munis(CACHE_QUERY_ID_RESUMO, keys)
+    if skipped_resume > 0:
+        print(
+            f"[cidade-resumo] {_skip_mode_label()}: {skipped_resume} ja "
+            f"cacheados, processando {len(remaining_keys)} restantes."
+        )
+
+    if not remaining_keys:
+        return 0, 0, skipped_resume
+
+    from web import db as web_db
+    web_db.init_pool()
+
+    def _warm_one(key: str) -> tuple[bool, str | None]:
+        try:
+            municipio, ano, mes = triple_by_key[key]
+            data = compute_cidade_resumo_dict(
+                municipio, ano, mes,
+                timeout_sec=TIMEOUT_PROFILE_WARM,
+            )
+            conn = _thread_conn()
+            with conn.cursor() as cur:
+                _upsert(
+                    cur,
+                    _effective_qid(CACHE_QUERY_ID_RESUMO),
+                    key,
+                    ["payload"],
+                    [[data]],
+                )
+            conn.commit()
+            return True, None
+        except CidadeResumoEmpty as e:
+            return False, f"empty:{e}"
+        except Exception as e:
+            try:
+                _thread_conn().rollback()
+            except Exception:
+                pass
+            return False, f"compute_failed:{str(e).splitlines()[0]}"
+
+    total = len(remaining_keys)
+    print(
+        f"[cidade-resumo] Warming {total} (mun, ano, mes) em {PARALLEL_WORKERS} workers...",
+        flush=True,
+    )
+    ok = fail = skipped_empty = 0
+    t0 = time.time()
+    try:
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as ex:
+            futures = {ex.submit(_warm_one, k): k for k in remaining_keys}
+            done = 0
+            for fut in as_completed(futures):
+                done += 1
+                try:
+                    success, msg = fut.result()
+                except Exception as e:
+                    success, msg = False, f"future_exception:{e}"
+                if success:
+                    ok += 1
+                elif msg and msg.startswith("empty:"):
+                    skipped_empty += 1
+                else:
+                    fail += 1
+                if done % 200 == 0:
+                    elapsed = time.time() - t0
+                    rate = done / elapsed if elapsed > 0 else 0
+                    eta = (total - done) / rate if rate > 0 else 0
+                    print(
+                        f"[cidade-resumo] {done}/{total} "
+                        f"({ok} ok, {fail} fail, {skipped_empty} empty) — "
+                        f"{rate:.1f}/s, eta {eta/60:.1f}min",
+                        flush=True,
+                    )
+    finally:
+        try:
+            web_db.close_pool()
+        except Exception:
+            pass
+
+    elapsed = time.time() - t0
+    print(
+        f"[cidade-resumo] Completo: {ok} ok, {fail} fail, {skipped_empty} empty "
+        f"({elapsed/60:.1f}min)",
+        flush=True,
+    )
+    _record_shadow_result(CACHE_QUERY_ID_RESUMO, ok, fail)
+    return ok, fail, skipped_resume + skipped_empty
 
 
 if __name__ == "__main__":

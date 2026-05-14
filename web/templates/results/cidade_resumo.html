@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Gastos de {{ municipio|clean_text }} em {{ mes_nome_cap }}/{{ ano }}{% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
+{% block og_title %}Gastos publicos de {{ municipio|clean_text }}/PB em {{ mes_nome_cap }} {{ ano }} | TransparenciaPB{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block json_ld_extra %}
+{% set origin = request_origin(request) if request else '' %}
+{% set page_url = origin + '/cidade/' + municipio_slug + '/' + yyyymm %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": "{{ origin }}/"},
+        {"@type": "ListItem", "position": 2, "name": {{ (municipio|clean_text) | tojson }}, "item": "{{ origin }}/cidade/{{ municipio_slug }}"},
+        {"@type": "ListItem", "position": 3, "name": {{ (mes_nome_cap ~ "/" ~ ano) | tojson }}, "item": {{ page_url | tojson }} }
+      ]
+    },
+    {
+      "@type": "Article",
+      "headline": {{ ("Gastos publicos de " ~ municipio ~ "/PB em " ~ mes_nome_cap ~ " de " ~ ano) | clean_text | tojson }},
+      "description": {{ meta_description | tojson }},
+      "url": {{ page_url | tojson }},
+      "inLanguage": "pt-BR",
+      "isAccessibleForFree": true,
+      "about": {
+        "@type": "AdministrativeArea",
+        "name": {{ (municipio ~ "/PB") | clean_text | tojson }}
+      },
+      "publisher": {
+        "@type": "Organization",
+        "@id": "{{ origin }}/#organization",
+        "name": "TransparenciaPB",
+        "url": "{{ origin }}/"
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<article class="cidade-resumo-page empresa-page">
+    <header class="empresa-section empresa-hero">
+        <p class="text-sm text-muted">
+            <a href="/cidade/{{ municipio_slug }}">{{ municipio|clean_text }}/PB</a>
+            &middot; Resumo mensal
+        </p>
+        <h1>Gastos publicos de {{ municipio|clean_text }} em {{ mes_nome_cap }} de {{ ano }}</h1>
+        <p class="text-base">
+            Pagamentos, fornecedores, modalidades de licitacao e empenhos consolidados do mes,
+            com dados oficiais do TCE-PB.
+        </p>
+        <div class="stats-grid" style="margin-top:1rem">
+            <div class="stat-cell">
+                <span class="stat-value">R$ {{ "%0.0f"|format(aggs.total_pago or 0)|replace(",", ".") }}</span>
+                <span class="stat-label">Total pago no mes</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value">{{ aggs.qtd_empenhos or 0 }}</span>
+                <span class="stat-label">Empenhos</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value">{{ aggs.qtd_fornecedores_unicos or 0 }}</span>
+                <span class="stat-label">Fornecedores unicos</span>
+            </div>
+            <div class="stat-cell">
+                <span class="stat-value">{{ top_licitacoes|length }}</span>
+                <span class="stat-label">Licitacoes homologadas</span>
+            </div>
+        </div>
+
+        {% if delta_mes_ant_pct is not none or delta_ano_ant_pct is not none %}
+        <div class="text-sm" style="margin-top:1rem">
+            <strong>Comparativos:</strong>
+            {% if delta_mes_ant_pct is not none %}
+                vs mes anterior:
+                <span class="{% if delta_mes_ant_pct > 0 %}text-red{% else %}text-green{% endif %}">{{ "%+.1f"|format(delta_mes_ant_pct) }}%</span>
+            {% endif %}
+            {% if delta_ano_ant_pct is not none %}
+                {% if delta_mes_ant_pct is not none %} &middot; {% endif %}
+                vs mesmo mes de {{ ano_anterior }}:
+                <span class="{% if delta_ano_ant_pct > 0 %}text-red{% else %}text-green{% endif %}">{{ "%+.1f"|format(delta_ano_ant_pct) }}%</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if aggs.qtd_sem_licitacao and aggs.qtd_sem_licitacao > 0 %}
+        <p class="text-sm" style="margin-top:.5rem">
+            <span class="badge badge-yellow">Atencao</span>
+            {{ aggs.qtd_sem_licitacao }} empenhos sem licitacao
+            ({{ "%0.0f"|format((aggs.total_sem_licitacao / (aggs.total_pago or 1)) * 100) }}% do total pago).
+        </p>
+        {% endif %}
+    </header>
+
+    {% if top_fornecedores %}
+    <section class="empresa-section" id="top-fornecedores">
+        <h2>Top fornecedores do mes</h2>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Empresa</th>
+                        <th class="text-right">Total pago</th>
+                        <th class="text-right">Empenhos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in top_fornecedores %}
+                    <tr>
+                        <td data-label="Empresa" class="stack-title">
+                            {% if f.cnpj_completo %}
+                                <a href="/empresa/{{ f.cnpj_completo }}">{{ f.razao_social|clean_text }}</a>
+                            {% else %}
+                                {{ f.razao_social|clean_text }}
+                            {% endif %}
+                        </td>
+                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(f.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Empenhos" class="text-right num">{{ f.qtd_empenhos or 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if top_elementos %}
+    <section class="empresa-section" id="top-elementos">
+        <h2>Categorias de gasto</h2>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Elemento</th>
+                        <th class="text-right">Total pago</th>
+                        <th class="text-right">Empenhos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in top_elementos %}
+                    <tr>
+                        <td data-label="Elemento" class="stack-title">{{ e.elemento_despesa|clean_text }}</td>
+                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(e.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Empenhos" class="text-right num">{{ e.qtd_empenhos or 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if modalidades %}
+    <section class="empresa-section" id="modalidades">
+        <h2>Pagamentos por modalidade de licitacao</h2>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Modalidade</th>
+                        <th class="text-right">Total pago</th>
+                        <th class="text-right">Empenhos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in modalidades %}
+                    <tr>
+                        <td data-label="Modalidade" class="stack-title">{{ m.modalidade|clean_text }}</td>
+                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(m.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Empenhos" class="text-right num">{{ m.qtd_empenhos or 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if top_empenhos %}
+    <section class="empresa-section" id="top-empenhos">
+        <h2>Maiores empenhos do mes</h2>
+        <p class="text-sm text-muted">Apenas pagamentos a pessoas juridicas (empresas).</p>
+        <div class="tbl-wrap">
+            <table class="dialog-table stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Empenho</th>
+                        <th>Empresa</th>
+                        <th>Elemento</th>
+                        <th class="text-right">Pago</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in top_empenhos %}
+                    <tr>
+                        <td data-label="Data" class="stack-meta">{% if e.data_empenho %}{{ e.data_empenho[8:10] }}/{{ e.data_empenho[5:7] }}{% else %}-{% endif %}</td>
+                        <td data-label="Empenho" class="stack-meta"><code>{{ e.numero_empenho|clean_text or "-" }}</code></td>
+                        <td data-label="Empresa" class="stack-title">
+                            {% if e.cnpj_completo %}
+                                <a href="/empresa/{{ e.cnpj_completo }}">{{ e.razao_social|clean_text }}</a>
+                            {% else %}
+                                {{ e.razao_social|clean_text }}
+                            {% endif %}
+                        </td>
+                        <td data-label="Elemento" class="stack-meta">{{ e.elemento_despesa|clean_text or "-" }}</td>
+                        <td data-label="Pago" class="text-right num">R$ {{ "%0.2f"|format(e.valor_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if top_licitacoes %}
+    <section class="empresa-section" id="top-licitacoes">
+        <h2>Licitacoes homologadas no mes</h2>
+        <ul>
+            {% for lic in top_licitacoes %}
+            <li>
+                <a href="/licitacao/{{ municipio_slug }}/{{ lic.ano_licitacao }}/{{ lic.ug_slug }}/{{ lic.mod_num_slug }}">
+                    <strong>{{ lic.modalidade|clean_text }} {{ lic.numero_licitacao|clean_text }}</strong>
+                    &mdash; {{ (lic.objeto_licitacao or '')|clean_text|truncate(120) }}
+                </a>
+                <div class="text-sm text-muted">
+                    {{ lic.descricao_ug|clean_text or "Prefeitura" }}
+                    {% if lic.data_homologacao %} &middot; Homologada em {{ lic.data_homologacao[8:10] }}/{{ lic.data_homologacao[5:7] }}/{{ lic.data_homologacao[0:4] }}{% endif %}
+                    {% if lic.valor_total and lic.valor_total > 0 %} &middot; Valor: R$ {{ "%0.2f"|format(lic.valor_total)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <nav class="empresa-section" id="navegacao">
+        <h2>Navegacao temporal</h2>
+        <ul style="display:flex;flex-wrap:wrap;gap:1rem;list-style:none;padding:0">
+            <li><a href="/cidade/{{ municipio_slug }}/{{ mes_anterior_yyyymm }}">&larr; {{ mes_anterior_m }}/{{ mes_anterior_y }} (mes anterior)</a></li>
+            <li><a href="/cidade/{{ municipio_slug }}/{{ ano_anterior }}-{{ "%02d"|format(mes) }}">Mesmo mes em {{ ano_anterior }}</a></li>
+            <li><a href="/cidade/{{ municipio_slug }}">Perfil completo de {{ municipio|clean_text }}</a></li>
+        </ul>
+    </nav>
+
+    <section class="empresa-section empresa-fontes">
+        <h2>Fontes oficiais</h2>
+        <p class="text-sm text-muted">
+            Dados oficiais do TCE-PB (Tribunal de Contas do Estado da Paraiba). Cadastros de
+            empresas (CNPJ) da Receita Federal. As prefeituras municipais reportam empenhos,
+            liquidacoes e pagamentos conforme a Lei de Acesso a Informacao (Lei 12.527/2011)
+            e a LRF (LC 101/2000). Mes contabil deriva da data do empenho.
+        </p>
+        <p class="text-sm">
+            <a href="/sobre">Metodologia e fontes</a> &middot;
+            <a href="/contato">Reportar correcao</a>
+        </p>
+    </section>
+
+    {% include "partials/seo/_faq_cidade_resumo.html" %}
+</article>
+{% endblock %}
