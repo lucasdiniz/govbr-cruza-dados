@@ -1612,6 +1612,7 @@ def _warm_licitacoes_phase() -> tuple[int, int, int]:
     licitacoes que nao retornaram dados (skip_nf).
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from web.config import TIMEOUT_PROFILE_WARM
     from web.queries.licitacao import LICITACOES_QUALIFICADAS_PAGINATED
     from web.routes.licitacao import (
         CACHE_QUERY_ID as LIC_CACHE_QID,
@@ -1776,6 +1777,7 @@ def _warm_cidade_resumo_phase() -> tuple[int, int, int]:
     Returns: (ok, fail, skipped).
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from web.config import TIMEOUT_PROFILE_WARM
     from web.queries.cidade_resumo import CIDADE_RESUMO_QUALIFICADOS_LIST
     from web.routes.cidade import CACHE_QUERY_ID_RESUMO, _build_resumo_cache_key
     from web.routes.cidade_resumo_compute import (
