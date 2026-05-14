@@ -2032,16 +2032,28 @@ async def get_empenho_detalhes(payload: dict = Body(...)):
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT numero_empenho, data_empenho, nome_credor, cpf_cnpj,
-                           valor_empenhado, valor_liquidado, valor_pago,
-                           elemento_despesa, modalidade_licitacao, numero_licitacao,
-                           historico, funcao, subfuncao, programa, acao,
-                           descricao_ug, descricao_unidade_orcamentaria,
-                           descricao_fonte_recurso, categoria_economica,
-                           grupo_natureza_despesa, modalidade_aplicacao,
-                           municipio
-                    FROM tce_pb_despesa
-                    WHERE id = %s
+                    SELECT d.numero_empenho, d.data_empenho, d.nome_credor, d.cpf_cnpj,
+                           d.valor_empenhado, d.valor_liquidado, d.valor_pago,
+                           d.elemento_despesa, d.modalidade_licitacao, d.numero_licitacao,
+                           d.historico, d.funcao, d.subfuncao, d.programa, d.acao,
+                           d.descricao_ug, d.descricao_unidade_orcamentaria,
+                           d.descricao_fonte_recurso, d.categoria_economica,
+                           d.grupo_natureza_despesa, d.modalidade_aplicacao,
+                           d.municipio, d.codigo_ug,
+                           -- ano_licitacao autoritativo via tce_pb_licitacao (5-tupla canonica).
+                           -- LIMIT 1 porque mesma licitacao tem multiplas rows (1 por proponente).
+                           -- Fallback EXTRACT(YEAR FROM data_empenho) quando licitacao nao bate.
+                           COALESCE(
+                               (SELECT l.ano_licitacao FROM tce_pb_licitacao l
+                                WHERE l.municipio = d.municipio
+                                  AND l.codigo_ug = d.codigo_ug
+                                  AND l.modalidade = d.modalidade_licitacao
+                                  AND l.numero_licitacao = d.numero_licitacao
+                                LIMIT 1),
+                               EXTRACT(YEAR FROM d.data_empenho)::int
+                           ) AS ano_licitacao
+                    FROM tce_pb_despesa d
+                    WHERE d.id = %s
                 """, (empenho_id,))
                 cols = [d[0] for d in cur.description]
                 row = cur.fetchone()
