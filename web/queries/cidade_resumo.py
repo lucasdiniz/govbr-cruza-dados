@@ -52,15 +52,20 @@ RESUMO_TOP_FORNECEDORES = """
         COUNT(*) AS qtd_empenhos,
         est.cnpj_completo
     FROM tce_pb_despesa d
-    LEFT JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
-                                  AND est.cnpj_ordem = '0001'
-    LEFT JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+    JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+                            AND est.cnpj_ordem = '0001'
+    JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+                  -- Layer 2 + MEI/EI exclusion (P1-6 Opus PR #108).
+                  AND e.natureza_juridica IS DISTINCT FROM '2135'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM simples s
+                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
+                  )
     WHERE d.municipio = %(municipio)s
       AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
       AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
       AND d.valor_pago > 0
       AND LENGTH(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g')) = 14
-      AND est.cnpj_basico IS NOT NULL
     GROUP BY REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'),
              COALESCE(NULLIF(e.razao_social, ''), d.nome_credor),
              est.cnpj_completo
@@ -118,15 +123,20 @@ RESUMO_TOP_EMPENHOS = """
         COALESCE(NULLIF(e.razao_social, ''), d.nome_credor) AS razao_social,
         est.cnpj_completo
     FROM tce_pb_despesa d
-    LEFT JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
-                                  AND est.cnpj_ordem = '0001'
-    LEFT JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+    JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+                            AND est.cnpj_ordem = '0001'
+    JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+                  -- Layer 2 + MEI/EI exclusion (P1-6 Opus PR #108).
+                  AND e.natureza_juridica IS DISTINCT FROM '2135'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM simples s
+                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
+                  )
     WHERE d.municipio = %(municipio)s
       AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
       AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
       AND d.valor_pago > 0
       AND LENGTH(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g')) = 14
-      AND est.cnpj_basico IS NOT NULL
     ORDER BY d.valor_pago DESC NULLS LAST
     LIMIT 20
 """
@@ -152,16 +162,21 @@ RESUMO_TOP_LICITACOES = """
           AND EXISTS (
               SELECT 1
               FROM tce_pb_licitacao l2
-              LEFT JOIN estabelecimento est
+              JOIN estabelecimento est
                   ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
                  AND est.cnpj_ordem = '0001'
+              JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
+                             AND e2.natureza_juridica IS DISTINCT FROM '2135'
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM simples s2
+                                 WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
+                             )
               WHERE l2.municipio = l.municipio
                 AND l2.ano_licitacao = l.ano_licitacao
                 AND l2.codigo_ug = l.codigo_ug
                 AND l2.modalidade = l.modalidade
                 AND l2.numero_licitacao = l.numero_licitacao
                 AND LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
-                AND est.cnpj_basico IS NOT NULL
           )
     )
     SELECT lu.*, COALESCE(SUM(l.valor_ofertado), 0) AS valor_total

@@ -42,6 +42,7 @@ from web.queries.licitacao import (
     LICITACAO_OUTRAS_MESMO_ORGAO,
     LICITACAO_PROPONENTES,
 )
+from web.utils.pii_scrub import scrub_pii
 from web.utils.slug import (
     SlugLookupError,
     all_municipios_slugged,
@@ -167,6 +168,12 @@ def compute_licitacao_dict(
                         f"Licitacao nao encontrada: {municipio}/{ano}/{codigo_ug}/{modalidade}/{numero_licitacao}"
                     )
                 detail = _convert_row(_row_to_dict(det_cols, det_row))
+                # Scrub PII de texto livre antes de cachear (P1 GPT 5.5).
+                # objeto_licitacao eh TEXT digitado por servidor TCE — pode
+                # conter CPF/RG/email/tel embedded mesmo quando a licitacao
+                # eh PJ. Aplicado AQUI pra cache ficar limpo.
+                if detail.get("objeto_licitacao"):
+                    detail["objeto_licitacao"] = scrub_pii(detail["objeto_licitacao"])
 
                 # 2. Proponentes (apenas PJ via inline regex + JOIN estabelecimento)
                 cur.execute(LICITACAO_PROPONENTES, params)
@@ -198,6 +205,13 @@ def compute_licitacao_dict(
                     o["mod_num_slug"] = _build_mod_num_slug(
                         o.get("modalidade") or "", o.get("numero_licitacao") or ""
                     )
+                    # ug_slug per row (P2 Opus PR #108) — antes herdava
+                    # ug_slug da pagina pai, gerando 503 quando descricao_ug
+                    # textual variava entre rows do mesmo codigo_ug.
+                    o["ug_slug"] = numero_slug(o.get("descricao_ug") or "") or "prefeitura"
+                    # Scrub objeto_licitacao (texto livre).
+                    if o.get("objeto_licitacao"):
+                        o["objeto_licitacao"] = scrub_pii(o["objeto_licitacao"])
 
                 # 5. Outras licitacoes da mesma modalidade no municipio
                 cur.execute(LICITACAO_OUTRAS_MESMA_MODALIDADE, params)
@@ -210,6 +224,8 @@ def compute_licitacao_dict(
                         o.get("modalidade") or "", o.get("numero_licitacao") or ""
                     )
                     o["ug_slug"] = numero_slug(o.get("descricao_ug") or "") or "prefeitura"
+                    if o.get("objeto_licitacao"):
+                        o["objeto_licitacao"] = scrub_pii(o["objeto_licitacao"])
             finally:
                 try:
                     cur.execute("RESET statement_timeout")

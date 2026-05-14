@@ -21,6 +21,7 @@ from web.queries.cidade_resumo import (
     RESUMO_TOP_FORNECEDORES,
     RESUMO_TOP_LICITACOES,
 )
+from web.utils.pii_scrub import scrub_pii
 from web.utils.slug import format_yyyymm, municipio_slug, numero_slug
 
 _log = logging.getLogger("transparencia.cidade_resumo")
@@ -160,13 +161,16 @@ def compute_cidade_resumo_dict(
                 top_licitacoes = [
                     _convert_row(_row_to_dict(tl_cols, r)) for r in cur.fetchall()
                 ]
-                # Adicionar slugs canonicos pra link
+                # Adicionar slugs canonicos pra link + scrub objeto_licitacao
+                # (P1 GPT 5.5 — texto livre pode ter PII embedded).
                 for lic in top_licitacoes:
                     mod = lic.get("modalidade") or ""
                     num = lic.get("numero_licitacao") or ""
                     ug = lic.get("descricao_ug") or ""
                     lic["mod_num_slug"] = f"{numero_slug(mod) or 'lic'}-{numero_slug(num) or '0'}"
                     lic["ug_slug"] = numero_slug(ug) or "prefeitura"
+                    if lic.get("objeto_licitacao"):
+                        lic["objeto_licitacao"] = scrub_pii(lic["objeto_licitacao"])
 
                 # 7. Comparativo
                 cur.execute(RESUMO_COMPARATIVO, comp_params)

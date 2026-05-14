@@ -1623,16 +1623,15 @@ def _warm_licitacoes_phase() -> tuple[int, int, int]:
     from web.utils.slug import municipio_slug as _mun_slug, numero_slug as _num_slug
 
     print("--- Licitacoes: enumerando qualificadas ---")
+    _WARM_LIC_LIMIT = 1000000  # Limite defensivo de fetch in-memory.
     boot = psycopg2.connect(DSN)
     boot.autocommit = True
     all_lics: list[tuple[str, int, str, str, str, str]] = []
     try:
         with boot.cursor() as cur:
-            # Sem paginacao aqui — pegamos todas. Em prod, ajustar pra streaming
-            # se ultrapassar memoria (improvavel com ~80k linhas + 5 strings cada).
             cur.execute(
                 LICITACOES_QUALIFICADAS_PAGINATED,
-                {"limit": 1000000, "offset": 0},
+                {"limit": _WARM_LIC_LIMIT, "offset": 0},
             )
             for municipio, ano, codigo_ug, descricao_ug, modalidade, numero in cur.fetchall():
                 if not (municipio and ano and codigo_ug and modalidade and numero):
@@ -1643,6 +1642,16 @@ def _warm_licitacoes_phase() -> tuple[int, int, int]:
                 ))
     finally:
         boot.close()
+
+    # Detecta truncamento silencioso (S Opus PR #108) — se a base crescer
+    # alem do LIMIT, warmer perderia linhas sem aviso. Loga error e prossegue
+    # com o subset (melhor warm parcial do que crash).
+    if len(all_lics) >= _WARM_LIC_LIMIT:
+        print(
+            f"::error::[licitacoes] Fetch truncado em {_WARM_LIC_LIMIT}. "
+            f"Base de licitacoes cresceu — adapte pra streaming/paginar.",
+            flush=True,
+        )
 
     if not all_lics:
         print("[licitacoes] Nenhuma qualificada. Skipping.")

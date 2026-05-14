@@ -623,33 +623,42 @@ async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) 
 
 
 def _licitacoes_qualificadas_count() -> int:
-    """Conta licitacoes qualificadas (com >=1 proponente PJ). Cache 24h."""
+    """Conta licitacoes em web_cache (sitemap reflete o que esta cacheado).
+
+    Antes contava de LICITACOES_QUALIFICADAS_COUNT direto da fonte; agora
+    le de web_cache pra que num_shards bata com o que _licitacoes_paginated
+    retorna. (P1 GPT 5.5 PR #108.)
+    """
     cached = _SITEMAP_CACHE.get("licitacoes_count")
     now = time.time()
     if cached and (now - cached["ts"] < _SITEMAP_TTL):
         return int(cached["value"])
-    from web.queries.licitacao import LICITACOES_QUALIFICADAS_COUNT
     try:
         with db.get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute(LICITACOES_QUALIFICADAS_COUNT)
+                cur.execute(
+                    "SELECT COUNT(*) FROM web_cache WHERE query_id = 'LICITACAO_PERFIL'"
+                )
                 row = cur.fetchone()
                 count = int(row[0]) if row else 0
         _SITEMAP_CACHE["licitacoes_count"] = {"ts": now, "value": count}
         return count
     except Exception:
-        _log.exception("Falha ao contar licitacoes pro sitemap")
+        _log.exception("Falha ao contar licitacoes em web_cache")
         return 0
 
 
 def _licitacoes_paginated(shard_n: int, shard_size: int) -> list[tuple[str, int, str, str, str, str]]:
-    """Retorna 6-tupla pro shard N: (mun_slug, ano, ug_slug, mod_num_slug,
-    municipio_canon, descricao_ug). Aplica slugs aqui pra evitar SQL fancy.
-    """
-    from web.queries.licitacao import LICITACOES_QUALIFICADAS_PAGINATED
-    from web.utils.slug import municipio_slug as _mun_slug, numero_slug as _num_slug
+    """Retorna 6-tupla pro shard N a partir do que esta cacheado em web_cache.
 
+    LE DE web_cache (NAO do qualifying set) — garante que cada URL do sitemap
+    tem cache populado, evitando 503 mass-publish. Coverage gate eh sanity
+    check no deploy, mas o sitemap eh estritamente o que existe na cache.
+    (P1 GPT 5.5 review PR #108.)
+
+    Cache key formato: "<mun_slug>:<ano>:<ug_slug>:<mod_num_slug>".
+    """
     if shard_n < 1:
         return []
     offset = (shard_n - 1) * shard_size
@@ -658,32 +667,31 @@ def _licitacoes_paginated(shard_n: int, shard_size: int) -> list[tuple[str, int,
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute(
-                    LICITACOES_QUALIFICADAS_PAGINATED,
-                    {"limit": shard_size, "offset": offset},
+                    """
+                    SELECT municipio
+                    FROM web_cache
+                    WHERE query_id = 'LICITACAO_PERFIL'
+                    ORDER BY municipio
+                    LIMIT %s OFFSET %s
+                    """,
+                    (shard_size, offset),
                 )
                 out: list[tuple[str, int, str, str, str, str]] = []
-                seen: set[tuple[str, int, str, str]] = set()
-                for municipio, ano, codigo_ug, descricao_ug, modalidade, numero in cur.fetchall():
-                    if not municipio or not ano or not modalidade or not numero or not codigo_ug:
+                for (cache_key,) in cur.fetchall():
+                    if not cache_key:
                         continue
-                    mun_slug = _mun_slug(str(municipio))
-                    if not mun_slug:
+                    parts = str(cache_key).split(":", 3)
+                    if len(parts) != 4:
                         continue
-                    ug_slug = _num_slug(str(descricao_ug or "")) or "prefeitura"
-                    mod_slug = _num_slug(str(modalidade))
-                    num_slug = _num_slug(str(numero))
-                    if not mod_slug or not num_slug:
+                    mun_slug, ano_s, ug_slug, mod_num_slug = parts
+                    try:
+                        ano_int = int(ano_s)
+                    except ValueError:
                         continue
-                    mod_num_slug = f"{mod_slug}-{num_slug}"
-                    key = (mun_slug, int(ano), ug_slug, mod_num_slug)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    out.append((mun_slug, int(ano), ug_slug, mod_num_slug,
-                                str(municipio), str(descricao_ug or "")))
+                    out.append((mun_slug, ano_int, ug_slug, mod_num_slug, "", ""))
                 return out
     except Exception:
-        _log.exception("Falha ao carregar shard %d de licitacoes", shard_n)
+        _log.exception("Falha ao carregar shard %d de licitacoes do web_cache", shard_n)
         return []
 
 
@@ -736,38 +744,53 @@ async def sitemap_licitacoes_shard_xml(request: Request, shard_n: int) -> Respon
 
 
 def _cidade_resumo_qualificados() -> list[tuple[str, int, int]]:
-    """Retorna (municipio_canon, ano, mes) pra cada cidade-mes com qtd_empenhos > 0.
-    Cache 24h."""
+    """Retorna (mun_slug, ano, mes) pra cada entrada em web_cache.
+
+    LE DE web_cache (NAO do qualifying SQL) — garante que cada URL no
+    sitemap tem cache populado. (P1 GPT 5.5 PR #108.)
+    Cache key formato: "<mun_slug>:<yyyy>-<mm>". Retornamos mun_slug
+    diretamente (nao precisa de slug_to_municipio).
+    """
     cached = _SITEMAP_CACHE.get("cidade_resumo_list")
     now = time.time()
     if cached and (now - cached["ts"] < _SITEMAP_TTL):
         return list(cached["value"])
-    from web.queries.cidade_resumo import CIDADE_RESUMO_QUALIFICADOS_LIST
     try:
         with db.get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute(CIDADE_RESUMO_QUALIFICADOS_LIST)
+                cur.execute(
+                    "SELECT municipio FROM web_cache WHERE query_id = 'CIDADE_RESUMO_MENSAL'"
+                )
                 out: list[tuple[str, int, int]] = []
-                for municipio, ano, mes, _qtd in cur.fetchall():
-                    if not municipio or not ano or not mes:
+                for (cache_key,) in cur.fetchall():
+                    if not cache_key:
                         continue
-                    out.append((str(municipio), int(ano), int(mes)))
+                    parts = str(cache_key).split(":", 1)
+                    if len(parts) != 2:
+                        continue
+                    mun_slug, yyyymm = parts
+                    if len(yyyymm) != 7 or yyyymm[4] != "-":
+                        continue
+                    try:
+                        yyyy = int(yyyymm[:4])
+                        mm = int(yyyymm[5:7])
+                    except ValueError:
+                        continue
+                    out.append((mun_slug, yyyy, mm))
         _SITEMAP_CACHE["cidade_resumo_list"] = {"ts": now, "value": out}
         return out
     except Exception:
-        _log.exception("Falha ao listar cidade-resumo qualificados pro sitemap")
+        _log.exception("Falha ao listar cidade-resumo em web_cache")
         return []
 
 
 def _build_cidade_resumo_sitemap(origin: str) -> str:
-    """urlset com /cidade/<slug>/<yyyy>-<mm> pra cada cidade-mes com dados."""
-    from web.utils.slug import municipio_slug as _mun_slug
+    """urlset com /cidade/<mun_slug>/<yyyy>-<mm> pra cada entry em cache."""
     lastmod = _lastmod_iso()
     parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
                         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for municipio, ano, mes in _cidade_resumo_qualificados():
-        mun_slug = _mun_slug(municipio)
+    for mun_slug, ano, mes in _cidade_resumo_qualificados():
         if not mun_slug:
             continue
         loc = f"{origin}/cidade/{mun_slug}/{ano:04d}-{mes:02d}"
