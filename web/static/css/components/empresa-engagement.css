@@ -140,6 +140,14 @@
     }
     .empresa-sticky-cta.is-visible { transform: translateY(0); }
     .empresa-sticky-cta[hidden] { display: none; }
+    /* Quando a sticky CTA esta visivel, esconde o FAB back-to-top.
+       Sem isso, FAB (z-index:60, ~56px no canto inferior direito) fica
+       sobre a sticky (z-index:50, width total) e cobre a seta "->" do
+       CTA — tap target prejudicado. Sticky ja oferece o link principal
+       em forma melhor, FAB fica redundante aqui. */
+    body.has-empresa-sticky-cta md-fab.back-to-top {
+        display: none !important;
+    }
     .empresa-sticky-cta-link {
         display: block;
         text-align: center;

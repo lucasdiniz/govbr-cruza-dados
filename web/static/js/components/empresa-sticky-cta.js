@@ -23,12 +23,31 @@ function initEmpresaStickyCta() {
     if (!hero || !grid) return;
 
     bar.hidden = false;
+    bar.setAttribute('aria-hidden', 'true');
     let heroOut = false;
-    let gridIn = false;
+    // gridPassed eh one-way: uma vez que o user chegou no "Continue
+    // investigando", consideramos que ja foi exposto aos CTAs principais
+    // e a sticky bar nao deve reaparecer mais. Sem isso, ao rolar pra
+    // alem do grid (FAQ + site-footer), gridIn volta a false e a barra
+    // cobre links do footer (Sobre/Glossario/Contato).
+    let gridPassed = false;
 
     const update = () => {
-        const shouldShow = heroOut && !gridIn;
+        const shouldShow = heroOut && !gridPassed;
         bar.classList.toggle('is-visible', shouldShow);
+        bar.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+        // Tira o link do tab order quando invisivel (transform translateY
+        // mantem ele no accessibility tree e focusable sem inert).
+        if (shouldShow) {
+            bar.removeAttribute('inert');
+        } else {
+            bar.setAttribute('inert', '');
+        }
+        // Comunica estado pro back-to-top FAB esconder via CSS
+        // (.has-empresa-sticky-cta seletor). Sticky bar ocupa width
+        // total e o FAB (z-index:60) ficaria sobreposto cobrindo a
+        // seta -> do CTA, prejudicando o tap target.
+        document.body.classList.toggle('has-empresa-sticky-cta', shouldShow);
     };
 
     const obsHero = new IntersectionObserver((entries) => {
@@ -39,8 +58,13 @@ function initEmpresaStickyCta() {
     obsHero.observe(hero);
 
     const obsGrid = new IntersectionObserver((entries) => {
-        gridIn = entries[0].isIntersecting;
+        if (entries[0].isIntersecting) {
+            gridPassed = true;
+            obsGrid.disconnect();
+        }
         update();
     }, { rootMargin: '120px 0px 0px 0px' });
     obsGrid.observe(grid);
+
+    update();
 }
