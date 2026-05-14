@@ -422,6 +422,7 @@ JS_FILES: list[str] = [
     "lib/api.js",
     "components/empenho-table.js",
     "components/empresa-card.js",
+    "components/empresa-sticky-cta.js",
     "components/servidor-dialog.js",
     "components/fornecedor-dialog.js",
     "components/heatmap-dialog.js",
@@ -437,7 +438,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "109"
+templates.env.globals["ASSET_VERSION"] = "110"
 
 
 # ─────────────────────────────────────────────────────────────────────────
