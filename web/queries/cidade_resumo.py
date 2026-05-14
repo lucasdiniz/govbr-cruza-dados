@@ -26,13 +26,13 @@ RESUMO_AGGS_MES = """
             WHERE numero_licitacao IS NULL
                OR numero_licitacao = ''
                OR numero_licitacao = '000000000'
-               OR modalidade_licitacao ILIKE '%sem licit%'
+               OR modalidade_licitacao ILIKE '%%sem licit%%'
         ) AS qtd_sem_licitacao,
         COALESCE(SUM(valor_pago) FILTER (
             WHERE numero_licitacao IS NULL
                OR numero_licitacao = ''
                OR numero_licitacao = '000000000'
-               OR modalidade_licitacao ILIKE '%sem licit%'
+               OR modalidade_licitacao ILIKE '%%sem licit%%'
         ), 0) AS total_sem_licitacao
     FROM tce_pb_despesa
     WHERE municipio = %(municipio)s
