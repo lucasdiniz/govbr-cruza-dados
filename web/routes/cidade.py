@@ -2260,6 +2260,11 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
     ano = payload.get("ano_licitacao", 0)
     municipio = payload.get("municipio", "")
     modalidade = payload.get("modalidade", "")
+    # codigo_ug opcional. Quando presente, narrow para a 4-tupla canonica
+    # (municipio + codigo_ug + modalidade-canonical + numero) — desambigua
+    # casos onde a mesma modalidade aparece em UGs diferentes do municipio
+    # (ex: Camara 101065 e Prefeitura 201065 ambas com Dispensa 00003/2025).
+    codigo_ug = str(payload.get("codigo_ug", "") or "")
     if not numero or not municipio:
         return JSONResponse({})
 
@@ -2301,15 +2306,18 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                 # valores pra montar URL canonica de /licitacao/<...>.
                 cur.execute(f"""
                     SELECT DISTINCT objeto_licitacao, modalidade,
-                           numero_licitacao,
+                           numero_licitacao, codigo_ug,
                            data_homologacao, descricao_ug
                     FROM tce_pb_licitacao
                     WHERE numero_licitacao = %s AND municipio = %s
                       AND (%s = 0 OR ano_licitacao = %s)
+                      AND (%s = '' OR codigo_ug = %s)
                       AND (%s = '' OR {_CANON_MOD.format(col='modalidade')}
                                     = {_CANON_MOD.format(col='%s')})
                     LIMIT 1
-                """, (numero, municipio, ano, ano, modalidade, modalidade))
+                """, (numero, municipio, ano, ano,
+                      codigo_ug, codigo_ug,
+                      modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 if rows:
@@ -2325,17 +2333,20 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     LEFT JOIN empresa e ON e.cnpj_basico = l.cnpj_basico_proponente
                     WHERE l.numero_licitacao = %s AND l.municipio = %s
                       AND (%s = 0 OR l.ano_licitacao = %s)
+                      AND (%s = '' OR l.codigo_ug = %s)
                       AND (%s = '' OR {_CANON_MOD.format(col='l.modalidade')}
                                     = {_CANON_MOD.format(col='%s')})
                     GROUP BY l.nome_proponente, l.cpf_cnpj_proponente
                     ORDER BY SUM(l.valor_ofertado) DESC
-                """, (numero, municipio, ano, ano, modalidade, modalidade))
+                """, (numero, municipio, ano, ano,
+                      codigo_ug, codigo_ug,
+                      modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 result["proponentes"] = [_convert(_row_to_dict(cols, r)) for r in rows]
 
-                # Despesas vinculadas. Filtra por modalidade canonical pra
-                # nao misturar empenhos de licitacoes diferentes que
+                # Despesas vinculadas. Filtra por modalidade canonical + codigo_ug
+                # pra nao misturar empenhos de licitacoes diferentes que
                 # compartilham numero_licitacao no mesmo municipio (ex: Cruz
                 # do Espirito Santo tem 7 licitacoes distintas com '00003/2025',
                 # uma por modalidade x UG).
@@ -2345,11 +2356,14 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     FROM tce_pb_despesa
                     WHERE numero_licitacao = %s AND municipio = %s
                       AND valor_pago > 0
+                      AND (%s = '' OR codigo_ug = %s)
                       AND (%s = '' OR {_CANON_MOD.format(col='modalidade_licitacao')}
                                     = {_CANON_MOD.format(col='%s')})
                     ORDER BY data_empenho DESC
                     LIMIT 50
-                """, (numero_despesa, municipio, modalidade, modalidade))
+                """, (numero_despesa, municipio,
+                      codigo_ug, codigo_ug,
+                      modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 result["despesas"] = [_convert(_row_to_dict(cols, r)) for r in rows]

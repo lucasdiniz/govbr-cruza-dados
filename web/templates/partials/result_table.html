@@ -74,6 +74,7 @@
                     {% set lic_num_val = row.get('numero_licitacao', '') or '' %}
                     {% set lic_ano_val = row.get('ano_licitacao', '0') or '0' %}
                     {% set lic_mod_val = row.get('modalidade', '') or '' %}
+                    {% set lic_ug_val = row.get('codigo_ug', '') or '' %}
                     {% set abr_val = row.get('abrangencia', '') or '' %}
                     {% set cat_val = row.get('categoria_sancao', '') or '' %}
                     {% set row_hl = '' %}
@@ -87,7 +88,7 @@
                     {% if cpf6_val and nome_upper_val %}
                     <tr class="clickable-row{{ row_hl }}" data-cpf6="{{ cpf6_val }}" data-nome-upper="{{ nome_upper_val }}" data-nome="{{ nome_upper_val }}" data-cnpjs="[]">
                     {% elif lic_num_val and lic_num_val != '000000000' %}
-                    <tr class="clickable-row{{ row_hl }}" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}" data-licitacao-mod="{{ lic_mod_val }}">
+                    <tr class="clickable-row{{ row_hl }}" data-licitacao-num="{{ lic_num_val }}" data-licitacao-ano="{{ lic_ano_val }}" data-licitacao-mod="{{ lic_mod_val }}" data-licitacao-ug="{{ lic_ug_val }}">
                     {% elif cnpj_basico_val|length == 8 and cnpj_basico_val.isdigit() and cpf_cnpj_digits|length == 14 %}
                     {% set nome_credor_val = row.get('nome_credor', '') or '' %}
                     <tr class="clickable-row{{ row_hl }}" data-fornecedor-cnpj="{{ cnpj_basico_val }}" data-fornecedor-cpf-cnpj="{{ cpf_cnpj_digits }}" data-fornecedor-nome="{{ nome_val|clean_text }}" data-fornecedor-nome-credor="{{ nome_credor_val|clean_text }}">

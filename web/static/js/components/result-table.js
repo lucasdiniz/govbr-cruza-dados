@@ -21,6 +21,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
     const iLicNum = columns.indexOf('numero_licitacao');
     const iLicAno = columns.indexOf('ano_licitacao');
     const iLicMod = columns.indexOf('modalidade');
+    const iLicUg = columns.indexOf('codigo_ug');
     const iNomeCredorExact = columns.indexOf('nome_credor');
     const hasFornecedor = iCnpjBasico >= 0 || iCpfCnpj >= 0 || iCnpjCompleto >= 0;
     const hasServidor = iCpf6 >= 0 && (iNomeUpper >= 0 || iNomeServidor >= 0);
@@ -113,8 +114,9 @@ function buildResultTable(queryId, columns, rows, municipio) {
             const licNum = String(row[iLicNum] || '');
             const licAno = iLicAno >= 0 ? String(row[iLicAno] || '0') : '0';
             const licMod = iLicMod >= 0 ? String(row[iLicMod] || '') : '';
+            const licUg = iLicUg >= 0 ? String(row[iLicUg] || '') : '';
             if (licNum && licNum !== '000000000') {
-                return `<tr class="clickable-row${rowHighlight}" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}" data-licitacao-mod="${_esc(licMod)}">${cells}</tr>`;
+                return `<tr class="clickable-row${rowHighlight}" data-licitacao-num="${_esc(licNum)}" data-licitacao-ano="${_esc(licAno)}" data-licitacao-mod="${_esc(licMod)}" data-licitacao-ug="${_esc(licUg)}">${cells}</tr>`;
             }
         }
         // Fornecedor row detection

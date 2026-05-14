@@ -167,7 +167,10 @@ async function _restoreDialogFromUrl() {
                 if (!state.num) throw new Error('num ausente');
                 const mun = state.mun || _currentMunicipio || '';
                 if (typeof openLicitacaoDialog === 'function') {
-                    await openLicitacaoDialog(state.num, state.ano || '0', mun, `Licitacao ${state.num}`, state.mod || '', { fromUrl: true });
+                    await openLicitacaoDialog(state.num, state.ano || '0', mun,
+                                              `Licitacao ${state.num}`,
+                                              state.mod || '', state.ug || '',
+                                              { fromUrl: true });
                 }
                 return true;
             }

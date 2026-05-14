@@ -1,10 +1,23 @@
 // === components/licitacao-dialog.js ===
-function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade) {
-    return _cachedPost('/api/licitacao/detalhes', `lic:${numeroLicitacao}:${anoLicitacao}:${municipio}:${modalidade}`,
-        { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0, municipio, modalidade: modalidade || '' });
+function _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade, codigoUg) {
+    // codigo_ug entra na cache key pra evitar colisao quando 2 UGs distintas
+    // (ex: Camara 101065 + Prefeitura 201065) compartilham numero_licitacao
+    // + modalidade no mesmo municipio.
+    return _cachedPost('/api/licitacao/detalhes',
+        `lic:${numeroLicitacao}:${anoLicitacao}:${municipio}:${modalidade}:${codigoUg || ''}`,
+        { numero_licitacao: numeroLicitacao, ano_licitacao: parseInt(anoLicitacao) || 0,
+          municipio, modalidade: modalidade || '', codigo_ug: codigoUg || '' });
 }
 
-async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label, modalidade, options = {}) {
+async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, label, modalidade, codigoUg, options = {}) {
+    // Suporte chamada legacy onde codigoUg vinha como `options` (5 args + obj):
+    // openLicitacaoDialog(num, ano, mun, label, mod, {fromUrl: true})
+    if (codigoUg && typeof codigoUg === 'object' && !options) {
+        options = codigoUg;
+        codigoUg = '';
+    }
+    options = options || {};
+    codigoUg = codigoUg || '';
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog) return;
     const fromUrl = !!options.fromUrl;
@@ -19,6 +32,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
             ano: String(anoLicitacao || ''),
             mod: modalidade || '',
             mun: municipio || '',
+            ug: codigoUg || '',
         }, fromUrl, isInitialOpen);
     }
     const seq = (typeof _dialogNextSeq === 'function') ? _dialogNextSeq() : null;
@@ -34,6 +48,7 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         ano: String(anoLicitacao || ''),
         modalidade: modalidade || '',
         municipio: municipio || _currentMunicipio || '',
+        codigo_ug: codigoUg || '',
     });
     else if (drilledFrom) trackEvent && trackEvent('dialog-aberto', {
         tipo: 'licitacao',
@@ -41,10 +56,11 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         ano: String(anoLicitacao || ''),
         modalidade: modalidade || '',
         municipio: municipio || _currentMunicipio || '',
+        codigo_ug: codigoUg || '',
         drilled_from: drilledFrom,
     });
 
-    const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade);
+    const data = await _fetchLicitacaoDetails(numeroLicitacao, anoLicitacao, municipio, modalidade, codigoUg);
     if (seq !== null && typeof _dialogSeqValid === 'function' && !_dialogSeqValid(seq)) return;
 
     // Metadata — always render header
