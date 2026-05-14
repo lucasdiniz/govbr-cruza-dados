@@ -480,16 +480,29 @@ async def sitemap_xml(request: Request) -> Response:
         )
 
     xml = _build_sitemap_index(origin)
-    flag_on = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
-    has_empresa_shards = "/sitemap-empresas-" in xml
-    is_complete = (not flag_on) or has_empresa_shards
+    # Anti-cache parcial: nao cachear sitemap-index quando uma flag
+    # de tipo esta ligada mas o tipo NAO esta listado no XML (signal de
+    # que cache de licitacoes/empresas/resumo ainda nao foi populado).
+    # Sem isso, primeiro hit pos-deploy com flag=1 + warm em curso
+    # cacheia sitemap vazio por 24h → Google nao descobre paginas.
+    # (P2 GPT 5.5 round 2 PR #108.)
+    flag_emp = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
+    flag_lic = os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1"
+    flag_res = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1"
+    has_empresa = "/sitemap-empresas-" in xml
+    has_lic = "/sitemap-licitacoes-" in xml
+    has_res = "/sitemap-cidade-resumo.xml" in xml
+    is_complete = (
+        (not flag_emp or has_empresa)
+        and (not flag_lic or has_lic)
+        and (not flag_res or has_res)
+    )
     if is_complete:
         _SITEMAP_CACHE["index"] = {"ts": now, "xml": xml}
     else:
         _log.warning(
-            "Sitemap-index parcial (flag_empresas=%s mas sem shards) — "
-            "nao cacheando",
-            flag_on,
+            "Sitemap-index parcial (flags emp=%s lic=%s res=%s; has emp=%s lic=%s res=%s) — nao cacheando",
+            flag_emp, flag_lic, flag_res, has_empresa, has_lic, has_res,
         )
     return Response(
         content=xml,
@@ -628,6 +641,9 @@ def _licitacoes_qualificadas_count() -> int:
     Antes contava de LICITACOES_QUALIFICADAS_COUNT direto da fonte; agora
     le de web_cache pra que num_shards bata com o que _licitacoes_paginated
     retorna. (P1 GPT 5.5 PR #108.)
+
+    Anti-cache parcial: nao cachear count=0 quando flag esta ligada — pode
+    ser cache miss transitorio durante warm (P2 GPT 5.5 round 2).
     """
     cached = _SITEMAP_CACHE.get("licitacoes_count")
     now = time.time()
@@ -642,7 +658,15 @@ def _licitacoes_qualificadas_count() -> int:
                 )
                 row = cur.fetchone()
                 count = int(row[0]) if row else 0
-        _SITEMAP_CACHE["licitacoes_count"] = {"ts": now, "value": count}
+        # So cacheia count se != 0 OU se a flag esta desligada.
+        flag_on = os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1"
+        if count > 0 or not flag_on:
+            _SITEMAP_CACHE["licitacoes_count"] = {"ts": now, "value": count}
+        else:
+            _log.warning(
+                "_licitacoes_qualificadas_count = 0 com flag ligada — nao cacheando "
+                "(provavelmente warm em curso)"
+            )
         return count
     except Exception:
         _log.exception("Falha ao contar licitacoes em web_cache")
@@ -750,6 +774,8 @@ def _cidade_resumo_qualificados() -> list[tuple[str, int, int]]:
     sitemap tem cache populado. (P1 GPT 5.5 PR #108.)
     Cache key formato: "<mun_slug>:<yyyy>-<mm>". Retornamos mun_slug
     diretamente (nao precisa de slug_to_municipio).
+
+    Anti-cache parcial: nao cachear lista vazia quando flag esta ligada.
     """
     cached = _SITEMAP_CACHE.get("cidade_resumo_list")
     now = time.time()
@@ -778,7 +804,13 @@ def _cidade_resumo_qualificados() -> list[tuple[str, int, int]]:
                     except ValueError:
                         continue
                     out.append((mun_slug, yyyy, mm))
-        _SITEMAP_CACHE["cidade_resumo_list"] = {"ts": now, "value": out}
+        flag_on = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1"
+        if out or not flag_on:
+            _SITEMAP_CACHE["cidade_resumo_list"] = {"ts": now, "value": out}
+        else:
+            _log.warning(
+                "_cidade_resumo_qualificados vazio com flag ligada — nao cacheando"
+            )
         return out
     except Exception:
         _log.exception("Falha ao listar cidade-resumo em web_cache")

@@ -81,10 +81,13 @@ LICITACAO_PROPONENTES = """
                   )
     GROUP BY p.cnpj_clean, p.nome_proponente, e.razao_social
     ORDER BY
-        -- Vencedor primeiro: situacao_proposta com "vencedor"/"homologad"/"adjudicad".
-        -- Sem isso, ORDER BY valor escolhe maior valor como "vencedor" — errado
-        -- em pregao menor preco (P2 GPT 5.5 review PR #108).
-        CASE WHEN MAX(LOWER(p.situacao_proposta)) ~ '(vencedor|homolog|adjudic)' THEN 0 ELSE 1 END,
+        -- Vencedor primeiro: qualquer row do proponente com situacao
+        -- "vencedor"/"homologad"/"adjudicad". Usa bool_or() (nao MAX()) pra
+        -- nao perder vencedor quando o mesmo CNPJ tem rows heterogeneas
+        -- (multiplos itens em pregao por item). MAX retornaria max
+        -- lexicografico — "inabilitado" > "homologado" alfabeticamente,
+        -- mascarando rows vencedoras (P2 Opus/GPT round 2 PR #108).
+        CASE WHEN bool_or(LOWER(p.situacao_proposta) ~ '(vencedor|homolog|adjudic)') THEN 0 ELSE 1 END,
         SUM(p.valor_ofertado) DESC NULLS LAST
 """
 

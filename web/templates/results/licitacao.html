@@ -169,7 +169,7 @@
         <ul>
             {% for o in outras_orgao %}
             <li>
-                <a href="/licitacao/{{ municipio_slug }}/{{ o.ano_licitacao }}/{{ ug_slug }}/{{ o.mod_num_slug }}">
+                <a href="/licitacao/{{ municipio_slug }}/{{ o.ano_licitacao }}/{{ o.ug_slug }}/{{ o.mod_num_slug }}">
                     {{ o.modalidade|clean_text }} {{ o.numero_licitacao|clean_text }} &mdash; {{ (o.objeto_licitacao or '')|clean_text|truncate(100) }}
                 </a>
                 {% if o.data_homologacao %}<span class="text-sm text-muted">({{ o.data_homologacao[8:10] }}/{{ o.data_homologacao[5:7] }}/{{ o.data_homologacao[0:4] }})</span>{% endif %}

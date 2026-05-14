@@ -1533,8 +1533,10 @@ jobs:
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
 
           # 1. Coverage check: cache cobre >= 80% das licitacoes qualificadas.
-          # Usa o mesmo SQL que o sitemap-index (LICITACOES_QUALIFICADAS_COUNT)
-          # pra evitar drift entre coverage check e o que vai pro sitemap.
+          # SQL DEVE bater 1:1 com LICITACOES_QUALIFICADAS_COUNT (queries/licitacao.py)
+          # — incluindo o filtro MEI/EI. Sem isso, denominador inflado deixa
+          # cobertura artificial baixa e bloqueia enable mesmo com warm completo.
+          # (P2 GPT 5.5 round 2 PR #108.)
           QUALIFYING=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
             SELECT COUNT(*) FROM (
                 SELECT DISTINCT l.municipio, l.ano_licitacao, l.codigo_ug,
@@ -1548,16 +1550,21 @@ jobs:
                   AND EXISTS (
                       SELECT 1
                       FROM tce_pb_licitacao l2
-                      LEFT JOIN estabelecimento est
+                      JOIN estabelecimento est
                           ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
                          AND est.cnpj_ordem = '0001'
+                      JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
+                                     AND e2.natureza_juridica IS DISTINCT FROM '2135'
+                                     AND NOT EXISTS (
+                                         SELECT 1 FROM simples s2
+                                         WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
+                                     )
                       WHERE l2.municipio = l.municipio
                         AND l2.ano_licitacao = l.ano_licitacao
                         AND l2.codigo_ug = l.codigo_ug
                         AND l2.modalidade = l.modalidade
                         AND l2.numero_licitacao = l.numero_licitacao
                         AND LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
-                        AND est.cnpj_basico IS NOT NULL
                   )
             ) q
           ")
