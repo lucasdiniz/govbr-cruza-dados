@@ -58,16 +58,23 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
     // Link pra pagina dedicada da licitacao (indexavel, mais conteudo).
     // Hide quando ja na pagina /licitacao/X (auto-detect via URL).
-    // Mostrar sempre que tiver os 4 campos essenciais; descricao_ug e
-    // opcional (fallback 'prefeitura' no slug).
-    if (anoLicitacao && numeroLicitacao && municipio && modalidade) {
+    // PREFERE campos canonicos vindos da API (data.licitacao.modalidade /
+    // data.licitacao.numero_licitacao) — esses sao do tce_pb_licitacao e
+    // batem com o slug usado pelo warmer/SSR. Quando o dialog e aberto a
+    // partir do empenho-dialog, os argumentos `modalidade` e `numeroLicitacao`
+    // vem em formato de tce_pb_despesa (ex: "Pregao (Lei 14.133/21)" /
+    // "000032025") que NAO bate com o slug do warmer ("Pregao (Lei No
+    // 14.133/2021)" / "00003/2025") — gera 503 cache miss. So renderiza o
+    // link quando data.licitacao foi resolvida (canonical match server-side).
+    if (data.licitacao && data.licitacao.modalidade && data.licitacao.numero_licitacao
+        && anoLicitacao && municipio) {
         const _txtSlug = (s) => String(s || '').toLowerCase()
             .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
             .replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
         const munSlug = _txtSlug(municipio);
-        const ugSlug = _txtSlug(data.licitacao && data.licitacao.descricao_ug) || 'prefeitura';
-        const modSlug = _txtSlug(modalidade) || 'lic';
-        const numSlug = _txtSlug(numeroLicitacao) || '0';
+        const ugSlug = _txtSlug(data.licitacao.descricao_ug) || 'prefeitura';
+        const modSlug = _txtSlug(data.licitacao.modalidade) || 'lic';
+        const numSlug = _txtSlug(data.licitacao.numero_licitacao) || '0';
         const modNumSlug = `${modSlug}-${numSlug}`;
         const pagePath = `/licitacao/${munSlug}/${anoLicitacao}/${ugSlug}/${modNumSlug}`;
         const isOnPage = location.pathname === pagePath;

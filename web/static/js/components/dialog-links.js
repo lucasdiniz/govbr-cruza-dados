@@ -8,7 +8,12 @@ function _reattachDialogLinks(body) {
             // resolver a licitacao com o municipio do proprio empenho.
             const linkMun = link.dataset.licMun || '';
             const mun = linkMun || _currentMunicipio;
-            openLicitacaoDialog(link.dataset.licNum, link.dataset.licAno || '0', mun, link.textContent);
+            // Forwarding licMod (vem do empenho-dialog em formato despesa)
+            // pra API resolver via canonical match — sem isso, o dialog cai
+            // em LIMIT 1 e pode escolher uma das N licitacoes que compartilham
+            // numero_licitacao no mesmo municipio.
+            openLicitacaoDialog(link.dataset.licNum, link.dataset.licAno || '0',
+                                mun, link.textContent, link.dataset.licMod || '');
         });
     });
     body.querySelectorAll('.dialog-link[data-forn-cnpj]').forEach(link => {

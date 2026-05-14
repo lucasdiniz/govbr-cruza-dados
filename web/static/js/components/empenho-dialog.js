@@ -44,32 +44,44 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     // Licitacao vinculada — primeiro bloco logo apos o historico, pra dar
     // contexto imediato do empenho (qual processo originou o pagamento).
     // Renderiza como link direto pra /licitacao/<mun>/<ano>/<ug>/<modnum>
-    // quando temos os 5 campos canonicos (mais SEO/conteudo que o dialog).
-    // Fallback: dialog-link abre o dialog quando codigo_ug ausente.
+    // quando temos os campos canonicos vindos de tce_pb_licitacao via
+    // LATERAL JOIN no /api/empenho/detalhes (lic_modalidade, lic_numero_licitacao,
+    // lic_descricao_ug, ano_licitacao). Esses sao OBRIGATORIOS pro slug bater
+    // com o cache key do warmer; usar campos do empenho direto (data.modalidade_licitacao,
+    // data.numero_licitacao) gera URLs broken porque os formatos divergem entre
+    // tce_pb_despesa e tce_pb_licitacao (ex: "Pregao (Lei 14.133/21)" vs
+    // "Pregao (Lei No 14.133/2021)", "000032025" vs "00003/2025"). Fallback
+    // dialog-link quando lic_* nao vem da API (licitacao nao encontrada na
+    // canonical match).
     {
         const mod = data.modalidade_licitacao || '';
         const numLic = data.numero_licitacao || '';
         const semLic = !numLic || numLic === '000000000' || mod.toLowerCase().includes('sem licit');
         const empMun = data.municipio || '';
+        const labelDisplay = `${_esc(mod || data.lic_modalidade || 'Licitacao')} (${_esc(numLic || data.lic_numero_licitacao || '')})`;
         if (!semLic) {
             const _txtSlug = (s) => String(s || '').toLowerCase()
                 .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
                 .replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
             const ano = parseInt(data.ano_licitacao) || 0;
-            const cod_ug = data.codigo_ug || data.descricao_ug || '';
-            if (ano && cod_ug && empMun) {
+            const licMod = data.lic_modalidade || '';
+            const licNum = data.lic_numero_licitacao || '';
+            const licUg = data.lic_descricao_ug || data.descricao_ug || '';
+            if (ano && empMun && licMod && licNum) {
                 const munSlug = _txtSlug(empMun);
-                const ugSlug = _txtSlug(data.descricao_ug) || 'prefeitura';
-                const modSlug = _txtSlug(mod) || 'lic';
-                const numSlug = _txtSlug(numLic) || '0';
+                const ugSlug = _txtSlug(licUg) || 'prefeitura';
+                const modSlug = _txtSlug(licMod) || 'lic';
+                const numSlug = _txtSlug(licNum) || '0';
                 const pagePath = `/licitacao/${munSlug}/${ano}/${ugSlug}/${modSlug}-${numSlug}`;
                 html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
-                html += `<p class="text-sm"><a href="${pagePath}" class="ext-link-inline" title="Ver pagina dedicada desta licitacao (mais detalhes e SEO)">${_esc(mod)} (${_esc(numLic)}) &#8599;</a></p>`;
+                html += `<p class="text-sm"><a href="${pagePath}" class="ext-link-inline" title="Ver pagina dedicada desta licitacao (mais detalhes e SEO)">${labelDisplay} &#8599;</a></p>`;
                 html += '</div>';
             } else {
-                // Sem ano/ug — fallback pra dialog que ja existe.
+                // Sem campos canonicos da licitacao (LATERAL match falhou).
+                // Cai no dialog-link, que abre o licitacao-dialog e tenta
+                // resolver via /api/licitacao/detalhes (canonical match server-side).
                 html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
-                html += `<p class="text-sm"><a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="${ano || 0}" data-lic-mun="${_esc(empMun)}">${_esc(mod)} (${_esc(numLic)})</a></p>`;
+                html += `<p class="text-sm"><a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="${ano || 0}" data-lic-mun="${_esc(empMun)}" data-lic-mod="${_esc(mod)}">${labelDisplay}</a></p>`;
                 html += '</div>';
             }
         } else {
