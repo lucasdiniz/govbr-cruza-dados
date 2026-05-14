@@ -41,6 +41,44 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     title.textContent = `Empenho ${data.numero_empenho}`;
     let html = _historyNote('Historico completo do empenho — este detalhamento nao muda com o filtro de periodo da pagina.');
 
+    // Licitacao vinculada — primeiro bloco logo apos o historico, pra dar
+    // contexto imediato do empenho (qual processo originou o pagamento).
+    // Renderiza como link direto pra /licitacao/<mun>/<ano>/<ug>/<modnum>
+    // quando temos os 5 campos canonicos (mais SEO/conteudo que o dialog).
+    // Fallback: dialog-link abre o dialog quando codigo_ug ausente.
+    {
+        const mod = data.modalidade_licitacao || '';
+        const numLic = data.numero_licitacao || '';
+        const semLic = !numLic || numLic === '000000000' || mod.toLowerCase().includes('sem licit');
+        const empMun = data.municipio || '';
+        if (!semLic) {
+            const _txtSlug = (s) => String(s || '').toLowerCase()
+                .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            const ano = parseInt(data.ano_licitacao) || 0;
+            const cod_ug = data.codigo_ug || data.descricao_ug || '';
+            if (ano && cod_ug && empMun) {
+                const munSlug = _txtSlug(empMun);
+                const ugSlug = _txtSlug(data.descricao_ug) || 'prefeitura';
+                const modSlug = _txtSlug(mod) || 'lic';
+                const numSlug = _txtSlug(numLic) || '0';
+                const pagePath = `/licitacao/${munSlug}/${ano}/${ugSlug}/${modSlug}-${numSlug}`;
+                html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
+                html += `<p class="text-sm"><a href="${pagePath}" class="ext-link-inline" title="Ver pagina dedicada desta licitacao (mais detalhes e SEO)">${_esc(mod)} (${_esc(numLic)}) &#8599;</a></p>`;
+                html += '</div>';
+            } else {
+                // Sem ano/ug — fallback pra dialog que ja existe.
+                html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
+                html += `<p class="text-sm"><a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="${ano || 0}" data-lic-mun="${_esc(empMun)}">${_esc(mod)} (${_esc(numLic)})</a></p>`;
+                html += '</div>';
+            }
+        } else {
+            html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
+            html += '<p class="text-sm"><span class="badge badge-yellow">Sem licitacao</span></p>';
+            html += '</div>';
+        }
+    }
+
     // Historico (descricao detalhada)
     if (data.historico) {
         html += '<div class="dialog-section"><h4>Descricao</h4>';
@@ -109,22 +147,6 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     if (data.descricao_fonte_recurso) html += `<span><strong>${dualLabel('Origem do recurso:','Fonte:')}</strong> ${_esc(data.descricao_fonte_recurso)}</span>`;
     if (data.municipio) html += `<span><strong>Municipio:</strong> ${_esc(data.municipio)}</span>`;
     html += '</div></div>';
-
-    // Licitacao vinculada. Inclui data-mun do proprio empenho — sem ele,
-    // dialog-links.js cai em _currentMunicipio global. Em /empresa/<cnpj>
-    // (global) esse global eh '' e a API devolve vazio. Repassar o
-    // municipio do empenho corrige cross-dialog navigation no perfil
-    // global; nas demais paginas (cidade, empresa-municipio) eh
-    // equivalente ao comportamento atual.
-    const mod = data.modalidade_licitacao || '';
-    const numLic = data.numero_licitacao || '';
-    const semLic = !numLic || numLic === '000000000' || mod.toLowerCase().includes('sem licit');
-    const empMun = data.municipio || '';
-    if (!semLic) {
-        html += `<p class="text-sm mt-2"><strong>Licitacao:</strong> <a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="0" data-lic-mun="${_esc(empMun)}">${_esc(mod)} (${_esc(numLic)})</a></p>`;
-    } else {
-        html += '<p class="text-sm mt-2"><strong>Licitacao:</strong> <span class="badge badge-yellow">Sem licitacao</span></p>';
-    }
     html += '</div>';
 
     body.innerHTML = html;

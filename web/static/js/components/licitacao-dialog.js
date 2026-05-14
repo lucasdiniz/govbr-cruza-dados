@@ -58,12 +58,14 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
 
     // Link pra pagina dedicada da licitacao (indexavel, mais conteudo).
     // Hide quando ja na pagina /licitacao/X (auto-detect via URL).
-    if (data.licitacao && data.licitacao.descricao_ug && anoLicitacao && numeroLicitacao && municipio && modalidade) {
+    // Mostrar sempre que tiver os 4 campos essenciais; descricao_ug e
+    // opcional (fallback 'prefeitura' no slug).
+    if (anoLicitacao && numeroLicitacao && municipio && modalidade) {
         const _txtSlug = (s) => String(s || '').toLowerCase()
             .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
             .replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
         const munSlug = _txtSlug(municipio);
-        const ugSlug = _txtSlug(data.licitacao.descricao_ug) || 'prefeitura';
+        const ugSlug = _txtSlug(data.licitacao && data.licitacao.descricao_ug) || 'prefeitura';
         const modSlug = _txtSlug(modalidade) || 'lic';
         const numSlug = _txtSlug(numeroLicitacao) || '0';
         const modNumSlug = `${modSlug}-${numSlug}`;
