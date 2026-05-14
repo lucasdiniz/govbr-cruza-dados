@@ -104,6 +104,34 @@
         </p>
     </section>
 
+    {# CTA banner: trafego organico (Google) chega aqui buscando o CNPJ
+       especifico, encontra a info e vai embora (87% bounce rate medido
+       em maio/26). Esse banner exposto logo apos o hero oferece os 2
+       proximos passos mais provaveis sem competir com o conteudo do
+       perfil. data-umami-event no <a> dispara nav-clicado pra medir
+       efeito sem precisar de JS custom. #}
+    <aside class="empresa-related-cta">
+        <p class="empresa-related-cta-eyebrow">Investigue alem desta empresa</p>
+        <div class="empresa-related-cta-links">
+            <a href="/cidade/{{ municipio_slug }}#fornecedores-irregulares"
+               class="empresa-related-cta-link empresa-related-cta-primary"
+               data-umami-event="nav-clicado"
+               data-umami-event-target="cidade-fornecedores-irregulares"
+               data-umami-event-from="empresa-municipio-cta">
+                <strong>Outras empresas suspeitas em {{ municipio|clean_text }}</strong>
+                <span class="empresa-related-cta-hint">Veja todos os fornecedores irregulares da prefeitura</span>
+            </a>
+            <a href="/cidade/{{ municipio_slug }}"
+               class="empresa-related-cta-link"
+               data-umami-event="nav-clicado"
+               data-umami-event-target="cidade-panorama"
+               data-umami-event-from="empresa-municipio-cta">
+                <strong>Panorama completo de {{ municipio|clean_text }}</strong>
+                <span class="empresa-related-cta-hint">Nota de atencao, mapa e relatorio investigativo</span>
+            </a>
+        </div>
+    </aside>
+
     {% include "partials/empresa/_stats_municipio.html" %}
 
     {% with monthly_data = monthly, charts_titulo = 'Resumo grafico em ' ~ municipio %}
@@ -145,8 +173,65 @@
         </p>
     </section>
 
+    {# "Continue investigando" — 3 cards apos as fontes oficiais.
+       Mesma intencao do banner CTA do topo, mas pra users que rolaram
+       ate o fim do perfil. Links dao continuidade natural pra cidade,
+       outras empresas suspeitas, e o perfil global da propria empresa.
+       Visualmente proeminentes pra justificar a leitura completa
+       (engagement signal positivo). #}
+    <nav class="empresa-related-grid" aria-label="Continue investigando">
+        <h2 class="empresa-related-grid-title">Continue investigando</h2>
+        <div class="empresa-related-grid-cards">
+            <a href="/cidade/{{ municipio_slug }}"
+               class="empresa-related-card"
+               data-umami-event="nav-clicado"
+               data-umami-event-target="cidade-panorama"
+               data-umami-event-from="empresa-municipio-footer">
+                <span class="empresa-related-card-eyebrow">Municipio</span>
+                <strong class="empresa-related-card-title">Panorama de {{ municipio|clean_text }}</strong>
+                <span class="empresa-related-card-desc">Nota de atencao, mapa de gastos, relatorio com 30+ sinais investigativos.</span>
+            </a>
+            <a href="/cidade/{{ municipio_slug }}#fornecedores-irregulares"
+               class="empresa-related-card"
+               data-umami-event="nav-clicado"
+               data-umami-event-target="cidade-fornecedores-irregulares"
+               data-umami-event-from="empresa-municipio-footer">
+                <span class="empresa-related-card-eyebrow">Cruzamentos</span>
+                <strong class="empresa-related-card-title">Outras empresas suspeitas em {{ municipio|clean_text }}</strong>
+                <span class="empresa-related-card-desc">Fornecedores com sancao, divida ativa, sem licitacao ou com conflito de socios.</span>
+            </a>
+            <a href="/empresa/{{ cnpj }}"
+               class="empresa-related-card"
+               data-umami-event="nav-clicado"
+               data-umami-event-target="empresa-global"
+               data-umami-event-from="empresa-municipio-footer">
+                <span class="empresa-related-card-eyebrow">Esta empresa</span>
+                <strong class="empresa-related-card-title">Perfil global de {{ razao_social|clean_text }}</strong>
+                <span class="empresa-related-card-desc">Veja se ela recebeu de outras prefeituras na Paraiba alem desta.</span>
+            </a>
+        </div>
+    </nav>
+
     {% include "partials/seo/_faq_empresa_municipio.html" %}
 </article>
+
+{# Sticky bottom bar mobile: aparece apos o user rolar ate o fim do
+   hero (intersection observer), some quando se aproxima do "Continue
+   investigando" pra nao competir com os cards. Apenas mobile
+   (display:none em >=720px) — desktop ja tem o banner CTA visivel
+   suficiente. #}
+<aside id="empresa-sticky-cta"
+       class="empresa-sticky-cta"
+       data-target-href="/cidade/{{ municipio_slug }}#fornecedores-irregulares"
+       hidden>
+    <a class="empresa-sticky-cta-link"
+       href="/cidade/{{ municipio_slug }}#fornecedores-irregulares"
+       data-umami-event="nav-clicado"
+       data-umami-event-target="cidade-fornecedores-irregulares"
+       data-umami-event-from="empresa-municipio-sticky">
+        Veja outras empresas suspeitas em {{ municipio|clean_text }} &rarr;
+    </a>
+</aside>
 
 {% include "partials/dialogs/_empresa_dialog.html" %}
 

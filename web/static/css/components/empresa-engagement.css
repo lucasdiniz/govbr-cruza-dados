@@ -1,0 +1,160 @@
+/* === components/empresa-engagement.css === */
+/* CTAs e cards de "Continue investigando" + sticky bar mobile pro
+   /empresa/<cnpj>/<municipio>. Adicionados pra reduzir bounce rate
+   (Google traffic chega buscando CNPJ especifico, encontra info,
+   sai. 89% bounce medido em maio/26 ate o deploy desse arquivo).
+   Tres elementos visuais:
+     1. .empresa-related-cta — banner exposto logo apos o hero
+     2. .empresa-related-grid — 3 cards no fim do conteudo
+     3. .empresa-sticky-cta — barra fixa mobile-only */
+
+@layer components {
+
+.empresa-related-cta {
+    margin-block: 1rem 1.5rem;
+    padding: 0.85rem 1rem 1rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface) 92%);
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+.empresa-related-cta-eyebrow {
+    margin: 0 0 0.5rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: 600;
+}
+.empresa-related-cta-links {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+    .empresa-related-cta-links {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+}
+.empresa-related-cta-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    text-decoration: none;
+    color: var(--md-sys-color-on-surface);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+.empresa-related-cta-link:hover,
+.empresa-related-cta-link:focus-visible {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface) 94%);
+    border-color: var(--md-sys-color-primary);
+}
+.empresa-related-cta-link:active { transform: translateY(1px); }
+.empresa-related-cta-link strong {
+    font-size: 0.98rem;
+    line-height: 1.25;
+}
+.empresa-related-cta-primary {
+    border-color: color-mix(in srgb, var(--md-sys-color-primary) 60%, var(--md-sys-color-outline-variant));
+}
+.empresa-related-cta-hint {
+    font-size: 0.82rem;
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1.3;
+}
+
+/* "Continue investigando" — grid de 3 cards no fim do perfil. */
+.empresa-related-grid {
+    margin-block: 2rem 1rem;
+}
+.empresa-related-grid-title {
+    margin: 0 0 0.85rem;
+    font-size: 1.15rem;
+}
+.empresa-related-grid-cards {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+    .empresa-related-grid-cards { grid-template-columns: repeat(3, 1fr); }
+}
+.empresa-related-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.95rem 1rem;
+    border-radius: 12px;
+    background: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    text-decoration: none;
+    color: var(--md-sys-color-on-surface);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+.empresa-related-card:hover,
+.empresa-related-card:focus-visible {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface) 94%);
+    border-color: var(--md-sys-color-primary);
+}
+.empresa-related-card:active { transform: translateY(1px); }
+.empresa-related-card-eyebrow {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: 600;
+}
+.empresa-related-card-title {
+    font-size: 1rem;
+    line-height: 1.3;
+}
+.empresa-related-card-desc {
+    font-size: 0.86rem;
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1.35;
+}
+
+/* Sticky bottom bar — APENAS mobile (<720px). Aparece via JS
+   (init-empresa-sticky-cta.js) quando user passa do hero. */
+.empresa-sticky-cta {
+    display: none;
+}
+@media (max-width: 719px) {
+    .empresa-sticky-cta {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        display: block;
+        padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+        background: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface) 86%);
+        border-top: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
+        box-shadow: 0 -4px 14px rgba(0,0,0,0.18);
+        transform: translateY(100%);
+        transition: transform 0.18s ease;
+    }
+    .empresa-sticky-cta.is-visible { transform: translateY(0); }
+    .empresa-sticky-cta[hidden] { display: none; }
+    .empresa-sticky-cta-link {
+        display: block;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+        line-height: 1.3;
+        padding: 0.65rem 0.5rem;
+        border-radius: 8px;
+        background: var(--md-sys-color-primary);
+        color: var(--md-sys-color-on-primary);
+    }
+    /* Padding bottom no <article> pra o sticky nao cobrir o ultimo
+       elemento (FAQ) quando user esta no scroll-end. */
+    .empresa-page-municipio { padding-bottom: 4rem; }
+}
+
+} /* @layer components */
