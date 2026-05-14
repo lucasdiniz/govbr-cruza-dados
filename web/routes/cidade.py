@@ -2031,6 +2031,20 @@ async def get_empenho_detalhes(payload: dict = Body(...)):
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
+                # LATERAL canonico pra resolver licitacao real (tce_pb_licitacao)
+                # a partir do empenho. Necessario porque tce_pb_despesa e
+                # tce_pb_licitacao usam formatos diferentes pros mesmos dados:
+                #   numero_licitacao: '00003/2025' (lic) vs '000032025' (des)
+                #   modalidade:       'Pregao (Lei No 14.133/2021)' (lic)
+                #                  vs 'Pregao (Lei 14.133/21)'      (des)
+                # Igualdade direta em (modalidade, numero_licitacao) NUNCA bate.
+                # Match canonico:
+                #   - numero: digit-only normalization
+                #   - modalidade: lowercase + unaccent + strip " (...)" suffix
+                # Retorna lic_modalidade/lic_numero_licitacao/lic_descricao_ug
+                # *do registro real da licitacao* — usados pelo JS pra montar
+                # URLs de /licitacao/<mun>/<ano>/<ug>/<modnum> que batem com
+                # o cache key canonico do warmer.
                 cur.execute("""
                     SELECT d.numero_empenho, d.data_empenho, d.nome_credor, d.cpf_cnpj,
                            d.valor_empenhado, d.valor_liquidado, d.valor_pago,
@@ -2040,19 +2054,28 @@ async def get_empenho_detalhes(payload: dict = Body(...)):
                            d.descricao_fonte_recurso, d.categoria_economica,
                            d.grupo_natureza_despesa, d.modalidade_aplicacao,
                            d.municipio, d.codigo_ug,
-                           -- ano_licitacao autoritativo via tce_pb_licitacao (5-tupla canonica).
-                           -- LIMIT 1 porque mesma licitacao tem multiplas rows (1 por proponente).
-                           -- Fallback EXTRACT(YEAR FROM data_empenho) quando licitacao nao bate.
-                           COALESCE(
-                               (SELECT l.ano_licitacao FROM tce_pb_licitacao l
-                                WHERE l.municipio = d.municipio
-                                  AND l.codigo_ug = d.codigo_ug
-                                  AND l.modalidade = d.modalidade_licitacao
-                                  AND l.numero_licitacao = d.numero_licitacao
-                                LIMIT 1),
-                               EXTRACT(YEAR FROM d.data_empenho)::int
-                           ) AS ano_licitacao
+                           lic.modalidade        AS lic_modalidade,
+                           lic.numero_licitacao  AS lic_numero_licitacao,
+                           lic.descricao_ug      AS lic_descricao_ug,
+                           COALESCE(lic.ano_licitacao,
+                                    EXTRACT(YEAR FROM d.data_empenho)::int) AS ano_licitacao
                     FROM tce_pb_despesa d
+                    LEFT JOIN LATERAL (
+                        SELECT l.ano_licitacao, l.modalidade,
+                               l.numero_licitacao, l.descricao_ug
+                        FROM tce_pb_licitacao l
+                        WHERE l.municipio = d.municipio
+                          AND l.codigo_ug = d.codigo_ug
+                          AND LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                                l.modalidade,
+                                '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+                            = LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                                d.modalidade_licitacao,
+                                '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+                          AND REGEXP_REPLACE(l.numero_licitacao, '\\D', '', 'g')
+                            = REGEXP_REPLACE(d.numero_licitacao, '\\D', '', 'g')
+                        LIMIT 1
+                    ) lic ON true
                     WHERE d.id = %s
                 """, (empenho_id,))
                 cols = [d[0] for d in cur.description]
@@ -2249,6 +2272,15 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
             numero = f"{num_part}/{year_part}"
             if not ano:
                 ano = int(year_part)
+    # Match canonico de modalidade — formatos divergem entre tce_pb_licitacao
+    # ('Pregao (Lei No 14.133/2021)') e tce_pb_despesa ('Pregao (Lei 14.133/21)').
+    # Normalizacao: strip " (...)" suffix + lower + unaccent.
+    # Quando modalidade vem do empenho-dialog, esta no formato despesa; aqui
+    # comparamos via canonical pra encontrar a row certa em ambas tabelas.
+    _CANON_MOD = (
+        "LOWER(unaccent(BTRIM(REGEXP_REPLACE("
+        "  {col}, '\\s*-?\\s*\\([^)]*\\).*$', ''))))"
+    )
     try:
         from web.db import get_conn
 
@@ -2264,14 +2296,18 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
         with get_conn() as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
-                # Metadata da licitacao
-                cur.execute("""
+                # Metadata da licitacao. Inclui numero_licitacao+modalidade
+                # canonicos (do tce_pb_licitacao) — frontend usa esses
+                # valores pra montar URL canonica de /licitacao/<...>.
+                cur.execute(f"""
                     SELECT DISTINCT objeto_licitacao, modalidade,
+                           numero_licitacao,
                            data_homologacao, descricao_ug
                     FROM tce_pb_licitacao
                     WHERE numero_licitacao = %s AND municipio = %s
                       AND (%s = 0 OR ano_licitacao = %s)
-                      AND (%s = '' OR modalidade = %s)
+                      AND (%s = '' OR {_CANON_MOD.format(col='modalidade')}
+                                    = {_CANON_MOD.format(col='%s')})
                     LIMIT 1
                 """, (numero, municipio, ano, ano, modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
@@ -2280,7 +2316,7 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     result["licitacao"] = _convert(_row_to_dict(cols, rows[0]))
 
                 # Proponentes
-                cur.execute("""
+                cur.execute(f"""
                     SELECT l.nome_proponente, l.cpf_cnpj_proponente,
                            SUM(l.valor_ofertado) AS valor_ofertado,
                            MAX(l.situacao_proposta) AS situacao_proposta,
@@ -2289,7 +2325,8 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                     LEFT JOIN empresa e ON e.cnpj_basico = l.cnpj_basico_proponente
                     WHERE l.numero_licitacao = %s AND l.municipio = %s
                       AND (%s = 0 OR l.ano_licitacao = %s)
-                      AND (%s = '' OR l.modalidade = %s)
+                      AND (%s = '' OR {_CANON_MOD.format(col='l.modalidade')}
+                                    = {_CANON_MOD.format(col='%s')})
                     GROUP BY l.nome_proponente, l.cpf_cnpj_proponente
                     ORDER BY SUM(l.valor_ofertado) DESC
                 """, (numero, municipio, ano, ano, modalidade, modalidade))
@@ -2297,16 +2334,22 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                 rows = cur.fetchall()
                 result["proponentes"] = [_convert(_row_to_dict(cols, r)) for r in rows]
 
-                # Despesas vinculadas
-                cur.execute("""
+                # Despesas vinculadas. Filtra por modalidade canonical pra
+                # nao misturar empenhos de licitacoes diferentes que
+                # compartilham numero_licitacao no mesmo municipio (ex: Cruz
+                # do Espirito Santo tem 7 licitacoes distintas com '00003/2025',
+                # uma por modalidade x UG).
+                cur.execute(f"""
                     SELECT id, nome_credor, cpf_cnpj, data_empenho,
                            elemento_despesa, valor_empenhado, valor_pago
                     FROM tce_pb_despesa
                     WHERE numero_licitacao = %s AND municipio = %s
                       AND valor_pago > 0
+                      AND (%s = '' OR {_CANON_MOD.format(col='modalidade_licitacao')}
+                                    = {_CANON_MOD.format(col='%s')})
                     ORDER BY data_empenho DESC
                     LIMIT 50
-                """, (numero_despesa, municipio))
+                """, (numero_despesa, municipio, modalidade, modalidade))
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 result["despesas"] = [_convert(_row_to_dict(cols, r)) for r in rows]
