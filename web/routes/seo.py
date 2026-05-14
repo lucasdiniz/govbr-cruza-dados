@@ -55,11 +55,16 @@ _SITEMAP_CACHE: dict[str, Any] = {
     "cidades": {"ts": 0.0, "xml": ""},
     "empresas": {},  # {shard_n: {"ts": ..., "xml": ...}}
     "empresas_municipios": {},  # {shard_n: {"ts": ..., "xml": ...}}
+    "licitacoes": {},  # {shard_n: {"ts": ..., "xml": ...}}
+    "cidade_resumo": {"ts": 0.0, "xml": ""},
 }
 
 # Tamanho de cada shard de empresas. Limite do protocolo eh 50K URLs por
 # arquivo; 49K deixa folga pra evitar overflow se o filtro mudar.
 EMPRESA_SHARD_SIZE = 49000
+
+# Tamanho de shard de licitacoes (mesmo limite do empresa).
+LICITACAO_SHARD_SIZE = 49000
 
 
 def _site_origin(request: Request) -> str:
@@ -428,6 +433,25 @@ def _build_sitemap_index(origin: str) -> str:
                 parts.append(f"    <lastmod>{lastmod}</lastmod>")
                 parts.append("  </sitemap>")
 
+    # Sub-sitemaps de licitacoes (gated por env flag separado).
+    if os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1":
+        total_lic = _licitacoes_qualificadas_count()
+        if total_lic > 0:
+            num_shards_lic = math.ceil(total_lic / LICITACAO_SHARD_SIZE)
+            for n in range(1, num_shards_lic + 1):
+                parts.append("  <sitemap>")
+                parts.append(f"    <loc>{xml_escape(origin)}/sitemap-licitacoes-{n}.xml</loc>")
+                parts.append(f"    <lastmod>{lastmod}</lastmod>")
+                parts.append("  </sitemap>")
+
+    # Sub-sitemap unico de cidade-resumo mensal (gated por env flag separado).
+    # Sem sharding: ~14k URLs cabem em 1 urlset (limite protocolo: 50k).
+    if os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1":
+        parts.append("  <sitemap>")
+        parts.append(f"    <loc>{xml_escape(origin)}/sitemap-cidade-resumo.xml</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("  </sitemap>")
+
     parts.append("</sitemapindex>")
     return "\n".join(parts)
 
@@ -456,16 +480,29 @@ async def sitemap_xml(request: Request) -> Response:
         )
 
     xml = _build_sitemap_index(origin)
-    flag_on = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
-    has_empresa_shards = "/sitemap-empresas-" in xml
-    is_complete = (not flag_on) or has_empresa_shards
+    # Anti-cache parcial: nao cachear sitemap-index quando uma flag
+    # de tipo esta ligada mas o tipo NAO esta listado no XML (signal de
+    # que cache de licitacoes/empresas/resumo ainda nao foi populado).
+    # Sem isso, primeiro hit pos-deploy com flag=1 + warm em curso
+    # cacheia sitemap vazio por 24h → Google nao descobre paginas.
+    # (P2 GPT 5.5 round 2 PR #108.)
+    flag_emp = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
+    flag_lic = os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1"
+    flag_res = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1"
+    has_empresa = "/sitemap-empresas-" in xml
+    has_lic = "/sitemap-licitacoes-" in xml
+    has_res = "/sitemap-cidade-resumo.xml" in xml
+    is_complete = (
+        (not flag_emp or has_empresa)
+        and (not flag_lic or has_lic)
+        and (not flag_res or has_res)
+    )
     if is_complete:
         _SITEMAP_CACHE["index"] = {"ts": now, "xml": xml}
     else:
         _log.warning(
-            "Sitemap-index parcial (flag_empresas=%s mas sem shards) — "
-            "nao cacheando",
-            flag_on,
+            "Sitemap-index parcial (flags emp=%s lic=%s res=%s; has emp=%s lic=%s res=%s) — nao cacheando",
+            flag_emp, flag_lic, flag_res, has_empresa, has_lic, has_res,
         )
     return Response(
         content=xml,
@@ -586,6 +623,234 @@ async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) 
                 "Sitemap-empresas-municipios shard 1 vazio — nao cacheando "
                 "(DB pode ter falhado)"
             )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Licitacoes — /sitemap-licitacoes-<n>.xml + helpers
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _licitacoes_qualificadas_count() -> int:
+    """Conta licitacoes em web_cache (sitemap reflete o que esta cacheado).
+
+    Antes contava de LICITACOES_QUALIFICADAS_COUNT direto da fonte; agora
+    le de web_cache pra que num_shards bata com o que _licitacoes_paginated
+    retorna. (P1 GPT 5.5 PR #108.)
+
+    Anti-cache parcial: nao cachear count=0 quando flag esta ligada — pode
+    ser cache miss transitorio durante warm (P2 GPT 5.5 round 2).
+    """
+    cached = _SITEMAP_CACHE.get("licitacoes_count")
+    now = time.time()
+    if cached and (now - cached["ts"] < _SITEMAP_TTL):
+        return int(cached["value"])
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM web_cache WHERE query_id = 'LICITACAO_PERFIL'"
+                )
+                row = cur.fetchone()
+                count = int(row[0]) if row else 0
+        # So cacheia count se != 0 OU se a flag esta desligada.
+        flag_on = os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1"
+        if count > 0 or not flag_on:
+            _SITEMAP_CACHE["licitacoes_count"] = {"ts": now, "value": count}
+        else:
+            _log.warning(
+                "_licitacoes_qualificadas_count = 0 com flag ligada — nao cacheando "
+                "(provavelmente warm em curso)"
+            )
+        return count
+    except Exception:
+        _log.exception("Falha ao contar licitacoes em web_cache")
+        return 0
+
+
+def _licitacoes_paginated(shard_n: int, shard_size: int) -> list[tuple[str, int, str, str, str, str]]:
+    """Retorna 6-tupla pro shard N a partir do que esta cacheado em web_cache.
+
+    LE DE web_cache (NAO do qualifying set) — garante que cada URL do sitemap
+    tem cache populado, evitando 503 mass-publish. Coverage gate eh sanity
+    check no deploy, mas o sitemap eh estritamente o que existe na cache.
+    (P1 GPT 5.5 review PR #108.)
+
+    Cache key formato: "<mun_slug>:<ano>:<ug_slug>:<mod_num_slug>".
+    """
+    if shard_n < 1:
+        return []
+    offset = (shard_n - 1) * shard_size
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT municipio
+                    FROM web_cache
+                    WHERE query_id = 'LICITACAO_PERFIL'
+                    ORDER BY municipio
+                    LIMIT %s OFFSET %s
+                    """,
+                    (shard_size, offset),
+                )
+                out: list[tuple[str, int, str, str, str, str]] = []
+                for (cache_key,) in cur.fetchall():
+                    if not cache_key:
+                        continue
+                    parts = str(cache_key).split(":", 3)
+                    if len(parts) != 4:
+                        continue
+                    mun_slug, ano_s, ug_slug, mod_num_slug = parts
+                    try:
+                        ano_int = int(ano_s)
+                    except ValueError:
+                        continue
+                    out.append((mun_slug, ano_int, ug_slug, mod_num_slug, "", ""))
+                return out
+    except Exception:
+        _log.exception("Falha ao carregar shard %d de licitacoes do web_cache", shard_n)
+        return []
+
+
+def _build_licitacoes_shard_sitemap(origin: str, shard_n: int) -> str:
+    """urlset com /licitacao/<mun>/<ano>/<ug>/<modnum> pro shard N."""
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    lics = _licitacoes_paginated(shard_n, LICITACAO_SHARD_SIZE)
+    for mun_slug, ano, ug_slug, mod_num_slug, _mun_nome, _ug_nome in lics:
+        loc = f"{origin}/licitacao/{mun_slug}/{ano}/{ug_slug}/{mod_num_slug}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>monthly</changefreq>")
+        parts.append("    <priority>0.5</priority>")
+        parts.append("  </url>")
+    parts.append("</urlset>")
+    return "\n".join(parts)
+
+
+@router.get("/sitemap-licitacoes-{shard_n:int}.xml")
+async def sitemap_licitacoes_shard_xml(request: Request, shard_n: int) -> Response:
+    """Sub-sitemap shard de licitacoes. 1-indexed. Past-end retorna urlset
+    vazio (mesmo padrao /sitemap-empresas-N.xml)."""
+    if shard_n < 1 or shard_n > 9999:
+        raise HTTPException(status_code=404)
+    origin = _site_origin(request)
+    now = time.time()
+    shard_cache = _SITEMAP_CACHE["licitacoes"].get(shard_n)
+    if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
+        xml = shard_cache["xml"]
+    else:
+        xml = _build_licitacoes_shard_sitemap(origin, shard_n)
+        urls_n = xml.count("/licitacao/")
+        if urls_n > 0:
+            _SITEMAP_CACHE["licitacoes"][shard_n] = {"ts": now, "xml": xml}
+        elif shard_n == 1:
+            _log.warning("Sitemap-licitacoes shard 1 vazio — nao cacheando")
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Cidade resumo mensal — /sitemap-cidade-resumo.xml (urlset unico, ~14k URLs)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _cidade_resumo_qualificados() -> list[tuple[str, int, int]]:
+    """Retorna (mun_slug, ano, mes) pra cada entrada em web_cache.
+
+    LE DE web_cache (NAO do qualifying SQL) — garante que cada URL no
+    sitemap tem cache populado. (P1 GPT 5.5 PR #108.)
+    Cache key formato: "<mun_slug>:<yyyy>-<mm>". Retornamos mun_slug
+    diretamente (nao precisa de slug_to_municipio).
+
+    Anti-cache parcial: nao cachear lista vazia quando flag esta ligada.
+    """
+    cached = _SITEMAP_CACHE.get("cidade_resumo_list")
+    now = time.time()
+    if cached and (now - cached["ts"] < _SITEMAP_TTL):
+        return list(cached["value"])
+    try:
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT municipio FROM web_cache WHERE query_id = 'CIDADE_RESUMO_MENSAL'"
+                )
+                out: list[tuple[str, int, int]] = []
+                for (cache_key,) in cur.fetchall():
+                    if not cache_key:
+                        continue
+                    parts = str(cache_key).split(":", 1)
+                    if len(parts) != 2:
+                        continue
+                    mun_slug, yyyymm = parts
+                    if len(yyyymm) != 7 or yyyymm[4] != "-":
+                        continue
+                    try:
+                        yyyy = int(yyyymm[:4])
+                        mm = int(yyyymm[5:7])
+                    except ValueError:
+                        continue
+                    out.append((mun_slug, yyyy, mm))
+        flag_on = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1"
+        if out or not flag_on:
+            _SITEMAP_CACHE["cidade_resumo_list"] = {"ts": now, "value": out}
+        else:
+            _log.warning(
+                "_cidade_resumo_qualificados vazio com flag ligada — nao cacheando"
+            )
+        return out
+    except Exception:
+        _log.exception("Falha ao listar cidade-resumo em web_cache")
+        return []
+
+
+def _build_cidade_resumo_sitemap(origin: str) -> str:
+    """urlset com /cidade/<mun_slug>/<yyyy>-<mm> pra cada entry em cache."""
+    lastmod = _lastmod_iso()
+    parts: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>',
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for mun_slug, ano, mes in _cidade_resumo_qualificados():
+        if not mun_slug:
+            continue
+        loc = f"{origin}/cidade/{mun_slug}/{ano:04d}-{mes:02d}"
+        parts.append("  <url>")
+        parts.append(f"    <loc>{xml_escape(loc)}</loc>")
+        parts.append(f"    <lastmod>{lastmod}</lastmod>")
+        parts.append("    <changefreq>monthly</changefreq>")
+        parts.append("    <priority>0.6</priority>")
+        parts.append("  </url>")
+    parts.append("</urlset>")
+    return "\n".join(parts)
+
+
+@router.get("/sitemap-cidade-resumo.xml")
+async def sitemap_cidade_resumo_xml(request: Request) -> Response:
+    """Sub-sitemap unico com todas as cidade-mes paginas (~14k URLs)."""
+    origin = _site_origin(request)
+    now = time.time()
+    cached = _SITEMAP_CACHE["cidade_resumo"]
+    if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
+        xml = cached["xml"]
+    else:
+        xml = _build_cidade_resumo_sitemap(origin)
+        urls_n = xml.count("/cidade/")
+        if urls_n > 0:
+            _SITEMAP_CACHE["cidade_resumo"] = {"ts": now, "xml": xml}
+        else:
+            _log.warning("Sitemap-cidade-resumo vazio — nao cacheando")
     return Response(
         content=xml,
         media_type="application/xml",

@@ -1,0 +1,59 @@
+{# FAQs dinamicas pra /cidade/<slug>/<yyyy>-<mm>.
+
+   Caller passa: municipio, ano, mes, mes_nome_cap, mes_nome,
+   aggs, top_fornecedores, delta_mes_ant_pct, delta_ano_ant_pct,
+   ano_anterior, mes_anterior_yyyymm.
+#}
+{% from "partials/seo/_faq.html" import faq_section %}
+{% set _total = aggs.total_pago|float if aggs else 0 %}
+{% set _qtd_emp = aggs.qtd_empenhos|int if aggs else 0 %}
+{% set _qtd_forn = aggs.qtd_fornecedores_unicos|int if aggs else 0 %}
+{% set _sem_lic_pct = ((aggs.total_sem_licitacao|float / _total) * 100) if (aggs and _total > 0) else 0 %}
+{% set _top1 = top_fornecedores[0] if top_fornecedores else None %}
+
+{% set _faqs = [
+    {
+        'q': 'Quanto a prefeitura de ' ~ municipio ~ ' gastou em ' ~ mes_nome ~ ' de ' ~ ano|string ~ '?',
+        'a': 'Em ' ~ mes_nome_cap ~ '/' ~ ano|string ~ ', a administracao publica municipal de ' ~ municipio ~ '/PB pagou um total de R$ ' ~ ("{:,.2f}".format(_total)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ' distribuidos em ' ~ _qtd_emp|string ~ ' empenhos a ' ~ _qtd_forn|string ~ ' fornecedores distintos. Esses valores vem dos relatorios do TCE-PB e cobrem pagamentos efetivos (nao incluem empenhos ainda nao pagos).',
+        'links': [
+            {'label': 'Top fornecedores', 'href': '#top-fornecedores'},
+            {'label': 'Categorias de gasto', 'href': '#top-elementos'},
+        ],
+    },
+    {
+        'q': 'Quem foi o maior fornecedor de ' ~ municipio ~ ' em ' ~ mes_nome ~ '/' ~ ano|string ~ '?',
+        'a': ('O maior fornecedor do mes foi ' ~ _top1.razao_social ~ ', com R$ ' ~ ("{:,.2f}".format(_top1.total_pago|float)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ' recebidos em ' ~ _top1.qtd_empenhos|string ~ ' empenhos. Veja a pagina da empresa para detalhes do CNPJ, presenca em outros municipios e cruzamento com sancoes/PGFN.') if _top1 else ('Nao localizamos fornecedores pessoa juridica nos pagamentos do mes. Pode haver pagamentos de pessoa fisica (folha, beneficios sociais) que nao listamos individualmente nesta pagina.'),
+        'links': ([
+            {'label': 'Pagina da empresa', 'href': '/empresa/' ~ _top1.cnpj_completo}
+        ] if _top1 and _top1.cnpj_completo else [
+            {'label': 'Top fornecedores', 'href': '#top-fornecedores'},
+        ]),
+    },
+    {
+        'q': 'Houve pagamentos sem licitacao em ' ~ municipio ~ ' em ' ~ mes_nome ~ '?',
+        'a': ('Sim. Cerca de ' ~ ("%0.0f"|format(_sem_lic_pct)) ~ '% do total pago (R$ ' ~ ("{:,.2f}".format(aggs.total_sem_licitacao|float)|replace(',', '#')|replace('.', ',')|replace('#', '.')) ~ ') saiu via dispensa ou inexigibilidade de licitacao no mes. Pagamentos sem licitacao sao legalmente permitidos em casos previstos na Lei 14.133/2021 mas merecem analise — verifique a secao "Pagamentos por modalidade" para detalhamento.') if (aggs and aggs.qtd_sem_licitacao and aggs.qtd_sem_licitacao > 0) else 'Os pagamentos do mes seguiram processos licitatorios formais. Detalhamento por modalidade (pregao, concorrencia, dispensa) na secao especifica.',
+        'links': [
+            {'label': 'Pagamentos por modalidade', 'href': '#modalidades'},
+            {'label': 'Licitacoes homologadas', 'href': '#top-licitacoes'},
+        ],
+    },
+    {
+        'q': 'Como os gastos de ' ~ mes_nome ~ '/' ~ ano|string ~ ' se comparam ao mes anterior?',
+        'a': ('Em comparacao ao mes anterior, os pagamentos variaram em ' ~ ("%+.1f"|format(delta_mes_ant_pct)) ~ '%' ~ (' (aumento)' if delta_mes_ant_pct > 0 else ' (reducao)') ~ '. Em comparacao ao mesmo mes de ' ~ ano_anterior|string ~ ', a variacao foi de ' ~ ("%+.1f"|format(delta_ano_ant_pct)) ~ '%.') if (delta_mes_ant_pct is not none and delta_ano_ant_pct is not none) else 'Comparacao com periodos anteriores nao disponivel (mes anterior ou ano-1 sem dados na base atual).',
+        'links': [
+            {'label': 'Mes anterior: ' ~ mes_anterior_yyyymm, 'href': '/cidade/' ~ municipio_slug ~ '/' ~ mes_anterior_yyyymm},
+            {'label': 'Mesmo mes ' ~ ano_anterior|string, 'href': '/cidade/' ~ municipio_slug ~ '/' ~ ano_anterior|string ~ '-' ~ ("%02d"|format(mes))},
+        ],
+    },
+    {
+        'q': 'Onde encontrar dados oficiais sobre o orcamento municipal de ' ~ municipio ~ '?',
+        'a': 'Os dados desta pagina vem do TCE-PB (Tribunal de Contas do Estado da Paraiba) — dados-abertos.tce.pb.gov.br/dados-consolidados. Para o portal da transparencia municipal, consulte o site da prefeitura de ' ~ municipio ~ '. A Lei 12.527/2011 (Lei de Acesso a Informacao) garante o direito de qualquer cidadao consultar despesas publicas.',
+        'links': [
+            {'label': 'Perfil completo de ' ~ municipio, 'href': '/cidade/' ~ municipio_slug},
+            {'label': 'Site do TCE-PB', 'href': 'https://tce.pb.gov.br', 'external': true},
+            {'label': 'Reportar correcao', 'href': '/contato'},
+        ],
+    },
+] %}
+
+{{ faq_section(_faqs, title='Perguntas frequentes', anchor='faq-cidade-resumo') }}

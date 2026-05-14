@@ -177,3 +177,73 @@ def all_municipios_slugged() -> dict[str, str]:
     Levanta SlugLookupError no cold start sem fallback.
     """
     return dict(_ensure_cache())
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Helpers pra paginas de transacao publica (/licitacao, /cidade/<slug>/<yyyy-mm>)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+_YYYY_MM_RE = re.compile(r"^(?P<yyyy>\d{4})-(?P<mm>\d{2})$")
+
+
+def numero_slug(numero: str) -> str:
+    """Slug pra numero_licitacao / numero_empenho: lowercase, dedup hifens.
+
+    TCE-PB tem formatos variados: '001/2025', '2025NE000282', '00028-2025',
+    'PP 001/2024'. Normalizamos canonicamente pra string URL-safe.
+
+    >>> numero_slug('001/2025')
+    '001-2025'
+    >>> numero_slug('PP 001/2024')
+    'pp-001-2024'
+    >>> numero_slug('2025NE000282')
+    '2025ne000282'
+    """
+    if not numero:
+        return ""
+    s = str(numero).lower().strip()
+    # Remove acentos (raro mas defensive)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    # Tudo nao-alfanumerico vira hifen
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    # Dedupe hifens
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-")
+
+
+def parse_yyyymm(s: str) -> tuple[int, int] | None:
+    """Parse '<yyyy>-<mm>' com bounds 2018-2099 / 01-12.
+
+    Retorna (yyyy, mm) int ou None se invalido. Usado pela rota
+    /cidade/<slug>/<yyyy>-<mm> e pela parsing de mes em sitemap.
+
+    >>> parse_yyyymm('2024-03')
+    (2024, 3)
+    >>> parse_yyyymm('2030-12')
+    (2030, 12)
+    >>> parse_yyyymm('2024-13')
+    >>> parse_yyyymm('99-03')
+    >>> parse_yyyymm('2024-3')
+    """
+    if not s:
+        return None
+    m = _YYYY_MM_RE.fullmatch(str(s).strip())
+    if not m:
+        return None
+    yyyy = int(m.group("yyyy"))
+    mm = int(m.group("mm"))
+    if not (2018 <= yyyy <= 2099):
+        return None
+    if not (1 <= mm <= 12):
+        return None
+    return yyyy, mm
+
+
+def format_yyyymm(yyyy: int, mm: int) -> str:
+    """Format inverso pro path canonico.
+
+    >>> format_yyyymm(2024, 3)
+    '2024-03'
+    """
+    return f"{yyyy:04d}-{mm:02d}"

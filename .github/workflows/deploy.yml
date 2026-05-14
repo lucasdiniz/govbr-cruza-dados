@@ -81,6 +81,24 @@ on:
           - enable
           - disable
         default: keep
+      expose_licitacoes_sitemap:
+        description: 'Toggle das paginas /licitacao/<mun>/<ano>/<ug>/<modnum> no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_LICITACOES=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes (caso contrario URLs retornarao 503).'
+        required: false
+        type: choice
+        options:
+          - keep
+          - enable
+          - disable
+        default: keep
+      expose_cidade_resumo_sitemap:
+        description: 'Toggle das paginas /cidade/<slug>/<yyyy-mm> (resumo mensal) no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_CIDADE_RESUMO=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes.'
+        required: false
+        type: choice
+        options:
+          - keep
+          - enable
+          - disable
+        default: keep
       download_sources:
         description: 'CSV de fontes para baixar via etl.00_download --only ANTES do ETL phase (ex: "tce_pb,dados_pb"). Vazio = sem download. Usado pra restore quando uma fase destructive (ex: etl.19_tce_pb) precisa dos CSVs mas o cleanup automatico ja apagou os antigos. Soft-fail se a fase nao alcanca a tabela destino.'
         required: false
@@ -1471,6 +1489,329 @@ jobs:
               echo "::warning::IndexNow submit falhou — Bing vai descobrir via crawl normal"
           else
             echo "INDEXNOW_KEY nao setada — skip IndexNow notify"
+          fi
+
+      # ── Toggle licitacoes sitemap (enable/disable/keep) ──
+      # Controla SITEMAP_INCLUDE_LICITACOES via drop-in systemd em
+      # cruza-web.service.d/sitemap-licitacoes.conf. Drop-in preservado
+      # entre deploys (deploy.yml so substitui o .service file).
+      #
+      # "enable" exige cache populado (>= 100 LICITACAO_PERFIL rows). Faz:
+      #   1. Sanity-check cache + LICITACOES_QUALIFICADAS_COUNT
+      #   2. Coverage gate >= 80%
+      #   3. Escreve drop-in
+      #   4. systemctl daemon-reload + restart cruza-web
+      #   5. Verifica /sitemap.xml inclui >=1 shard de licitacoes
+      #   6. E2E smoke test: 5 paths aleatorios → HTTP 200
+      #   7. IndexNow re-submit
+      # Falha em 5-6 dispara rollback automatico (rm drop-in).
+      #
+      # "disable" sempre roda (mesmo sem warm). Remove drop-in + restart.
+      # "keep" (default) nada faz.
+      - name: Disable licitacoes sitemap (rm drop-in)
+        if: inputs.expose_licitacoes_sitemap == 'disable'
+        run: |
+          set -euo pipefail
+          DROPIN=/etc/systemd/system/cruza-web.service.d/sitemap-licitacoes.conf
+          if [ -f "$DROPIN" ]; then
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            echo "Drop-in licitacoes removido. /licitacao/ saiu do sitemap.xml. Cache preservado."
+          else
+            echo "Drop-in nao existia (sitemap ja estava sem /licitacao/). No-op."
+          fi
+
+      - name: Enable licitacoes sitemap (drop-in + verify + IndexNow)
+        if: |
+          inputs.expose_licitacoes_sitemap == 'enable' &&
+          steps.warm-cache.outcome != 'failure'
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+
+          # 1. Coverage check: cache cobre >= 80% das licitacoes qualificadas.
+          # SQL DEVE bater 1:1 com LICITACOES_QUALIFICADAS_COUNT (queries/licitacao.py)
+          # — incluindo o filtro MEI/EI. Sem isso, denominador inflado deixa
+          # cobertura artificial baixa e bloqueia enable mesmo com warm completo.
+          # (P2 GPT 5.5 round 2 PR #108.)
+          QUALIFYING=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT COUNT(*) FROM (
+                SELECT DISTINCT l.municipio, l.ano_licitacao, l.codigo_ug,
+                                l.modalidade, l.numero_licitacao
+                FROM tce_pb_licitacao l
+                WHERE l.ano_licitacao IS NOT NULL
+                  AND l.numero_licitacao IS NOT NULL
+                  AND l.modalidade IS NOT NULL
+                  AND l.codigo_ug IS NOT NULL
+                  AND l.municipio IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM tce_pb_licitacao l2
+                      JOIN estabelecimento est
+                          ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
+                         AND est.cnpj_ordem = '0001'
+                      JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
+                                     AND e2.natureza_juridica IS DISTINCT FROM '2135'
+                                     AND NOT EXISTS (
+                                         SELECT 1 FROM simples s2
+                                         WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
+                                     )
+                      WHERE l2.municipio = l.municipio
+                        AND l2.ano_licitacao = l.ano_licitacao
+                        AND l2.codigo_ug = l.codigo_ug
+                        AND l2.modalidade = l.modalidade
+                        AND l2.numero_licitacao = l.numero_licitacao
+                        AND LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
+                  )
+            ) q
+          ")
+          CACHED=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
+            "SELECT COUNT(*) FROM web_cache WHERE query_id = 'LICITACAO_PERFIL';")
+          if [ "$QUALIFYING" -le 0 ]; then
+            echo "::error::Sem licitacoes qualificadas (rode etl_phase=sql ou =all primeiro)"
+            exit 1
+          fi
+          COVERAGE_PCT=$((CACHED * 100 / QUALIFYING))
+          echo "Coverage licitacoes: $CACHED/$QUALIFYING = ${COVERAGE_PCT}%"
+          if [ "$COVERAGE_PCT" -lt 80 ]; then
+            echo "::error::Cobertura ${COVERAGE_PCT}% < 80%. Rode warm_cache=true antes."
+            exit 1
+          fi
+
+          # 2. Escreve drop-in
+          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
+          DROPIN="$DROPIN_DIR/sitemap-licitacoes.conf"
+          sudo mkdir -p "$DROPIN_DIR"
+          {
+            echo '# Auto-gerado por deploy.yml com expose_licitacoes_sitemap=enable.'
+            echo '# Removido por expose_licitacoes_sitemap=disable.'
+            echo '[Service]'
+            echo 'Environment="SITEMAP_INCLUDE_LICITACOES=1"'
+          } | sudo tee "$DROPIN" >/dev/null
+          echo "Drop-in licitacoes escrito em $DROPIN"
+
+          # 3. Reload + restart com rollback
+          sudo systemctl daemon-reload
+          if ! sudo systemctl restart cruza-web; then
+            echo "::error::cruza-web restart falhou. Rollback automatico."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web || true
+            exit 1
+          fi
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 3 -o /dev/null \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/static/manifest.webmanifest; then
+              echo "cruza-web ready (tentativa $i)"
+              break
+            fi
+            sleep 2
+          done
+
+          # 4. Sitemap-index lista shards de licitacoes
+          INDEX_HAS_LIC=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/sitemap-licitacoes-' || true)
+          echo "sitemap.xml-index lista $INDEX_HAS_LIC shards de licitacoes"
+          if [ "$INDEX_HAS_LIC" -lt 1 ]; then
+            echo "::error::sitemap-index nao lista shard de licitacoes. Rollback."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 5. E2E smoke: 5 paths aleatorios das licitacoes em cache → HTTP 200
+          PATHS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT municipio FROM web_cache
+            WHERE query_id = 'LICITACAO_PERFIL'
+            ORDER BY random() LIMIT 5;
+          ")
+          FAIL=0
+          OK=0
+          for cache_key in $PATHS; do
+            # cache_key formato: <mun-slug>:<ano>:<ug-slug>:<modnum-slug>
+            # Converte pros segmentos do path.
+            mun_slug=$(echo "$cache_key" | cut -d: -f1)
+            ano=$(echo "$cache_key" | cut -d: -f2)
+            ug_slug=$(echo "$cache_key" | cut -d: -f3)
+            mod_num=$(echo "$cache_key" | cut -d: -f4-)
+            URL="/licitacao/${mun_slug}/${ano}/${ug_slug}/${mod_num}"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              -H "Host: transparenciapb.org" \
+              "http://127.0.0.1:8000${URL}")
+            if [ "$STATUS" = "200" ]; then
+              echo "  ${URL} -> 200 OK"
+              OK=$((OK + 1))
+            else
+              echo "  ${URL} -> $STATUS (FAIL)"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          echo "E2E smoke: $OK/5 OK, $FAIL/5 FAIL"
+          if [ "$OK" -lt 4 ]; then
+            echo "::error::E2E smoke FAIL — so $OK/5 paths respondem 200. Rollback."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 6. IndexNow re-submit
+          source venv/bin/activate
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          if [ -n "${INDEXNOW_KEY:-}" ]; then
+            echo "=== IndexNow re-submit (licitacoes) ==="
+            SITEMAP_INCLUDE_LICITACOES=1 python -m web.indexnow_submit 2>&1 || \
+              echo "::warning::IndexNow submit falhou — descobrirao via crawl normal"
+          else
+            echo "INDEXNOW_KEY nao setada — skip IndexNow"
+          fi
+
+      # ── Toggle cidade-resumo mensal sitemap ──
+      # Mesma logica do empresa/licitacoes mas pra /cidade/<slug>/<yyyy-mm>.
+      # Volume menor (~14k URLs em 1 sitemap unico, sem sharding).
+      - name: Disable cidade-resumo sitemap (rm drop-in)
+        if: inputs.expose_cidade_resumo_sitemap == 'disable'
+        run: |
+          set -euo pipefail
+          DROPIN=/etc/systemd/system/cruza-web.service.d/sitemap-cidade-resumo.conf
+          if [ -f "$DROPIN" ]; then
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            echo "Drop-in cidade-resumo removido. URLs /cidade/<slug>/<yyyymm> saem do sitemap."
+          else
+            echo "Drop-in nao existia. No-op."
+          fi
+
+      - name: Enable cidade-resumo sitemap (drop-in + verify + IndexNow)
+        if: |
+          inputs.expose_cidade_resumo_sitemap == 'enable' &&
+          steps.warm-cache.outcome != 'failure'
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+
+          # 1. Coverage check: cache cobre >= 80% dos (mun, ano, mes) com dados.
+          QUALIFYING=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT COUNT(*) FROM (
+                SELECT 1 FROM tce_pb_despesa
+                WHERE municipio IS NOT NULL
+                  AND data_empenho IS NOT NULL
+                  AND valor_pago > 0
+                GROUP BY municipio, EXTRACT(YEAR FROM data_empenho), EXTRACT(MONTH FROM data_empenho)
+                HAVING COUNT(*) > 0
+            ) q
+          ")
+          CACHED=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c \
+            "SELECT COUNT(*) FROM web_cache WHERE query_id = 'CIDADE_RESUMO_MENSAL';")
+          if [ "$QUALIFYING" -le 0 ]; then
+            echo "::error::Sem (mun, ano, mes) qualificados"
+            exit 1
+          fi
+          COVERAGE_PCT=$((CACHED * 100 / QUALIFYING))
+          echo "Coverage cidade-resumo: $CACHED/$QUALIFYING = ${COVERAGE_PCT}%"
+          if [ "$COVERAGE_PCT" -lt 80 ]; then
+            echo "::error::Cobertura ${COVERAGE_PCT}% < 80%. Rode warm_cache=true antes."
+            exit 1
+          fi
+
+          # 2. Drop-in
+          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
+          DROPIN="$DROPIN_DIR/sitemap-cidade-resumo.conf"
+          sudo mkdir -p "$DROPIN_DIR"
+          {
+            echo '# Auto-gerado por deploy.yml com expose_cidade_resumo_sitemap=enable.'
+            echo '[Service]'
+            echo 'Environment="SITEMAP_INCLUDE_CIDADE_RESUMO=1"'
+          } | sudo tee "$DROPIN" >/dev/null
+          echo "Drop-in cidade-resumo escrito"
+
+          sudo systemctl daemon-reload
+          if ! sudo systemctl restart cruza-web; then
+            echo "::error::cruza-web restart falhou. Rollback."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web || true
+            exit 1
+          fi
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 3 -o /dev/null \
+              -H "Host: transparenciapb.org" \
+              http://127.0.0.1:8000/static/manifest.webmanifest; then
+              echo "cruza-web ready (tentativa $i)"
+              break
+            fi
+            sleep 2
+          done
+
+          # 3. Sitemap-index inclui /sitemap-cidade-resumo.xml
+          INDEX_HAS_RESUMO=$(curl -s --max-time 60 \
+            -H "Host: transparenciapb.org" \
+            http://127.0.0.1:8000/sitemap.xml | grep -c '/sitemap-cidade-resumo.xml' || true)
+          if [ "$INDEX_HAS_RESUMO" -lt 1 ]; then
+            echo "::error::sitemap-index nao lista cidade-resumo. Rollback."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 4. E2E smoke: 5 (mun, yyyy-mm) aleatorios → HTTP 200
+          KEYS=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -At -c "
+            SELECT municipio FROM web_cache
+            WHERE query_id = 'CIDADE_RESUMO_MENSAL'
+            ORDER BY random() LIMIT 5;
+          ")
+          FAIL=0
+          OK=0
+          for cache_key in $KEYS; do
+            # cache_key formato: <mun-slug>:<yyyy>-<mm>
+            mun_slug=$(echo "$cache_key" | cut -d: -f1)
+            yyyymm=$(echo "$cache_key" | cut -d: -f2)
+            URL="/cidade/${mun_slug}/${yyyymm}"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              -H "Host: transparenciapb.org" \
+              "http://127.0.0.1:8000${URL}")
+            if [ "$STATUS" = "200" ]; then
+              echo "  ${URL} -> 200 OK"
+              OK=$((OK + 1))
+            else
+              echo "  ${URL} -> $STATUS (FAIL)"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          echo "E2E smoke cidade-resumo: $OK/5 OK, $FAIL/5 FAIL"
+          if [ "$OK" -lt 4 ]; then
+            echo "::error::E2E smoke FAIL. Rollback."
+            sudo rm -f "$DROPIN"
+            sudo systemctl daemon-reload
+            sudo systemctl restart cruza-web
+            exit 1
+          fi
+
+          # 5. IndexNow re-submit
+          source venv/bin/activate
+          set -a
+          source .env 2>/dev/null || true
+          set +a
+          if [ -n "${INDEXNOW_KEY:-}" ]; then
+            echo "=== IndexNow re-submit (cidade-resumo) ==="
+            SITEMAP_INCLUDE_CIDADE_RESUMO=1 python -m web.indexnow_submit 2>&1 || \
+              echo "::warning::IndexNow submit falhou — descobrirao via crawl normal"
+          else
+            echo "INDEXNOW_KEY nao setada — skip IndexNow"
           fi
 
       # ── Verify ──

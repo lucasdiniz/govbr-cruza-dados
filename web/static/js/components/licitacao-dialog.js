@@ -55,6 +55,25 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
     }
 
     let html = _historyNote('Historico completo da licitacao — este detalhamento nao muda com o filtro de periodo da pagina.');
+
+    // Link pra pagina dedicada da licitacao (indexavel, mais conteudo).
+    // Hide quando ja na pagina /licitacao/X (auto-detect via URL).
+    if (data.licitacao && data.licitacao.descricao_ug && anoLicitacao && numeroLicitacao && municipio && modalidade) {
+        const _txtSlug = (s) => String(s || '').toLowerCase()
+            .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+        const munSlug = _txtSlug(municipio);
+        const ugSlug = _txtSlug(data.licitacao.descricao_ug) || 'prefeitura';
+        const modSlug = _txtSlug(modalidade) || 'lic';
+        const numSlug = _txtSlug(numeroLicitacao) || '0';
+        const modNumSlug = `${modSlug}-${numSlug}`;
+        const pagePath = `/licitacao/${munSlug}/${anoLicitacao}/${ugSlug}/${modNumSlug}`;
+        const isOnPage = location.pathname === pagePath;
+        if (!isOnPage) {
+            html += `<p class="text-sm" style="margin:.5rem 0"><a href="${pagePath}" class="ext-link-inline" title="Ver pagina dedicada desta licitacao (mais detalhes e SEO)">Ver pagina completa da licitacao &#8599;</a></p>`;
+        }
+    }
+
     html += `<div class="dialog-section"><h4>${dualLabel('Dados desta licitacao','Dados da licitacao')}</h4>`;
     if (data.licitacao) {
         const lic = data.licitacao;
