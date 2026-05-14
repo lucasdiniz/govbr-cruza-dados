@@ -557,7 +557,7 @@ _skip("Q68", "Licitacao com proponente unico",
      "Licitacao e Concorrencia",
      """
 SELECT l.municipio, l.numero_licitacao, l.ano_licitacao,
-       l.modalidade, l.objeto_licitacao,
+       l.modalidade, l.codigo_ug, l.objeto_licitacao,
        l.nome_proponente, l.cpf_cnpj_proponente,
        l.valor_ofertado, l.situacao_proposta
 FROM tce_pb_licitacao l
@@ -576,7 +576,7 @@ ORDER BY l.valor_ofertado DESC
 LIMIT 500
 """, timeout=30, sql_dated="""
 SELECT l.municipio, l.numero_licitacao, l.ano_licitacao,
-       l.modalidade, l.objeto_licitacao,
+       l.modalidade, l.codigo_ug, l.objeto_licitacao,
        l.nome_proponente, l.cpf_cnpj_proponente,
        l.valor_ofertado, l.situacao_proposta
 FROM tce_pb_licitacao l
@@ -601,7 +601,7 @@ _reg("Q69", "Todas as licitacoes do municipio",
      "Licitacao e Concorrencia",
      """
 SELECT l.numero_licitacao, l.ano_licitacao,
-       l.modalidade,
+       l.modalidade, l.codigo_ug,
        MAX(l.objeto_licitacao) AS objeto_licitacao,
        COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
        MAX(l.valor_ofertado) AS maior_valor,
@@ -609,12 +609,12 @@ SELECT l.numero_licitacao, l.ano_licitacao,
 FROM tce_pb_licitacao l
 WHERE l.ano_licitacao >= 2022
   AND l.municipio = %(municipio)s
-GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade
+GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade, l.codigo_ug
 ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
 LIMIT 500
 """, timeout=30, sql_dated="""
 SELECT l.numero_licitacao, l.ano_licitacao,
-       l.modalidade,
+       l.modalidade, l.codigo_ug,
        MAX(l.objeto_licitacao) AS objeto_licitacao,
        COUNT(DISTINCT l.cpf_cnpj_proponente) AS qtd_vencedores,
        MAX(l.valor_ofertado) AS maior_valor,
@@ -622,7 +622,7 @@ SELECT l.numero_licitacao, l.ano_licitacao,
 FROM tce_pb_licitacao l
 WHERE l.ano_licitacao >= %(ano_inicio)s AND l.ano_licitacao <= %(ano_fim)s
   AND l.municipio = %(municipio)s
-GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade
+GROUP BY l.numero_licitacao, l.ano_licitacao, l.modalidade, l.codigo_ug
 ORDER BY l.ano_licitacao DESC, MAX(l.valor_ofertado) DESC
 LIMIT 500
 """)

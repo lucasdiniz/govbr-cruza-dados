@@ -94,6 +94,13 @@ LICITACAO_PROPONENTES = """
 # Despesas (empenhos) vinculadas a essa licitacao. Usa d.cnpj_basico
 # pre-computado em tce_pb_despesa (varchar(8)), cast pra bpchar(8) no JOIN
 # pra forcar uso de empresa_pkey/estabelecimento_pkey.
+#
+# IMPORTANTE: o warmer recebe a 5-tupla canonica do tce_pb_licitacao
+# (numero_licitacao='00003/2025', modalidade='Pregao (Lei No 14.133/2021)')
+# mas tce_pb_despesa usa formatos diferentes ('000032025', 'Pregao (Lei
+# 14.133/21)'). Igualdade direta NUNCA bate. Match canonico:
+#   - numero: digit-only normalization (REGEXP_REPLACE \D)
+#   - modalidade: lowercase + unaccent + strip suffix " (...)"
 LICITACAO_EMPENHOS_VINCULADOS = """
     WITH despesas_pj AS MATERIALIZED (
         SELECT
@@ -102,11 +109,22 @@ LICITACAO_EMPENHOS_VINCULADOS = """
             d.cnpj_basico::bpchar(8) AS cnpj_basico
         FROM tce_pb_despesa d
         WHERE d.municipio = %(municipio)s
-          AND d.numero_licitacao = %(numero_licitacao)s
+          -- Match canonico: tce_pb_despesa.numero_licitacao usa formato
+          -- compacto ('000032025'), tce_pb_licitacao usa '00003/2025'.
+          AND REGEXP_REPLACE(d.numero_licitacao, '\\D', '', 'g')
+            = REGEXP_REPLACE(%(numero_licitacao)s, '\\D', '', 'g')
           -- Filter pela 5-tupla canonica pra evitar colisoes entre orgaos/anos
           -- com mesmo numero_licitacao. (P1 GPT 5.5 review PR #108.)
           AND d.codigo_ug = %(codigo_ug)s
-          AND d.modalidade_licitacao = %(modalidade)s
+          -- Match canonico: tce_pb_despesa.modalidade_licitacao usa formato
+          -- compacto ('Pregao (Lei 14.133/21)'), tce_pb_licitacao usa
+          -- 'Pregao (Lei No 14.133/2021)'.
+          AND LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                d.modalidade_licitacao,
+                '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+            = LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                %(modalidade)s,
+                '\\s*-?\\s*\\([^)]*\\).*$', ''))))
           AND EXTRACT(YEAR FROM d.data_empenho) BETWEEN %(ano)s - 1 AND %(ano)s + 5
           AND d.valor_pago > 0
           AND d.cnpj_basico IS NOT NULL

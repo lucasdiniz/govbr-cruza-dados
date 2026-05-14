@@ -80,8 +80,10 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
                 // Sem campos canonicos da licitacao (LATERAL match falhou).
                 // Cai no dialog-link, que abre o licitacao-dialog e tenta
                 // resolver via /api/licitacao/detalhes (canonical match server-side).
+                // Repassa codigo_ug do empenho (data.codigo_ug) pra API narrow
+                // ao 4-tuple canonico.
                 html += `<div class="dialog-section"><h4>${dualLabel('Origem do gasto (licitacao)','Licitacao vinculada')}</h4>`;
-                html += `<p class="text-sm"><a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="${ano || 0}" data-lic-mun="${_esc(empMun)}" data-lic-mod="${_esc(mod)}">${labelDisplay}</a></p>`;
+                html += `<p class="text-sm"><a href="#" class="dialog-link" data-lic-num="${_esc(numLic)}" data-lic-ano="${ano || 0}" data-lic-mun="${_esc(empMun)}" data-lic-mod="${_esc(mod)}" data-lic-ug="${_esc(data.codigo_ug || '')}">${labelDisplay}</a></p>`;
                 html += '</div>';
             }
         } else {

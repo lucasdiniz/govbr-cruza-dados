@@ -208,6 +208,7 @@ COLUMN_META: dict[str, dict[str, Any]] = {
     "numero_empenho":       {"auditor": "Numero Empenho",      "auditor_only": True},
     "numero_licitacao":     {"auditor": "Numero Licitacao",    "auditor_only": True},
     "numero_contrato":      {"auditor": "Numero Contrato",     "auditor_only": True},
+    "codigo_ug":            {"auditor": "Codigo UG",           "auditor_only": True},
     "ano_mes":              {"auditor": "Ano-Mes",             "auditor_only": True},
     "cnpjs_socio":          {"auditor": "CNPJs Socio",         "auditor_only": True},
     "cnpjs_vinculo":        {"auditor": "CNPJs Vinculo",       "auditor_only": True},

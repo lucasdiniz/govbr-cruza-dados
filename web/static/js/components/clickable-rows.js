@@ -46,7 +46,9 @@ function initClickableRows(root = document) {
             if (licNum) {
                 const licAno = row.dataset.licitacaoAno || '0';
                 const licMod = row.dataset.licitacaoMod || '';
-                openLicitacaoDialog(licNum, licAno, _currentMunicipio, `Licitacao ${licNum}`, licMod);
+                const licUg = row.dataset.licitacaoUg || '';
+                openLicitacaoDialog(licNum, licAno, _currentMunicipio,
+                                    `Licitacao ${licNum}`, licMod, licUg);
             }
         };
         row.addEventListener('click', (event) => activate(event));
