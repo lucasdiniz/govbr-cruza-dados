@@ -38,19 +38,25 @@ LICITACAO_DETAIL = """
 """
 
 # Proponentes da licitacao. Apenas PJ (14 digitos limpos). JOIN com
-# estabelecimento pra trazer razao_social canonica e descartar proponentes
-# sem cadastro RFB (layer 2 da defesa).
+# estabelecimento+empresa pra trazer razao_social canonica e descartar
+# proponentes sem cadastro RFB (layer 2).
+#
+# Filter natureza_juridica NOT LIKE '1%%' exclui apenas orgaos publicos
+# (codigos 1xxx). MEI (simples.opcao_mei='S') e Empresario Individual
+# (natureza '2135') sao fornecedores LEGITIMOS — passam (consistente com
+# /cidade e /empresa).
 #
 # Agrega valor_ofertado por (nome, cpf) pra evitar duplicacao em casos onde
 # o TCE tem rows diferentes pro mesmo proponente.
 LICITACAO_PROPONENTES = """
-    WITH proponentes_pj AS (
+    WITH proponentes_pj AS MATERIALIZED (
         SELECT
             l.cpf_cnpj_proponente,
             l.nome_proponente,
             l.valor_ofertado,
             l.situacao_proposta,
-            REGEXP_REPLACE(l.cpf_cnpj_proponente, '\\D', '', 'g') AS cnpj_clean
+            REGEXP_REPLACE(l.cpf_cnpj_proponente, '\\D', '', 'g') AS cnpj_clean,
+            LEFT(REGEXP_REPLACE(l.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8) AS cnpj_basico
         FROM tce_pb_licitacao l
         WHERE l.municipio = %(municipio)s
           AND l.ano_licitacao = %(ano)s
@@ -59,6 +65,11 @@ LICITACAO_PROPONENTES = """
           AND l.numero_licitacao = %(numero_licitacao)s
           AND LENGTH(REGEXP_REPLACE(l.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
     )
+    -- MATERIALIZED + ::bpchar(8) sao CRITICOS pra perf: sem cast explicito,
+    -- planner usa idx_empresa_cnpj_text_razao com estatisticas furadas (estima
+    -- 338k rows/cnpj_basico ao inves de 1). Com cast bpchar, usa empresa_pkey
+    -- (unique). MATERIALIZED evita inline da CTE em PG12+ que reativaria o
+    -- problema. Resultado: 37ms vs 90s+timeout. (Hotfix pos-PR #108.)
     SELECT
         p.cnpj_clean AS cpf_cnpj,
         COALESCE(NULLIF(e.razao_social, ''), p.nome_proponente) AS razao_social,
@@ -66,150 +77,146 @@ LICITACAO_PROPONENTES = """
         MAX(p.situacao_proposta) AS situacao_proposta,
         MAX(est.cnpj_completo) AS cnpj_completo
     FROM proponentes_pj p
-    JOIN estabelecimento est ON est.cnpj_basico = LEFT(p.cnpj_clean, 8)
+    JOIN empresa e ON e.cnpj_basico = p.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = p.cnpj_basico
                             AND est.cnpj_ordem = '0001'
-    JOIN empresa e ON e.cnpj_basico = LEFT(p.cnpj_clean, 8)
-                  -- Layer 2 guard: PJ deve ter cadastro RFB completo.
-                  -- Exclui Empresario Individual (natureza_juridica='2135') e MEI
-                  -- (simples.opcao_mei='S') pra evitar exposicao de PF disfarcada
-                  -- de PJ (razao_social = "NOME CIVIL CPF" eh convencao RFB).
-                  -- P1-6 review Opus 4.7 PR #108.
-                  AND e.natureza_juridica IS DISTINCT FROM '2135'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM simples s
-                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
-                  )
     GROUP BY p.cnpj_clean, p.nome_proponente, e.razao_social
     ORDER BY
         -- Vencedor primeiro: qualquer row do proponente com situacao
-        -- "vencedor"/"homologad"/"adjudicad". Usa bool_or() (nao MAX()) pra
+        -- "vencedor"/"homologad"/"adjudicad". bool_or() (nao MAX()) pra
         -- nao perder vencedor quando o mesmo CNPJ tem rows heterogeneas
-        -- (multiplos itens em pregao por item). MAX retornaria max
-        -- lexicografico — "inabilitado" > "homologado" alfabeticamente,
-        -- mascarando rows vencedoras (P2 Opus/GPT round 2 PR #108).
+        -- (multiplos itens em pregao por item). (P2 round 2 PR #108.)
         CASE WHEN bool_or(LOWER(p.situacao_proposta) ~ '(vencedor|homolog|adjudic)') THEN 0 ELSE 1 END,
         SUM(p.valor_ofertado) DESC NULLS LAST
 """
 
-# Despesas (empenhos) vinculadas a essa licitacao. Apenas PJ credores via
-# mesmo filter. Top 50 ordenado por valor_pago. Page links pra /empresa.
+# Despesas (empenhos) vinculadas a essa licitacao. Usa d.cnpj_basico
+# pre-computado em tce_pb_despesa (varchar(8)), cast pra bpchar(8) no JOIN
+# pra forcar uso de empresa_pkey/estabelecimento_pkey.
 LICITACAO_EMPENHOS_VINCULADOS = """
+    WITH despesas_pj AS MATERIALIZED (
+        SELECT
+            d.id, d.numero_empenho, d.data_empenho, d.elemento_despesa,
+            d.valor_empenhado, d.valor_pago, d.cpf_cnpj, d.nome_credor,
+            d.cnpj_basico::bpchar(8) AS cnpj_basico
+        FROM tce_pb_despesa d
+        WHERE d.municipio = %(municipio)s
+          AND d.numero_licitacao = %(numero_licitacao)s
+          -- Filter pela 5-tupla canonica pra evitar colisoes entre orgaos/anos
+          -- com mesmo numero_licitacao. (P1 GPT 5.5 review PR #108.)
+          AND d.codigo_ug = %(codigo_ug)s
+          AND d.modalidade_licitacao = %(modalidade)s
+          AND EXTRACT(YEAR FROM d.data_empenho) BETWEEN %(ano)s - 1 AND %(ano)s + 5
+          AND d.valor_pago > 0
+          AND d.cnpj_basico IS NOT NULL
+    )
     SELECT
-        d.id,
-        d.numero_empenho,
-        d.data_empenho,
-        d.elemento_despesa,
-        d.valor_empenhado,
-        d.valor_pago,
-        REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g') AS cnpj_clean,
-        COALESCE(NULLIF(e.razao_social, ''), d.nome_credor) AS razao_social,
+        dp.id, dp.numero_empenho, dp.data_empenho, dp.elemento_despesa,
+        dp.valor_empenhado, dp.valor_pago,
+        dp.cpf_cnpj AS cnpj_clean,
+        COALESCE(NULLIF(e.razao_social, ''), dp.nome_credor) AS razao_social,
         est.cnpj_completo
-    FROM tce_pb_despesa d
-    JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+    FROM despesas_pj dp
+    JOIN empresa e ON e.cnpj_basico = dp.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
                             AND est.cnpj_ordem = '0001'
-    JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
-                  -- Layer 2 + MEI/EI guard (P1-6 Opus PR #108)
-                  AND e.natureza_juridica IS DISTINCT FROM '2135'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM simples s
-                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
-                  )
-    WHERE d.municipio = %(municipio)s
-      AND d.numero_licitacao = %(numero_licitacao)s
-      -- Filter pela 5-tupla canonica pra evitar colisoes entre orgaos/anos
-      -- com mesmo numero_licitacao. (P1 GPT 5.5 review PR #108.)
-      AND d.codigo_ug = %(codigo_ug)s
-      AND d.modalidade_licitacao = %(modalidade)s
-      AND EXTRACT(YEAR FROM d.data_empenho) BETWEEN %(ano)s - 1 AND %(ano)s + 5
-      AND d.valor_pago > 0
-      AND LENGTH(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g')) = 14
-    ORDER BY d.valor_pago DESC NULLS LAST
+    ORDER BY dp.valor_pago DESC NULLS LAST
     LIMIT 50
 """
 
 # Outras licitacoes do mesmo orgao no mesmo ano (sidebar/related).
 # Filtra pra excluir a licitacao atual.
 LICITACAO_OUTRAS_MESMO_ORGAO = """
-    SELECT DISTINCT
-        l.numero_licitacao,
-        l.ano_licitacao,
-        l.modalidade,
-        l.codigo_ug,
-        l.descricao_ug,
-        l.objeto_licitacao,
-        l.data_homologacao
-    FROM tce_pb_licitacao l
-    WHERE l.municipio = %(municipio)s
-      AND l.ano_licitacao = %(ano)s
-      AND l.codigo_ug = %(codigo_ug)s
-      AND NOT (
-           l.modalidade = %(modalidade)s
-       AND l.numero_licitacao = %(numero_licitacao)s
-      )
-      -- Mesmo filter de PJ qualificada do sitemap qualifying — evita
-      -- gerar links de sidebar que retornam 503 (P2 Opus PR #108).
-      AND EXISTS (
-          SELECT 1
-          FROM tce_pb_licitacao l2
-          JOIN estabelecimento est
-              ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
-             AND est.cnpj_ordem = '0001'
-          JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
-                         AND e2.natureza_juridica IS DISTINCT FROM '2135'
-                         AND NOT EXISTS (
-                             SELECT 1 FROM simples s2
-                             WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
-                         )
-          WHERE l2.municipio = l.municipio
-            AND l2.ano_licitacao = l.ano_licitacao
-            AND l2.codigo_ug = l.codigo_ug
-            AND l2.modalidade = l.modalidade
-            AND l2.numero_licitacao = l.numero_licitacao
-            AND LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
-      )
-    ORDER BY l.data_homologacao DESC NULLS LAST
+    WITH lic_alvo AS (
+        SELECT DISTINCT
+            l.municipio, l.ano_licitacao, l.codigo_ug, l.modalidade,
+            l.numero_licitacao, l.descricao_ug, l.objeto_licitacao,
+            l.data_homologacao
+        FROM tce_pb_licitacao l
+        WHERE l.municipio = %(municipio)s
+          AND l.ano_licitacao = %(ano)s
+          AND l.codigo_ug = %(codigo_ug)s
+          AND NOT (
+               l.modalidade = %(modalidade)s
+           AND l.numero_licitacao = %(numero_licitacao)s
+          )
+    ),
+    qualificadas AS (
+        SELECT DISTINCT la.municipio, la.ano_licitacao, la.codigo_ug,
+                        la.modalidade, la.numero_licitacao
+        FROM lic_alvo la
+        JOIN tce_pb_licitacao l2
+            ON l2.municipio = la.municipio
+           AND l2.ano_licitacao = la.ano_licitacao
+           AND l2.codigo_ug = la.codigo_ug
+           AND l2.modalidade = la.modalidade
+           AND l2.numero_licitacao = la.numero_licitacao
+        JOIN empresa e2 ON e2.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8)
+                       AND e2.natureza_juridica NOT LIKE '1%%'
+        JOIN estabelecimento est ON est.cnpj_basico = e2.cnpj_basico
+                                AND est.cnpj_ordem = '0001'
+        WHERE LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
+    )
+    SELECT la.numero_licitacao, la.ano_licitacao, la.modalidade,
+           la.codigo_ug, la.descricao_ug, la.objeto_licitacao,
+           la.data_homologacao
+    FROM lic_alvo la
+    JOIN qualificadas q
+      ON q.municipio = la.municipio
+     AND q.ano_licitacao = la.ano_licitacao
+     AND q.codigo_ug = la.codigo_ug
+     AND q.modalidade = la.modalidade
+     AND q.numero_licitacao = la.numero_licitacao
+    ORDER BY la.data_homologacao DESC NULLS LAST
     LIMIT 5
 """
 
 # Outras licitacoes da mesma modalidade no municipio (cross-orgao). Mais
 # long-tail signal (busca "pregao presencial joao pessoa").
 LICITACAO_OUTRAS_MESMA_MODALIDADE = """
-    SELECT DISTINCT
-        l.numero_licitacao,
-        l.ano_licitacao,
-        l.modalidade,
-        l.codigo_ug,
-        l.descricao_ug,
-        l.objeto_licitacao,
-        l.data_homologacao
-    FROM tce_pb_licitacao l
-    WHERE l.municipio = %(municipio)s
-      AND l.modalidade = %(modalidade)s
-      AND NOT (
-           l.ano_licitacao = %(ano)s
-       AND l.codigo_ug = %(codigo_ug)s
-       AND l.numero_licitacao = %(numero_licitacao)s
-      )
-      AND EXISTS (
-          SELECT 1
-          FROM tce_pb_licitacao l2
-          JOIN estabelecimento est
-              ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
-             AND est.cnpj_ordem = '0001'
-          JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
-                         AND e2.natureza_juridica IS DISTINCT FROM '2135'
-                         AND NOT EXISTS (
-                             SELECT 1 FROM simples s2
-                             WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
-                         )
-          WHERE l2.municipio = l.municipio
-            AND l2.ano_licitacao = l.ano_licitacao
-            AND l2.codigo_ug = l.codigo_ug
-            AND l2.modalidade = l.modalidade
-            AND l2.numero_licitacao = l.numero_licitacao
-            AND LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
-      )
-    ORDER BY l.data_homologacao DESC NULLS LAST
+    WITH lic_alvo AS (
+        SELECT DISTINCT
+            l.municipio, l.ano_licitacao, l.codigo_ug, l.modalidade,
+            l.numero_licitacao, l.descricao_ug, l.objeto_licitacao,
+            l.data_homologacao
+        FROM tce_pb_licitacao l
+        WHERE l.municipio = %(municipio)s
+          AND l.modalidade = %(modalidade)s
+          AND NOT (
+               l.ano_licitacao = %(ano)s
+           AND l.codigo_ug = %(codigo_ug)s
+           AND l.numero_licitacao = %(numero_licitacao)s
+          )
+    ),
+    qualificadas AS (
+        SELECT DISTINCT la.municipio, la.ano_licitacao, la.codigo_ug,
+                        la.modalidade, la.numero_licitacao
+        FROM lic_alvo la
+        JOIN tce_pb_licitacao l2
+            ON l2.municipio = la.municipio
+           AND l2.ano_licitacao = la.ano_licitacao
+           AND l2.codigo_ug = la.codigo_ug
+           AND l2.modalidade = la.modalidade
+           AND l2.numero_licitacao = la.numero_licitacao
+        JOIN empresa e2 ON e2.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8)
+                       AND e2.natureza_juridica NOT LIKE '1%%'
+        JOIN estabelecimento est ON est.cnpj_basico = e2.cnpj_basico
+                                AND est.cnpj_ordem = '0001'
+        WHERE LENGTH(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g')) = 14
+    )
+    SELECT la.numero_licitacao, la.ano_licitacao, la.modalidade,
+           la.codigo_ug, la.descricao_ug, la.objeto_licitacao,
+           la.data_homologacao
+    FROM lic_alvo la
+    JOIN qualificadas q
+      ON q.municipio = la.municipio
+     AND q.ano_licitacao = la.ano_licitacao
+     AND q.codigo_ug = la.codigo_ug
+     AND q.modalidade = la.modalidade
+     AND q.numero_licitacao = la.numero_licitacao
+    ORDER BY la.data_homologacao DESC NULLS LAST
     LIMIT 5
 """
 
@@ -237,15 +244,10 @@ LICITACOES_QUALIFICADAS_PAGINATED = """
           AND EXISTS (
               SELECT 1
               FROM tce_pb_licitacao l2
-              JOIN estabelecimento est
-                  ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
-                 AND est.cnpj_ordem = '0001'
-              JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
-                             AND e2.natureza_juridica IS DISTINCT FROM '2135'
-                             AND NOT EXISTS (
-                                 SELECT 1 FROM simples s2
-                                 WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
-                             )
+              JOIN empresa e2 ON e2.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8)
+                             AND e2.natureza_juridica NOT LIKE '1%%'
+              JOIN estabelecimento est ON est.cnpj_basico = e2.cnpj_basico
+                                      AND est.cnpj_ordem = '0001'
               WHERE l2.municipio = l.municipio
                 AND l2.ano_licitacao = l.ano_licitacao
                 AND l2.codigo_ug = l.codigo_ug
@@ -278,15 +280,10 @@ LICITACOES_QUALIFICADAS_COUNT = """
           AND EXISTS (
               SELECT 1
               FROM tce_pb_licitacao l2
-              JOIN estabelecimento est
-                  ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
-                 AND est.cnpj_ordem = '0001'
-              JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
-                             AND e2.natureza_juridica IS DISTINCT FROM '2135'
-                             AND NOT EXISTS (
-                                 SELECT 1 FROM simples s2
-                                 WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
-                             )
+              JOIN empresa e2 ON e2.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8)
+                             AND e2.natureza_juridica NOT LIKE '1%%'
+              JOIN estabelecimento est ON est.cnpj_basico = e2.cnpj_basico
+                                      AND est.cnpj_ordem = '0001'
               WHERE l2.municipio = l.municipio
                 AND l2.ano_licitacao = l.ano_licitacao
                 AND l2.codigo_ug = l.codigo_ug

@@ -42,34 +42,37 @@ RESUMO_AGGS_MES = """
 """
 
 # Top 20 fornecedores do mes. Apenas PJ (LENGTH digits = 14). JOIN
-# estabelecimento pra trazer cnpj_completo + razao_social canonica e ja
-# descartar credores sem cadastro (Layer 2).
+# estabelecimento+empresa pra trazer cnpj_completo + razao_social canonica.
+# Filter natureza_juridica NOT LIKE '1%%' exclui orgaos publicos (1xxx) —
+# consistente com /cidade TOP_FORNECEDORES.
 RESUMO_TOP_FORNECEDORES = """
+    WITH despesas_pj AS MATERIALIZED (
+        SELECT
+            d.cpf_cnpj,
+            d.nome_credor,
+            d.valor_pago,
+            d.cnpj_basico::bpchar(8) AS cnpj_basico
+        FROM tce_pb_despesa d
+        WHERE d.municipio = %(municipio)s
+          AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
+          AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
+          AND d.valor_pago > 0
+          AND d.cnpj_basico IS NOT NULL
+    )
     SELECT
-        REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g') AS cnpj_clean,
-        COALESCE(NULLIF(e.razao_social, ''), d.nome_credor) AS razao_social,
-        SUM(d.valor_pago) AS total_pago,
+        dp.cnpj_basico,
+        dp.cpf_cnpj AS cnpj_clean,
+        COALESCE(NULLIF(e.razao_social, ''), MAX(dp.nome_credor)) AS razao_social,
+        SUM(dp.valor_pago) AS total_pago,
         COUNT(*) AS qtd_empenhos,
         est.cnpj_completo
-    FROM tce_pb_despesa d
-    JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+    FROM despesas_pj dp
+    JOIN empresa e ON e.cnpj_basico = dp.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
                             AND est.cnpj_ordem = '0001'
-    JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
-                  -- Layer 2 + MEI/EI exclusion (P1-6 Opus PR #108).
-                  AND e.natureza_juridica IS DISTINCT FROM '2135'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM simples s
-                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
-                  )
-    WHERE d.municipio = %(municipio)s
-      AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
-      AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
-      AND d.valor_pago > 0
-      AND LENGTH(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g')) = 14
-    GROUP BY REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'),
-             COALESCE(NULLIF(e.razao_social, ''), d.nome_credor),
-             est.cnpj_completo
-    ORDER BY SUM(d.valor_pago) DESC NULLS LAST
+    GROUP BY dp.cnpj_basico, dp.cpf_cnpj, e.razao_social, est.cnpj_completo
+    ORDER BY SUM(dp.valor_pago) DESC NULLS LAST
     LIMIT 20
 """
 
@@ -110,34 +113,32 @@ RESUMO_MODALIDADES = """
 # Top 20 empenhos do mes (item-por-item). Apenas PJ credor. NAO expoe PF.
 # Inclui link pra /empresa/<cnpj_completo>.
 RESUMO_TOP_EMPENHOS = """
+    WITH despesas_pj AS MATERIALIZED (
+        SELECT
+            d.id, d.numero_empenho, d.data_empenho, d.elemento_despesa,
+            d.valor_empenhado, d.valor_pago, d.modalidade_licitacao,
+            d.numero_licitacao, d.cpf_cnpj, d.nome_credor,
+            d.cnpj_basico::bpchar(8) AS cnpj_basico
+        FROM tce_pb_despesa d
+        WHERE d.municipio = %(municipio)s
+          AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
+          AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
+          AND d.valor_pago > 0
+          AND d.cnpj_basico IS NOT NULL
+    )
     SELECT
-        d.id,
-        d.numero_empenho,
-        d.data_empenho,
-        d.elemento_despesa,
-        d.valor_empenhado,
-        d.valor_pago,
-        d.modalidade_licitacao,
-        d.numero_licitacao,
-        REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g') AS cnpj_clean,
-        COALESCE(NULLIF(e.razao_social, ''), d.nome_credor) AS razao_social,
+        dp.id, dp.numero_empenho, dp.data_empenho, dp.elemento_despesa,
+        dp.valor_empenhado, dp.valor_pago, dp.modalidade_licitacao,
+        dp.numero_licitacao,
+        dp.cpf_cnpj AS cnpj_clean,
+        COALESCE(NULLIF(e.razao_social, ''), dp.nome_credor) AS razao_social,
         est.cnpj_completo
-    FROM tce_pb_despesa d
-    JOIN estabelecimento est ON est.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
+    FROM despesas_pj dp
+    JOIN empresa e ON e.cnpj_basico = dp.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
                             AND est.cnpj_ordem = '0001'
-    JOIN empresa e ON e.cnpj_basico = LEFT(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g'), 8)
-                  -- Layer 2 + MEI/EI exclusion (P1-6 Opus PR #108).
-                  AND e.natureza_juridica IS DISTINCT FROM '2135'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM simples s
-                      WHERE s.cnpj_basico = e.cnpj_basico AND s.opcao_mei = 'S'
-                  )
-    WHERE d.municipio = %(municipio)s
-      AND EXTRACT(YEAR FROM d.data_empenho) = %(ano)s
-      AND EXTRACT(MONTH FROM d.data_empenho) = %(mes)s
-      AND d.valor_pago > 0
-      AND LENGTH(REGEXP_REPLACE(d.cpf_cnpj, '\\D', '', 'g')) = 14
-    ORDER BY d.valor_pago DESC NULLS LAST
+    ORDER BY dp.valor_pago DESC NULLS LAST
     LIMIT 20
 """
 
@@ -162,15 +163,10 @@ RESUMO_TOP_LICITACOES = """
           AND EXISTS (
               SELECT 1
               FROM tce_pb_licitacao l2
-              JOIN estabelecimento est
-                  ON est.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)
-                 AND est.cnpj_ordem = '0001'
-              JOIN empresa e2 ON e2.cnpj_basico = est.cnpj_basico
-                             AND e2.natureza_juridica IS DISTINCT FROM '2135'
-                             AND NOT EXISTS (
-                                 SELECT 1 FROM simples s2
-                                 WHERE s2.cnpj_basico = e2.cnpj_basico AND s2.opcao_mei = 'S'
-                             )
+              JOIN empresa e2 ON e2.cnpj_basico = LEFT(REGEXP_REPLACE(l2.cpf_cnpj_proponente, '\\D', '', 'g'), 8)::bpchar(8)
+                             AND e2.natureza_juridica NOT LIKE '1%%'
+              JOIN estabelecimento est ON est.cnpj_basico = e2.cnpj_basico
+                                      AND est.cnpj_ordem = '0001'
               WHERE l2.municipio = l.municipio
                 AND l2.ano_licitacao = l.ano_licitacao
                 AND l2.codigo_ug = l.codigo_ug
