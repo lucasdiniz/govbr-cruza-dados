@@ -98,9 +98,13 @@ LICITACAO_PROPONENTES = """
 # IMPORTANTE: o warmer recebe a 5-tupla canonica do tce_pb_licitacao
 # (numero_licitacao='00003/2025', modalidade='Pregao (Lei No 14.133/2021)')
 # mas tce_pb_despesa usa formatos diferentes ('000032025', 'Pregao (Lei
-# 14.133/21)'). Igualdade direta NUNCA bate. Match canonico:
-#   - numero: digit-only normalization (REGEXP_REPLACE \D)
-#   - modalidade: lowercase + unaccent + strip suffix " (...)"
+# 14.133/21)'). Estrategia:
+#   - numero: tce_pb_despesa ja armazena digit-only. Normaliza so o INPUT
+#     pra preservar uso do idx_tce_desp_licitacao (sargable lookup).
+#   - modalidade: ambos os lados precisam canonicalizar (lowercase+unaccent+
+#     strip suffix). Aplicado como filter residual depois dos selecionadores
+#     indexados (municipio + codigo_ug + numero_licitacao) terem reduzido
+#     o conjunto pra <100 rows tipico.
 LICITACAO_EMPENHOS_VINCULADOS = """
     WITH despesas_pj AS MATERIALIZED (
         SELECT
@@ -109,16 +113,13 @@ LICITACAO_EMPENHOS_VINCULADOS = """
             d.cnpj_basico::bpchar(8) AS cnpj_basico
         FROM tce_pb_despesa d
         WHERE d.municipio = %(municipio)s
-          -- Match canonico: tce_pb_despesa.numero_licitacao usa formato
-          -- compacto ('000032025'), tce_pb_licitacao usa '00003/2025'.
-          AND REGEXP_REPLACE(d.numero_licitacao, '\\D', '', 'g')
-            = REGEXP_REPLACE(%(numero_licitacao)s, '\\D', '', 'g')
-          -- Filter pela 5-tupla canonica pra evitar colisoes entre orgaos/anos
-          -- com mesmo numero_licitacao. (P1 GPT 5.5 review PR #108.)
           AND d.codigo_ug = %(codigo_ug)s
-          -- Match canonico: tce_pb_despesa.modalidade_licitacao usa formato
-          -- compacto ('Pregao (Lei 14.133/21)'), tce_pb_licitacao usa
-          -- 'Pregao (Lei No 14.133/2021)'.
+          -- Sargable: tce_pb_despesa.numero_licitacao ja vem em formato
+          -- compacto digit-only ('000032025'). Normaliza apenas o input
+          -- (do tce_pb_licitacao em '00003/2025') pra preservar index hit.
+          AND d.numero_licitacao = REGEXP_REPLACE(%(numero_licitacao)s, '\\D', '', 'g')
+          -- Residual canonical match pra modalidade (formato divergente).
+          -- Roda apenas sobre o subset filtrado pelos selecionadores acima.
           AND LOWER(unaccent(BTRIM(REGEXP_REPLACE(
                 d.modalidade_licitacao,
                 '\\s*-?\\s*\\([^)]*\\).*$', ''))))
