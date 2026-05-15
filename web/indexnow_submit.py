@@ -138,6 +138,10 @@ def main() -> int:
     #   1. /sitemap-cidades.xml  (static + cidades, ~228 URLs)
     #   2. /sitemap-empresas-{n}.xml  (N shards de ate 49K cada, so se
     #                                  SITEMAP_INCLUDE_EMPRESAS=1)
+    #   3. /sitemap-empresas-municipios-{n}.xml  (so se SITEMAP_INCLUDE_EMPRESAS=1)
+    #   4. /sitemap-licitacoes-{n}.xml  (so se SITEMAP_INCLUDE_LICITACOES=1)
+    #   5. /sitemap-cidade-resumo.xml  (urlset unico, so se
+    #                                   SITEMAP_INCLUDE_CIDADE_RESUMO=1)
     # Junta URLs de todos os sub-sitemaps e submete em batches de 500.
     #
     # NAO chamamos _build_sitemap_index — esse retorna apenas links pros
@@ -145,17 +149,23 @@ def main() -> int:
     from web import db as web_db
     from web.routes.seo import (
         EMPRESA_SHARD_SIZE,
+        LICITACAO_SHARD_SIZE,
+        _build_cidade_resumo_sitemap,
         _build_cidades_sitemap,
         _build_empresas_municipios_shard_sitemap,
         _build_empresas_shard_sitemap,
+        _build_licitacoes_shard_sitemap,
         _empresas_municipios_qualificadas_count,
         _empresas_qualificadas_count,
+        _licitacoes_qualificadas_count,
     )
     import math as _math
 
     pool_inited = False
     urls: list[str] = []
     flag_empresas = os.environ.get("SITEMAP_INCLUDE_EMPRESAS", "0") == "1"
+    flag_licitacoes = os.environ.get("SITEMAP_INCLUDE_LICITACOES", "0") == "1"
+    flag_cidade_resumo = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO", "0") == "1"
     try:
         try:
             web_db.init_pool()
@@ -226,8 +236,48 @@ def main() -> int:
                 )
         else:
             log.info(
-                "SITEMAP_INCLUDE_EMPRESAS != '1' — submetendo so cidades+estaticas"
+                "SITEMAP_INCLUDE_EMPRESAS != '1' — pulando empresas/empresas-municipios"
             )
+
+        # Sub-sitemaps de licitacoes (so quando flag=1). Cada shard
+        # ate ~49K URLs (LICITACAO_SHARD_SIZE). /licitacao/<mun>/<ano>/<ug>/<modnum>
+        if flag_licitacoes:
+            try:
+                total_lic = _licitacoes_qualificadas_count()
+                num_shards_lic = (
+                    _math.ceil(total_lic / LICITACAO_SHARD_SIZE) if total_lic > 0 else 0
+                )
+                log.info(
+                    "licitacoes qualificadas=%d, shards=%d (size=%d)",
+                    total_lic, num_shards_lic, LICITACAO_SHARD_SIZE,
+                )
+                for n in range(1, num_shards_lic + 1):
+                    try:
+                        shard_xml = _build_licitacoes_shard_sitemap(site_url, n)
+                        shard_urls = _extract_urls_from_sitemap(shard_xml)
+                        urls.extend(shard_urls)
+                        log.info(
+                            "sitemap-licitacoes-%d: %d URLs", n, len(shard_urls),
+                        )
+                    except Exception:
+                        log.exception("Falha ao gerar sitemap-licitacoes shard %d", n)
+            except Exception:
+                log.exception("Falha ao contar licitacoes pro sitemap")
+        else:
+            log.info("SITEMAP_INCLUDE_LICITACOES != '1' — pulando licitacoes")
+
+        # Sub-sitemap unico de cidade-resumo mensal (urlset, sem sharding —
+        # ~22K URLs cabem em 1 sitemap, limite protocolo eh 50K).
+        if flag_cidade_resumo:
+            try:
+                cr_xml = _build_cidade_resumo_sitemap(site_url)
+                cr_urls = _extract_urls_from_sitemap(cr_xml)
+                urls.extend(cr_urls)
+                log.info("sitemap-cidade-resumo: %d URLs", len(cr_urls))
+            except Exception:
+                log.exception("Falha ao gerar sitemap-cidade-resumo")
+        else:
+            log.info("SITEMAP_INCLUDE_CIDADE_RESUMO != '1' — pulando cidade-resumo")
     finally:
         if pool_inited:
             try:
