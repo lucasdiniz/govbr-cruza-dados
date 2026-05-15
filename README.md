@@ -203,17 +203,17 @@ A descobribilidade do transparenciapb.org foi tratada como camada de produto: o 
 
 ### Sitemap-index com sub-sitemaps shardeados
 
-`web/routes/seo.py` (~37KB, 9 rotas) implementa o pattern recomendado pelo [sitemaps.org](https://www.sitemaps.org/protocol.html#index) para escalar acima do limite de 50.000 URLs por arquivo. Cada sub-sitemap tem cap em **49.000 URLs** (folga vs limite) e é shardeado por inteiro 1-indexed:
+`web/routes/seo.py` (~38KB, 8 rotas) implementa o pattern recomendado pelo [sitemaps.org](https://www.sitemaps.org/protocol.html#index) para escalar acima do limite de 50.000 URLs por arquivo. Cada sub-sitemap tem cap em **49.000 URLs** (folga vs limite) e é shardeado por inteiro 1-indexed:
 
 ```
-/sitemap.xml                                  ← sitemapindex (lista os abaixo)
-  ├─ /sitemap-cidades.xml                     ← páginas estáticas + 223 /cidade/<slug>
-  ├─ /sitemap-empresas-1.xml                  ← empresas 1-49.000          (toggle: enable)
-  ├─ /sitemap-empresas-2.xml                  ← empresas 49.001-98.000
-  ├─ /sitemap-empresas-{n}.xml                ← …até cobrir o universo
-  ├─ /sitemap-empresas-municipios-{n}.xml     ← /empresa/<cnpj>/<slug>    (toggle: enable)
-  ├─ /sitemap-licitacoes-{n}.xml              ← licitações cacheadas      (toggle: enable)
-  └─ /sitemap-cidade-resumo.xml               ← ~14k cidade-mês URLs      (toggle: enable)
+/sitemap.xml                                       ← sitemapindex (lista os abaixo)
+  ├─ /sitemap-cidades.xml                          ← páginas estáticas + 223 /cidade/<slug>
+  ├─ /sitemap-empresas-1.xml                       ← empresas 1-49.000          (toggle: enable)
+  ├─ /sitemap-empresas-2.xml                       ← empresas 49.001-98.000
+  ├─ /sitemap-empresas-{n}.xml                     ← …até cobrir o universo
+  ├─ /sitemap-empresas-municipios-{n}.xml          ← /empresa/<cnpj>/<slug>     (toggle: enable)
+  ├─ /sitemap-licitacoes-{n}.xml                   ← /licitacao/<mun>/<ano>/<ug>/<modnum>  (toggle: enable)
+  └─ /sitemap-cidade-resumo.xml                    ← ~14k /cidade/<slug>/<yyyy>-<mm>  (toggle: enable)
 ```
 
 URLs cobertas hoje (com todos os toggles ativos): home, sobre, glossário, contato, mapa, 223 cidades PB, ~245k empresas, ~245k pares empresa-município, ~50k licitações cacheadas, ~14k cidade-mês — **~550k URLs no total**.
@@ -224,9 +224,9 @@ Três inputs de `workflow_dispatch` controlam quais sub-sitemaps aparecem no `/s
 
 | Input | Função | Pré-requisito |
 |---|---|---|
-| `expose_empresa_sitemap` | `keep` / `enable` / `disable` URLs `/empresa/<cnpj>/<slug>` | Cobertura ≥ 80% do cache `EMPRESA_PERFIL` populada antes de `enable` |
-| `expose_licitacoes_sitemap` | idem para `/licitacao/<municipio>/<ano>/<id>` | Cobertura ≥ 80% do cache `LICITACAO_PERFIL` |
-| `expose_cidade_resumo_sitemap` | idem para `/cidade/<slug>/<yyyy>-<mm>` | Cobertura ≥ 80% do cache `CIDADE_RESUMO` |
+| `expose_empresa_sitemap` | `keep` / `enable` / `disable` URLs `/empresa/<cnpj>` e `/empresa/<cnpj>/<slug>` | Cobertura ≥ 80% **dos caches `EMPRESA_PERFIL` e `EMPRESA_PERFIL_MUN`** antes de `enable` |
+| `expose_licitacoes_sitemap` | idem para `/licitacao/<mun>/<ano>/<ug>/<modnum>` | Cobertura ≥ 80% do cache `LICITACAO_PERFIL` |
+| `expose_cidade_resumo_sitemap` | idem para `/cidade/<slug>/<yyyy>-<mm>` | Cobertura ≥ 80% do cache `CIDADE_RESUMO_MENSAL` |
 
 O workflow falha o deploy com `::error::` se `enable` for usado sem cobertura mínima — evita expor sitemap com 503 nas URLs.
 
@@ -245,11 +245,14 @@ O workflow falha o deploy com `::error::` se `enable` for usado sem cobertura m�
 
 ### OG image dinâmica
 
-`web/routes/og_image.py` gera previews por URL on-demand via Pillow:
+`web/routes/og_image.py` gera previews via Pillow para a home e perfis de cidade:
 
-- Tipos: home, cidade, empresa, licitação, glossário, sobre, caso.
+- **`/og/home.png`** — preview da home (regenerado on-demand).
+- **`/og/cidade/<slug>.png`** — preview por município PB, com nome + KPIs principais renderizados.
 - Cache em disco em `data/og_cache/` (não versionado).
-- Crawler/share preview puxa via `/og/<type>.png` ou `/og/<type>/<param>.png`.
+- Demais páginas (`/empresa/...`, `/licitacao/...`, `/sobre`, `/glossario`) herdam o `og:image` default da home; `/caso/<slug>` usa imagem estática custom servida via `meta.og_image`.
+
+Plano: estender Pillow rendering para `/empresa/<cnpj>` e `/licitacao/...` quando o volume de share-clicks justificar — por hora, herdar a OG da home já evita o Twitter/WhatsApp default sem preview.
 
 ### IndexNow
 
