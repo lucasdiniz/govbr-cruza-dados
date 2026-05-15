@@ -218,7 +218,7 @@ A VM e o disco mudam de SKU automaticamente conforme o trabalho. Custos sao pror
 | **Total tipico** | **~$104** | **~R$ 585** |
 
 > Cabe nos **$150/mes de credito Azure** (Visual Studio Enterprise) com folga de ~$45.
-> Regiao: **North Central US**. Resource group: `RG-GOVBR-NCUS`. VM: `vm-govbr`. Data disk: `disk-govbr-data`.
+> Regiao: **North Central US**. Nomes de resource group, VM e disco ficam em GitHub Secrets (`AZURE_RESOURCE_GROUP`, `AZURE_VM_NAME`, `AZURE_DATA_DISK_NAME`).
 
 ⚠️ **Limite Azure:** disco aceita no maximo 2 mudancas de SKU por 24h. Se rodar 2 deploys com etl/warm no mesmo dia, o segundo upgrade falha — fica em Standard SSD por algumas horas (warm sera mais lento, mas funciona). Workflow detecta e segue.
 
