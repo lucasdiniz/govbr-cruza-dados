@@ -28,6 +28,7 @@ psql -c "SELECT * FROM v_etl_run_summary LIMIT 10"
 3. **AUDITÁVEL** — rastro completo, imutável pelo ETL role
 4. **ERROR RESILIENT** — recuperável de qualquer crash
 5. **FAST** — download condicional + idempotency
+6. **ZERO TOLERANCE** — watermark nunca avança em failure; DLQ persiste mesmo em rollback do main_conn (referenciado nos headers das migrations `sql/22_etl_watermark.sql:23` e `sql/25_etl_rejected_rows.sql:21`)
 
 ## Arquitetura
 

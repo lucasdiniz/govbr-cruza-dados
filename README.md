@@ -10,10 +10,10 @@ Alimenta o portal público **[transparenciapb.org](https://transparenciapb.org)*
 
 Carrega ~350M registros (~210GB raw) de 18+ fontes públicas brasileiras em um PostgreSQL 16 e cruza pessoas/empresas por CPF/CNPJ para revelar padrões suspeitos, conflitos de interesse e anomalias de contratação.
 
-- **23 fases de ETL** orquestradas por `python -m etl.run_all` (modelo full-reload)
+- **24 fases de ETL** orquestradas por `python -m etl.run_all` (modelo full-reload)
 - **Framework ETL incremental** ([`etl/incremental/`](etl/incremental/README.md)) para fontes append-only com watermark, conditional GET e DLQ — hoje cobre 20 specs do TCE-PB e dados.pb.gov.br (~40M rows)
 - **125+ queries SQL** em 17 arquivos temáticos (Q01-Q310)
-- **40 relatórios** investigativos derivados dos resultados
+- **40+ relatórios** investigativos derivados dos resultados
 - **Materialized views em camadas** (L1 → L2 → views planas) para score de risco por município, empresa, pessoa e rede societária
 - **Frontend FastAPI** servindo transparenciapb.org com cache pré-computado e *shadow rewarm* zero-downtime
 - **Observabilidade self-hosted** — Umami + GoAccess + traffic-digest
@@ -40,6 +40,7 @@ python -m etl.run_all
 
 # Frontend (precisa de schema + cache populado)
 npm run build
+python -m web.warm_cache --pb                 # ~5-7h em B4 — popula web_cache antes de servir
 python -m uvicorn web.main:app --port 8000
 ```
 
@@ -48,7 +49,7 @@ Para contribuição parcial (só `web/`, só `queries/`, só relatórios), veja 
 ## Comandos principais
 
 ```bash
-python -m etl.run_all                        # 23 fases (download + carga + indices + views)
+python -m etl.run_all                        # 24 fases (download + carga + indices + views)
 python -m etl.run_all 4                      # retomar a partir da fase N (1-based)
 python -m etl.00_download                    # apenas downloads
 python -m etl.incremental.runner             # framework incremental — todas specs registradas
@@ -132,6 +133,7 @@ mv_municipio_pb_risco ───┤    mv_empresa_pb       ─► v_risk_score_em
 mv_servidor_pb_base ─────┘    mv_rede_pb
                               mv_municipio_pb_kpi_score
                               mv_municipio_pb_mapa
+                              mv_q67_dated_pb
 ```
 
 `sql/12_views.sql` segue convenções estritas: DROP no topo em ordem reversa, criação por camadas, refresh order documentado no rodapé.
@@ -168,9 +170,9 @@ A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto del
 
 Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMARY` (mesmo prefixo).
 
-### 23 fases ETL e auto-cleanup
+### 24 fases ETL e auto-cleanup
 
-`etl/run_all.py` mantém uma lista hardcoded de 23 módulos (`etl.00_download`, `etl.01_schema`, …, `etl.21_views`). Após cada fase concluir, `_cleanup_csvs` remove os CSVs raw daquela fase (espaço em disco é restrito). Diretórios compartilhados (`rfb/`, `tse/`) só são removidos quando todas as fases dependentes terminaram (`_SHARED_DIRS`).
+`etl/run_all.py` mantém uma lista hardcoded de 24 módulos (`etl.00_download`, `etl.01_schema`, …, `etl.22_mv_sitemap`). Após cada fase concluir, `_cleanup_csvs` remove os CSVs raw daquela fase (espaço em disco é restrito). Diretórios compartilhados (`rfb/`, `tse/`) só são removidos quando todas as fases dependentes terminaram (`_SHARED_DIRS`).
 
 **Ao adicionar fase nova consumindo CSVs já baixados:** registre o módulo em `_SHARED_DIRS` ou os arquivos são apagados antes da fase rodar.
 
@@ -245,7 +247,7 @@ O disco de 512GB armazena Postgres (~248GB) + raw downloads (~230GB no pico). O 
 
 ```
 sql/              Schema (extensões, tabelas, índices, MVs). 22-29+32+34+35 são do framework incremental.
-etl/              Carga e orquestração — 23 fases executadas por run_all
+etl/              Carga e orquestração — 24 fases executadas por run_all
 etl/incremental/  Framework incremental (TCE-PB + dados.pb.gov.br)
 queries/          125+ queries SQL em 17 arquivos temáticos
 resultados/       CSVs gerados pelas queries (versionados)
@@ -266,7 +268,7 @@ tests/incremental/ Suite atual — cobre o framework incremental
 - [`etl/incremental/README.md`](etl/incremental/README.md) — framework incremental detalhado
 - [`docs/dicionario_dados_pb.md`](docs/dicionario_dados_pb.md) — dicionário das tabelas TCE-PB e dados.pb.gov.br
 - [`docs/plano_novas_fontes.md`](docs/plano_novas_fontes.md) — roadmap de fontes adicionais
-- [`relatorios/`](relatorios/) — 40 investigações sobre casos reais (mascaradas conforme LGPD)
+- [`relatorios/`](relatorios/) — 40+ investigações sobre casos reais (mascaradas conforme LGPD)
 
 ## Licença
 
