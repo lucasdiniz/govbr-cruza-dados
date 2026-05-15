@@ -2,7 +2,7 @@
 
 Obrigado por considerar contribuir. Este projeto cruza ~350M registros de ~18 fontes públicas brasileiras para detectar indícios de fraude em licitações, emendas parlamentares, sanções e folha de pagamento, e alimenta o portal público [transparenciapb.org](https://transparenciapb.org). Toda contribuição é bem-vinda — desde correções de typo em relatório até queries novas, melhorias de UI e migrações de novas fontes para o ETL incremental.
 
-Este documento descreve o que precisa para contribuir. Para entender a arquitetura, comece pelo [README.md](README.md). Para reportar uma vulnerabilidade, consulte [SECURITY.md](SECURITY.md) (em breve).
+Este documento descreve o que precisa para contribuir. Para entender a arquitetura, comece pelo [README.md](README.md).
 
 ## Sumário
 
@@ -72,7 +72,11 @@ cp .env.example .env
 # 5. Postgres 16 — instale local (Homebrew/apt) ou rode via Docker:
 docker run --name govbr-pg -e POSTGRES_PASSWORD=govbr_dev -e POSTGRES_USER=govbr \
            -e POSTGRES_DB=govbr -p 5432:5432 -d postgres:16
-# Extensões obrigatórias: pg_trgm, unaccent (vêm com postgresql-contrib)
+
+# Extensoes obrigatorias — habilitar uma vez por banco:
+docker exec -i govbr-pg psql -U govbr -d govbr -c \
+    "CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS unaccent;"
+# (os .so vem na imagem postgres:16 oficial; CREATE EXTENSION ativa por banco)
 
 # 6. Smoke (não roda o ETL, só compila):
 python -m compileall etl web scripts -q
@@ -120,7 +124,7 @@ Toda query em `queries/*.sql` começa com:
 
 O parser custom em `etl/run_queries.py:split_sql_statements` usa esse header para separar queries dentro de um mesmo arquivo. **Sem o header, a query não é detectada nem executada.**
 
-Numeração Q## é **global** (não por arquivo): consulte o inventário no README antes de escolher o próximo número. Há gaps históricos (Q52, Q69, Q73, Q75, Q76 estão livres atualmente).
+Numeração Q## é **global** (não por arquivo). Antes de escolher o próximo número, consulte o inventário em `web/queries/registry.py` e os arquivos `queries/*.sql` — a numeração tem gaps históricos que ficam disponíveis para reuso.
 
 ### Performance
 
@@ -151,12 +155,17 @@ Variantes datadas aceitam os placeholders nomeados `%(data_inicio)s`, `%(data_fi
 `sql/12_views.sql` segue uma arquitetura em camadas:
 
 ```
-L1 (independentes)     L2 (derivadas)             L3 (views planas)
-mv_empresa_governo ──┐
-mv_pessoa_pb       ──┼─► mv_servidor_pb_risco ─► v_risk_score_pb
-mv_municipio_pb_risco ┼─► mv_empresa_pb        ─► v_risk_score_empresa
-mv_servidor_pb_base ─┘   mv_rede_pb
+L1 (independentes)          L2 (derivadas)                 L3 (views planas)
+mv_empresa_governo  ──┐
+mv_pessoa_pb        ──┼─► mv_servidor_pb_risco       ─► v_risk_score_pb
+mv_municipio_pb_risco ┼─► mv_empresa_pb              ─► v_risk_score_empresa
+mv_servidor_pb_base ──┘    mv_rede_pb
+                           mv_municipio_pb_kpi_score
+                           mv_municipio_pb_mapa
+                           mv_q67_dated_pb
 ```
+
+Lista parcial — antes de mexer em `sql/12_views.sql`, consulte o arquivo completo (drops em ordem reversa no topo, notas de refresh no rodapé).
 
 Ao adicionar/alterar MV:
 
@@ -232,7 +241,7 @@ PRs menores são preferíveis. Se a mudança naturalmente quebra em fases (ex: r
 
 - **Issues** — bugs, propostas de feature, ideias de query, dados públicos inconsistentes.
 - **Discussions** — perguntas mais abertas, brainstorm de novas fontes.
-- **Security** — vulnerabilidades, exposições de PII/LGPD. Use [GitHub Security Advisory](https://github.com/lucasdiniz/govbr-cruza-dados/security/advisories) ou veja `SECURITY.md` (em breve).
+- **Security** — vulnerabilidades, exposições de PII/LGPD. Use [GitHub Security Advisory](https://github.com/lucasdiniz/govbr-cruza-dados/security/advisories). Política `SECURITY.md` em desenvolvimento.
 - **Contato direto** — [contato@transparenciapb.org](mailto:contato@transparenciapb.org).
 
 ---
