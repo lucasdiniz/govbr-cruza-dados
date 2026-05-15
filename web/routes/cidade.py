@@ -1406,7 +1406,6 @@ async def get_heatmap_mes(municipio_path: str, ano: int, mes: int):
 @router.post("/api/cache/invalidate")
 async def invalidate_web_cache(
     request: Request,
-    payload: dict = Body(...),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Invalida entradas do web_cache por query_id(s).
@@ -1414,6 +1413,10 @@ async def invalidate_web_cache(
     Endpoint destrutivo (DELETE em web_cache) protegido por token compartilhado
     no header `X-Admin-Token`. Fail-closed: sem `CACHE_INVALIDATE_TOKEN`
     configurado no ambiente, responde 503 e nao apaga nada.
+
+    O body so eh parseado DEPOIS da autenticacao bem-sucedida; caso contrario
+    `payload: dict = Body(...)` deixaria o FastAPI retornar 422 antes do 503/401
+    quando o body fosse mal-formado, vazando schema e quebrando fail-closed.
 
     Para invalidacao operacional, prefira o workflow `deploy.yml` com inputs
     `invalidate_cache_keys` (HARD) ou `rewarm_cache_keys` (SHADOW zero-downtime),
@@ -1432,6 +1435,15 @@ async def invalidate_web_cache(
     if not x_admin_token or not hmac.compare_digest(x_admin_token, expected_token):
         logging.warning("[cache-invalidate] token invalido/ausente em chamada de %s", remote)
         return JSONResponse({"error": "nao autorizado"}, status_code=401)
+
+    # Auth ok — agora parsea o body. Erros de body abaixo retornam 400 (nao 422),
+    # mantendo a mesma surface de erro independente do payload.
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "body deve ser JSON"}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "body deve ser objeto JSON"}, status_code=400)
 
     query_ids = payload.get("query_ids", [])
     if not isinstance(query_ids, list):
