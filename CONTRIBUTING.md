@@ -69,14 +69,21 @@ npm ci
 cp .env.example .env
 # Edite com credenciais do PostgreSQL e DATA_DIR
 
-# 5. Postgres 16 — instale local (Homebrew/apt) ou rode via Docker:
-docker run --name govbr-pg -e POSTGRES_PASSWORD=govbr_dev -e POSTGRES_USER=govbr \
-           -e POSTGRES_DB=govbr -p 5432:5432 -d postgres:16
+# 5. Postgres 16 — instalação direta é o padrão do projeto (a VM de produção
+#    também roda Postgres direto, sem Docker). Em desenvolvimento, instale via
+#    apt / Homebrew / instalador Windows e crie o banco:
+sudo -u postgres psql -c "CREATE USER govbr WITH PASSWORD 'govbr_dev';"
+sudo -u postgres psql -c "CREATE DATABASE govbr OWNER govbr;"
 
-# Extensoes obrigatorias — habilitar uma vez por banco:
-docker exec -i govbr-pg psql -U govbr -d govbr -c \
+# Extensões obrigatórias — habilitar uma vez por banco:
+sudo -u postgres psql -d govbr -c \
     "CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS unaccent;"
-# (os .so vem na imagem postgres:16 oficial; CREATE EXTENSION ativa por banco)
+
+# Alternativa via Docker (se preferir não instalar Postgres direto):
+#   docker run --name govbr-pg -e POSTGRES_PASSWORD=govbr_dev -e POSTGRES_USER=govbr \
+#              -e POSTGRES_DB=govbr -p 5432:5432 -d postgres:16
+#   docker exec -i govbr-pg psql -U govbr -d govbr -c \
+#       "CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS unaccent;"
 
 # 6. Smoke (não roda o ETL, só compila):
 python -m compileall etl web scripts -q

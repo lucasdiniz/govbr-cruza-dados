@@ -28,8 +28,12 @@ Fontes integradas: Receita Federal, PNCP, TCE-PB, dados.pb.gov.br, TSE, PGFN, SI
 pip install -e .[web,dev]
 npm ci
 cp .env.example .env                      # editar com creds locais
-docker run --name govbr-pg -e POSTGRES_PASSWORD=govbr_dev -e POSTGRES_USER=govbr \
-           -e POSTGRES_DB=govbr -p 5432:5432 -d postgres:16
+
+# Postgres 16 — instale local (apt / Homebrew / instalador Windows). Depois crie o banco:
+sudo -u postgres psql -c "CREATE USER govbr WITH PASSWORD 'govbr_dev';"
+sudo -u postgres psql -c "CREATE DATABASE govbr OWNER govbr;"
+sudo -u postgres psql -d govbr -c "CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS unaccent;"
+# (Alternativa via Docker, se preferir: ver CONTRIBUTING.md)
 
 # Smoke
 python -m compileall etl web scripts -q
