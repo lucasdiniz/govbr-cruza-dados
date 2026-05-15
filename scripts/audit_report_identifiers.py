@@ -27,7 +27,8 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 
-from etl.db import get_conn
+# Import lazy: get_conn nao deve ser importado em modo --strict (que roda offline).
+# A funcao audit_report() faz o import dentro do corpo quando precisa do banco.
 
 
 STOPWORDS = {
@@ -138,10 +139,16 @@ def find_unmasked_cpfs(text: str) -> list[tuple[int, str, str]]:
     return violations
 
 
+# Raiz do repo, derivada do caminho fisico deste script. Garante que --strict
+# rode da mesma forma independente do cwd (pre-commit hook, CI, chamada manual).
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_RELATORIOS_DIR = _REPO_ROOT / "relatorios"
+
+
 def list_reports(single_report: str | None) -> list[pathlib.Path]:
     if single_report:
         return [pathlib.Path(single_report)]
-    return sorted(pathlib.Path("relatorios").glob("*.md"))
+    return sorted(_RELATORIOS_DIR.glob("*.md"))
 
 
 def audit_report(path: pathlib.Path) -> list[AuditRow]:
@@ -151,6 +158,9 @@ def audit_report(path: pathlib.Path) -> list[AuditRow]:
     raw_cpfs = {re.sub(r"\D", "", m) for m in CPF_PATTERN.findall(text)}
 
     rows: list[AuditRow] = []
+    # Import lazy: so quem nao usa --strict abre conexao Postgres. Permite que
+    # --strict rode em ambientes sem psycopg2/python-dotenv instalados.
+    from etl.db import get_conn   # noqa: WPS433 — import dentro de funcao por design
     conn = get_conn()
     cur = conn.cursor()
 
@@ -267,9 +277,25 @@ def main() -> int:
 
 
 def run_strict(single_report: str | None) -> int:
-    """Modo strict — so analise de texto, sem DB. Exit 1 se algum CPF nao-mascarado."""
+    """Modo strict — so analise de texto, sem DB. Exit 1 se algum CPF nao-mascarado.
+
+    Anchored em `_RELATORIOS_DIR` (derivado de `__file__`), nao do cwd, para evitar
+    falsos negativos silenciosos quando rodado de outro diretorio.
+    """
+    reports = list_reports(single_report)
+    if not reports:
+        print(
+            "[strict] ERRO: nenhum relatorio encontrado. "
+            f"Esperava .md em {_RELATORIOS_DIR} ou --report apontando para arquivo valido.",
+            file=sys.stderr,
+        )
+        return 2
+
     total_violations = 0
-    for report in list_reports(single_report):
+    for report in reports:
+        if not report.exists():
+            print(f"[strict] ERRO: {report} nao existe.", file=sys.stderr)
+            return 2
         text = report.read_text(encoding="utf-8", errors="ignore")
         violations = find_unmasked_cpfs(text)
         if violations:
@@ -284,7 +310,7 @@ def run_strict(single_report: str | None) -> int:
             file=sys.stderr,
         )
         return 1
-    print("[strict] OK — nenhum CPF nao-mascarado encontrado.")
+    print(f"[strict] OK — {len(reports)} relatorio(s) auditado(s), nenhum CPF nao-mascarado encontrado.")
     return 0
 
 
