@@ -472,7 +472,7 @@
 | 25 | Masterfer Comércio de Ferragens | 11.175.931/0001-47 | Governo da Bahia (Estadual) | 21.766,00 | Campina Grande, Mãe d'Água |
 | 26 | Mapa Mix Comércio | 22.552.766/0001-11 | Pref. Garanhuns-PE (Municipal) | 14.698,09 | Gurinhém |
 | 27 | BH Soluções Integradas | 37.610.183/0001-77 | Governo da Bahia (Estadual) | 8.888,00 | Campina Grande |
-| 28 | Maria José Nunes de Oliveira | 542.092.696-20 (CPF) | CGU (Federal) | 4.481,10 | Barra de Santana |
+| 28 | Maria José Nunes de Oliveira | ***.092.696-** (CPF) | CGU (Federal) | 4.481,10 | Barra de Santana |
 | 29 | EFL Silva Manutenção | 24.798.024/0001-04 | CRM-SP (Federal) | 3.825,00 | João Pessoa |
 | 30 | Soserv Comércio e Serviços | 12.085.495/0001-88 | TRT 13ª Região-PB (Federal) | 3.750,00 | Cuité |
 | 31 | Associação Grupo de Mães Bem Viver | 00.000.113/0001-97 | SME (Municipal) | 1.700,00 | Caiçara, Santa Luzia |

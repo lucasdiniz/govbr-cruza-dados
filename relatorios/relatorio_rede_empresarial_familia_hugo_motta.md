@@ -48,7 +48,7 @@
 
 | # | Nome completo | Relação com Hugo Motta | CPF (se conhecido) | Empresas vinculadas (RFB) | Atividade pública / notas |
 |---|---------------|------------------------|---------------------|---------------------------|---------------------------|
-| 1 | Hugo Motta Wanderley da Nóbrega | Próprio | 047.962.494-19 | Hugo M W.N. Ltda (33722496), MWN Consultoria (45951194) | Presidente da Câmara dos Deputados (Republicanos-PB); 4º mandato consecutivo |
+| 1 | Hugo Motta Wanderley da Nóbrega | Próprio | ***.962.494-** | Hugo M W.N. Ltda (33722496), MWN Consultoria (45951194) | Presidente da Câmara dos Deputados (Republicanos-PB); 4º mandato consecutivo |
 | 2 | Luana Medeiros Motta | Esposa | — | Medeiros & Medeiros Ltda (32830711), Fronteira Ind. e Com. de Minerais (08181087) | Assessora do conselho da Codevasf desde 2019 |
 | 3 | Hugo Motta W.N. Filho | Filho | — | Medeiros & Medeiros Ltda (32830711) | — |
 | 4 | Paola Medeiros Motta Wanderley | Filha | — | Medeiros & Medeiros Ltda (32830711) | — |
