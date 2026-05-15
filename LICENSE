@@ -19,22 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-NOTE ON DATA LICENSING
-
-The MIT license above applies only to the source code in this repository.
-
-The public datasets loaded and cross-referenced by the ETL pipeline come from
-multiple Brazilian government sources (Receita Federal, PNCP, TCE-PB,
-dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Familia, CPGF, BNDES, ComprasNet,
-parliamentary amendments, sanctions registries, tax waivers, official travel,
-etc.) and each source is governed by its own terms of use (typically Lei de
-Acesso a Informacao 12.527/2011 + LGPD 13.709/2018, plus source-specific
-restrictions). Refer to each source's official portal for the applicable
-data license.
-
-Personal data is processed under LGPD (Lei Geral de Protecao de Dados) on
-the public-interest basis defined in Art. 7 (II/V) and Art. 23 — see
-SECURITY.md and docs/privacidade.md (when published) for details.
