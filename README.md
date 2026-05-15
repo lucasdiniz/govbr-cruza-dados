@@ -1,404 +1,275 @@
 # govbr-cruza-dados
 
-Pipeline ETL para cruzamento de dados abertos do governo brasileiro, voltado para deteccao de fraudes em licitacoes, emendas parlamentares, cartao corporativo, eleicoes, programas sociais e contratos publicos.
+Pipeline ETL para cruzamento de dados abertos do governo brasileiro, voltado para detecção de fraudes em licitações, emendas parlamentares, cartão corporativo, eleições, programas sociais e contratos públicos.
 
-> **Vibe coded** com Github Copilot, [Claude Code](https://claude.ai/claude-code), e Codex (Opus 4.6, Opus 4.7, GPT-5.4 e GPT 5.5) - da modelagem do schema ate o ultimo `INSERT INTO`.
+Alimenta o portal público **[transparenciapb.org](https://transparenciapb.org)** com perfis investigativos de todos os 223 municípios da Paraíba.
 
-## O que é?
+> **Vibe coded** com GitHub Copilot, [Claude Code](https://claude.ai/claude-code) e Codex (Opus 4.5/4.6/4.7, GPT-5.2/5.4/5.5) — da modelagem do schema até o último `INSERT INTO`. Veja [CONTRIBUTING.md](CONTRIBUTING.md) para participar.
 
-O projeto carrega **~350M registros (~210GB)** de **18+ fontes publicas** em um banco **PostgreSQL 16** e cruza pessoas/empresas por CNPJ/CPF para revelar padroes suspeitos, conflitos de interesse e anomalias de contratacao.
+## O que é
 
-Ele inclui:
+Carrega ~350M registros (~210GB raw) de 18+ fontes públicas brasileiras em um PostgreSQL 16 e cruza pessoas/empresas por CPF/CNPJ para revelar padrões suspeitos, conflitos de interesse e anomalias de contratação.
 
-- **23 fases de ETL** orquestradas por `python -m etl.run_all`
-- **125+ queries SQL** em 17 arquivos tematicos (`Q01-Q310`)
-- **40 relatorios de investigacao** derivados dos resultados
-- **Views materializadas** para perfil de empresa, pessoa, rede societaria e score de risco
-- **Frontend web TransparenciaPB** para consulta por municipio da Paraiba
+- **23 fases de ETL** orquestradas por `python -m etl.run_all` (modelo full-reload)
+- **Framework ETL incremental** ([`etl/incremental/`](etl/incremental/README.md)) para fontes append-only com watermark, conditional GET e DLQ — hoje cobre 20 specs do TCE-PB e dados.pb.gov.br (~40M rows)
+- **125+ queries SQL** em 17 arquivos temáticos (Q01-Q310)
+- **40 relatórios** investigativos derivados dos resultados
+- **Materialized views em camadas** (L1 → L2 → views planas) para score de risco por município, empresa, pessoa e rede societária
+- **Frontend FastAPI** servindo transparenciapb.org com cache pré-computado e *shadow rewarm* zero-downtime
+- **Observabilidade self-hosted** — Umami + GoAccess + traffic-digest
+- **Auto-resize VM Azure** (B2 → B4 + Standard SSD → Premium SSD) por etl_phase, custos prorrateados por hora
 
-Principais fontes integradas:
+Fontes integradas: Receita Federal, PNCP, TCE-PB, dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Família, CPGF, BNDES, ComprasNet, emendas parlamentares, sanções (CEIS/CNEP/CEAF), renúncias fiscais, viagens a serviço e acordos de leniência.
 
-- Receita Federal, PNCP, TCE-PB, dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Familia, CPGF, BNDES, ComprasNet, emendas parlamentares, sancoes, renuncias fiscais e viagens a servico.
-
-## Como rodar
-
-### 1. Preparar ambiente local
-
-```bash
-cp .env.example .env
-# Edite .env com credenciais do PostgreSQL e DATA_DIR
-
-pip install -e .
-# ou, para incluir o frontend web:
-pip install -e .[web]
-```
-
-### 2. Configurar PostgreSQL
-
-Suba um PostgreSQL 16 local ou use uma instancia existente.
-
-O projeto le a conexao pelas variaveis `POSTGRES_*` do `.env`, e os arquivos brutos pelo `DATA_DIR`.
-
-### 3. Rodar o ETL
+## Quickstart
 
 ```bash
-# ETL completo, incluindo downloads e carga das 23 fases
+# Instalar (Python 3.10+, Node 20+, PostgreSQL 16)
+pip install -e .[web,dev]
+npm ci
+cp .env.example .env                      # editar com creds locais
+docker run --name govbr-pg -e POSTGRES_PASSWORD=govbr_dev -e POSTGRES_USER=govbr \
+           -e POSTGRES_DB=govbr -p 5432:5432 -d postgres:16
+
+# Smoke
+python -m compileall etl web scripts -q
+pytest tests/incremental/test_framework_smoke.py
+
+# ETL completo (~10-20h em B4as_v2)
 python -m etl.run_all
 
-# Retomar a partir de uma fase especifica (1-based)
-python -m etl.run_all 4
-
-# Apenas downloads
-python -m etl.00_download
+# Frontend (precisa de schema + cache populado)
+npm run build
+python -m uvicorn web.main:app --port 8000
 ```
 
-### 4. Rodar as queries de investigacao
+Para contribuição parcial (só `web/`, só `queries/`, só relatórios), veja [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Comandos principais
 
 ```bash
-# Todas as queries Q## para resultados/
-python -m etl.run_queries
-
-# Query especifica
+python -m etl.run_all                        # 23 fases (download + carga + indices + views)
+python -m etl.run_all 4                      # retomar a partir da fase N (1-based)
+python -m etl.00_download                    # apenas downloads
+python -m etl.incremental.runner             # framework incremental — todas specs registradas
+python -m etl.incremental.runner --only "tce_pb.tce_pb_despesa,dados_pb.pb_pagamento"
+python -m etl.incremental.bootstrap_watermark --all   # 1x antes do primeiro incremental
+python -m etl.run_queries                    # 125+ queries Q## → resultados/
 python -m etl.run_queries --query Q03
+python -m etl.probe_sources                  # disponibilidade das fontes remotas
+
+python -m uvicorn web.main:app --port 8000   # frontend local
+python -m web.warm_cache --pb                # warm cache (1 ciclo, PB)
+python -m web.warm_cache --daemon --loop     # warm cache contínuo
+python -m web.indexnow_submit                # notifica Bing/Yandex de mudanças
+
+npm run build                                # esbuild concat + minify + content-hash
+npm run build:check                          # smoke do build (CI)
+python scripts/audit_report_identifiers.py --strict   # checa CPFs não-mascarados (offline)
 ```
 
-### 5. Rodar o frontend web
+## Variáveis de ambiente
 
-```bash
-python -m uvicorn web.main:app --port 8000
+Toda configuração via `.env` (ver [`.env.example`](.env.example)).
 
-# Opcional: aquecer cache do frontend
-python -m web.warm_cache --pb
-```
-
-### 6. Deploy em producao
-
-O deploy e feito por **GitHub Actions** no workflow `Deploy to Azure VM`:
-
-- `etl_phase=web`: sincroniza codigo e reinicia o frontend
-- `etl_phase=all`: roda ETL completo e warm cache
-- `etl_phase=sql`: recria indices/normalizacao/views e warm cache
-- `etl_phase=N`: retoma a partir da fase N
-
-## Licenca
-
-MIT
-
-## Detalhes do projeto
-
-<details>
-<summary><strong>Frontend web (TransparenciaPB)</strong></summary>
-
-Painel interativo para consulta por municipio da Paraiba com cruzamentos automaticos, branded como **TransparenciaPB**.
-
-- **Stack**: FastAPI + Jinja2 + vanilla JS, PostgreSQL, Leaflet para o mapa coropletico
-- **Cobertura**: 223 municipios da PB com perfil completo (TCE + dados.pb)
-- **Home page**: mapa coropletico da Paraiba em tela cheia com 5 metricas selecionaveis (risco composto, % irregulares, sem licitacao, concentracao top-5, per capita), busca por municipio inline e tema escuro unificado
-- **Modo escuro global**: todas as paginas (home + detalhes do municipio) usam a identidade visual escura com aurora + dot-field no fundo
-- **Risco composto (0-100)**: score ponderado computado em `mv_municipio_pb_risco` combinando 5 sinais do TCE-PB: compras sem licitacao (30 pts), licitacoes com proponente unico (25 pts), concentracao em dezembro (20 pts), valor empenhado nao pago (15 pts) e folha/receita (10 pts)
-- **15 queries de investigacao** em 6 categorias priorizadas por potencial investigativo: Fornecedores Irregulares, Conflito de Interesses, Politico-Eleitoral, Licitacao e Concorrencia, Cruzamento Estado x Municipio, Orcamento e Financeiro
-- **Dialog de servidor**: ao clicar um servidor, mostra stats grid (salario, empresas, pagamentos, sancoes), vinculos (admissao, salario), empresas vinculadas com badges (CEIS/CNEP, PGFN, Acordo de Leniencia, empenhos recebidos), Bolsa Familia, expulsoes CEAF e empenhos recebidos pelas empresas durante o vinculo funcional (conflito de interesses temporal)
-- **Dialog de fornecedor**: ao clicar um fornecedor, mostra dados cadastrais, sancoes CEIS/CNEP (com datas, disclaimer explicativo, origem, vigencia e abrangencia da sancao com orgao sancionador), divida PGFN, acordos de leniencia (com efeitos e status), empenhos recentes com seletor de municipio, pagamentos durante sancao em outros municipios, graficos de pagamentos mensais e elementos de despesa. Linhas e barras de empenho feitas durante periodo de sancao sao destacadas em vermelho (sancao se aplica ao municipio) ou amarelo (informativo)
-- **Destaque de risco com abrangencia de sancao**: fornecedores que receberam pagamentos durante sancao sao destacados em vermelho (sancao se aplica legalmente: inidoneidade, abrangencia nacional, orgao municipal do mesmo municipio) ou amarelo (sancao de outro ente, informativo). Coluna "Abrangencia" mostra escopo da sancao com orgao sancionador. Badges incluem orgao sancionador entre parenteses. Servidores socios de empresas sancionadas (CEIS/CNEP), servidores expulsos (CEAF) e empresas que receberam empenhos sao destacados com legendas explicativas
-- **Dialogs fullscreen** com navegacao em pilha (drill-down entre entidades), scroll isolado do fundo
-- **Cache pre-processado**: tabela `web_cache` + daemon `warm_cache.py` + endpoint de invalidacao seletiva
-- **Cache duplo (all + ano)**: `warm_cache` pre-computa variantes all-time e ano-atual por query. Filtro temporal no frontend usa cache para 01/01-31/12 do ano, queries live para ranges custom
-- **Filtro temporal**: barra de datas no perfil PB filtra hero stats, insight cards, fornecedores e todos os finding cards. Servidores (MV) sempre mostram todos os periodos
-- **Autocomplete**: restrito aos 223 municipios da PB (via `mv_municipio_pb_risco`)
-- **Nginx reverse proxy** para producao (porta 80 → uvicorn 8000, gzip habilitado)
-- **Identificacao precisa de fornecedores**: usa `cpf_cnpj` completo (14 digitos) em vez de apenas `cnpj_basico` (8 digitos) para evitar colisoes entre CPFs e CNPJs que compartilham o mesmo prefixo. Queries de sancoes (Q65), doadores eleitorais e empenhos durante sancao filtram com `EXISTS (estabelecimento)` para excluir falsos positivos de CPFs
-
-```bash
-# Iniciar local
-python -m uvicorn web.main:app --port 8000
-
-# Cache warmer — PB (1 ciclo)
-python -m web.warm_cache
-
-# Cache warmer — continuo
-python -m web.warm_cache --daemon --loop
-```
-
-Todos os municipios da PB recebem perfil completo com insight cards, servidores de risco e secoes de investigacao.
-
-</details>
-
-<details>
-<summary><strong>Fontes de dados e entity resolution</strong></summary>
-
-### Fontes de dados
-
-Todas baixadas automaticamente via `python -m etl.00_download`:
-
-| Fonte | URL | Tamanho aprox. |
-|-------|-----|----------------|
-| Receita Federal (CNPJ) | [dadosabertos.rfb.gov.br](https://dadosabertos.rfb.gov.br/CNPJ/) | ~58GB |
-| Bolsa Familia | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~2GB (snapshot mais recente) |
-| TCE-PB | [dados-abertos.tce.pb.gov.br](https://dados-abertos.tce.pb.gov.br/dados-consolidados) | ~20GB |
-| PNCP (itens) | [pncp.gov.br](https://pncp.gov.br/) | ~19GB |
-| TSE | [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br/) | ~12GB |
-| PGFN (divida ativa) | [dadosabertos.pgfn.gov.br](https://dadosabertos.pgfn.gov.br/) | ~11GB |
-| PNCP (contratos) | [pncp.gov.br](https://pncp.gov.br/) | ~6GB |
-| Viagens a Servico | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~6GB |
-| PNCP (contratacoes) | [pncp.gov.br](https://pncp.gov.br/) | ~5GB |
-| dados.pb.gov.br | [dados.pb.gov.br](https://dados.pb.gov.br/app/) | ~4GB |
-| Emendas Parlamentares | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1GB |
-| SIAPE | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~1.3GB |
-| BNDES | [dadosabertos.bndes.gov.br](https://dadosabertos.bndes.gov.br/) | ~1.1GB |
-| CPGF | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~210MB |
-| Renuncias Fiscais | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~510MB |
-| Sancoes | [portaldatransparencia.gov.br](https://portaldatransparencia.gov.br/download-de-dados) | ~240MB |
-| ComprasNet | Incluido no repo (`data/static/`) | N/A |
-
-### Entity Resolution
-
-CPFs aparecem mascarados na maioria das bases, com formatos diferentes por fonte:
-
-| Fonte | Formato | Exemplo |
-|-------|---------|---------|
-| Bolsa Familia / SIAPE / CPGF | `***.456.789-**` | 6 digitos centrais visiveis |
-| Socio (RFB) | `***456789**` | 6 digitos centrais, sem pontuacao |
-| PGFN | `XXX456.789XX` | 6 digitos centrais, formato proprio |
-| CEIS/CNEP | `12345678901` | CPF completo (raro) |
-| TCE-PB servidores | `***.456.789-**` | 6 digitos centrais |
-| dados.pb.gov.br pagamento | `00045678901` | CPF **completo** (11 digitos) |
-| dados.pb.gov.br empenho PF | `***456***` | CPF mascarado (3 digitos centrais) |
-
-O pipeline normaliza automaticamente na **fase 17** criando colunas indexadas com apenas os digitos (`cpf_digitos`, `cpf_cnpj_norm`), permitindo `JOIN`s por igualdade direta entre fontes.
-
-Match por **nome + 6 digitos CPF** entre fontes distintas (ex: socio x servidor x Bolsa Familia) reduz drasticamente falsos positivos mesmo com CPFs mascarados. Quando disponivel (CEIS, dados.pb pagamento), o cruzamento usa CPF completo de 11 digitos.
-
-</details>
-
-<details>
-<summary><strong>Stack e estrutura do repositorio</strong></summary>
-
-### Stack
-
-- **Python 3.10+** - ETL com streaming (sem pandas, cabe em 16GB RAM)
-- **PostgreSQL 16** - com `pg_trgm` para fuzzy match de nomes
-- **psycopg2** - `COPY FROM STDIN` para carga rapida
-- **ijson** - parsing incremental de JSONs do PNCP
-- **FastAPI + Jinja2** - frontend web com cache pre-processado
-
-### Estrutura
-
-```text
-sql/           Schema do banco (extensoes, tabelas, indices, views materializadas)
-etl/           Modulos de carga e orquestracao (23 fases executadas por run_all)
-queries/       125+ queries SQL em 17 arquivos tematicos
-resultados/    CSVs gerados pelas queries; o repo ja inclui resultados de referencia
-relatorios/    40 investigacoes baseadas nos resultados (Markdown)
-web/           Frontend web (FastAPI + Jinja2 + JS) — painel por municipio
-deploy/        Systemd services e configuracao de deploy
-data/static/   Dados estaticos incluidos no repo (comprasnet.csv.gz)
-scripts/       Scripts auxiliares (auditoria de identificadores, validacao)
-```
-
-</details>
-
-<details>
-<summary><strong>Infraestrutura e deploy</strong></summary>
-
-### VM Azure (producao)
-
-A VM e o disco mudam de SKU automaticamente conforme o trabalho. Custos sao prorateados por hora pelo Azure, entao Premium SSD so cobra durante operacoes pesadas (~24h/mes), nao always-on.
-
-| Componente | Spec leve (web) | Spec pesado (ETL/warm) | Custo/hora dif |
+| Variável | Obrigatória? | Default | Propósito |
 |---|---|---|---|
-| **VM** | B2as_v2 (2 vCPU, 8GB) | B4as_v2 (4 vCPU, 16GB) | +$0.07/h |
-| **Data disk** | Standard SSD E20 (500 IOPS) | Premium SSD P20 (2300 IOPS + ReadOnly host caching ~16GB) | +$0.05/h |
-| **Caching** | sempre ReadOnly | sempre ReadOnly | $0 |
+| `POSTGRES_HOST` / `_PORT` / `_DB` / `_USER` / `_PASSWORD` | sim | `localhost:5432/govbr/govbr/govbr_dev` | Conexão Postgres |
+| `DATA_DIR` | sim para ETL | `/data/raw-data` | Diretório dos CSVs/JSONs raw |
+| `RESEND_API_KEY` | opcional | — | Página `/contato` envia email via [Resend](https://resend.com); sem a chave, salva no DB mas não envia |
+| `RESEND_FROM`, `CONTATO_DEST` | opcional | `noreply@…` / `contato@…` | Endereços usados pelo formulário |
+| `GOOGLE_SITE_VERIFICATION` | opcional | — | Meta tag de verificação do Google Search Console |
+| `BING_SITE_VERIFICATION` | opcional | — | Meta tag Bing Webmaster Tools (alimenta também DuckDuckGo/ChatGPT search) |
+| `INDEXNOW_KEY` | opcional | — | Token IndexNow para Bing/Yandex/Seznam (32+ chars) |
+| `SITE_URL` | opcional | `https://transparenciapb.org` | Origem completa do site |
+| `UMAMI_SCRIPT_URL`, `UMAMI_WEBSITE_ID` | opcional | `/_traffic/analytics/script.js` / — | Snippet Umami injetado quando ambas estiverem preenchidas |
+| `CACHE_INVALIDATE_TOKEN` | opcional | — | Token admin para `POST /api/cache/invalidate`. Sem ele, endpoint responde 503 (fail-closed); a invalidação operacional vai pelo workflow do deploy |
 
-| Custo mensal estimado | USD | BRL (~5.6) |
+## Tests
+
+```bash
+pip install -e .[dev]                                # adiciona pytest + pytest-mock
+pytest tests/incremental/test_framework_smoke.py     # subset offline
+pytest tests/incremental                              # suite completa (precisa Postgres + migrations 22-29+32+34+35 + roles)
+python -m compileall etl web scripts -q              # smoke de sintaxe
+```
+
+A maior parte dos testes hoje cobre o framework ETL incremental. Migração para suite mais ampla + CI rodando em PRs está em andamento — veja issues abertos com label `tests` / `ci`.
+
+## ETL Incremental Framework
+
+Framework dedicado em [`etl/incremental/`](etl/incremental/README.md) para fontes que publicam dados em janelas mês/ano e exigem preservação histórica (TCE-PB, dados.pb.gov.br hoje). Diferenças vs ETL clássico:
+
+|  | Clássico (`etl/00-22`) | Incremental (`etl/incremental/`) |
 |---|---|---|
-| **Web base** (B2 + Standard SSD + IP + bandwidth) | ~$100 | ~R$ 562 |
-| **+ 1 ETL/mes** (~24h em B4 + Premium): | +$3 | +R$ 17 |
-| **+ 1 warm/mes** (~6h em B4 + Premium, com Premium acelerando 4x): | +$1 | +R$ 6 |
-| **Total tipico** | **~$104** | **~R$ 585** |
+| Carga | TRUNCATE + reload | Append-only + `ON CONFLICT DO NOTHING` |
+| Role DB | superuser | `etl_incremental` (sem DROP/DELETE/TRUNCATE) |
+| Audit | logs efêmeros | `etl_run_log` + `etl_phase_log` + `etl_download_log` + `etl_rejected_rows` (DLQ) |
+| Idempotência | manual | watermark + uuid5 bucket_token |
+| Schema drift | quebra silenciosa | `SchemaDriftError` antes de qualquer mutação |
+| Download | full re-fetch | Conditional GET (HEAD probe + If-None-Match + If-Modified-Since) |
 
-> Cabe nos **$150/mes de credito Azure** (Visual Studio Enterprise) com folga de ~$45.
-> Regiao: **North Central US**. Nomes de resource group, VM e disco ficam em GitHub Secrets (`AZURE_RESOURCE_GROUP`, `AZURE_VM_NAME`, `AZURE_DATA_DISK_NAME`).
+### Princípios não-negociáveis (P1-P6)
 
-⚠️ **Limite Azure:** disco aceita no maximo 2 mudancas de SKU por 24h. Se rodar 2 deploys com etl/warm no mesmo dia, o segundo upgrade falha — fica em Standard SSD por algumas horas (warm sera mais lento, mas funciona). Workflow detecta e segue.
+1. 🔴 **NÃO CORROMPER DADOS EXISTENTES** (sobrepõe tudo)
+2. **NÃO-DESTRUTIVO** — sem TRUNCATE/DROP/DELETE em targets
+3. **AUDITÁVEL** — rastro completo, imutável pelo role ETL
+4. **ERROR RESILIENT** — recuperável de qualquer crash
+5. **FAST** — download condicional + idempotency
+6. **ZERO TOLERANCE** — watermark nunca avança em failure; DLQ persiste mesmo em rollback do main_conn
 
-O disco de 512GB armazena tanto o PostgreSQL (~248GB) quanto os dados brutos de download (~230GB no pico). Para caber no disco, o ETL **limpa automaticamente os CSVs brutos** apos cada fase completar com sucesso (`run_all.py`). Diretorios compartilhados entre fases (ex: `rfb/`, `tse/`) so sao removidos quando todas as fases dependentes completam.
+Detalhes do fluxo end-to-end, specs registradas, observabilidade (`v_etl_status`, `v_etl_dlq_summary`, `v_etl_run_summary`) e como adicionar fonte nova: [`etl/incremental/README.md`](etl/incremental/README.md).
 
-### Auto-resize de VM (e disco)
+## Arquitetura
 
-O workflow `deploy.yml` tem 3 jobs:
+### MVs em camadas
 
-```text
+```
+L1 (independentes)                  L2 (derivadas)              L3 (views planas)
+mv_empresa_governo  ─────┐
+mv_pessoa_pb        ─────┼─► mv_servidor_pb_risco ─► v_risk_score_pb
+mv_municipio_pb_risco ───┤    mv_empresa_pb       ─► v_risk_score_empresa
+mv_servidor_pb_base ─────┘    mv_rede_pb
+                              mv_municipio_pb_kpi_score
+                              mv_municipio_pb_mapa
+```
+
+`sql/12_views.sql` segue convenções estritas: DROP no topo em ordem reversa, criação por camadas, refresh order documentado no rodapé.
+
+### Entity resolution CPF/CNPJ
+
+CPFs aparecem mascarados em formatos diferentes por fonte:
+
+| Fonte | Formato | Notas |
+|---|---|---|
+| Bolsa Família / SIAPE / CPGF | `***.456.789-**` | 6 dígitos centrais visíveis |
+| Sócio (RFB) | `***456789**` | sem pontuação |
+| PGFN | `XXX456.789XX` | formato próprio |
+| CEIS / CNEP | `12345678901` | completo (raro) |
+| TCE-PB servidores | `***.456.789-**` | 6 dígitos centrais |
+| dados.pb pagamento | `00045678901` | **completo** (11 dígitos) |
+| dados.pb empenho PF | `***456***` | só 3 dígitos centrais |
+
+A fase 17 (`etl/15_normalizar.py`) cria colunas indexadas `cpf_digitos` e `cpf_cnpj_norm` com apenas os dígitos. JOINs cross-source usam igualdade direta nessas colunas (não LIKE/regex), o que torna viável cruzamento em 350M linhas.
+
+Match por **nome normalizado + 6 dígitos centrais** entre fontes distintas (sócio × servidor × Bolsa Família) reduz falsos positivos mesmo com CPFs mascarados. Quando uma fonte tem CPF completo (CEIS, dados.pb pagamento), o cruzamento usa os 11 dígitos diretamente.
+
+### Identificação de fornecedores
+
+Use `cpf_cnpj` completo (14 dígitos) — não `cnpj_basico` (8 dígitos), que sofre colisão com CPFs que coincidem no prefixo. Filtre com `EXISTS (SELECT 1 FROM estabelecimento WHERE cpf_cnpj = ...)` para excluir falsos positivos.
+
+### Web cache e shadow rewarm
+
+A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto dela, sem rodar SQL pesado em request time). Três modos de atualização:
+
+- **drop_cache** — `TRUNCATE web_cache` (12-18h de cache miss; use só em mudança de schema).
+- **invalidate_cache_keys** — `DELETE` cirúrgico HARD por prefixo de qid (cache miss até warm).
+- **rewarm_cache_keys** — shadow rewarm **zero-downtime**: warm escreve em `<qid>__pending`, swap atômico promove `__pending` → live só se todas as queries da chave passaram (fail==0); caso contrário, aborta e mantém live antigo. **Default recomendado** para mudanças em `web/queries/registry.py`.
+
+Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMARY` (mesmo prefixo).
+
+### 23 fases ETL e auto-cleanup
+
+`etl/run_all.py` mantém uma lista hardcoded de 23 módulos (`etl.00_download`, `etl.01_schema`, …, `etl.21_views`). Após cada fase concluir, `_cleanup_csvs` remove os CSVs raw daquela fase (espaço em disco é restrito). Diretórios compartilhados (`rfb/`, `tse/`) só são removidos quando todas as fases dependentes terminaram (`_SHARED_DIRS`).
+
+**Ao adicionar fase nova consumindo CSVs já baixados:** registre o módulo em `_SHARED_DIRS` ou os arquivos são apagados antes da fase rodar.
+
+## Features de produção (transparenciapb.org)
+
+A stack roda numa VM Ubuntu Azure com systemd services e Nginx reverse proxy. Componentes:
+
+| Componente | Systemd unit | Função |
+|---|---|---|
+| Frontend FastAPI | `cruza-web.service` | Uvicorn :8000, restart=always |
+| Warm cache | `cruza-warm-cache.service` | Type=oneshot, dispara via workflow |
+| **Umami analytics** | `cruza-umami.service` | Self-hosted em `/_traffic/analytics/`, basic-auth + login |
+| **GoAccess** | `cruza-goaccess.service` | Dashboard tempo real `/_traffic/goaccess/` |
+| Traffic tail | `cruza-traffic-tail.service` | Expõe últimas N linhas do access.log raw |
+| Traffic digest | `cruza-traffic-digest.{service,timer}` | Cron diário 10:00 UTC com sumário do dia |
+| PG auto-tune | `pg-autotune.service` | Recalcula `shared_buffers`/`effective_cache_size`/`work_mem`/`maintenance_work_mem` por RAM atual da VM |
+
+Outras camadas:
+
+- **Nginx** — gzip, rate-limit zones (`api_heavy` 2 r/s), CSP Report-Only, HSTS, GeoIP anonymize.
+- **fail2ban** — jails customizadas para 429 (rate-limit abuse), exploit-paths (`/wp-admin`, `/.env`, `/.git`, etc.) e recidive.
+- **Let's Encrypt** via certbot (`deploy/setup-letsencrypt.sh`), renovação automática.
+- **IndexNow** — `web/indexnow_submit.py` notifica Bing/Yandex/Seznam quando o sitemap muda.
+- **OG image cache** — `web/routes/og_image.py` gera previews via Pillow on-demand, cacheia em `data/og_cache/` (não versionado).
+- **Service Worker** — `web/static/sw.js` com stale-while-revalidate para `/static/dist/` (cache 1 ano via manifest content-hash).
+
+## Deploy
+
+O deploy roda via **GitHub Actions self-hosted runner** instalado na VM Azure, em 3 jobs:
+
+```
 preflight (github-hosted, OIDC) → deploy (self-hosted na VM) → postflight (github-hosted, OIDC)
 ```
 
-| Cenario | Preflight | Steps no deploy | Postflight |
-|---|---|---|---|
-| `etl_phase=web` (default) | B2 + Standard SSD | sync code, restart cruza-web | (nenhum) |
-| `etl_phase=web warm_cache=true` | **B4 + Premium SSD** | sync + warm_cache (~5-7h em Premium) | downsize → B2 + Standard |
-| `etl_phase=all` | **B4 + Premium SSD** | ETL completo + warm_cache (auto) | downsize → B2 + Standard |
-| `etl_phase=sql` | **B4 + Premium SSD** | indices/normalizar/views + warm_cache (auto) | downsize → B2 + Standard |
-| `etl_phase=N` | **B4 + Premium SSD** | ETL phase N (warm NAO eh auto) | downsize → B2 + Standard |
+O `preflight` faz resize VM/disco para cima quando o `etl_phase` exige; o `postflight` desce para B2 + Standard SSD quando o trabalho pesado acaba.
 
-**O que acontece em cada job:**
+**Inputs do `workflow_dispatch`** (resumo):
 
-1. **Preflight** redimensiona a VM e o disco juntos numa unica deallocation:
-   - `az vm deallocate`
-   - `az vm resize` (se tamanho diferente)
-   - `az disk update --sku` (se SKU diferente — gracioso ao limite de 2 mudancas/24h)
-   - `az vm update --set ...caching=ReadOnly` (se caching diferente — idempotente, configurado uma vez)
-   - `az vm start`
-   - Aguarda SSH na porta 22
-
-2. **Deploy** roda no self-hosted runner DENTRO da VM. O step `Apply PostgreSQL auto-tuning` detecta a RAM atual e ajusta `shared_buffers / effective_cache / work_mem / maintenance_work_mem`. Os steps de ETL/queries/warm sao opt-in conforme inputs.
-
-3. **Postflight** so roda quando preflight fez upsize E deploy succeeded. Faz downsize VM + disco numa unica deallocation. Se o downgrade do disco falhar (limite 2/24h), a VM ainda eh redimensionada — disco fica em Premium ate o proximo deploy ($35/mes extra durante esse periodo).
-
-**Quando o deploy falha no meio**, postflight nao roda — VM e disco ficam grandes para voce retomar com `etl_phase=N` sem outro resize.
-
-**Tuning detectado automaticamente** (formulas Postgres-best-practices):
-- `shared_buffers` = 25% RAM
-- `effective_cache_size` = 75% RAM
-- `work_mem` = RAM / 128
-- `maintenance_work_mem` = 6% RAM (cap 1GB)
-
-### Cache warming (web_cache table)
-
-A tabela `web_cache` armazena resultados pre-computados das queries do frontend (FastAPI le diretamente dela em vez de rodar SQL pesado em request time). Os dados das tabelas mudam APENAS quando o ETL roda, entao o warm-cache foi simplificado:
-
-- `cruza-warm-cache.service` eh `Type=oneshot` e **NAO** tem `[Install]` section (nao auto-inicia no boot).
-- Roda 1 ciclo completo (`python -m web.warm_cache --daemon` sem `--loop`) e termina.
-- Workflow dispara via `sudo systemctl start --wait cruza-warm-cache` — bloqueia ate completar e propaga exit code.
-- Auto-disparado apos `etl_phase=all` ou `etl_phase=sql` (dados/queries mudaram).
-- Para `etl_phase=N` ou `etl_phase=web`: opt-in via input `warm_cache=true`.
-- Disparo manual na VM: `sudo systemctl start cruza-warm-cache`.
-
-O processo retorna exit 1 quando >5% das queries falham, sinalizando warm parcial. O deploy job marca o step como failed mas o `continue-on-error` garante que o postflight ainda faz downsize da VM (evita deixar B4 ligada por engano). Logs ficam disponiveis via `journalctl -u cruza-warm-cache`.
-
-Tempo esperado: **~20h em B4as_v2 (16GB)** por ciclo completo de 224 municipios PB.
-
-### Deploy (1 click)
-
-O deploy roda via **GitHub Actions self-hosted runner** instalado na VM.
-
-#### Pre-requisitos
-
-1. **VM Ubuntu** com SSH e disco de dados montado em `/data`
-2. **Fork** deste repositorio
-3. **Secrets obrigatorios** (Settings > Secrets > Actions):
-   - `VM_HOST` — IP ou hostname da VM
-   - `DB_PASSWORD` — senha do PostgreSQL
-   - `ENV_FILE` — conteudo do `.env` (ver `.env.example`)
-   - `AZURE_CLIENT_ID` — clientId do AD app para OIDC (auto-resize)
-   - `AZURE_TENANT_ID` — tenantId Azure
-   - `AZURE_SUBSCRIPTION_ID` — subscription com a VM
-4. **Secrets opcionais** (apenas para `setup-runner.yml`, nao usados no deploy):
-   - `VM_SSH_KEY` — chave SSH privada do usuario `govbr` (instalacao/reparo do runner)
-   - `RUNNER_ADMIN_TOKEN` — PAT para registrar/atualizar o self-hosted runner
-
-**Setup do OIDC para auto-resize** (1x, ~5min):
-
-```bash
-# Cria AD app + service principal + role no resource group + federated credential
-az ad app create --display-name govbr-deploy-github-oidc
-APP_ID=<appId-retornado>
-az ad sp create --id $APP_ID
-SP_ID=$(az ad sp show --id $APP_ID --query id -o tsv)
-az role assignment create \
-  --assignee-object-id $SP_ID \
-  --assignee-principal-type ServicePrincipal \
-  --role "Virtual Machine Contributor" \
-  --scope /subscriptions/<SUB_ID>/resourceGroups/<RG>
-
-# Federated credential trustando workflow_dispatch da branch main
-az ad app federated-credential create --id $APP_ID --parameters '{
-  "name": "github-deploy-main",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:<OWNER>/<REPO>:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-
-# Adiciona secrets no GitHub
-gh secret set AZURE_CLIENT_ID --body "$APP_ID"
-gh secret set AZURE_TENANT_ID --body "$(az account show --query tenantId -o tsv)"
-gh secret set AZURE_SUBSCRIPTION_ID --body "<SUB_ID>"
-```
-
-O service principal so tem permissao de mexer em VMs/discos do resource group especifico — nao acessa outras subscriptions, billing, etc.
-
-#### Execucao
-
-```bash
-# Passo 1: Instalar o runner na VM (1x)
-# Actions > "Setup Self-Hosted Runner" > Run workflow
-
-# Passo 2: Rodar o ETL completo
-# Actions > "Deploy to Azure VM" > Run workflow (etl_phase=all)
-```
-
-O workflow instala PostgreSQL 16, Python, Tor (fallback para downloads bloqueados), clona o repo, baixa os dados e popula o banco. Live logs disponiveis durante toda a execucao. Timeout maximo: 5 dias (limite do GitHub self-hosted runner). Duracao tipica: 10-20h dependendo da rede.
-
-#### Opcoes do deploy
-
-| Input | Descricao | Default | VM size |
-|---|---|---|---|
-| `etl_phase=all` | ETL completo (download + carga + indices + views) + warm_cache auto | — | B4as_v2 (16GB) |
-| `etl_phase=sql` | Apenas indices, normalizacao e views + warm_cache auto | — | B4as_v2 (16GB) |
-| `etl_phase=web` | Sync de codigo + restart web services | — | B2as_v2 (8GB) |
-| `etl_phase=N` | Retomar a partir da fase N (ex: `19` para TCE-PB). Warm NAO auto. | — | B4as_v2 (16GB) |
-| `warm_cache=true` | Forca warm_cache em qualquer etl_phase (~20h em B4) | `false` | B4as_v2 (16GB) |
-| `run_queries=true` | Roda etl.run_queries (~30min) apos ETL — analises de fraude | `false` | (sem mudanca) |
-| `skip_download=true` | Pular downloads, usar dados ja existentes na VM | `false` | (sem mudanca) |
-| `clean=true` | Limpar estado anterior (apaga tabelas, re-ETL do zero) | `false` | (sem mudanca) |
-
-**Cenarios tipicos:**
-- `etl_phase=web` (sozinho): rapido (~5min), sem warm_cache. Use para deploy de mudancas frontend que nao afetam queries.
-- `etl_phase=web warm_cache=true`: deploy + re-warming (~20h em B4). Use apos mudancas em `web/queries/registry.py`.
-- `etl_phase=all`: ETL completo + warm_cache automatico. Use para reload completo dos dados.
-- `etl_phase=19`: retoma fase 19 sem warm. Adicione `warm_cache=true` se a fase reabastecer dados que afetam o cache.
-
-</details>
-
-<details>
-<summary><strong>Queries de investigacao e relatorios</strong></summary>
-
-As queries estao organizadas por dominio de analise:
-
-| Arquivo | Faixa | Tema |
+| Input | Tipo | Função |
 |---|---|---|
-| `fraude_licitacao.sql` | Q01-Q05 | Licitacao, bid rigging, fornecedor dominante, empresa recem-criada |
-| `fraude_emendas.sql` | Q06-Q08, Q20 | Emendas parlamentares, concentracao de favorecidos, divida ativa |
-| `fraude_cpgf.sql` | Q09-Q11, Q19 | Cartao corporativo, concentracao de gastos, conflito com socios, fracionamento |
-| `fraude_cruzamento.sql` | Q12-Q15 | Cruzamento multi-fonte, beneficio triplo, empresa inativa recebendo pagamentos |
-| `fraude_rede_societaria.sql` | Q16-Q18 | Redes societarias, holdings, socios laranjas |
-| `fraude_servidores.sql` | Q21-Q24 | Servidores federais, remuneracao, emendas, conflito de interesses |
-| `fraude_sancoes.sql` | Q25-Q28 | CEIS, CNEP, CEAF e acordos de leniencia |
-| `fraude_viagens.sql` | Q29-Q32 | Viagens a servico, gastos fora do padrao, servidor expulso |
-| `fraude_tse.sql` | Q33-Q37 | Candidatos, doadores, patrimonio, sancoes eleitorais |
-| `fraude_bolsa_familia.sql` | Q38-Q42 | Bolsa Familia, socios, candidatos, concentracao municipal |
-| `fraude_superfaturamento.sql` | Q43-Q58, Q99 | Sobrepreco, aditivos, fracionamento, empresa fenix, ciclo politico-eleitoral |
-| `fraude_tce_pb.sql` | Q59-Q68, Q70-Q72, Q74, Q77 | TCE-PB municipal: despesas, servidores, licitacoes e Bolsa Familia |
-| `fraude_dados_pb.sql` | Q78-Q91 | dados PB estadual: PF/PJ, saude, convenios, dominancia e splitting |
-| `fraude_dados_pb_novos.sql` | Q101-Q111 | dados PB ampliados: NF duplicada, ciclo anulacao, diarias sobrepostas, suplementacoes |
-| `fraude_pncp_item.sql` | Q92-Q100 | Itens do PNCP: sobrepreco por item, fracasso repetido e serie temporal |
-| `fraude_familia_hugo_motta.sql` | Q201-Q209 | Rede empresarial da familia Hugo Motta na Paraiba |
-| `fraude_cruzamentos_avancados.sql` | Q301-Q310 | Duplo vinculo, porta giratoria, BNDES×TSE, saude dominante |
+| `etl_phase` | `web` / `all` / `sql` / `incremental` / `N` | seleciona qual trabalho rodar |
+| `clean` | bool | reset destrutivo (apaga tabelas) |
+| `skip_download` | bool | usa raw já presente no `DATA_DIR` |
+| `warm_cache` | bool | força warm em `etl_phase=web` |
+| `run_queries` | bool | roda `etl.run_queries` após ETL |
+| `incremental_only` | csv | limita incremental a specs específicas |
+| `drop_cache` | bool | TRUNCATE web_cache antes do warm |
+| `invalidate_cache_keys` | csv | DELETE cirúrgico HARD por prefixo de qid |
+| `rewarm_cache_keys` | csv | shadow rewarm zero-downtime (preferido) |
+| `warm_skip_hours` | int | controle de skip/rebuild do warm |
+| `expose_empresa_sitemap` / `_licitacoes_` / `_cidade_resumo_` | keep/enable/disable | toggle de URLs no sitemap |
+| `download_sources` | csv | re-baixa fontes específicas antes da fase |
 
-Relatorios ja produzidos cobrem temas como:
+### VM Azure (custos)
 
-- Pejotizacao medica e conflito entre servidor e fornecedor
-- Empresas inativas, sancionadas ou com divida ativa recebendo recursos publicos
-- Sobrepreco por item no PNCP
-- Fracionamento de despesa municipal e estadual
-- Empresas relacionadas competindo entre si em licitacoes (PB e nacional)
-- Duplo pagamento de notas fiscais e ciclos de anulacao/re-empenho
-- Suplementacoes orcamentarias concentradas (empenho-semente)
-- Convenios com entidades devedoras da Uniao
-- Rede empresarial familiar (caso Hugo Motta: 23 empresas, R$52.8M em contratos publicos)
-- Duplo vinculo publico: servidores federais e municipais simultaneos (815 casos PB)
-- Porta giratoria: servidores municipais socios de fornecedores (4.616 casos)
-- Fornecedores de saude dominantes: monopolio em dezenas de municipios
-- BNDES x doador eleitoral: socios de tomadores de credito publico que financiam campanhas
-- Inidoneidade ilegal: 33 empresas declaradas inidoneas recebendo R$9.7M de 105 municipios PB
+VM e disco mudam de SKU juntos por hora, então Premium SSD só cobra durante operações pesadas:
 
-</details>
+| Componente | Leve (web) | Pesado (ETL/warm) | Δ/hora |
+|---|---|---|---|
+| VM | B2as_v2 (2 vCPU, 8GB) | B4as_v2 (4 vCPU, 16GB) | +$0.07 |
+| Disco | Standard SSD E20 | Premium SSD P20 + ReadOnly host caching | +$0.05 |
+
+**Custo típico ~$104/mês** (web base + 1 ETL + 1 warm). Cabe nos $150/mês de crédito Visual Studio Enterprise. Nomes de RG/VM/disco ficam em GitHub Secrets (`AZURE_RESOURCE_GROUP`, `AZURE_VM_NAME`, `AZURE_DATA_DISK_NAME`).
+
+> **Limite Azure:** 2 mudanças de SKU de disco por 24h. Workflow detecta e segue se o limite for atingido.
+
+### Cleanup de disco
+
+O disco de 512GB armazena Postgres (~248GB) + raw downloads (~230GB no pico). O ETL **limpa automaticamente os CSVs brutos** após cada fase com sucesso (`run_all.py:_cleanup_csvs`). Diretórios compartilhados são removidos só quando todas as fases dependentes terminaram.
+
+## Estrutura do repositório
+
+```
+sql/              Schema (extensões, tabelas, índices, MVs). 22-29+32+34+35 são do framework incremental.
+etl/              Carga e orquestração — 23 fases executadas por run_all
+etl/incremental/  Framework incremental (TCE-PB + dados.pb.gov.br)
+queries/          125+ queries SQL em 17 arquivos temáticos
+resultados/       CSVs gerados pelas queries (versionados)
+relatorios/       40 investigações Markdown derivadas dos resultados
+web/              Frontend FastAPI + Jinja2 + JS + Material Design 3
+web/queries/      QueryDef registry (sql_full + sql_full_dated)
+web/static/       Assets — esbuild gera dist/ com content-hash
+deploy/           Systemd services, Nginx, fail2ban, setup scripts
+scripts/          Build de assets (esbuild), audit de identificadores
+docs/             Dicionário de dados, planos, guias (em desenvolvimento)
+data/static/      Snapshots binários versionados (comprasnet.csv.gz)
+tests/incremental/ Suite atual — cobre o framework incremental
+```
+
+## Documentação adicional
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — convenções, setup local, como adicionar query/MV/fase
+- [`etl/incremental/README.md`](etl/incremental/README.md) — framework incremental detalhado
+- [`docs/dicionario_dados_pb.md`](docs/dicionario_dados_pb.md) — dicionário das tabelas TCE-PB e dados.pb.gov.br
+- [`docs/plano_novas_fontes.md`](docs/plano_novas_fontes.md) — roadmap de fontes adicionais
+- [`relatorios/`](relatorios/) — 40 investigações sobre casos reais (mascaradas conforme LGPD)
+
+## Licença
+
+Código sob [MIT](LICENSE). Os dados públicos têm cada um sua própria licença (Lei 12.527/2011 + LGPD + termos da fonte). Veja `LICENSE` para detalhes.
+
+Para reportar problemas de segurança ou exposição de PII, use [GitHub Security Advisories](https://github.com/lucasdiniz/govbr-cruza-dados/security/advisories) ou [contato@transparenciapb.org](mailto:contato@transparenciapb.org).
