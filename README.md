@@ -195,9 +195,91 @@ Outras camadas:
 - **Nginx** — gzip, rate-limit zones (`api_heavy` 2 r/s), CSP Report-Only, HSTS, GeoIP anonymize.
 - **fail2ban** — jails customizadas para 429 (rate-limit abuse), exploit-paths (`/wp-admin`, `/.env`, `/.git`, etc.) e recidive.
 - **Let's Encrypt** via certbot (`deploy/setup-letsencrypt.sh`), renovação automática.
-- **IndexNow** — `web/indexnow_submit.py` notifica Bing/Yandex/Seznam quando o sitemap muda.
-- **OG image cache** — `web/routes/og_image.py` gera previews via Pillow on-demand, cacheia em `data/og_cache/` (não versionado).
 - **Service Worker** — `web/static/sw.js` com stale-while-revalidate para `/static/dist/` (cache 1 ano via manifest content-hash).
+
+## SEO
+
+A descobribilidade do transparenciapb.org foi tratada como camada de produto: o objetivo é que jornalistas, pesquisadores e cidadãos encontrem perfis específicos de municípios, empresas e licitações via Google/Bing, não só pela home.
+
+### Sitemap-index com sub-sitemaps shardeados
+
+`web/routes/seo.py` (~37KB, 9 rotas) implementa o pattern recomendado pelo [sitemaps.org](https://www.sitemaps.org/protocol.html#index) para escalar acima do limite de 50.000 URLs por arquivo. Cada sub-sitemap tem cap em **49.000 URLs** (folga vs limite) e é shardeado por inteiro 1-indexed:
+
+```
+/sitemap.xml                                  ← sitemapindex (lista os abaixo)
+  ├─ /sitemap-cidades.xml                     ← páginas estáticas + 223 /cidade/<slug>
+  ├─ /sitemap-empresas-1.xml                  ← empresas 1-49.000          (toggle: enable)
+  ├─ /sitemap-empresas-2.xml                  ← empresas 49.001-98.000
+  ├─ /sitemap-empresas-{n}.xml                ← …até cobrir o universo
+  ├─ /sitemap-empresas-municipios-{n}.xml     ← /empresa/<cnpj>/<slug>    (toggle: enable)
+  ├─ /sitemap-licitacoes-{n}.xml              ← licitações cacheadas      (toggle: enable)
+  └─ /sitemap-cidade-resumo.xml               ← ~14k cidade-mês URLs      (toggle: enable)
+```
+
+URLs cobertas hoje (com todos os toggles ativos): home, sobre, glossário, contato, mapa, 223 cidades PB, ~245k empresas, ~245k pares empresa-município, ~50k licitações cacheadas, ~14k cidade-mês — **~550k URLs no total**.
+
+### Toggles de exposição no `deploy.yml`
+
+Três inputs de `workflow_dispatch` controlam quais sub-sitemaps aparecem no `/sitemap.xml` (default: todos `keep` = preserva estado atual):
+
+| Input | Função | Pré-requisito |
+|---|---|---|
+| `expose_empresa_sitemap` | `keep` / `enable` / `disable` URLs `/empresa/<cnpj>/<slug>` | Cobertura ≥ 80% do cache `EMPRESA_PERFIL` populada antes de `enable` |
+| `expose_licitacoes_sitemap` | idem para `/licitacao/<municipio>/<ano>/<id>` | Cobertura ≥ 80% do cache `LICITACAO_PERFIL` |
+| `expose_cidade_resumo_sitemap` | idem para `/cidade/<slug>/<yyyy>-<mm>` | Cobertura ≥ 80% do cache `CIDADE_RESUMO` |
+
+O workflow falha o deploy com `::error::` se `enable` for usado sem cobertura mínima — evita expor sitemap com 503 nas URLs.
+
+### Caching de sitemap (24h TTL em memória)
+
+`_SITEMAP_CACHE` em `web/routes/seo.py:53` cacheia cada urlset/index 24h. TTL longo é defesa contra "Couldn't fetch" do Google Search Console quando o primeiro hit pós-restart bate em GROUP BY pesado. O COUNT/PAGINATED dos shards usa a MV `mv_empresa_municipio_pagantes` (instantânea via phase 22 `etl.22_mv_sitemap`) em vez de GROUP BY live em ~16M rows.
+
+### Meta tags por página
+
+`web/templates/base.html` injeta em todas as páginas:
+
+- **Canonical** — `canonical_url(request)` strip query params `d_*` (de dialogs JS) para evitar duplicate content.
+- **Open Graph** — `og:site_name`, `og:type`, `og:title`, `og:description`, `og:locale=pt_BR`, `og:url`, `og:image`.
+- **Twitter Card** — `summary_large_image` com mesmo `og:image`.
+- **Verification** — `<meta name="google-site-verification">` e `msvalidate.01` (Bing) injetadas quando `GOOGLE_SITE_VERIFICATION` / `BING_SITE_VERIFICATION` estão setadas no `.env`. Bing também alimenta DuckDuckGo, ChatGPT search e Yahoo.
+
+### OG image dinâmica
+
+`web/routes/og_image.py` gera previews por URL on-demand via Pillow:
+
+- Tipos: home, cidade, empresa, licitação, glossário, sobre, caso.
+- Cache em disco em `data/og_cache/` (não versionado).
+- Crawler/share preview puxa via `/og/<type>.png` ou `/og/<type>/<param>.png`.
+
+### IndexNow
+
+Protocolo aberto suportado por Bing, Yandex, Yahoo, Seznam e Naver. Submete mudanças de URL sem depender de crawl periódico (acelera indexação de novas páginas de dias para horas).
+
+```bash
+# Gerar a key (32+ chars URL-safe)
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Setar INDEXNOW_KEY no .env, redeploy do web
+
+# Submeter URLs novas
+python -m web.indexnow_submit
+```
+
+A rota `/<key>.txt` serve o conteúdo da key como verificação (exigência do protocolo). Tem regex guard `^[A-Za-z0-9_\-]{8,128}$` + `secrets.compare_digest` timing-safe para reduzir superfície de probing.
+
+### FAQ schema.org structured data
+
+Páginas relevantes incluem JSON-LD com `FAQPage` (`web/templates/partials/seo/_faq.html`) — eleva o resultado no Google Search com FAQ rich snippet e alimenta o ChatGPT search com perguntas estruturadas.
+
+### Configuração
+
+Variáveis no `.env` (todas opcionais; meta tags só aparecem se preenchidas):
+
+| Variável | Origem |
+|---|---|
+| `GOOGLE_SITE_VERIFICATION` | [Search Console](https://search.google.com/search-console) → adicionar propriedade → "Tag HTML" |
+| `BING_SITE_VERIFICATION` | [Bing Webmaster Tools](https://www.bing.com/webmasters) → Add site → "Meta tag" |
+| `INDEXNOW_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SITE_URL` | Origem do site (`https://transparenciapb.org`) |
 
 ## Deploy
 
