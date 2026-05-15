@@ -6,12 +6,15 @@ name: Deploy to Azure VM
 #   3. postflight (github-hosted, OIDC) — resize VM down se etl_phase != web
 #
 # Required secrets:
-#   DB_PASSWORD            - PostgreSQL password
-#   ENV_FILE               - Contents of .env file
-#   VM_HOST                - VM IP/hostname (used pelo preflight pra checar SSH)
-#   AZURE_CLIENT_ID        - OIDC: app registration clientId
-#   AZURE_TENANT_ID        - OIDC: tenant
-#   AZURE_SUBSCRIPTION_ID  - OIDC: subscription com a VM
+#   DB_PASSWORD               - PostgreSQL password
+#   ENV_FILE                  - Contents of .env file
+#   VM_HOST                   - VM IP/hostname (used pelo preflight pra checar SSH)
+#   AZURE_CLIENT_ID           - OIDC: app registration clientId
+#   AZURE_TENANT_ID           - OIDC: tenant
+#   AZURE_SUBSCRIPTION_ID     - OIDC: subscription com a VM
+#   AZURE_RESOURCE_GROUP      - resource group da VM (consumido em env.AZURE_RG)
+#   AZURE_VM_NAME             - nome da VM (consumido em env.AZURE_VM)
+#   AZURE_DATA_DISK_NAME      - nome do disco de dados (consumido em env.DATA_DISK)
 #
 # First-time setup:
 #   1. Create an Ubuntu VM (tested on Azure Standard_B4as_v2, 16GB RAM)
