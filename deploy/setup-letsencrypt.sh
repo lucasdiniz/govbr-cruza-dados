@@ -12,7 +12,7 @@
 #
 # Pré-requisitos:
 #   - DNS A records de transparenciapb.org e www.transparenciapb.org
-#     apontando para o IP público desta VM (52.162.207.186).
+#     apontando para o IP público desta VM.
 #   - Portas TCP 80 e 443 abertas no NSG/firewall.
 #
 # Variáveis de ambiente opcionais:

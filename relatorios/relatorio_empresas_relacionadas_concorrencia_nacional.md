@@ -231,7 +231,7 @@ O caso `PRIME HOLDING`, detalhado no relatorio da Paraiba, tambem entra no mapa 
 - casos em `PB`, `GO` e `RS`
 - **10 subsidiarias** e **5 bases de CNPJ distintas** na estrutura do grupo
 
-Isso faz dele um bom elo entre a visao nacional e a investigacao estadual ja documentada em [relatorio_empresas_relacionadas_concorrencia_pb.md](C:\Users\lucas\govbr-cruza-dados\relatorios\relatorio_empresas_relacionadas_concorrencia_pb.md).
+Isso faz dele um bom elo entre a visao nacional e a investigacao estadual ja documentada em [relatorio_empresas_relacionadas_concorrencia_pb.md](./relatorio_empresas_relacionadas_concorrencia_pb.md).
 
 ---
 

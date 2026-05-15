@@ -6,12 +6,15 @@ name: Deploy to Azure VM
 #   3. postflight (github-hosted, OIDC) — resize VM down se etl_phase != web
 #
 # Required secrets:
-#   DB_PASSWORD            - PostgreSQL password
-#   ENV_FILE               - Contents of .env file
-#   VM_HOST                - VM IP/hostname (used pelo preflight pra checar SSH)
-#   AZURE_CLIENT_ID        - OIDC: app registration clientId
-#   AZURE_TENANT_ID        - OIDC: tenant
-#   AZURE_SUBSCRIPTION_ID  - OIDC: subscription com a VM
+#   DB_PASSWORD               - PostgreSQL password
+#   ENV_FILE                  - Contents of .env file
+#   VM_HOST                   - VM IP/hostname (used pelo preflight pra checar SSH)
+#   AZURE_CLIENT_ID           - OIDC: app registration clientId
+#   AZURE_TENANT_ID           - OIDC: tenant
+#   AZURE_SUBSCRIPTION_ID     - OIDC: subscription com a VM
+#   AZURE_RESOURCE_GROUP      - resource group da VM (consumido em env.AZURE_RG)
+#   AZURE_VM_NAME             - nome da VM (consumido em env.AZURE_VM)
+#   AZURE_DATA_DISK_NAME      - nome do disco de dados (consumido em env.DATA_DISK)
 #
 # First-time setup:
 #   1. Create an Ubuntu VM (tested on Azure Standard_B4as_v2, 16GB RAM)
@@ -114,13 +117,20 @@ permissions:
 # concorrentes podem fazer az vm deallocate/resize um sobre o outro e quebrar o
 # banco (que leva DIAS para reconstruir do zero).
 concurrency:
-  group: deploy-vm-govbr
+  # Lock global por VM. Nome generico porque so existe 1 ambiente prod.
+  # Recursos especificos (RG/VM/disco) vem de secrets — ver env: abaixo.
+  group: deploy-azure-vm
   cancel-in-progress: false
 
 env:
   PROJECT_DIR: /home/govbr/govbr-project
-  AZURE_RG: RG-GOVBR-NCUS
-  AZURE_VM: vm-govbr
+  # Nomes de recursos Azure ficam em GitHub Secrets para nao expor metadata
+  # de infra em repo publico. Configurar antes do primeiro deploy:
+  #   gh secret set AZURE_RESOURCE_GROUP   --body "<rg-name>"
+  #   gh secret set AZURE_VM_NAME          --body "<vm-name>"
+  #   gh secret set AZURE_DATA_DISK_NAME   --body "<disk-name>"
+  AZURE_RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  AZURE_VM: ${{ secrets.AZURE_VM_NAME }}
   # B2as_v2: 2 vCPU, 8GB  ~$55/mes  — adequado para servir web
   # B4as_v2: 4 vCPU, 16GB ~$108/mes — necessario para ETL/views pesados
   VM_SIZE_WEB: Standard_B2as_v2
@@ -132,7 +142,7 @@ env:
   # Como o disco eh cobrado POR HORA, swappar StandardSSD<->Premium nas
   # transicoes de tamanho da VM custa ~$0.05/h extra durante operacoes
   # pesadas, em vez de $35/mes always-on.
-  DATA_DISK: disk-govbr-data
+  DATA_DISK: ${{ secrets.AZURE_DATA_DISK_NAME }}
   DISK_SKU_LIGHT: StandardSSD_LRS
   DISK_SKU_HEAVY: Premium_LRS
 
