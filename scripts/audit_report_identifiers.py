@@ -3,15 +3,19 @@
 Uso:
     python scripts/audit_report_identifiers.py
     python scripts/audit_report_identifiers.py --report relatorios/relatorio_x.md
+    python scripts/audit_report_identifiers.py --strict          # apenas checa CPFs nao-mascarados, offline (sem DB)
 
 Saída:
-    TSV em stdout com status por citação.
+    TSV em stdout com status por citação (modo padrao).
+    Modo --strict: imprime CPFs nao-mascarados encontrados e retorna exit code
+    1 se houver qualquer violacao (uso em CI / pre-commit).
 
 Observações:
     - A validação de CNPJ usa a base local RFB (`empresa` + `estabelecimento`).
     - A validação de CPF só é tentada quando o CPF completo aparece no texto e quando
       existe uma tabela com pessoa física identificável na base local. Como a maior
       parte dos relatórios usa CPF mascarado, o status tende a ser `cpf_nao_validado`.
+    - Modo --strict NAO conecta ao banco: faz apenas analise de texto, util em CI.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 
-from etl.db import get_conn
+# Import lazy: get_conn nao deve ser importado em modo --strict (que roda offline).
+# A funcao audit_report() faz o import dentro do corpo quando precisa do banco.
 
 
 STOPWORDS = {
@@ -73,6 +78,9 @@ NAME_CNPJ_PATTERNS = [
 
 CNPJ_PATTERN = re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b|\b\d{14}\b")
 CPF_PATTERN = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{11}\b")
+# CPF formatado completo — pega so CPFs nao-mascarados, sem falsos positivos
+# de codigos numericos de 11 digitos. Usado em --strict.
+CPF_FORMATTED_PATTERN = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b")
 
 
 @dataclass
@@ -110,10 +118,37 @@ def find_named_cnpjs(text: str) -> dict[str, str]:
     return found
 
 
+def find_unmasked_cpfs(text: str) -> list[tuple[int, str, str]]:
+    """Retorna lista de (linha, cpf, contexto) com CPFs formatados nao-mascarados.
+
+    Considera nao-mascarado qualquer CPF no padrao `NNN.NNN.NNN-NN` sem `*` na
+    string. O padrao canonico do projeto para CPF parcialmente exposto e
+    `***.NNN.NNN-**` (mantem so os 6 digitos centrais).
+    """
+    violations: list[tuple[int, str, str]] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        for match in CPF_FORMATTED_PATTERN.finditer(line):
+            # Ja-mascarado tem '*' na mesma string. CPF_FORMATTED_PATTERN nao
+            # casa string com '*', entao todo match aqui e' nao-mascarado.
+            cpf = match.group(0)
+            start, end = match.span()
+            ctx_start = max(0, start - 30)
+            ctx_end = min(len(line), end + 30)
+            context = line[ctx_start:ctx_end].strip()
+            violations.append((lineno, cpf, context))
+    return violations
+
+
+# Raiz do repo, derivada do caminho fisico deste script. Garante que --strict
+# rode da mesma forma independente do cwd (pre-commit hook, CI, chamada manual).
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_RELATORIOS_DIR = _REPO_ROOT / "relatorios"
+
+
 def list_reports(single_report: str | None) -> list[pathlib.Path]:
     if single_report:
         return [pathlib.Path(single_report)]
-    return sorted(pathlib.Path("relatorios").glob("*.md"))
+    return sorted(_RELATORIOS_DIR.glob("*.md"))
 
 
 def audit_report(path: pathlib.Path) -> list[AuditRow]:
@@ -123,6 +158,9 @@ def audit_report(path: pathlib.Path) -> list[AuditRow]:
     raw_cpfs = {re.sub(r"\D", "", m) for m in CPF_PATTERN.findall(text)}
 
     rows: list[AuditRow] = []
+    # Import lazy: so quem nao usa --strict abre conexao Postgres. Permite que
+    # --strict rode em ambientes sem psycopg2/python-dotenv instalados.
+    from etl.db import get_conn   # noqa: WPS433 — import dentro de funcao por design
     conn = get_conn()
     cur = conn.cursor()
 
@@ -212,7 +250,15 @@ def audit_report(path: pathlib.Path) -> list[AuditRow]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", help="Caminho de um relatório específico")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="So checa CPFs nao-mascarados (offline, sem DB). Exit 1 se houver violacoes.",
+    )
     args = parser.parse_args()
+
+    if args.strict:
+        return run_strict(args.report)
 
     print("report\tkind\tidentifier\tcited_name\tofficial_name\tstatus\tnote")
     for report in list_reports(args.report):
@@ -227,6 +273,44 @@ def main() -> int:
                 row.note,
             ]
             print("\t".join(v.replace("\t", " ").replace("\n", " ") for v in values))
+    return 0
+
+
+def run_strict(single_report: str | None) -> int:
+    """Modo strict — so analise de texto, sem DB. Exit 1 se algum CPF nao-mascarado.
+
+    Anchored em `_RELATORIOS_DIR` (derivado de `__file__`), nao do cwd, para evitar
+    falsos negativos silenciosos quando rodado de outro diretorio.
+    """
+    reports = list_reports(single_report)
+    if not reports:
+        print(
+            "[strict] ERRO: nenhum relatorio encontrado. "
+            f"Esperava .md em {_RELATORIOS_DIR} ou --report apontando para arquivo valido.",
+            file=sys.stderr,
+        )
+        return 2
+
+    total_violations = 0
+    for report in reports:
+        if not report.exists():
+            print(f"[strict] ERRO: {report} nao existe.", file=sys.stderr)
+            return 2
+        text = report.read_text(encoding="utf-8", errors="ignore")
+        violations = find_unmasked_cpfs(text)
+        if violations:
+            for lineno, cpf, context in violations:
+                print(f"{report}:{lineno}: CPF nao-mascarado encontrado: {cpf} | contexto: {context}", file=sys.stderr)
+            total_violations += len(violations)
+
+    if total_violations > 0:
+        print(
+            f"\n[strict] {total_violations} CPF(s) nao-mascarado(s) encontrado(s). "
+            "Mascarar com padrao ***.NNN.NNN-** (mantem so 6 digitos centrais).",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[strict] OK — {len(reports)} relatorio(s) auditado(s), nenhum CPF nao-mascarado encontrado.")
     return 0
 
 
