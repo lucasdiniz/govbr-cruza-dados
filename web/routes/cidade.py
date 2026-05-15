@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import logging
+import os
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Body, Query, Request
+from fastapi import APIRouter, Body, Header, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from psycopg2.errors import QueryCanceled, UndefinedTable, UndefinedColumn
@@ -1402,11 +1404,47 @@ async def get_heatmap_mes(municipio_path: str, ano: int, mes: int):
 
 
 @router.post("/api/cache/invalidate")
-async def invalidate_web_cache(payload: dict = Body(...)):
-    """Invalida entradas do web_cache por query_id(s)."""
+async def invalidate_web_cache(
+    request: Request,
+    payload: dict = Body(...),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Invalida entradas do web_cache por query_id(s).
+
+    Endpoint destrutivo (DELETE em web_cache) protegido por token compartilhado
+    no header `X-Admin-Token`. Fail-closed: sem `CACHE_INVALIDATE_TOKEN`
+    configurado no ambiente, responde 503 e nao apaga nada.
+
+    Para invalidacao operacional, prefira o workflow `deploy.yml` com inputs
+    `invalidate_cache_keys` (HARD) ou `rewarm_cache_keys` (SHADOW zero-downtime),
+    que executam o DELETE via psql direto na VM, sem expor o endpoint.
+    """
+    expected_token = os.environ.get("CACHE_INVALIDATE_TOKEN", "").strip()
+    remote = request.client.host if request.client else "?"
+
+    if not expected_token:
+        logging.warning("[cache-invalidate] CACHE_INVALIDATE_TOKEN nao configurado; rejeitando chamada de %s", remote)
+        return JSONResponse(
+            {"error": "endpoint desabilitado: CACHE_INVALIDATE_TOKEN nao configurado"},
+            status_code=503,
+        )
+
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected_token):
+        logging.warning("[cache-invalidate] token invalido/ausente em chamada de %s", remote)
+        return JSONResponse({"error": "nao autorizado"}, status_code=401)
+
     query_ids = payload.get("query_ids", [])
+    if not isinstance(query_ids, list):
+        return JSONResponse({"error": "query_ids deve ser lista"}, status_code=400)
+    # Defesa em profundidade: cap em 100 ids/chamada (warm_cache tem ~30 hoje).
+    if len(query_ids) > 100:
+        return JSONResponse({"error": "query_ids: maximo 100 por chamada"}, status_code=400)
+    # Aceita so strings curtas (caracteres seguros pra query_id).
+    if not all(isinstance(q, str) and 1 <= len(q) <= 80 for q in query_ids):
+        return JSONResponse({"error": "query_ids deve ser lista de strings (1-80 chars)"}, status_code=400)
     if not query_ids:
         return JSONResponse({"deleted": 0})
+
     try:
         from web.db import get_conn
         with get_conn() as conn:
@@ -1415,8 +1453,10 @@ async def invalidate_web_cache(payload: dict = Body(...)):
                 ph = ",".join(["%s"] * len(query_ids))
                 cur.execute(f"DELETE FROM web_cache WHERE query_id IN ({ph})", query_ids)
                 deleted = cur.rowcount
+        logging.info("[cache-invalidate] %s ids, %s rows apagadas, origem=%s", len(query_ids), deleted, remote)
         return JSONResponse({"deleted": deleted})
     except Exception:
+        logging.exception("[cache-invalidate] falha ao invalidar (origem=%s)", remote)
         return JSONResponse({"error": "falha ao invalidar"}, status_code=500)
 
 
