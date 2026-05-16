@@ -1653,21 +1653,29 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                     if pgfn_map:
                         result["empresa_pgfn"] = pgfn_map
 
-                # Empenhos recebidos pelas empresas no municipio
+                # Empenhos recebidos pelas empresas no municipio.
+                # Guard EXISTS estabelecimento: previne contaminacao por
+                # CPF padded (ver PR #151). Sem isso, se algum cnpj_basico
+                # do socio coincidir com prefixo de CPF padded de outra PF,
+                # empenhos da PF inflam total_pago/qtd_empenhos do servidor.
                 if cnpjs and municipio:
                     ph = ",".join(["%s"] * len(cnpjs))
                     cur.execute(f"""
-                        SELECT cnpj_basico,
-                               SUM(valor_pago) AS total_pago,
-                               SUM(valor_empenhado) AS total_empenhado,
+                        SELECT d.cnpj_basico,
+                               SUM(d.valor_pago) AS total_pago,
+                               SUM(d.valor_empenhado) AS total_empenhado,
                                COUNT(*) AS qtd_empenhos,
-                               MIN(data_empenho) AS primeiro_empenho,
-                               MAX(data_empenho) AS ultimo_empenho
-                        FROM tce_pb_despesa
-                        WHERE cnpj_basico IN ({ph})
-                          AND municipio = %s
-                          AND valor_pago > 0
-                        GROUP BY cnpj_basico
+                               MIN(d.data_empenho) AS primeiro_empenho,
+                               MAX(d.data_empenho) AS ultimo_empenho
+                        FROM tce_pb_despesa d
+                        WHERE d.cnpj_basico IN ({ph})
+                          AND d.municipio = %s
+                          AND d.valor_pago > 0
+                          AND EXISTS (
+                              SELECT 1 FROM estabelecimento est
+                              WHERE est.cnpj_completo = d.cpf_cnpj
+                          )
+                        GROUP BY d.cnpj_basico
                     """, cnpjs + [municipio])
                     emp_cols = [d[0] for d in cur.description]
                     emp_rows = cur.fetchall()
@@ -1734,7 +1742,9 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                             acordos_map.setdefault(cb, []).append(r)
                         result["empresa_acordos"] = acordos_map
 
-                # Empenhos das empresas vinculadas durante o vinculo do servidor
+                # Empenhos das empresas vinculadas durante o vinculo do servidor.
+                # Mesmo guard EXISTS estabelecimento — protege empenhos_durante_vinculo
+                # de contaminacao por CPF padded (ver PR #151).
                 if cnpjs and municipio:
                     ph = ",".join(["%s"] * len(cnpjs))
                     cur.execute(f"""
@@ -1752,6 +1762,10 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         WHERE d.cnpj_basico IN ({ph})
                           AND d.municipio = %s
                           AND d.valor_pago > 0
+                          AND EXISTS (
+                              SELECT 1 FROM estabelecimento est
+                              WHERE est.cnpj_completo = d.cpf_cnpj
+                          )
                           AND d.data_empenho >= COALESCE(v.dt_admissao, v.primeiro_dt)
                           AND d.data_empenho <= v.ultimo_dt
                         ORDER BY d.data_empenho DESC

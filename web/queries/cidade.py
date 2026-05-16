@@ -770,6 +770,12 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
            JOIN tce_pb_despesa d ON d.cnpj_basico = TRIM(cs.cnpj)
                AND d.municipio = %(municipio)s
                AND d.valor_pago > 0
+               -- Guard contra CPF padded (ver PR #151): so contar empenhos
+               -- onde cpf_cnpj existe como CNPJ legitimo no RFB.
+               AND EXISTS (
+                   SELECT 1 FROM estabelecimento est
+                   WHERE est.cnpj_completo = d.cpf_cnpj
+               )
            JOIN vinculo_datas vd ON vd.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
                AND vd.nome_upper = mv_servidor_pb_risco.nome_upper
            WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim
