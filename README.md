@@ -174,6 +174,34 @@ A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto del
 
 Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMARY` (mesmo prefixo).
 
+### MV atomic swap (zero-downtime)
+
+`etl/mv_swap.py` permite atualizar UMA `MATERIALIZED VIEW` (incluindo schema/colunas novas) com downtime de ~1s, sem dropar as outras. Comparado a `etl_phase=sql` que faz `DROP CASCADE` de todas as MVs em `sql/12_views.sql` (1-2h + VM resize), o swap usa a VM atual e mantém o tráfego servindo a MV antiga durante o build.
+
+Mecânica:
+
+1. Build paralelo: `CREATE MATERIALIZED VIEW <mv>_swap AS …` em autocommit (sem bloqueio).
+2. Captura recursiva de dependentes via `pg_depend`/`pg_rewrite` + `pg_get_viewdef`.
+3. Transação atômica (~1s): `DROP MV <mv> CASCADE` + `ALTER MV <mv>_swap RENAME TO <mv>` + recria views/MVs dependentes.
+4. `REFRESH MATERIALIZED VIEW` em MVs dependentes (fora de tx).
+
+Uso via deploy:
+
+```bash
+gh workflow run deploy.yml --ref main \
+  -f etl_phase=web \
+  -f mv_swap=mv_empresa_pb \
+  -f rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN
+```
+
+Pra cada MV, crie `deploy/mv_updates/<mv_name>.sql` com a nova definição usando sufixo `_swap` em todos os identifiers (será removido pelo framework). Veja `deploy/mv_updates/mv_empresa_pb.sql` como exemplo.
+
+Uso direto:
+
+```bash
+python -m etl.mv_swap mv_empresa_pb deploy/mv_updates/mv_empresa_pb.sql
+```
+
 ### 24 fases ETL e auto-cleanup
 
 `etl/run_all.py` mantém uma lista hardcoded de 24 módulos (`etl.00_download`, `etl.01_schema`, …, `etl.22_mv_sitemap`). Após cada fase concluir, `_cleanup_csvs` remove os CSVs raw daquela fase (espaço em disco é restrito). Diretórios compartilhados (`rfb/`, `tse/`) só são removidos quando todas as fases dependentes terminaram (`_SHARED_DIRS`).

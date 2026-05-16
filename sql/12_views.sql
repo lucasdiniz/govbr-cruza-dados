@@ -664,8 +664,16 @@ CREATE INDEX idx_mv_srv_risco ON mv_servidor_pb_risco(risco_score DESC) WHERE ri
 CREATE MATERIALIZED VIEW mv_empresa_pb AS
 WITH
 pb_cnpj AS (
-    -- Todos os CNPJs que aparecem em qualquer fonte PB
-    SELECT DISTINCT cnpj_basico FROM tce_pb_despesa WHERE cnpj_basico IS NOT NULL
+    -- Todos os CNPJs que aparecem em qualquer fonte PB.
+    -- Guard EXISTS(estabelecimento) em tce_pb_despesa filtra CPFs padded
+    -- (LEFT(cpf_cnpj, 8) sem validacao de origem). Demais fontes PB
+    -- (pb_empenho/pb_contrato/etc) ja sao 100% PJ pela coleta.
+    SELECT DISTINCT cnpj_basico FROM tce_pb_despesa d
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (
+            SELECT 1 FROM estabelecimento est
+            WHERE est.cnpj_completo = d.cpf_cnpj
+        )
     UNION SELECT DISTINCT cnpj_basico FROM pb_empenho WHERE cnpj_basico IS NOT NULL
     UNION SELECT DISTINCT cnpj_basico FROM pb_contrato WHERE cnpj_basico IS NOT NULL
     UNION SELECT DISTINCT cnpj_basico FROM pb_saude WHERE cnpj_basico IS NOT NULL
@@ -680,8 +688,14 @@ tce_agg AS (
            ARRAY_AGG(DISTINCT municipio ORDER BY municipio)
               FILTER (WHERE municipio IS NOT NULL) AS municipios,
            COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao
-    FROM tce_pb_despesa
+    FROM tce_pb_despesa d
     WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
+      -- Guard contra CPF padded (PR #151 follow-up): so contar empenhos
+      -- onde cpf_cnpj eh CNPJ legitimo no RFB.
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY cnpj_basico
 ),
 pb_emp_agg AS (
