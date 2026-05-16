@@ -188,13 +188,33 @@ EMPRESA_AGREGADOS_PB_BY_BASICO = """
     WHERE cnpj_basico = %s
 """
 
+# CPF-padding contamination guard:
+# TCE-PB envia 'cpf_cnpj' sempre com 14 chars; CPFs (11 digitos validos)
+# vem com padding de zeros a esquerda (ex: '00014020752435' = CPF
+# '140.207.524-35' com '000' colado no inicio). LEFT(cpf_cnpj, 8) =
+# '00014020' pode coincidir com cnpj_basico de empresa real (ex:
+# AVICOLA CHESTER MONGAGUA LTDA), contaminando o perfil dela com empenhos
+# de pessoas fisicas.
+#
+# Fix: filtrar empenhos onde cpf_cnpj EXISTE como cnpj_completo no RFB
+# (matriz + filiais). CPFs padded nunca casam (RFB so tem PJ). Usa
+# idx_estab_cnpj_completo pra perf.
+#
+# Por que NAO filtrar por cpf_cnpj = est.cnpj_completo na matriz so:
+# isso perderia filiais (ordens != 0001) que recebem do governo —
+# pra BB (raiz 00000000), filiais somam 93% dos empenhos.
+
 EMPRESA_MUNICIPIOS_PAGANTES_BY_BASICO = """
     SELECT municipio,
            SUM(valor_pago) AS total_pago,
            COUNT(*) AS qtd_empenhos
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY municipio
     ORDER BY total_pago DESC
 """
@@ -203,9 +223,13 @@ EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO = """
     SELECT elemento_despesa,
            SUM(valor_pago) AS total_elemento,
            COUNT(*) AS qtd
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY elemento_despesa
     ORDER BY SUM(valor_pago) DESC
     LIMIT 5
@@ -226,10 +250,14 @@ EMPRESA_EMPENHOS_RECENTES_BY_MUN = """
     SELECT id, numero_empenho, data_empenho, elemento_despesa,
            valor_empenhado, valor_pago,
            modalidade_licitacao, numero_licitacao
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     ORDER BY data_empenho DESC NULLS LAST, id DESC
     LIMIT 50
 """
@@ -258,10 +286,14 @@ EMPRESA_EMPENHOS_PAGINATED_BY_MUN = """
     SELECT id, numero_empenho, data_empenho, elemento_despesa,
            valor_empenhado, valor_pago,
            modalidade_licitacao, numero_licitacao
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
       AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
       AND (
@@ -278,10 +310,14 @@ EMPRESA_EMPENHOS_PAGINATED_BY_MUN = """
 
 EMPRESA_EMPENHOS_COUNT_BY_MUN = """
     SELECT COUNT(*)
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
       AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
       AND (
@@ -301,9 +337,13 @@ EMPRESA_EMPENHOS_PAGINATED_GLOBAL = """
     SELECT id, numero_empenho, data_empenho, municipio, elemento_despesa,
            valor_empenhado, valor_pago,
            modalidade_licitacao, numero_licitacao
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
       AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
       AND (
@@ -321,9 +361,13 @@ EMPRESA_EMPENHOS_PAGINATED_GLOBAL = """
 
 EMPRESA_EMPENHOS_COUNT_GLOBAL = """
     SELECT COUNT(*)
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND (%(data_inicio)s IS NULL OR data_empenho >= %(data_inicio)s::date)
       AND (%(data_fim)s IS NULL OR data_empenho <= %(data_fim)s::date)
       AND (
@@ -391,19 +435,27 @@ EMPRESA_STATS_BY_MUN = """
                   OR numero_licitacao = '000000000'
                   OR modalidade_licitacao ILIKE '%%sem licit%%'
            ) AS qtd_sem_licitacao
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
 """
 
 EMPRESA_PAGAMENTOS_MENSAIS_BY_MUN = """
     SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
            SUM(valor_pago) AS total_mes
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
     GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
     ORDER BY mes
@@ -413,10 +465,14 @@ EMPRESA_TOP_ELEMENTOS_BY_MUN = """
     SELECT elemento_despesa,
            SUM(valor_pago) AS total_elemento,
            COUNT(*) AS qtd
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %(cnpj_basico)s
-      AND municipio = %(municipio)s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %(cnpj_basico)s
+      AND d.municipio = %(municipio)s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY elemento_despesa
     ORDER BY SUM(valor_pago) DESC
     LIMIT 5
@@ -438,6 +494,10 @@ EMPRESA_PAGAMENTOS_SANCAO_OUTROS = """
     WHERE d.cnpj_basico = %(cnpj_basico)s
       AND d.municipio != %(municipio_atual)s
       AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND EXISTS (
           SELECT 1
           FROM ceis_sancao s
@@ -464,9 +524,13 @@ EMPRESA_PAGAMENTOS_SANCAO_OUTROS = """
 EMPRESA_PAGAMENTOS_MENSAIS_GLOBAL_BY_BASICO = """
     SELECT TO_CHAR(data_empenho, 'YYYY-MM') AS mes,
            SUM(valor_pago) AS total_mes
-    FROM tce_pb_despesa
-    WHERE cnpj_basico = %s
-      AND valor_pago > 0
+    FROM tce_pb_despesa d
+    WHERE d.cnpj_basico = %s
+      AND d.valor_pago > 0
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
       AND data_empenho >= (CURRENT_DATE - INTERVAL '12 months')
     GROUP BY TO_CHAR(data_empenho, 'YYYY-MM')
     ORDER BY mes
