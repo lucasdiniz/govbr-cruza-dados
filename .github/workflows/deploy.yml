@@ -420,10 +420,18 @@ jobs:
         run: |
           set -e
 
+          # Auth header pra acessar repo privado via HTTPS. GITHUB_TOKEN
+          # eh provisionado pelo workflow runner e expira no fim do run,
+          # entao nao persiste em disco. Aplicado via -c (config one-shot)
+          # ao inves de URL-embedded ou git remote set-url — evita vazar
+          # o token em ls-remote, git remote -v ou .git/config.
+          GIT_AUTH="Authorization: bearer ${{ secrets.GITHUB_TOKEN }}"
+          GIT_AUTH_CFG="http.https://github.com/.extraheader=${GIT_AUTH}"
+
           # Clone if missing
           if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
             cd /home/govbr
-            git clone https://github.com/${{ github.repository }}.git govbr-project
+            git -c "$GIT_AUTH_CFG" clone https://github.com/${{ github.repository }}.git govbr-project
           fi
 
           cd ${{ env.PROJECT_DIR }}
@@ -456,8 +464,8 @@ jobs:
           DATA="${DATA_DIR:-/data/raw-data}"
           mkdir -p "$DATA"
 
-          # Pull latest
-          git fetch origin main
+          # Pull latest (header de auth via -c one-shot, nao persiste).
+          git -c "$GIT_AUTH_CFG" fetch origin main
           git reset --hard origin/main
 
           # Python venv
