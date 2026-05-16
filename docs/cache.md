@@ -84,7 +84,7 @@ Os comentários canônicos do mecanismo estão em [`web/warm_cache.py:94-178`](.
 | Modo | Operação | Downtime | Quando usar |
 |---|---|---|---|
 | **`drop_cache=true`** | `TRUNCATE web_cache` | **12-18h** (cache miss em TUDO até warm completar) | Mudança de schema, big rebuild |
-| **`invalidate_cache_keys=Q65,PERFIL`** | `DELETE` cirúrgico HARD por prefixo | Cache miss até warm rebuildar essas chaves | Dados live **broken** (bug produziu lixo, precisa sumir já) |
+| **`invalidate_cache_keys=Q65,PERFIL`** | `DELETE` cirúrgico HARD por **substring** (`LIKE '%termo%'`) | Cache miss até warm rebuildar essas chaves | Dados live **broken** (bug produziu lixo, precisa sumir já). Cuidado: `PERFIL` casa também `EMPRESA_PERFIL`, `PERFIL_DATED`, etc. |
 | **`rewarm_cache_keys=Q65,PERFIL`** | Shadow rewarm + swap atômico | **Zero** | **Default recomendado** para atualizar dados |
 
 ## Auto-expansão

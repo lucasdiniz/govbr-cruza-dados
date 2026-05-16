@@ -116,10 +116,10 @@ app.include_router(feature_router)
 
 **Regras de ouro:**
 
-- **Sem ORM.** Toda SQL é raw, parametrizada via `%(name)s` (psycopg2). f-strings em SQL só com whitelist hardcoded (ver caveat em `routes/cidade.py:1450-1466`).
+- **Sem ORM.** Toda SQL é raw, parametrizada via `%(name)s` (psycopg2). f-strings em SQL só com whitelist hardcoded (ver caveat em `web/routes/cidade.py` nas funções que montam `IN (...)` por concatenação).
 - **Use `read_web_cache()` para queries pesadas** — request quente nunca espera Postgres mais que `TIMEOUT_PROFILE=3s`.
 - **Para queries leves** (autocomplete, perfil simples), use `cached_query()` com `timeout_sec=TIMEOUT_AUTOCOMPLETE` (2s) ou `TIMEOUT_PROFILE` (3s) de [`web/config.py`](../web/config.py).
-- **POST em `/api/*`** passa pelo Origin guard de `web/main.py:65-110` — só hosts em `_ALLOWED_API_HOSTS` (`transparenciapb.org`, `localhost`...).
+- **POST em `/api/*`** passa pelo Origin guard de [`web/main.py:99-118`](../web/main.py) — só hosts em `_ALLOWED_API_HOSTS` (`transparenciapb.org`, `localhost`...).
 
 ## 3. Adicionando um template novo
 
@@ -185,8 +185,8 @@ npm run build:check        # smoke usado no CI
 
 ## Caveats reais
 
-- **f-strings em SQL com lista `IN`:** `routes/cidade.py:1450-1466` ainda monta `IN (...)` por concatenação. Há issue aberta para helper central; até lá, **nunca interpolar input do usuário** — só constantes whitelisted.
-- **Templates com `|safe`:** `templates/cidade.html:120-160` injeta HTML com `|safe` para rich snippets. Política: autoescape ligado por padrão (Jinja default) + `|safe` só em strings montadas no servidor com whitelist.
+- **f-strings em SQL com lista `IN`:** `web/routes/cidade.py` (várias funções de detalhes) monta `IN (...)` por concatenação. Há issue aberta para helper central; até lá, **nunca interpolar input do usuário** — só constantes whitelisted.
+- **Templates com `|safe`:** `web/templates/results/cidade.html` injeta HTML com `|safe` para rich snippets (linhas em torno de `202`, `215-216`, `433`). Política: autoescape ligado por padrão (Jinja default) + `|safe` só em strings montadas no servidor com whitelist.
 - **`/api/cache/invalidate`** exige header `X-Admin-Token` (PR #118). Fail-closed: se `CACHE_INVALIDATE_TOKEN` não estiver no `.env`, endpoint responde 503. Ver `web/routes/cidade.py:1406-1430`.
 - **Service Worker:** `web/static/sw.js` faz stale-while-revalidate para assets estáticos. Bump `ASSET_VERSION` (atualmente `"112"` em `web/main.py:441`) quando publicar mudança que precise invalidar SW.
 - **Origin guard** bloqueia `POST /api/*` sem Origin/Referer válido. Bots casuais (curl, scrapy default) são filtrados; é defesa em profundidade, não autenticação.

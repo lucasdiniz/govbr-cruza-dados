@@ -353,10 +353,43 @@ tests/incremental/ Suite atual — cobre o framework incremental
 
 ## Documentação adicional
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — convenções, setup local, como adicionar query/MV/fase
-- [`etl/incremental/README.md`](etl/incremental/README.md) — framework incremental detalhado
-- [`docs/dicionario_dados_pb.md`](docs/dicionario_dados_pb.md) — dicionário das tabelas TCE-PB e dados.pb.gov.br
-- [`docs/plano_novas_fontes.md`](docs/plano_novas_fontes.md) — roadmap de fontes adicionais
+Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específico da sua área de contribuição.
+
+### Para todos os contributors
+
+- [`docs/architecture.md`](docs/architecture.md) — **landing page arquitetural** com 7 diagramas Mermaid (data flow ETL, entity resolution, ERD, MV layers, shadow rewarm sequence, deploy pipeline)
+- [`docs/glossario.md`](docs/glossario.md) — 60+ termos do domínio público brasileiro (empenho, UG, CEIS, LGPD, etc.)
+- [`docs/onboarding.md`](docs/onboarding.md) — walk-through clone → `uvicorn` em 3 caminhos
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — convenções de código, commits, PRs
+
+### Guias por área
+
+- [`docs/etl-guide.md`](docs/etl-guide.md) — como adicionar fase ETL clássica
+- [`docs/etl-incremental-guide.md`](docs/etl-incremental-guide.md) — como adicionar spec ao framework incremental (princípios P1-P6)
+- [`docs/web-guide.md`](docs/web-guide.md) — como adicionar query/rota/template/componente MD3
+- [`docs/queries-guide.md`](docs/queries-guide.md) — como adicionar Q## (header, EXPLAIN, índices)
+- [`docs/mv-guide.md`](docs/mv-guide.md) — como adicionar MV (camadas L1/L2/L3)
+- [`docs/cache.md`](docs/cache.md) — `web_cache` + shadow rewarm zero-downtime
+
+### Operações
+
+- [`docs/deploy.md`](docs/deploy.md) — 14 inputs do `deploy.yml` + cenários + OIDC setup
+- [`docs/ops.md`](docs/ops.md) — runbooks (rollback, restore, backup, runner repair, troubleshoot warm)
+
+### Privacidade e licenciamento
+
+- [`docs/privacidade.md`](docs/privacidade.md) — política LGPD pública
+- [`DATA-LICENSE.md`](DATA-LICENSE.md) — licenciamento de dados + disclaimer LGPD
+
+### Decisões arquiteturais (ADRs)
+
+- [`docs/adr/`](docs/adr/) — 5 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web
+
+### Referência
+
+- [`etl/incremental/README.md`](etl/incremental/README.md) — framework incremental detalhado (P1-P6, observabilidade, comandos)
+- [`docs/dicionario_dados_pb.md`](docs/dicionario_dados_pb.md) — catálogo de colunas TCE-PB e dados.pb.gov.br
+- [`docs/plano_novas_fontes.md`](docs/plano_novas_fontes.md) — roadmap histórico de fontes (legado)
 - [`relatorios/`](relatorios/) — 40+ investigações sobre casos reais (mascaradas conforme LGPD)
 
 ## Licença

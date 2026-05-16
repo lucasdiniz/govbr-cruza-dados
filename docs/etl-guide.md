@@ -9,7 +9,7 @@ watermark, DLQ e role-segregação) veja [etl-incremental-guide.md](etl-incremen
 O ETL clássico é um pipeline de **full reload**: cada fase tipicamente faz
 `TRUNCATE` da(s) sua(s) tabela(s)-alvo e reconstrói tudo a partir dos CSVs
 brutos baixados em `$DATA_DIR/<fonte>/`. As 24 fases vivem hardcoded na lista
-`_PHASES` de [`etl/run_all.py`](../etl/run_all.py) e são executadas na ordem em
+`phases` de [`etl/run_all.py`](../etl/run_all.py) e são executadas na ordem em
 que aparecem — a posição importa porque fases tardias dependem de tabelas,
 colunas normalizadas (`cpf_digitos`, `cpf_cnpj_norm`) e índices criados por
 fases anteriores. Ver [architecture.md](architecture.md) para o panorama geral
@@ -130,7 +130,7 @@ def run() -> None:
      for autocontida.
    Documente a decisão no docstring do módulo.
 
-4. **Registrar em `_PHASES`** de `etl/run_all.py` (lista hardcoded — a posição
+4. **Registrar na lista `phases`** dentro da função `main()` de `etl/run_all.py:76-101` (lista local hardcoded — a posição
    define a ordem de execução):
 
    ```python
@@ -232,7 +232,7 @@ def run() -> None:
 ## Caveats conhecidos
 
 - **`_CSV_DIRS` vs `_SHARED_DIRS`.** O cleanup automático em `_cleanup_csvs`
-  (`etl/run_all.py:55`) deleta o raw após a primeira fase que o consome
+  (`etl/run_all.py:55-68`) deleta o raw após a primeira fase que o consome
   *succeed*. Se sua fase nova consome `rfb/` mas você não adicionou ao
   `_SHARED_DIRS`, a fase 3 (`etl.03_rfb`) deleta o CSV antes da sua rodar.
 - **Fase 17 (`etl.15_normalizar`) cria `cpf_digitos`/`cpf_cnpj_norm`** usadas

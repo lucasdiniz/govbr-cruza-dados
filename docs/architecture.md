@@ -56,13 +56,13 @@ flowchart TB
 
     subgraph CLASSIC[ETL clássico — 24 fases — full reload]
         direction TB
-        P1[1. Schema base<br/>etl.01_schema]
-        P2[2-14. Cargas<br/>RFB, PNCP, Emendas,<br/>CPGF, PGFN, BNDES]
-        P3[15-18. Sanções,<br/>Viagens, TSE,<br/>Bolsa Família]
-        P4[19-20. TCE-PB +<br/>dados.pb]
-        P5[17. Normalização<br/>CPF/CNPJ]
-        P6[18. MVs L1/L2/L3<br/>etl.21_views]
-        P7[19. MV sitemap<br/>etl.22_mv_sitemap]
+        P1[Fase 0-1. Download + Schema base<br/>etl.00_download, etl.01_schema]
+        P2[Fase 2-8. RFB, PNCP, Emendas,<br/>CPGF, PGFN, BNDES, Renúncias,<br/>SIAPE]
+        P3[Fase 9-13. Sanções, Viagens,<br/>TSE Candidatos, Bolsa Família,<br/>TSE Prestação]
+        P4[Fase 14-16. TCE-PB + Dados PB +<br/>PNCP Itens]
+        P5[Fase 17. Normalização CPF/CNPJ<br/>etl.15_normalizar]
+        P6[Fase 18. MVs L1/L2/L3<br/>etl.21_views]
+        P7[Fase 19. MV sitemap<br/>etl.22_mv_sitemap]
 
         P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
     end
@@ -108,9 +108,9 @@ flowchart LR
         F7["dados.pb empenho PF<br/><code>***456***</code><br/>3 dígitos centrais"]
     end
 
-    FONTES -->|Phase 17<br/>etl.15_normalizar| NORM[Funções utilitárias<br/><code>clean_cpf, clean_cnpj,<br/>extract_cpf_masked</code>]
+    FONTES -->|Fase 17<br/>etl.15_normalizar| NORM[Funções utilitárias<br/><code>clean_cpf, clean_cnpj,<br/>extract_cpf_masked</code>]
 
-    NORM --> COL1[("<b>cpf_digitos</b><br/>6 dígitos centrais<br/>indexed"]
+    NORM --> COL1[("<b>cpf_digitos</b><br/>6 dígitos centrais<br/>indexed")]
     NORM --> COL2[("<b>cpf_cnpj_norm</b><br/>11 ou 14 dígitos<br/>indexed")]
 
     COL1 --> MATCH[JOIN por igualdade<br/>direta + nome normalizado]
@@ -294,7 +294,7 @@ sequenceDiagram
 **Outros modos**:
 
 - **`drop_cache`** — TRUNCATE total. Causa 12-18h de cache miss em todas as queries. Só use em mudança de schema.
-- **`invalidate_cache_keys`** — DELETE cirúrgico por prefixo de qid. Causa cache miss até warm rebuildar. Use só quando dados live estão *broken*.
+- **`invalidate_cache_keys`** — DELETE cirúrgico por **substring** de qid (`LIKE '%termo%'`, ver [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)). Cuidado: passar `PERFIL` apaga `PERFIL`, `EMPRESA_PERFIL`, `PERFIL_DATED`, etc. Causa cache miss até warm rebuildar. Use só quando dados live estão *broken*.
 - **`rewarm_cache_keys`** — shadow rewarm (acima). **Default recomendado**. Auto-expansão: `PERFIL` propaga para `KPI_SUMMARY` (mesmo prefixo).
 
 Detalhes em [`cache.md`](cache.md). Documentação dos inputs do `deploy.yml` em [`deploy.md`](deploy.md).
@@ -353,7 +353,7 @@ Para contributor novo, os 5 arquivos com maior densidade conceitual:
 | Arquivo | Linhas | Por que difícil |
 |---|---|---|
 | `sql/12_views.sql` | 1500+ | MVs em 3 camadas, DROP reverso no topo, dependências implícitas |
-| `etl/run_all.py` | 800+ | 24 fases hardcoded, `_CSV_DIRS` vs `_SHARED_DIRS` cleanup automático |
+| `etl/run_all.py` | ~160 | 24 fases hardcoded na lista local `phases`, `_CSV_DIRS` vs `_SHARED_DIRS` cleanup automático |
 | `web/routes/cidade.py` | 2100+ | SSR + APIs + cache + dialogs em um arquivo |
 | `web/warm_cache.py` | 1700+ | Shadow rewarm, swap atômico, abort conditions, contextual rebuild |
 | `etl/run_queries.py:split_sql_statements` | ~60 | Parser custom de SQL (quotes + dollar-quoting), processa 125+ Q## |
