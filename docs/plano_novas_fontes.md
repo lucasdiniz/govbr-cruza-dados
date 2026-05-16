@@ -1,5 +1,13 @@
 # Plano: Novas Fontes de Dados (Iteracao 2)
 
+> ⚠️ **Documento legado.** Escrito antes da convenção atual de identificação
+> de fornecedores via `cpf_cnpj` completo (14 dígitos) + `EXISTS (estabelecimento)`.
+> Alguns exemplos de SQL abaixo usam o padrão antigo (`LEFT(...,8) = cnpj_basico`),
+> que sofre colisão entre CPFs e CNPJs com mesmo prefixo. Para queries
+> novas siga as convenções atuais documentadas em
+> [`architecture.md`](architecture.md) e [`queries-guide.md`](queries-guide.md).
+> Mantemos este plano como histórico das fontes propostas, não como guia técnico ativo.
+
 ## 1. TSE - Candidatos e Financiamento Eleitoral
 
 ### Dados
