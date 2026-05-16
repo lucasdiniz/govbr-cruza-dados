@@ -16,6 +16,12 @@ _FLAGS_SANCAO_DURANTE_PB = """,
              AND d2.data_empenho >= cs.dt_inicio_sancao
              AND (cs.dt_final_sancao IS NULL OR d2.data_empenho <= cs.dt_final_sancao)
              AND cs.categoria_sancao ILIKE '%%inidone%%'
+             -- Guard contra CPF padded (PR #151): so contar empenhos onde
+             -- cpf_cnpj existe como CNPJ legitimo no RFB.
+             AND EXISTS (
+                 SELECT 1 FROM estabelecimento est
+                 WHERE est.cnpj_completo = d2.cpf_cnpj
+             )
        ) AS flag_recebeu_durante_inidoneidade,
        EXISTS (
            SELECT 1
@@ -44,6 +50,12 @@ _FLAGS_SANCAO_DURANTE_PB = """,
                  OR san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
                  OR (san.esfera_orgao_sancionador = 'MUNICIPAL'
                      AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%')
+             )
+             -- Guard contra CPF padded (PR #151): so contar empenhos onde
+             -- cpf_cnpj existe como CNPJ legitimo no RFB.
+             AND EXISTS (
+                 SELECT 1 FROM estabelecimento est
+                 WHERE est.cnpj_completo = d2.cpf_cnpj
              )
        ) AS flag_recebeu_durante_sancao_aplicavel"""
 
@@ -728,6 +740,13 @@ empresa_pagamentos AS (
     SELECT d.cnpj_basico, SUM(d.valor_pago) AS total_pago
     FROM tce_pb_despesa d
     WHERE d.municipio = %(municipio)s AND d.valor_pago > 0
+      -- Guard contra CPF padded (PR #151): cnpj_basico colide com prefixo
+      -- de CPFs (LEFT(cpf_cnpj, 8) sem validacao). Filtra so empenhos
+      -- onde cpf_cnpj eh CNPJ legitimo no RFB.
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY d.cnpj_basico
 ),
 vinculo_datas AS (
