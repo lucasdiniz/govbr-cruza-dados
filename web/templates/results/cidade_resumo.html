@@ -56,7 +56,7 @@
         </p>
         <div class="stats-grid" style="margin-top:1rem">
             <div class="stat-cell">
-                <span class="stat-value">R$ {{ "%0.0f"|format(aggs.total_pago or 0)|replace(",", ".") }}</span>
+                <span class="stat-value">{{ aggs.total_pago | short_brl }}</span>
                 <span class="stat-label">Total pago no mes</span>
             </div>
             <div class="stat-cell">
@@ -119,7 +119,7 @@
                                 {{ f.razao_social|clean_text }}
                             {% endif %}
                         </td>
-                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(f.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Total pago" class="text-right num">{{ f.total_pago | short_brl }}</td>
                         <td data-label="Empenhos" class="text-right num">{{ f.qtd_empenhos or 0 }}</td>
                     </tr>
                     {% endfor %}
@@ -145,7 +145,7 @@
                     {% for e in top_elementos %}
                     <tr>
                         <td data-label="Elemento" class="stack-title">{{ e.elemento_despesa|clean_text }}</td>
-                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(e.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Total pago" class="text-right num">{{ e.total_pago | short_brl }}</td>
                         <td data-label="Empenhos" class="text-right num">{{ e.qtd_empenhos or 0 }}</td>
                     </tr>
                     {% endfor %}
@@ -171,7 +171,7 @@
                     {% for m in modalidades %}
                     <tr>
                         <td data-label="Modalidade" class="stack-title">{{ m.modalidade|clean_text }}</td>
-                        <td data-label="Total pago" class="text-right num">R$ {{ "%0.2f"|format(m.total_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Total pago" class="text-right num">{{ m.total_pago | short_brl }}</td>
                         <td data-label="Empenhos" class="text-right num">{{ m.qtd_empenhos or 0 }}</td>
                     </tr>
                     {% endfor %}
@@ -209,7 +209,7 @@
                             {% endif %}
                         </td>
                         <td data-label="Elemento" class="stack-meta">{{ e.elemento_despesa|clean_text or "-" }}</td>
-                        <td data-label="Pago" class="text-right num">R$ {{ "%0.2f"|format(e.valor_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Pago" class="text-right num">{{ e.valor_pago | short_brl }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -231,7 +231,7 @@
                 <div class="text-sm text-muted">
                     {{ lic.descricao_ug|clean_text or "Prefeitura" }}
                     {% if lic.data_homologacao %} &middot; Homologada em {{ lic.data_homologacao[8:10] }}/{{ lic.data_homologacao[5:7] }}/{{ lic.data_homologacao[0:4] }}{% endif %}
-                    {% if lic.valor_total and lic.valor_total > 0 %} &middot; Valor: R$ {{ "%0.2f"|format(lic.valor_total)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}{% endif %}
+                    {% if lic.valor_total and lic.valor_total > 0 %} &middot; Valor: {{ lic.valor_total | short_brl }}{% endif %}
                 </div>
             </li>
             {% endfor %}
@@ -264,4 +264,9 @@
 
     {% include "partials/seo/_faq_cidade_resumo.html" %}
 </article>
+{# Empresa-dialog overlay reutilizado por openEmpenhoDialog (acionado ao
+   clicar em qualquer .clickable-row[data-empenho-id] da tabela "Maiores
+   empenhos do mes"). Mesma instancia DOM usada por /cidade/<slug> —
+   componentes JS fazem early-return se nao encontram este elemento. #}
+{% include "partials/dialogs/_empresa_dialog.html" %}
 {% endblock %}
