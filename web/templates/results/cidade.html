@@ -1,8 +1,28 @@
 {% extends "base.html" %}
-{% block title %}{{ municipio }}{% endblock %}
-{% block meta_description %}Panorama de transparencia de {{ municipio }} - PB: despesas, fornecedores irregulares, servidores com conflito e contratos sem licitacao.{% endblock %}
-{% block og_title %}{{ municipio }} - PB | TransparenciaPB{% endblock %}
-{% block og_description %}Panorama de transparencia de {{ municipio }} - PB.{% endblock %}
+{# Coerce numericos vindos do DB (Decimal em live query) ou web_cache
+   (strings via json.dumps default=str). Sem isso `round` levanta TypeError
+   em strings e `tojson` levanta TypeError em Decimal — derrubando o render
+   inteiro com 500. #}
+{% set _total_pago = (perfil.total_pago if perfil else 0) | float %}
+{% set _qtd_fornecedores = ((perfil.qtd_fornecedores if perfil else 0) or 0) | int %}
+{% set _pct_sem_licitacao = ((perfil.pct_sem_licitacao if perfil else 0) or 0) | float %}
+{% set _has_perfil_data = perfil and _total_pago > 0 %}
+{% block title %}Prefeitura de {{ municipio }} - PB: gastos, fornecedores e servidores{% endblock %}
+{% block meta_description %}
+{%- if _has_perfil_data -%}
+Veja {{ _total_pago | short_brl }} em despesas pagas pela prefeitura de {{ municipio }} - PB para {{ _qtd_fornecedores }} fornecedores. {{ _pct_sem_licitacao | round | int }}% sem licitacao. Servidores, conflitos de interesse e sancoes CGU. Dados oficiais TCE-PB e Receita Federal.
+{%- else -%}
+Panorama de transparencia de {{ municipio }} - PB: despesas, fornecedores irregulares, servidores com conflito e contratos sem licitacao. Dados oficiais cruzados de TCE-PB, Receita Federal e CGU.
+{%- endif -%}
+{% endblock %}
+{% block og_title %}Prefeitura de {{ municipio }} - PB: gastos, fornecedores e servidores | TransparenciaPB{% endblock %}
+{% block og_description %}
+{%- if _has_perfil_data -%}
+{{ _total_pago | short_brl }} em despesas, {{ _qtd_fornecedores }} fornecedores, {{ _pct_sem_licitacao | round | int }}% sem licitacao. Veja o panorama de transparencia de {{ municipio }} - PB.
+{%- else -%}
+Panorama de transparencia de {{ municipio }} - PB.
+{%- endif -%}
+{% endblock %}
 {% block twitter_card %}summary_large_image{% endblock %}
 {% set _slug = municipio | municipio_slug %}
 {% block og_image %}
@@ -15,7 +35,9 @@
 {% endblock %}
 {% block json_ld_extra %}
 {# JSON-LD adicional pra pagina de cidade: GovernmentOrganization (a
-   prefeitura), Dataset (o relatorio), e BreadcrumbList (Home > Cidade). #}
+   prefeitura), Place (o municipio como entidade geografica - Google usa
+   para entity matching no Knowledge Graph), Dataset (o relatorio), e
+   BreadcrumbList (Home > Cidade). #}
 {% set origin = request_origin(request) if request else '' %}
 {% set page_url = origin + '/cidade/' + _slug %}
 <script type="application/ld+json">
@@ -24,7 +46,9 @@
   "@graph": [
     {
       "@type": "GovernmentOrganization",
+      "@id": {{ (page_url ~ '#prefeitura') | tojson }},
       "name": {{ ("Prefeitura de " ~ municipio) | tojson }},
+      "url": {{ page_url | tojson }},
       "areaServed": {
         "@type": "AdministrativeArea",
         "name": {{ municipio | tojson }},
@@ -36,6 +60,23 @@
       }
     },
     {
+      "@type": "Place",
+      "@id": {{ (page_url ~ '#place') | tojson }},
+      "name": {{ (municipio ~ ", PB") | tojson }},
+      "containedInPlace": [
+        {
+          "@type": "State",
+          "name": "Paraíba",
+          "alternateName": "PB"
+        },
+        {
+          "@type": "Country",
+          "name": "Brasil",
+          "alternateName": "BR"
+        }
+      ]
+    },
+    {
       "@type": "Dataset",
       "name": {{ ("Panorama de transparência de " ~ municipio ~ " - PB") | tojson }},
       "description": {{ ("Cruzamento de despesas, fornecedores e servidores municipais de " ~ municipio ~ " contra bases públicas (Receita Federal, CEIS, CNEP, PGFN, TCE-PB, TSE).") | tojson }},
@@ -44,10 +85,26 @@
       "inLanguage": "pt-BR",
       "creator": {"@id": "{{ origin }}/#organization"},
       "license": "https://creativecommons.org/licenses/by/4.0/",
-      "spatialCoverage": {
-        "@type": "Place",
-        "name": {{ (municipio ~ ", Paraíba, Brasil") | tojson }}
-      }
+      "spatialCoverage": {"@id": {{ (page_url ~ '#place') | tojson }}}{% if _has_perfil_data %},
+      "variableMeasured": [
+        {
+          "@type": "PropertyValue",
+          "name": "Total pago em despesas",
+          "value": {{ _total_pago | tojson }},
+          "unitCode": "BRL"
+        },
+        {
+          "@type": "PropertyValue",
+          "name": "Quantidade de fornecedores",
+          "value": {{ _qtd_fornecedores | tojson }}
+        },
+        {
+          "@type": "PropertyValue",
+          "name": "Percentual de empenhos sem licitação",
+          "value": {{ _pct_sem_licitacao | tojson }},
+          "unitText": "PERCENT"
+        }
+      ]{% endif %}
     },
     {
       "@type": "BreadcrumbList",
