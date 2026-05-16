@@ -420,13 +420,16 @@ jobs:
         run: |
           set -e
 
-          # Auth header pra acessar repo privado via HTTPS. GITHUB_TOKEN
-          # eh provisionado pelo workflow runner e expira no fim do run,
-          # entao nao persiste em disco. Aplicado via -c (config one-shot)
-          # ao inves de URL-embedded ou git remote set-url — evita vazar
-          # o token em ls-remote, git remote -v ou .git/config.
-          GIT_AUTH="Authorization: bearer ${{ secrets.GITHUB_TOKEN }}"
-          GIT_AUTH_CFG="http.https://github.com/.extraheader=${GIT_AUTH}"
+          # Auth header pra acessar repo privado via HTTPS. GitHub Git
+          # endpoint rejeita 'Authorization: bearer ...' (que so funciona
+          # pra API REST); precisa de Basic auth com base64(x-access-token:TOKEN).
+          # Mesmo formato usado pelo actions/checkout@v4 internamente.
+          # GITHUB_TOKEN expira no fim do run; -c (config one-shot) evita
+          # persistir em .git/config. ::add-mask:: garante que o blob base64
+          # nao apareca em logs.
+          GIT_AUTH_B64="$(printf 'x-access-token:%s' '${{ secrets.GITHUB_TOKEN }}' | base64 -w0)"
+          echo "::add-mask::$GIT_AUTH_B64"
+          GIT_AUTH_CFG="http.https://github.com/.extraheader=Authorization: basic $GIT_AUTH_B64"
 
           # Clone if missing
           if [ ! -d "${{ env.PROJECT_DIR }}/.git" ]; then
