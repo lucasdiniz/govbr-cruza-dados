@@ -41,15 +41,43 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph SOURCES[18+ fontes públicas]
-        direction LR
-        S1[RFB CNPJ ~58GB]
-        S2[PNCP ~30GB]
-        S3[TCE-PB ~20GB]
-        S4[dados.pb ~10GB]
-        S5[TSE ~12GB]
-        S6[PGFN ~11GB]
-        S7[+ 12 outras]
+    subgraph SOURCES[18+ fontes públicas brasileiras]
+        direction TB
+
+        subgraph SRC_EMP[Cadastros de empresa]
+            S_RFB[RFB CNPJ<br/>~58GB]
+            S_BNDES[BNDES<br/>~1.1GB]
+            S_CN[ComprasNet<br/>~static]
+        end
+
+        subgraph SRC_COMPRA[Compras públicas]
+            S_PNCP1[PNCP contratações<br/>~5GB]
+            S_PNCP2[PNCP contratos<br/>~6GB]
+            S_PNCP3[PNCP itens<br/>~19GB]
+            S_EMENDAS[Emendas Parlamentares<br/>~1GB]
+        end
+
+        subgraph SRC_FOLHA[Folha / Beneficiários federais]
+            S_SIAPE[SIAPE servidores<br/>~1.3GB]
+            S_CPGF[CPGF cartão corp.<br/>~210MB]
+            S_VIAG[Viagens a serviço<br/>~6GB]
+            S_BF[Bolsa Família<br/>~2GB]
+        end
+
+        subgraph SRC_PB[Paraíba — estadual/municipal]
+            S_TCE[TCE-PB<br/>~20GB]
+            S_DPB[dados.pb.gov.br<br/>~4GB]
+        end
+
+        subgraph SRC_ELEIT[Eleitorais]
+            S_TSE[TSE candidatos +<br/>doadores + bens<br/>~12GB]
+        end
+
+        subgraph SRC_SAN[Sanções e fiscais]
+            S_SANC[Sanções<br/>CEIS/CNEP/CEAF/Acordos<br/>~240MB]
+            S_PGFN[PGFN dívida ativa<br/>~11GB]
+            S_REN[Renúncias fiscais<br/>~510MB]
+        end
     end
 
     SOURCES -->|HTTPS<br/>etl.00_download| RAW[(DATA_DIR<br/>CSV / JSON / ZIP)]
