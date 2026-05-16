@@ -1,16 +1,24 @@
 {% extends "base.html" %}
+{# Coerce numericos vindos do DB (Decimal em live query) ou web_cache
+   (strings via json.dumps default=str). Sem isso `round` levanta TypeError
+   em strings e `tojson` levanta TypeError em Decimal — derrubando o render
+   inteiro com 500. #}
+{% set _total_pago = (perfil.total_pago if perfil else 0) | float %}
+{% set _qtd_fornecedores = ((perfil.qtd_fornecedores if perfil else 0) or 0) | int %}
+{% set _pct_sem_licitacao = ((perfil.pct_sem_licitacao if perfil else 0) or 0) | float %}
+{% set _has_perfil_data = perfil and _total_pago > 0 %}
 {% block title %}Prefeitura de {{ municipio }} - PB: gastos, fornecedores e servidores{% endblock %}
 {% block meta_description %}
-{%- if perfil and perfil.total_pago -%}
-Veja {{ perfil.total_pago | short_brl }} em despesas pagas pela prefeitura de {{ municipio }} - PB para {{ perfil.qtd_fornecedores or 0 }} fornecedores. {{ (perfil.pct_sem_licitacao or 0) | round | int }}% sem licitacao. Servidores, conflitos de interesse e sancoes CGU. Dados oficiais TCE-PB e Receita Federal.
+{%- if _has_perfil_data -%}
+Veja {{ _total_pago | short_brl }} em despesas pagas pela prefeitura de {{ municipio }} - PB para {{ _qtd_fornecedores }} fornecedores. {{ _pct_sem_licitacao | round | int }}% sem licitacao. Servidores, conflitos de interesse e sancoes CGU. Dados oficiais TCE-PB e Receita Federal.
 {%- else -%}
 Panorama de transparencia de {{ municipio }} - PB: despesas, fornecedores irregulares, servidores com conflito e contratos sem licitacao. Dados oficiais cruzados de TCE-PB, Receita Federal e CGU.
 {%- endif -%}
 {% endblock %}
 {% block og_title %}Prefeitura de {{ municipio }} - PB: gastos, fornecedores e servidores | TransparenciaPB{% endblock %}
 {% block og_description %}
-{%- if perfil and perfil.total_pago -%}
-{{ perfil.total_pago | short_brl }} em despesas, {{ perfil.qtd_fornecedores or 0 }} fornecedores, {{ (perfil.pct_sem_licitacao or 0) | round | int }}% sem licitacao. Veja o panorama de transparencia de {{ municipio }} - PB.
+{%- if _has_perfil_data -%}
+{{ _total_pago | short_brl }} em despesas, {{ _qtd_fornecedores }} fornecedores, {{ _pct_sem_licitacao | round | int }}% sem licitacao. Veja o panorama de transparencia de {{ municipio }} - PB.
 {%- else -%}
 Panorama de transparencia de {{ municipio }} - PB.
 {%- endif -%}
@@ -77,23 +85,23 @@ Panorama de transparencia de {{ municipio }} - PB.
       "inLanguage": "pt-BR",
       "creator": {"@id": "{{ origin }}/#organization"},
       "license": "https://creativecommons.org/licenses/by/4.0/",
-      "spatialCoverage": {"@id": {{ (page_url ~ '#place') | tojson }}}{% if perfil and perfil.total_pago %},
+      "spatialCoverage": {"@id": {{ (page_url ~ '#place') | tojson }}}{% if _has_perfil_data %},
       "variableMeasured": [
         {
           "@type": "PropertyValue",
           "name": "Total pago em despesas",
-          "value": {{ perfil.total_pago | tojson }},
+          "value": {{ _total_pago | tojson }},
           "unitCode": "BRL"
         },
         {
           "@type": "PropertyValue",
           "name": "Quantidade de fornecedores",
-          "value": {{ (perfil.qtd_fornecedores or 0) | tojson }}
+          "value": {{ _qtd_fornecedores | tojson }}
         },
         {
           "@type": "PropertyValue",
           "name": "Percentual de empenhos sem licitação",
-          "value": {{ (perfil.pct_sem_licitacao or 0) | tojson }},
+          "value": {{ _pct_sem_licitacao | tojson }},
           "unitText": "PERCENT"
         }
       ]{% endif %}
