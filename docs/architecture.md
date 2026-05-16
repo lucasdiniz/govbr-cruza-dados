@@ -313,7 +313,7 @@ sequenceDiagram
     alt Todas as queries Q65 succeeded — fail==0
         Warm->>Cache: SWAP ATÔMICO<br/>RENAME Q65__pending → Q65
         Note over Cache: Nova versão visível
-    else Qualquer query Q65 falhou — fail&gt;0
+    else Qualquer query Q65 falhou — fail diferente de zero
         Warm->>Pending: ABORT — descarta __pending
         Note over Cache: Live mantido intacto
     end
