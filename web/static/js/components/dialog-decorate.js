@@ -233,21 +233,34 @@ function _decorateDialogBody(body) {
     }
 
     // ─── Horizontal swipe to change tabs (mobile / touch) ──────────────
-    // On touch devices, swiping the dialog body left/right moves to the
-    // adjacent tab with a smooth follow-finger animation. The current
-    // section translates with the touch (with rubber-band resistance at
-    // tab boundaries); on release, it either commits with a slide-out +
-    // slide-in (page-turn feel) or snaps back to its original position.
+    // On touch devices, swiping anywhere within the dialog left/right
+    // moves to the adjacent tab with a smooth follow-finger animation.
+    // The current section translates with the touch (with rubber-band
+    // resistance at tab boundaries); on release, it either commits with
+    // a slide-out + slide-in (page-turn feel) or snaps back.
     //
-    // Skips touches that start inside a horizontally scrollable container
-    // (.tbl-wrap with overflow) so native table scrolling still works,
-    // and aborts if vertical motion dominates (lets the swipe-to-close
-    // handler in dialog-history-swipe.js own vertical gestures).
+    // Listeners attached on the <md-dialog> host (NOT on .dialog-body)
+    // so the gesture works in any area of the fullscreen mobile dialog
+    // — including the empty area below short content where the body
+    // padding ends. Esto importante: em mobile o md-dialog vira fullscreen
+    // (100dvh) mas o body so cobre ate o fim do conteudo, deixando area
+    // morta abaixo onde antes o swipe nao funcionava.
+    //
+    // Skips touches that start inside the dialog header (back/close
+    // buttons), the tab strip itself (let MWC handle direct tab clicks),
+    // and inside a horizontally scrollable container (.tbl-wrap with
+    // overflow) so native table scrolling still works. Aborts if
+    // vertical motion dominates (lets the swipe-to-close handler in
+    // dialog-history-swipe.js own vertical gestures).
     //
     // Re-decoration: the dialog body is reused across every drilldown
-    // open with NEW children each time. Listeners attached to it close
-    // over the previous `sections`/`setActive`/`tabEls`. We keep a
-    // _swipeTabsCleanup hook on the body so each decoration call detaches
+    // open with NEW children each time. Listeners on the dialog host
+    // close over the previous `sections`/`setActive`/`tabEls`. We keep
+    // a _swipeTabsCleanup hook on the body so each decoration call
+    // detaches its predecessor's handlers and binds fresh ones with
+    // up-to-date closures. Any leftover transform/animation on the new
+    // sections is also flushed so a stale "off-screen" hold from a
+    // previous dialog can't make tabs invisible.
     // its predecessor's handlers and binds fresh ones with up-to-date
     // closures. Any leftover transform/animation on the new sections is
     // also flushed so a stale "off-screen" hold from a previous dialog
@@ -262,6 +275,14 @@ function _decorateDialogBody(body) {
         s.style.willChange = '';
     });
     delete body.dataset.tabSwiping;
+
+    // Resolve o <md-dialog> host pra attachar listeners de swipe ali —
+    // cobre toda a viewport fullscreen no mobile (100dvh) incluindo a
+    // area vazia abaixo do body. Usa closest('md-dialog') porque body
+    // pode estar dentro de #empresa-dialog ou outro md-dialog futuro.
+    // Fallback pro body se nao encontrar (degradacao graciosa: mantem
+    // comportamento antigo de so-conteudo).
+    const dialog = body.closest('md-dialog') || body;
 
     const SWIPE_DIST = 60;        // px of horizontal motion to commit
     const SWIPE_VELOCITY = 0.5;   // px/ms — fast flick also commits
@@ -424,11 +445,19 @@ function _decorateDialogBody(body) {
 
     const onTouchStart = (e) => {
         if (!isTouchMobile() || e.touches.length !== 1) return;
-        // Bail if the touch starts inside a horizontally scrollable
-        // container that actually has overflow. Lets the user pan tables
-        // with both fingers without accidentally swapping tabs.
-        let el = e.target;
-        while (el && el !== body) {
+        // Bail se touch comeca em area que NAO deve disparar swipe lateral:
+        //  - dialog-header: back/close/share buttons (precisam de tap normal)
+        //  - dialog-nav (tab strip): MWC ja trata clicks/keyboard nas tabs
+        //  - .tbl-wrap com overflow horizontal: scroll nativo da tabela
+        const target = e.target;
+        if (target.closest && (target.closest('.dialog-header') || target.closest('.dialog-nav'))) {
+            return;
+        }
+        // Walk up ate o dialog procurando tbl-wrap horizontalmente scrollavel.
+        // Antes parava no body; agora paramos no dialog porque os listeners
+        // estao no host.
+        let el = target;
+        while (el && el !== dialog) {
             if (el.scrollWidth > el.clientWidth + 4) return;
             el = el.parentElement;
         }
@@ -485,16 +514,21 @@ function _decorateDialogBody(body) {
         active = false;
     };
 
-    body.addEventListener('touchstart', onTouchStart, { passive: true });
-    body.addEventListener('touchmove', onTouchMove, { passive: true });
-    body.addEventListener('touchend', onTouchEnd, { passive: true });
-    body.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    // Attach no <md-dialog> host (NAO no .dialog-body) pra cobrir TODA a
+    // viewport fullscreen no mobile, incluindo a area vazia abaixo do
+    // body quando conteudo eh curto. O body ainda eh referenciado dentro
+    // dos guards de tbl-wrap (walk-up para no dialog) e nas funcoes que
+    // animam sections (filhas do body).
+    dialog.addEventListener('touchstart', onTouchStart, { passive: true });
+    dialog.addEventListener('touchmove', onTouchMove, { passive: true });
+    dialog.addEventListener('touchend', onTouchEnd, { passive: true });
+    dialog.addEventListener('touchcancel', onTouchCancel, { passive: true });
 
     body._swipeTabsCleanup = () => {
-        body.removeEventListener('touchstart', onTouchStart);
-        body.removeEventListener('touchmove', onTouchMove);
-        body.removeEventListener('touchend', onTouchEnd);
-        body.removeEventListener('touchcancel', onTouchCancel);
+        dialog.removeEventListener('touchstart', onTouchStart);
+        dialog.removeEventListener('touchmove', onTouchMove);
+        dialog.removeEventListener('touchend', onTouchEnd);
+        dialog.removeEventListener('touchcancel', onTouchCancel);
         body._swipeTabsCleanup = null;
     };
 }
