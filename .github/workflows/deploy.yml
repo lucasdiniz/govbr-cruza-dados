@@ -1228,6 +1228,24 @@ jobs:
             echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
             exit 0
           fi
+          # Detecta flags SITEMAP_INCLUDE_* dos drop-ins systemd do cruza-web,
+          # que sao o state-of-truth de quais sub-sitemaps estao publicados.
+          # Sem isso, web.indexnow_submit so submete sitemap-cidades (~229 URLs)
+          # mesmo com /sitemap-licitacoes-*.xml e /sitemap-cidade-resumo.xml
+          # ativos em prod via drop-in.
+          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
+          if [ -d "$DROPIN_DIR" ]; then
+            for conf in "$DROPIN_DIR"/sitemap-*.conf; do
+              [ -f "$conf" ] || continue
+              while IFS= read -r line; do
+                # Match: Environment="KEY=VALUE" → export KEY=VALUE
+                if [[ "$line" =~ ^Environment=\"([A-Z_]+)=([^\"]+)\" ]]; then
+                  export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+                  echo "  detected flag from drop-in: ${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+                fi
+              done < "$conf"
+            done
+          fi
           echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
           # cruza-web ja foi restartado no step anterior; rota /<key>.txt
           # serve a chave nova caso ela tenha mudado.
