@@ -260,6 +260,16 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
         conn.autocommit = False
         try:
             with conn.cursor() as cur:
+                # Bound lock + statement time. ACCESS EXCLUSIVE do DROP
+                # MATERIALIZED VIEW espera readers terminarem; se houver
+                # SELECT lento (warm worker, request agressivo), o swap fica
+                # bloqueado e enfileira novos readers atras dele.
+                # lock_timeout: aborta se nao consegue o lock em 30s.
+                # statement_timeout: cap total da transacao em 120s.
+                # Ambos LOCAL: nao vazam pra outras conexoes.
+                cur.execute("SET LOCAL lock_timeout = '30s'")
+                cur.execute("SET LOCAL statement_timeout = '120s'")
+
                 # 1. Drop velho (CASCADE drops dependentes automaticamente).
                 # DROP MATERIALIZED VIEW ja adquire ACCESS EXCLUSIVE lock na MV
                 # e propaga pra dependentes; LOCK TABLE explicito nao funciona
@@ -274,11 +284,28 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
                 )
                 log.info(f"  {swap_name} -> {mv_name}")
 
-                # 3. Rename indexes do swap (sufixo _swap removido)
+                # 3. Rename indexes do swap (sufixo _swap removido).
+                # Guard: skip se nome final ja existe (footgun defensivo se
+                # algum dep usa nome colidente; raro mas barato proteger).
                 for idx_name, _idx_def in swap_indexes:
-                    if idx_name.endswith("_swap"):
-                        final = idx_name[: -len("_swap")]
-                        cur.execute(f"ALTER INDEX {idx_name} RENAME TO {final}")
+                    if not idx_name.endswith("_swap"):
+                        continue
+                    final = idx_name[: -len("_swap")]
+                    cur.execute(
+                        """
+                        SELECT 1 FROM pg_class
+                        WHERE relname = %s AND relkind = 'i'
+                          AND relnamespace = 'public'::regnamespace
+                        """,
+                        (final,),
+                    )
+                    if cur.fetchone():
+                        log.warning(
+                            f"  skip rename de '{idx_name}': '{final}' ja existe "
+                            f"(provavelmente collision com index de dependente)"
+                        )
+                        continue
+                    cur.execute(f"ALTER INDEX {idx_name} RENAME TO {final}")
 
                 # 4. Recriar dependentes (views: imediato; matviews: vazias)
                 for dep in dependents:
