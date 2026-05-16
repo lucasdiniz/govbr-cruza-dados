@@ -113,6 +113,7 @@ Definidos em [`../.github/workflows/deploy.yml`](../.github/workflows/deploy.yml
 | `expose_licitacoes_sitemap` | choice | `keep` | Controla `/licitacao/<mun>/<ano>/<ug>/<modnum>` no sitemap. `enable` exige cache e gate de 80%. |
 | `expose_cidade_resumo_sitemap` | choice | `keep` | Controla `/cidade/<slug>/<yyyy-mm>` no sitemap. `enable` exige cache e gate de 80%. |
 | `download_sources` | csv/string | vazio | Re-baixa fontes específicas via `etl.00_download --only` antes de rodar ETL/fase. Útil quando cleanup apagou CSVs. |
+| `mv_swap` | csv/string | vazio | Lista CSV de MVs para atomic swap zero-downtime (ex: `mv_empresa_pb`). Pra cada MV, lê `deploy/mv_updates/<mv>.sql` (com sufixo `_swap`). Roda após ETL phase, antes do warm. Permite atualizar UMA MV sem dropar todas (~1s downtime vs 1-2h do `etl_phase=sql`). Sanitizado para `[A-Za-z0-9_,]`. Veja [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime). |
 
 ## Cenários típicos
 
@@ -173,6 +174,20 @@ rewarm_cache_keys: Q65,PERFIL
 ```
 
 Isso força B4/Premium, configura `WARM_REWARM_KEYS`, roda warm em shadow e mantém live antigo até swap seguro ([linhas 972-1001](../.github/workflows/deploy.yml)).
+
+### MV atomic swap (zero-downtime)
+
+Pra atualizar UMA MV (ex: corrigir definição) sem mexer nas outras nem fazer resize de VM:
+
+```yaml
+etl_phase: web
+mv_swap: mv_empresa_pb
+rewarm_cache_keys: EMPRESA_PERFIL,EMPRESA_PERFIL_MUN
+```
+
+Requer arquivo `deploy/mv_updates/<mv_name>.sql` com a nova definição (sufixo `_swap` em todos os identifiers). Framework em [`../etl/mv_swap.py`](../etl/mv_swap.py); passos completos em [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime).
+
+Comparado a `etl_phase=sql` (DROP+CREATE de todas as MVs em `sql/12_views.sql`, 1-2h + VM resize), o swap usa a VM atual e tem downtime real de ~1s (só a transação de RENAME). Combine com `rewarm_cache_keys` se a MV alimenta `web_cache` keys.
 
 ### Habilitar sitemap de empresas
 

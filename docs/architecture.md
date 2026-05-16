@@ -284,6 +284,8 @@ Convenções estritas em `sql/12_views.sql`:
 3. **`REFRESH MATERIALIZED VIEW CONCURRENTLY`** exige UNIQUE INDEX na MV
 4. **Notas de refresh** no rodapé do arquivo documentam ordem em produção
 
+Para atualizar UMA MV (mudança pontual de definição) com **~1s de downtime** em vez de 1-2h do `etl_phase=sql`, use o framework `etl/mv_swap.py` — build paralelo + rename atômico. Detalhes em [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime).
+
 Detalhes operacionais em [`mv-guide.md`](mv-guide.md).
 
 ## Web cache e shadow rewarm

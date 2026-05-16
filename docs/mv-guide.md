@@ -83,6 +83,62 @@ flowchart TD
 
 > **L2 silenciosamente quebra** se uma MV L1 mudar de coluna sem propagar. A fase 18 ([`etl/21_views.py`](../etl/21_views.py)) executa o arquivo inteiro em ordem — um CREATE quebrado aborta o resto.
 
+## Atualizando UMA MV existente (atomic swap zero-downtime)
+
+`etl/mv_swap.py` permite atualizar a definição de UMA MV (incluindo schema/colunas novas) com **downtime de ~1s**, sem dropar as outras MVs do `sql/12_views.sql`. Reutilizável pra qualquer MV.
+
+**Quando usar:**
+- Correção pontual de query/CTE de UMA MV (ex: adicionar EXISTS guard contra CPF padded).
+- Mudança de schema: adicionar coluna, alterar tipo, renomear coluna.
+- Qualquer mudança onde `REFRESH MATERIALIZED VIEW` não basta porque a definição mudou.
+
+**Quando NÃO usar:**
+- Refresh periódico de dados (use `REFRESH MATERIALIZED VIEW CONCURRENTLY`).
+- Mudanças em múltiplas MVs simultaneamente que se referenciam (use `etl_phase=sql`).
+
+**Mecânica** (detalhes em [`../etl/mv_swap.py`](../etl/mv_swap.py)):
+
+1. Build paralelo (autocommit): `CREATE MATERIALIZED VIEW <mv>_swap AS …`. Tráfego live continua na MV original.
+2. Snapshot recursivo de dependentes via `pg_depend`/`pg_rewrite` + `pg_get_viewdef`.
+3. Transação atômica (~1s): `DROP MATERIALIZED VIEW <mv> CASCADE` + `ALTER MV <mv>_swap RENAME TO <mv>` + recreate de dependentes.
+4. `REFRESH MATERIALIZED VIEW` em MVs dependentes (fora de tx).
+
+**Passos pra atualizar uma MV:**
+
+1. **Crie `deploy/mv_updates/<mv_name>.sql`** com a nova definição usando sufixo `_swap` em todos os identifiers:
+
+   ```sql
+   CREATE MATERIALIZED VIEW mv_empresa_pb_swap AS
+   WITH ... SELECT ...;
+
+   CREATE UNIQUE INDEX idx_mv_epb_cnpj_swap ON mv_empresa_pb_swap(cnpj_basico);
+   CREATE INDEX idx_mv_epb_inativa_swap ON mv_empresa_pb_swap(...) WHERE ...;
+   ```
+
+   O framework remove o sufixo `_swap` dos identifiers após o swap. Todos os indexes da MV original devem ter equivalente `_swap`.
+
+2. **Atualize `sql/12_views.sql`** com a mesma definição. O swap altera a MV em prod imediatamente; o `sql/12_views.sql` garante que o próximo full rebuild reflita o fix.
+
+3. **Teste local**:
+   ```bash
+   python -m etl.mv_swap mv_empresa_pb deploy/mv_updates/mv_empresa_pb.sql
+   ```
+
+4. **Deploy via workflow**:
+   ```bash
+   gh workflow run deploy.yml --ref main \
+     -f etl_phase=web \
+     -f mv_swap=mv_empresa_pb \
+     -f rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN
+   ```
+
+   `mv_swap` aceita múltiplas MVs em CSV. Roda APÓS ETL phase, ANTES do warm. Pode ser combinado com `etl_phase=web` pra evitar VM resize.
+
+**Limitações:**
+
+- Durante o REFRESH pós-swap, MVs dependentes ficam vazias temporariamente. Pra MVs que alimentam fluxo crítico, prefira aplicar guard no SQL source e rodar `etl_phase=sql` em janela de baixo tráfego.
+- A transação swap requer `ACCESS EXCLUSIVE` (vem do `DROP MATERIALIZED VIEW`); se houver query lenta concorrente lendo a MV, o swap aguarda. Considere `lock_timeout` se isso for crítico.
+
 ## Convenções do `sql/12_views.sql`
 
 1. **DROP no topo** em ordem reversa de dependência (views planas → L2 → L1).

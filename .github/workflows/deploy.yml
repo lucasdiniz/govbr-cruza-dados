@@ -107,6 +107,11 @@ on:
         required: false
         type: string
         default: ''
+      mv_swap:
+        description: 'Lista CSV de MVs para atomic swap zero-downtime (ex: "mv_empresa_pb,mv_servidor_pb_risco"). Pra cada MV, requer deploy/mv_updates/<mv_name>.sql com CREATE MATERIALIZED VIEW <mv_name>_swap + indexes (sufixo _swap). Roda APOS ETL phase, ANTES do warm. Permite atualizar UMA MV sem dropar todas (DROP+CREATE de sql/12_views.sql leva 1-2h, com swap eh <1s de bloqueio). Pode ser usado com etl_phase=web pra mudanca cirurgica. Apenas [a-zA-Z0-9_,] permitidos.'
+        required: false
+        type: string
+        default: ''
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -691,6 +696,55 @@ jobs:
           source venv/bin/activate
           echo "=== Running all queries ==="
           python -m etl.run_queries 2>&1 | tail -100
+
+      # ── MV atomic swap (opt-in, zero-downtime) ──
+      # IMPORTANTE: este step roda APOS TODOS os ETL phases (sql, incremental,
+      # numerica, download_sources, run_queries) e ANTES do warm. Se rodasse
+      # antes do ETL, a MV swapada seria buildada das tabelas velhas e
+      # depois o ETL mutaria as tabelas, deixando a MV stale (achado em GPT-5.5
+      # review da PR #153).
+      #
+      # Pra cada MV listada em mv_swap, roda etl.mv_swap que:
+      # 1. Cria <mv>_swap em paralelo (trafego live continua na original)
+      # 2. Captura dependentes (views + MVs que referenciam)
+      # 3. Transacao atomica: DROP CASCADE original + RENAME swap → original
+      #    + recria dependentes capturadas (downtime ~1s)
+      # 4. REFRESH MVs dependentes fora de tx
+      #
+      # Caso de uso: mudar UMA MV (schema ou definicao) sem dropar todas.
+      # Comparado a etl_phase=sql (DROP+CREATE de todas as MVs em
+      # sql/12_views.sql que leva 1-2h e exige B4 resize), o swap usa o
+      # tamanho atual da VM e tem downtime de <1s.
+      #
+      # Pode ser combinado com etl_phase=web (mudanca cirurgica + restart
+      # web sem ETL pesado) ou com etl_phase numerica (ETL roda primeiro,
+      # swap aplica MV atualizada com dados frescos).
+      - name: "MV atomic swap"
+        if: inputs.mv_swap != ''
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+
+          # Sanitize: apenas [a-zA-Z0-9_,]; rejeita ; SQL injection
+          MV_SWAP_RAW="${{ inputs.mv_swap }}"
+          MV_SWAP=$(echo "$MV_SWAP_RAW" | tr -cd 'a-zA-Z0-9_,')
+          if [ "$MV_SWAP" != "$MV_SWAP_RAW" ]; then
+            echo "::error::mv_swap contem caracteres invalidos. Apenas [a-zA-Z0-9_,] permitidos."
+            exit 1
+          fi
+
+          IFS=',' read -ra MVS <<< "$MV_SWAP"
+          for MV in "${MVS[@]}"; do
+            SQL_FILE="deploy/mv_updates/${MV}.sql"
+            if [ ! -f "$SQL_FILE" ]; then
+              echo "::error::Arquivo $SQL_FILE nao existe. Crie com CREATE MATERIALIZED VIEW ${MV}_swap + indexes."
+              exit 1
+            fi
+            echo "=== Atomic swap: $MV ==="
+            python -m etl.mv_swap "$MV" "$SQL_FILE" 2>&1
+            echo "=== $MV swapped ==="
+          done
 
       # ── Deploy web services ──
       - name: Deploy web frontend and cache warmer

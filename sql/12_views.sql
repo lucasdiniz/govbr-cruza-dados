@@ -664,12 +664,27 @@ CREATE INDEX idx_mv_srv_risco ON mv_servidor_pb_risco(risco_score DESC) WHERE ri
 CREATE MATERIALIZED VIEW mv_empresa_pb AS
 WITH
 pb_cnpj AS (
-    -- Todos os CNPJs que aparecem em qualquer fonte PB
-    SELECT DISTINCT cnpj_basico FROM tce_pb_despesa WHERE cnpj_basico IS NOT NULL
-    UNION SELECT DISTINCT cnpj_basico FROM pb_empenho WHERE cnpj_basico IS NOT NULL
-    UNION SELECT DISTINCT cnpj_basico FROM pb_contrato WHERE cnpj_basico IS NOT NULL
-    UNION SELECT DISTINCT cnpj_basico FROM pb_saude WHERE cnpj_basico IS NOT NULL
-    UNION SELECT DISTINCT cnpj_basico FROM pb_convenio WHERE cnpj_basico IS NOT NULL
+    -- Todos os CNPJs que aparecem em qualquer fonte PB.
+    -- Guard EXISTS(estabelecimento) em CADA fonte filtra:
+    --   (a) CPFs padded em tce_pb_despesa (LEFT(cpf_cnpj, 8) sem validacao)
+    --   (b) Falsos CNPJs em pb_empenho/pb_saude/pb_contrato/pb_convenio
+    --       (mesma classe de bug — GPT-5.5 review #153: ~1022 docs em
+    --       pb_empenho, 34 em pb_saude, 1 em pb_contrato sem estabelecimento).
+    SELECT DISTINCT cnpj_basico FROM tce_pb_despesa d
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
+    UNION SELECT DISTINCT cnpj_basico FROM pb_empenho p
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_credor)
+    UNION SELECT DISTINCT cnpj_basico FROM pb_contrato p
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_contratado)
+    UNION SELECT DISTINCT cnpj_basico FROM pb_saude p
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_credor)
+    UNION SELECT DISTINCT cnpj_basico FROM pb_convenio p
+      WHERE cnpj_basico IS NOT NULL
+        AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cnpj_convenente)
 ),
 tce_agg AS (
     SELECT cnpj_basico,
@@ -680,36 +695,50 @@ tce_agg AS (
            ARRAY_AGG(DISTINCT municipio ORDER BY municipio)
               FILTER (WHERE municipio IS NOT NULL) AS municipios,
            COUNT(*) FILTER (WHERE numero_licitacao IS NULL OR numero_licitacao = '' OR numero_licitacao = '0' OR numero_licitacao = '000000000' OR modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao
-    FROM tce_pb_despesa
+    FROM tce_pb_despesa d
     WHERE cnpj_basico IS NOT NULL AND valor_pago > 0
+      -- Guard contra CPF padded (PR #151 follow-up): so contar empenhos
+      -- onde cpf_cnpj eh CNPJ legitimo no RFB.
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento est
+          WHERE est.cnpj_completo = d.cpf_cnpj
+      )
     GROUP BY cnpj_basico
 ),
 pb_emp_agg AS (
     SELECT cnpj_basico,
            SUM(valor_empenho) AS total_empenho,
            COUNT(*) AS qtd_empenhos
-    FROM pb_empenho WHERE cnpj_basico IS NOT NULL
+    FROM pb_empenho p
+    WHERE cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_credor)
     GROUP BY cnpj_basico
 ),
 pb_ctr_agg AS (
     SELECT cnpj_basico,
            SUM(valor_original) AS total_contrato,
            COUNT(*) AS qtd_contratos
-    FROM pb_contrato WHERE cnpj_basico IS NOT NULL
+    FROM pb_contrato p
+    WHERE cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_contratado)
     GROUP BY cnpj_basico
 ),
 pb_sau_agg AS (
     SELECT cnpj_basico,
            SUM(valor_lancamento) AS total_saude,
            COUNT(*) AS qtd_saude
-    FROM pb_saude WHERE cnpj_basico IS NOT NULL
+    FROM pb_saude p
+    WHERE cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cpfcnpj_credor)
     GROUP BY cnpj_basico
 ),
 pb_conv_agg AS (
     SELECT cnpj_basico,
            SUM(valor_concedente) AS total_convenio,
            COUNT(*) AS qtd_convenios
-    FROM pb_convenio WHERE cnpj_basico IS NOT NULL
+    FROM pb_convenio p
+    WHERE cnpj_basico IS NOT NULL
+      AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = p.cnpj_convenente)
     GROUP BY cnpj_basico
 ),
 lic_agg AS (
