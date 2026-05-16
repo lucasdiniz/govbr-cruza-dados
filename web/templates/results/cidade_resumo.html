@@ -198,7 +198,7 @@
                 </thead>
                 <tbody>
                     {% for e in top_empenhos %}
-                    <tr>
+                    <tr{% if e.id %} class="clickable-row" data-empenho-id="{{ e.id }}"{% endif %}>
                         <td data-label="Data" class="stack-meta">{% if e.data_empenho %}{{ e.data_empenho[8:10] }}/{{ e.data_empenho[5:7] }}{% else %}-{% endif %}</td>
                         <td data-label="Empenho" class="stack-meta"><code>{{ e.numero_empenho|clean_text or "-" }}</code></td>
                         <td data-label="Empresa" class="stack-title">
