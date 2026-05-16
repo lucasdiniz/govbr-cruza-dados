@@ -1205,11 +1205,21 @@ jobs:
       # ── SEO: notificar IndexNow (Bing/Yandex/Yahoo/Seznam/Naver) ──
       # Roda APOS o restart pos-warm pra garantir que /<INDEXNOW_KEY>.txt
       # esteja servindo a chave NOVA quando os crawlers vierem validar.
-      # Submissao usa sitemap gerado localmente em Python (NAO via HTTP),
-      # entao independente do estado do cruza-web. Tolerante a falha:
-      # `continue-on-error: true` + `|| true` no script garantem que
-      # IndexNow flaky nao quebra o deploy. Skip silencioso se a env
-      # var INDEXNOW_KEY nao estiver no .env.
+      #
+      # Submissao DELIBERADAMENTE limitada a cidades estaticas (~228 URLs:
+      # paginas estaticas /, /mapa, /sobre, /glossario, /contato + 223
+      # /cidade/<slug>). Sub-sitemaps maiores (empresas, licitacoes,
+      # cidade-resumo mensal) ficam DE FORA — sao descobertos via crawl
+      # natural do Google/Bing apos serem incluidos no /sitemap.xml index
+      # pelo drop-in systemd correspondente.
+      #
+      # Por que: deploys frequentes nao precisam re-notificar URLs antigas
+      # ao Bing (quota custosa) — IndexNow eh pra "URL nova ou conteudo
+      # mudou", nao "deployei codigo de novo". Toggles de sitemap em
+      # `enable` (rodam so quando user explicitamente passa o input)
+      # tambem nao chamam IndexNow desde PR #147.
+      #
+      # Tolerante a falha: continue-on-error + || warning no python -m.
       - name: SEO - IndexNow submit (Bing/Yandex/Yahoo)
         if: inputs.etl_phase == 'web' || inputs.etl_phase == 'all'
         continue-on-error: true
@@ -1228,25 +1238,16 @@ jobs:
             echo "INDEXNOW_KEY nao setada no .env — skipping IndexNow submit"
             exit 0
           fi
-          # Detecta flags SITEMAP_INCLUDE_* dos drop-ins systemd do cruza-web,
-          # que sao o state-of-truth de quais sub-sitemaps estao publicados.
-          # Sem isso, web.indexnow_submit so submete sitemap-cidades (~229 URLs)
-          # mesmo com /sitemap-licitacoes-*.xml e /sitemap-cidade-resumo.xml
-          # ativos em prod via drop-in.
-          DROPIN_DIR=/etc/systemd/system/cruza-web.service.d
-          if [ -d "$DROPIN_DIR" ]; then
-            for conf in "$DROPIN_DIR"/sitemap-*.conf; do
-              [ -f "$conf" ] || continue
-              while IFS= read -r line; do
-                # Match: Environment="KEY=VALUE" → export KEY=VALUE
-                if [[ "$line" =~ ^Environment=\"([A-Z_]+)=([^\"]+)\" ]]; then
-                  export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
-                  echo "  detected flag from drop-in: ${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
-                fi
-              done < "$conf"
-            done
-          fi
-          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}) ==="
+          # IMPORTANTE: explicitamente DESEXPORTA flags SITEMAP_INCLUDE_*
+          # antes de chamar o submit. Sem isso, qualquer fonte que vaze
+          # essas vars (heranca de step anterior do MESMO job, .env futuro,
+          # GHA env block etc) faria web.indexnow_submit submeter os
+          # sub-sitemaps inteiros (~14k cidade-resumo + N shards de
+          # licitacoes/empresas), queimando quota do Bing.
+          unset SITEMAP_INCLUDE_EMPRESAS
+          unset SITEMAP_INCLUDE_LICITACOES
+          unset SITEMAP_INCLUDE_CIDADE_RESUMO
+          echo "=== IndexNow submit (host=${SITE_URL:-https://transparenciapb.org}, scope=cidades-estaticas) ==="
           # cruza-web ja foi restartado no step anterior; rota /<key>.txt
           # serve a chave nova caso ela tenha mudado.
           python -m web.indexnow_submit 2>&1 || echo "::warning::IndexNow submit falhou — verificar log acima"
