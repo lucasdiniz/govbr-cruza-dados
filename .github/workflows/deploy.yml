@@ -85,7 +85,7 @@ on:
           - disable
         default: keep
       expose_licitacoes_sitemap:
-        description: 'Toggle das paginas /licitacao/<mun>/<ano>/<ug>/<modnum> no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_LICITACOES=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes (caso contrario URLs retornarao 503).'
+        description: 'Toggle das paginas /licitacao/<mun>/<ano>/<ug>/<modnum> no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_LICITACOES=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes (caso contrario URLs retornarao 503). IndexNow nao eh acionado pra estas URLs (Google/Bing descobrem via crawl natural).'
         required: false
         type: choice
         options:
@@ -94,7 +94,7 @@ on:
           - disable
         default: keep
       expose_cidade_resumo_sitemap:
-        description: 'Toggle das paginas /cidade/<slug>/<yyyy-mm> (resumo mensal) no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_CIDADE_RESUMO=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes.'
+        description: 'Toggle das paginas /cidade/<slug>/<yyyy-mm> (resumo mensal) no sitemap. "keep" preserva. "enable" escreve drop-in SITEMAP_INCLUDE_CIDADE_RESUMO=1 + restart cruza-web. "disable" remove. Exige warm_cache=true antes. IndexNow nao eh acionado pra estas URLs (Google/Bing descobrem via crawl natural).'
         required: false
         type: choice
         options:
@@ -1542,7 +1542,7 @@ jobs:
       #   4. systemctl daemon-reload + restart cruza-web
       #   5. Verifica /sitemap.xml inclui >=1 shard de licitacoes
       #   6. E2E smoke test: 5 paths aleatorios → HTTP 200
-      #   7. IndexNow re-submit
+      #   7. IndexNow desativado (URLs viraveis pelo crawl natural)
       # Falha em 5-6 dispara rollback automatico (rm drop-in).
       #
       # "disable" sempre roda (mesmo sem warm). Remove drop-in + restart.
@@ -1561,7 +1561,7 @@ jobs:
             echo "Drop-in nao existia (sitemap ja estava sem /licitacao/). No-op."
           fi
 
-      - name: Enable licitacoes sitemap (drop-in + verify + IndexNow)
+      - name: Enable licitacoes sitemap (drop-in + verify, no IndexNow)
         if: |
           inputs.expose_licitacoes_sitemap == 'enable' &&
           steps.warm-cache.outcome != 'failure'
@@ -1695,18 +1695,14 @@ jobs:
             exit 1
           fi
 
-          # 6. IndexNow re-submit
-          source venv/bin/activate
-          set -a
-          source .env 2>/dev/null || true
-          set +a
-          if [ -n "${INDEXNOW_KEY:-}" ]; then
-            echo "=== IndexNow re-submit (licitacoes) ==="
-            SITEMAP_INCLUDE_LICITACOES=1 python -m web.indexnow_submit 2>&1 || \
-              echo "::warning::IndexNow submit falhou — descobrirao via crawl normal"
-          else
-            echo "INDEXNOW_KEY nao setada — skip IndexNow"
-          fi
+          # 6. IndexNow submit DESATIVADO pra licitacoes.
+          # Sitemap continua expondo as URLs (Google/Bing descobrem via
+          # crawl normal), mas evitamos re-submeter URLs que ja foram
+          # notificadas — economiza quota e reduz ruido em deploys
+          # frequentes. Se precisar forcar re-submit pontual, rode
+          # manualmente na VM:
+          #   SITEMAP_INCLUDE_LICITACOES=1 python -m web.indexnow_submit
+          echo "Skip IndexNow re-submit (licitacoes) — habilitado apenas via sitemap/crawl natural"
 
       # ── Toggle cidade-resumo mensal sitemap ──
       # Mesma logica do empresa/licitacoes mas pra /cidade/<slug>/<yyyy-mm>.
@@ -1725,7 +1721,7 @@ jobs:
             echo "Drop-in nao existia. No-op."
           fi
 
-      - name: Enable cidade-resumo sitemap (drop-in + verify + IndexNow)
+      - name: Enable cidade-resumo sitemap (drop-in + verify, no IndexNow)
         if: |
           inputs.expose_cidade_resumo_sitemap == 'enable' &&
           steps.warm-cache.outcome != 'failure'
@@ -1834,18 +1830,14 @@ jobs:
             exit 1
           fi
 
-          # 5. IndexNow re-submit
-          source venv/bin/activate
-          set -a
-          source .env 2>/dev/null || true
-          set +a
-          if [ -n "${INDEXNOW_KEY:-}" ]; then
-            echo "=== IndexNow re-submit (cidade-resumo) ==="
-            SITEMAP_INCLUDE_CIDADE_RESUMO=1 python -m web.indexnow_submit 2>&1 || \
-              echo "::warning::IndexNow submit falhou — descobrirao via crawl normal"
-          else
-            echo "INDEXNOW_KEY nao setada — skip IndexNow"
-          fi
+          # 5. IndexNow submit DESATIVADO pra cidade-resumo mensal.
+          # Sitemap continua expondo as ~14k URLs do resumo mensal
+          # (Google/Bing descobrem via crawl normal), mas evitamos
+          # re-submeter URLs que ja foram notificadas — economiza
+          # quota e reduz ruido em deploys frequentes. Se precisar
+          # forcar re-submit pontual, rode manualmente na VM:
+          #   SITEMAP_INCLUDE_CIDADE_RESUMO=1 python -m web.indexnow_submit
+          echo "Skip IndexNow re-submit (cidade-resumo) — habilitado apenas via sitemap/crawl natural"
 
       # ── Verify ──
       - name: Verify database
