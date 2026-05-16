@@ -10,14 +10,14 @@ A VM fica barata em modo web (`Standard_B2as_v2` + Standard SSD) e sobe temporar
 sequenceDiagram
     autonumber
     actor Owner
-    participant GH as GitHub Actions<br/>workflow_dispatch
-    participant AZ as Azure OIDC<br/>preflight/postflight
-    participant VM as Azure VM<br/>self-hosted runner
-    participant DB as PostgreSQL/web_cache
+    participant GH as GitHub Actions
+    participant AZ as Azure OIDC
+    participant VM as Azure VM
+    participant DB as PostgreSQL + web_cache
     participant WEB as Nginx + cruza-web
 
-    Owner->>GH: workflow_dispatch<br/>14 inputs
-    GH->>AZ: preflight<br/>login OIDC
+    Owner->>GH: workflow_dispatch — 14 inputs
+    GH->>AZ: preflight — login OIDC
     AZ->>AZ: decide B2/B4 + Standard/Premium
     alt etl_phase != web OU warm/rewarm
         AZ->>AZ: deallocate VM
@@ -29,7 +29,7 @@ sequenceDiagram
     end
     AZ->>VM: wait SSH:22
 
-    GH->>VM: deploy job<br/>runner self-hosted
+    GH->>VM: deploy job — runner self-hosted
     VM->>VM: checkout + git reset origin/main
     VM->>VM: instala deps + escreve .env
     VM->>DB: pg-autotune por RAM atual
@@ -40,7 +40,7 @@ sequenceDiagram
     end
     VM->>WEB: setup nginx/fail2ban/goaccess/umami
     opt warm_cache=true OU all/sql OU rewarm_cache_keys
-        VM->>DB: cruza-warm-cache.service<br/>oneshot bloqueante
+        VM->>DB: cruza-warm-cache.service — oneshot bloqueante
     end
     opt invalidate_cache_keys
         VM->>DB: DELETE web_cache live rows
@@ -50,14 +50,14 @@ sequenceDiagram
     end
     VM->>WEB: restart cruza-web após warm
     opt expose_*_sitemap = enable
-        VM->>DB: gate cobertura >=80%
+        VM->>DB: gate cobertura &gt;=80%
         VM->>WEB: drop-in systemd + smoke
     end
     opt IndexNow
         VM->>WEB: submit URLs selecionadas
     end
 
-    GH->>AZ: postflight<br/>login OIDC
+    GH->>AZ: postflight — login OIDC
     AZ->>AZ: deallocate VM
     AZ->>AZ: resize B4 → B2
     AZ->>AZ: disk Premium → Standard<br/>best-effort, limite 2/24h

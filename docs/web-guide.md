@@ -18,27 +18,27 @@ Este guia complementa [architecture.md](architecture.md) e o [glossario.md](glos
 sequenceDiagram
     autonumber
     participant B as Browser
-    participant N as Nginx (rate limit)
+    participant N as Nginx
     participant R as FastAPI route
-    participant D as web/db.py
+    participant D as web db py
     participant PG as PostgreSQL
     participant T as Jinja2
 
     B->>N: GET /cidade/joao-pessoa
-    N->>R: proxy (host allowed, RPS ok)
-    R->>D: read_web_cache(qid="KPI_SUMMARY", municipio="João Pessoa")
+    N->>R: proxy — host allowed, RPS ok
+    R->>D: read_web_cache qid=KPI_SUMMARY, municipio=JP
     alt cache hit
-        D-->>R: (cols, rows)
-        R->>T: render(cidade.html, ctx)
+        D-->>R: cols, rows
+        R->>T: render cidade.html
         T-->>B: HTML SSR
     else cache miss em rota cache-only
         D-->>R: None
-        R-->>B: 503 (warm pendente)
-    else live fallback (rotas leves: perfil, autocomplete)
-        R->>D: execute_query(sql, timeout=TIMEOUT_PROFILE=3s)
+        R-->>B: 503 — warm pendente
+    else live fallback — rotas leves
+        R->>D: execute_query — timeout=TIMEOUT_PROFILE=3s
         D->>PG: SET statement_timeout=3000; SELECT ...
         PG-->>D: rows ou timeout
-        D-->>R: (cols, rows)
+        D-->>R: cols, rows
         R->>T: render
         T-->>B: HTML
     end

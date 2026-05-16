@@ -292,28 +292,28 @@ A tabela `web_cache` armazena resultados pré-computados de queries pesadas. Fas
 
 ```mermaid
 sequenceDiagram
-    participant Op as Owner / Workflow
+    participant Op as Owner ou Workflow
     participant Warm as warm_cache.py
-    participant Cache as web_cache (live)
-    participant Pending as web_cache (__pending)
+    participant Cache as web_cache live
+    participant Pending as web_cache __pending
     participant Web as FastAPI
 
-    Note over Cache,Web: Estado: live serve todos os usuários
+    Note over Cache,Web: Estado — live serve todos os usuários
 
     Op->>Warm: rewarm_cache_keys=Q65
-    Warm->>Pending: INSERT INTO Q65__pending<br/>(execução completa)
+    Warm->>Pending: INSERT INTO Q65__pending<br/>execução completa
 
     par Live continua servindo
-        Web->>Cache: SELECT Q65 (live)
+        Web->>Cache: SELECT Q65 live
         Cache-->>Web: rows existentes
     and Warm escreve em shadow
         Warm->>Pending: queries calmas, 12-18h
     end
 
-    alt Todas as queries Q65 succeeded (fail==0)
+    alt Todas as queries Q65 succeeded — fail==0
         Warm->>Cache: SWAP ATÔMICO<br/>RENAME Q65__pending → Q65
         Note over Cache: Nova versão visível
-    else Qualquer query Q65 falhou (fail>0)
+    else Qualquer query Q65 falhou — fail&gt;0
         Warm->>Pending: ABORT — descarta __pending
         Note over Cache: Live mantido intacto
     end
