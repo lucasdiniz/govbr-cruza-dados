@@ -125,10 +125,15 @@ def _capture_dependents(cur, mv_name: str) -> list[dict]:
             WHERE dependent.oid <> deps.oid
               AND dependent.relkind IN ('v', 'm')
         )
-        SELECT relname, relkind, MIN(depth) AS depth
+        SELECT relname, relkind, MAX(depth) AS depth
         FROM deps
         GROUP BY relname, relkind
-        ORDER BY MIN(depth) ASC, relname
+        -- Order by MAX(depth) ASC: pra um dependente com multiplos paths
+        -- (ex: B depende da MV diretamente E de A que tambem depende),
+        -- precisamos recriar A antes de B. Usar MAX garante que B (depth 2
+        -- via A) venha depois de A (depth 1). MIN(depth) ordenaria B como
+        -- 1 e quebraria o recreate. Achado em GPT-5.5 review da PR #153.
+        ORDER BY MAX(depth) ASC, relname
         """,
         (mv_name, mv_name),
     )
