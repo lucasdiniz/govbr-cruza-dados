@@ -12,7 +12,7 @@ Accepted
 
 A tabela `web_cache` armazena resultados pré-computados das queries em
 [`web/queries/registry.py`](../../web/queries/registry.py). Cada linha tem
-`(query_id, params_hash) → JSONB`. O warm leva **12–18 horas** para preencher
+`(query_id, municipio) → JSONB`. O warm leva **12–18 horas** para preencher
 todas as queries de todos os municípios PB.
 
 Mudanças em `registry.py` (ex.: correção de bug na Q65, nova versão da Q67 com
@@ -60,7 +60,7 @@ Pattern `rewarm_cache_keys` implementado em
 
 Algumas chaves disparam expansão automática para evitar deploys parciais:
 
-- Shadow de prefixos `PERFIL`, `TOP_FORN`, `TOP_SERV` → inclui automaticamente
+- Shadow de prefixos `PERFIL`, `TOP_FORNECEDORES`, `TOP_SERVIDORES` → inclui automaticamente
   `KPI_SUMMARY` (que depende deles).
 
 ### Match semantics — **exato de qid ou base**, não substring
@@ -112,5 +112,5 @@ contra a chave fornecida (igualdade estrita).
 - Workflow:
   [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) (input
   `rewarm_cache_keys`).
-- Docs: `docs/cache.md` (a ser criado) detalha o ciclo de vida do
+- Docs: [`docs/cache.md`](../cache.md) detalha o ciclo de vida do
   `web_cache` e operação do rewarm.

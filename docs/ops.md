@@ -356,13 +356,13 @@ az disk show --resource-group <rg> --name <data-disk-name> --query sku.name -o t
 
 ## Runbook: ETL falhou
 
-1. Leia o log do step que falhou e identifique a fase `N`.
+1. Leia o log do step que falhou e identifique a **posição da fase na lista `phases`** de [`etl/run_all.py:76-101`](../etl/run_all.py) (`etl_phase` é índice 1-based, não rótulo "Fase N" — ver [deploy.md](deploy.md)).
 2. Se a fase depende de CSV que pode ter sido limpo, rode download seletivo:
 
 ```yaml
 download_sources: "tce_pb"
 skip_download: false
-etl_phase: "19"
+etl_phase: "19"   # exemplo: 19ª entrada = Fase 14 TCE-PB
 ```
 
 3. Se os CSVs ainda existem:

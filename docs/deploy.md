@@ -146,10 +146,21 @@ warm_cache: true
 
 ### Retomar fase específica
 
-Se a fase 19 falhou:
+> ⚠️ **Cuidado**: o argumento `etl_phase: "N"` é o **índice 1-based da lista `phases`** em [`etl/run_all.py:76-101`](../etl/run_all.py), **não** o rótulo "Fase N" do nome. Por exemplo, `etl_phase: "18"` roda a 18ª entrada da lista (`Fase 13: TSE Prestacao`), não as MVs (`Fase 18: Views`).
+
+Mapeamento dos casos comuns:
+
+| Rótulo desejado | Índice na lista | `etl_phase` |
+|---|---|---|
+| Views materializadas (Fase 18) | 23ª entrada | `"23"` |
+| MV sitemap (Fase 19) | 24ª entrada | `"24"` |
+| Normalização CPF/CNPJ (Fase 17) | 22ª entrada | `"22"` |
+| TCE-PB (Fase 14) | 19ª entrada | `"19"` |
+
+Para retomar a partir de uma fase que falhou, identifique o índice no log e use:
 
 ```yaml
-etl_phase: "19"
+etl_phase: "19"   # exemplo: 19ª entrada = Fase 14 TCE-PB
 ```
 
 O workflow chama `python -m etl.run_all "19"` ([linhas 674-683](../.github/workflows/deploy.yml)).

@@ -78,7 +78,7 @@ JOINs e agregações ficam **em SQL**, não em Python. Materialized Views (ver
 - Helpers em `etl/db.py` reduzem boilerplate ao mínimo. O contributor escreve
   apenas o generator de linhas; o `COPY` é uma chamada de função.
 - `CONTRIBUTING.md` documenta a convenção na seção "Convenções Python".
-- `docs/etl-guide.md` (a ser criado) traz exemplos completos do padrão
+- [`docs/etl-guide.md`](../etl-guide.md) traz exemplos completos do padrão
   generator → `copy_from_stream`.
 - Para análise exploratória, contributors podem usar pandas em
   Jupyter/notebooks **fora do código de produção** — basta não importar pandas

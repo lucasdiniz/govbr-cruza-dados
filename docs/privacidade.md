@@ -1,6 +1,6 @@
-﻿# Política de privacidade e tratamento de dados pessoais
+# Política de privacidade e tratamento de dados pessoais
 
-**Última atualização:** 2026-05-16  
+**Última atualização:** 2026-05-16
 **Commit de referência:** `4982af7`
 
 Esta política explica como o **govbr-cruza-dados** e o portal

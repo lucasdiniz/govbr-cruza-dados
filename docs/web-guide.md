@@ -51,14 +51,25 @@ sequenceDiagram
 As Q## do modo deep-dive são registradas em [`web/queries/registry.py`](../web/queries/registry.py) via `QueryDef`:
 
 ```python
+# Padrão: _reg() (positional + kwargs) — chama QueryDef internamente
 _reg(
-    qid="Q199",
-    titulo="Servidores com vínculo CPF→CNPJ em fornecedor pago",
-    categoria="conflito-interesses",  # ver categorias existentes
-    sql_full=SQL_Q199,
-    sql_full_dated=SQL_Q199_DATED,    # opcional
-    timeout_sec=30,                   # default; raise só se justificado
+    "Q199",                                         # qid
+    "Servidores com vínculo CPF→CNPJ em fornecedor pago",  # title
+    "Cruza CPF normalizado entre servidor e sócio de fornecedor pago no município.",  # description
+    "conflito-interesses",                          # category
+    SQL_Q199,                                       # sql_full
+    timeout=30,                                     # default; raise só se justificado
+    sql_dated=SQL_Q199_DATED,                       # opcional (variante temporal)
+    title_lay="Servidor que é sócio de empresa contratada",
+    desc_lay="...",
 )
+```
+
+Assinatura real de `_reg` em [`web/queries/registry.py:98`](../web/queries/registry.py):
+
+```python
+def _reg(qid, title, desc, cat, sql_full, timeout=30, sql_dated=None, title_lay="", desc_lay=""):
+    ...
 ```
 
 Placeholders nomeados aceitos:

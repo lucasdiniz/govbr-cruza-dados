@@ -44,11 +44,13 @@ Queries vivem em **`web/queries/registry.py`** como objetos `QueryDef`:
 
 ```python
 QueryDef(
-    qid="Q65",
+    id="Q65",
     title="Top fornecedores PB...",
+    description="Top empresas pagas por município PB...",
+    category="fornecedores-irregulares",
+    sql_count=COUNT_Q65,
     sql_full="""SELECT ... FROM mv_empresa_pb WHERE ...""",
     sql_full_dated="""SELECT ... WHERE data BETWEEN %(data_inicio)s AND %(data_fim)s""",
-    params=("municipio_id",),
     timeout_sec=30,
 )
 ```

@@ -262,7 +262,7 @@ psql -c "SELECT * FROM v_etl_dlq_summary WHERE source='minha_fonte'"
 # Após ALTER TABLE do target, re-baseline:
 python -m etl.incremental.bootstrap_watermark \
     --source minha_fonte --table minha_fonte_tabela \
-    --force --approver "lucas@..."
+    --force
 ```
 
 **DLQ inflando** (linhas rejeitadas acumulando):

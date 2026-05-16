@@ -1,6 +1,6 @@
 # Cache — `web_cache` + shadow rewarm
 
-Este doc explica o pipeline de cache que sustenta `transparenciapb.org`. Para overview, ver [architecture.md](architecture.md); para operação via deploy, ver `docs/deploy.md` (a ser criado).
+Este doc explica o pipeline de cache que sustenta `transparenciapb.org`. Para overview, ver [architecture.md](architecture.md); para operação via deploy, ver [deploy.md](deploy.md).
 
 ## Por que cache?
 
@@ -149,7 +149,7 @@ A receita operacional canônica (mudou SQL de uma query → quero atualizar cach
    - Se fail==0: swap atômico. UI nunca viu cache stale.
    - Se fail>0: aborta swap; cache live antigo permanece servindo.
 
-Detalhes completos dos inputs em `docs/deploy.md` (a ser criado por outro PR).
+Detalhes completos dos inputs em [deploy.md](deploy.md).
 
 ## Relacionados
 

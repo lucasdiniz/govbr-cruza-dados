@@ -113,7 +113,7 @@ em [`etl/incremental/README.md`](../../etl/incremental/README.md):
 
 - [`etl/incremental/README.md`](../../etl/incremental/README.md) (8.3 KB)
   documenta P1–P6, fluxo end-to-end, comandos operacionais.
-- `docs/etl-incremental-guide.md` (a ser criado) destrincha os 8 passos para
+- [`docs/etl-incremental-guide.md`](../etl-incremental-guide.md) destrincha os 8 passos para
   adicionar uma nova spec, com checklist.
 - Tests em `tests/incremental/` verificam invariants — quebrar um princípio
   falha CI.
@@ -129,7 +129,7 @@ em [`etl/incremental/README.md`](../../etl/incremental/README.md):
     `sql/27_etl_admin_security_definer.sql`
   - [`tests/incremental/`](../../tests/incremental/)
 - Other ADRs: [ADR-0001](0001-no-pandas.md) (mesma filosofia streaming + COPY).
-- Docs: `docs/etl-incremental-guide.md` (a ser criado).
+- Docs: [`docs/etl-incremental-guide.md`](../etl-incremental-guide.md).
 - External:
   - [PostgreSQL `SECURITY DEFINER` best practices](https://www.postgresql.org/docs/16/sql-createfunction.html#SQL-CREATEFUNCTION-SECURITY)
   - RFC 4122 UUIDv5 (namespace-based determinism)

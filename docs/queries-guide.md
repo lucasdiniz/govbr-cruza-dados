@@ -58,7 +58,7 @@ Gaps existem (queries deprecadas). Pode reaproveitar números livres ou pegar o 
 - **Se passar de 30s:**
   1. **Índice cirúrgico** em [`sql/19_indices_queries.sql`](../sql/19_indices_queries.sql) (separado do schema base em `11_indices.sql` para evitar conflitos durante ETL).
   2. **MV pré-computada** em [`sql/12_views.sql`](../sql/12_views.sql) — útil quando muitas Q## compartilham o mesmo agregado. Ver [mv-guide.md](mv-guide.md).
-  3. **Override de timeout** em `_reg(..., timeout_sec=60)` — última opção; só justificado quando a query é raramente acionada na UI.
+  3. **Override de timeout** em `_reg(..., timeout=60)` — última opção; só justificado quando a query é raramente acionada na UI. (Note: o argumento é `timeout`, não `timeout_sec` — ver [`web/queries/registry.py:98`](../web/queries/registry.py).)
 - **Padrões medidos hoje:** 122/125 queries têm `ORDER BY`, 32/125 usam CTEs, 16/125 têm `LIMIT`. Sempre prefira `LIMIT` quando a UI renderiza só top-N.
 
 ## Identidade de fornecedor — caveat crítico
@@ -132,19 +132,35 @@ Use o conjunto que fizer sentido:
 
 ## Registrando na UI
 
+Há duas formas — prefira `_reg()` (padrão atual do código):
+
 ```python
 # web/queries/registry.py
+# Forma preferida — _reg() é wrapper conveniente
+_reg(
+    "Q199",                                              # qid
+    "Servidores com vínculo CPF→CNPJ em fornecedor pago",  # title
+    "Cruza CPF de servidor ativo com sócios de empresas pagas pela prefeitura.",  # desc
+    "conflito-interesses",                               # cat
+    SQL_Q199,                                            # sql_full
+    timeout=30,                                          # default; raise só se justificado
+    sql_dated=SQL_Q199_DATED,                            # opcional (variante temporal)
+)
+
+# Forma manual — QueryDef direto (raramente necessário)
 CIDADE_QUERIES["Q199"] = QueryDef(
     id="Q199",
     title="Servidores com vínculo CPF→CNPJ em fornecedor pago",
     description="Cruza CPF de servidor ativo com sócios de empresas pagas pela prefeitura.",
     category="conflito-interesses",
-    sql_count=SQL_Q199_COUNT,
+    sql_count=SQL_Q199_COUNT,    # query de contagem (paginação)
     sql_full=SQL_Q199,
     sql_full_dated=SQL_Q199_DATED,  # opcional
     timeout_sec=30,
 )
 ```
+
+Assinaturas reais em [`web/queries/registry.py:7-18,98`](../web/queries/registry.py).
 
 Categorias atualmente em uso:
 

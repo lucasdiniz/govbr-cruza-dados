@@ -1,4 +1,4 @@
-﻿# Onboarding: do clone ao `uvicorn` em uma tarde
+# Onboarding: do clone ao `uvicorn` em uma tarde
 
 Este guia é para uma pessoa contribuindo casualmente  alguém como Marina, que
 quer entender o projeto, fazer uma melhoria pequena e talvez rodar parte do

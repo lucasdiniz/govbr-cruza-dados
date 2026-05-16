@@ -109,7 +109,7 @@ inteiro após mudanças de dados.
   topo-pra-baixo é suficiente para entender a árvore.
 - A fase 18 do ETL reexecuta todo o arquivo — refresh diário evita stale em
   produção.
-- `docs/mv-guide.md` (a ser criado) detalha o passo-a-passo para adicionar uma
+- [`docs/mv-guide.md`](../mv-guide.md) detalha o passo-a-passo para adicionar uma
   MV nova respeitando as 5 convenções.
 - CI futuro (issue [#135]) pode detectar drift entre MVs e referências em
   `web/queries/registry.py`.

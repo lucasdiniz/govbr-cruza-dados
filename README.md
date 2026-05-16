@@ -169,7 +169,7 @@ Use `cpf_cnpj` completo (14 dígitos) — não `cnpj_basico` (8 dígitos), que s
 A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto dela, sem rodar SQL pesado em request time). Três modos de atualização:
 
 - **drop_cache** — `TRUNCATE web_cache` (12-18h de cache miss; use só em mudança de schema).
-- **invalidate_cache_keys** — `DELETE` cirúrgico HARD por prefixo de qid (cache miss até warm).
+- **invalidate_cache_keys** — `DELETE` cirúrgico HARD por **substring** de qid (causa cache miss até warm). Cuidado: `PERFIL` casa também `EMPRESA_PERFIL`, `PERFIL_DATED`, etc.
 - **rewarm_cache_keys** — shadow rewarm **zero-downtime**: warm escreve em `<qid>__pending`, swap atômico promove `__pending` → live só se todas as queries da chave passaram (fail==0); caso contrário, aborta e mantém live antigo. **Default recomendado** para mudanças em `web/queries/registry.py`.
 
 Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMARY` (mesmo prefixo).
@@ -309,7 +309,7 @@ O `preflight` faz resize VM/disco para cima quando o `etl_phase` exige; o `postf
 | `run_queries` | bool | roda `etl.run_queries` após ETL |
 | `incremental_only` | csv | limita incremental a specs específicas |
 | `drop_cache` | bool | TRUNCATE web_cache antes do warm |
-| `invalidate_cache_keys` | csv | DELETE cirúrgico HARD por prefixo de qid |
+| `invalidate_cache_keys` | csv | DELETE cirúrgico HARD por **substring** (`LIKE '%termo%'`); `PERFIL` casa também `EMPRESA_PERFIL` |
 | `rewarm_cache_keys` | csv | shadow rewarm zero-downtime (preferido) |
 | `warm_skip_hours` | int | controle de skip/rebuild do warm |
 | `expose_empresa_sitemap` / `_licitacoes_` / `_cidade_resumo_` | keep/enable/disable | toggle de URLs no sitemap |

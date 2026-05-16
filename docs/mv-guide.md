@@ -150,7 +150,7 @@ Se adicionar uma _tmp backing, documente no comentário acima do CREATE quem a p
   grep -n 'MATERIALIZED VIEW\|CREATE OR REPLACE VIEW' sql/12_views.sql
   ```
 - **Drift Python ↔ SQL:** [`web/kpis/municipio_pb.py:sql_score_expression()`](../web/kpis/municipio_pb.py) define a expressão de score em Python, mas `mv_municipio_pb_risco` materializa essa mesma lógica em SQL inline. Mudanças precisam ser feitas **nos dois lugares** — `TODO.md` registra o drift como dívida técnica.
-- **L2 perde dep silenciosamente:** se você renomear coluna em L1 e esquecer L2, fase 18 falha tarde no pipeline. Rode `python -m etl.run_all 18` localmente após qualquer mudança em MV.
+- **L2 perde dep silenciosamente:** se você renomear coluna em L1 e esquecer L2, fase 18 falha tarde no pipeline. Rode `python -m etl.run_all 23` localmente após qualquer mudança em MV (`23` é a posição 1-based da Fase 18 Views na lista `phases` — ver [deploy.md](deploy.md)). Alternativamente, use `etl_phase=sql` no workflow que executa só índices + normalização + views.
 - **`REFRESH CONCURRENTLY` precisa de espaço em disco** equivalente ao tamanho da MV (escreve cópia inteira antes de swap). Em VMs com disk-pressure, plain refresh pode ser preferível.
 - **CASCADE** nos DROPs propaga para views planas e índices — saudável, mas exige recriação completa.
 
