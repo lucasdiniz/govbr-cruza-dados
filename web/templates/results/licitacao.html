@@ -68,13 +68,13 @@
             </div>
             {% if valor_contratado > 0 %}
             <div class="stat-cell">
-                <span class="stat-value">R$ {{ "%0.0f"|format(valor_contratado)|replace(",", ".") }}</span>
+                <span class="stat-value">{{ valor_contratado | short_brl }}</span>
                 <span class="stat-label">Valor contratado</span>
             </div>
             {% endif %}
             {% if valor_pago_total > 0 %}
             <div class="stat-cell">
-                <span class="stat-value">R$ {{ "%0.0f"|format(valor_pago_total)|replace(",", ".") }}</span>
+                <span class="stat-value">{{ valor_pago_total | short_brl }}</span>
                 <span class="stat-label">Total pago aos vencedores</span>
             </div>
             {% endif %}
@@ -116,7 +116,7 @@
                             {% endif %}
                             {% if loop.first %}<span class="badge badge-green">Vencedor</span>{% endif %}
                         </td>
-                        <td data-label="Valor" class="text-right num">R$ {{ "%0.2f"|format(p.valor_ofertado or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Valor" class="text-right num">{{ p.valor_ofertado | short_brl }}</td>
                         <td data-label="Situacao" class="stack-meta">{{ p.situacao_proposta|clean_text or "-" }}</td>
                     </tr>
                     {% endfor %}
@@ -154,7 +154,7 @@
                             {% endif %}
                         </td>
                         <td data-label="Elemento" class="stack-meta">{{ e.elemento_despesa|clean_text or "-" }}</td>
-                        <td data-label="Pago" class="text-right num">R$ {{ "%0.2f"|format(e.valor_pago or 0)|replace(".", "@")|replace(",", ".")|replace("@", ",") }}</td>
+                        <td data-label="Pago" class="text-right num">{{ e.valor_pago | short_brl }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -211,4 +211,9 @@
 
     {% include "partials/seo/_faq_licitacao.html" %}
 </article>
+{# Empresa-dialog overlay reutilizado por openEmpenhoDialog (acionado ao
+   clicar em qualquer .clickable-row[data-empenho-id] da tabela "Empenhos
+   vinculados"). Mesma instancia DOM usada por /cidade/<slug> — componentes
+   JS fazem early-return se nao encontram este elemento. #}
+{% include "partials/dialogs/_empresa_dialog.html" %}
 {% endblock %}
