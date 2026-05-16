@@ -50,7 +50,7 @@ sequenceDiagram
     end
     VM->>WEB: restart cruza-web após warm
     opt expose_*_sitemap = enable
-        VM->>DB: gate cobertura &gt;=80%
+        VM->>DB: gate cobertura minima 80 pct
         VM->>WEB: drop-in systemd + smoke
     end
     opt IndexNow

@@ -71,7 +71,7 @@ sequenceDiagram
         W->>PG: DELETE __pending rows
         W->>PG: COMMIT
         Note over UI,PG: readers passam a ver NOVOS<br/>todos os qids simultaneamente
-    else fail &gt; 0 em qualquer qid
+    else fail diferente de zero em qualquer qid
         W->>W: ABORT swap
         Note over PG: live ANTIGO mantido<br/>__pending será descartado no próximo deploy<br/>via Reset shadow rows step
     end

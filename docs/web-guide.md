@@ -36,7 +36,7 @@ sequenceDiagram
         R-->>B: 503 — warm pendente
     else live fallback — rotas leves
         R->>D: execute_query — timeout=TIMEOUT_PROFILE=3s
-        D->>PG: SET statement_timeout=3000; SELECT ...
+        D->>PG: SET statement_timeout=3000 e SELECT ...
         PG-->>D: rows ou timeout
         D-->>R: cols, rows
         R->>T: render
