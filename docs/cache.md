@@ -49,31 +49,31 @@ Configuração relevante:
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Op as Operador (deploy.yml)
+    participant Op as Operador — deploy.yml
     participant W as warm_cache
     participant PG as web_cache
-    participant UI as cruza-web (live)
+    participant UI as cruza-web — live
 
-    Op->>W: WARM_REWARM_KEYS="Q65,PERFIL"
-    Note over W: REWARM_KEYS = {Q65, PERFIL}<br/>+ auto-expand: KPI_SUMMARY entra<br/>(via CACHE_DEPENDENCY_GRAPH)
+    Op->>W: WARM_REWARM_KEYS=Q65,PERFIL
+    Note over W: REWARM_KEYS = Q65, PERFIL<br/>+ auto-expand: KPI_SUMMARY entra<br/>via CACHE_DEPENDENCY_GRAPH
 
     loop para cada município
-        W->>PG: INSERT em "Q65__pending"
-        W->>PG: INSERT em "PERFIL__pending"
-        W->>PG: INSERT em "KPI_SUMMARY__pending"<br/>(lê dep shadow, strict no-fallback)
-        UI->>PG: SELECT WHERE query_id='Q65' AND municipio=X
-        PG-->>UI: rows ANTIGOS (live intacto)
+        W->>PG: INSERT em Q65__pending
+        W->>PG: INSERT em PERFIL__pending
+        W->>PG: INSERT em KPI_SUMMARY__pending<br/>lê dep shadow, strict no-fallback
+        UI->>PG: SELECT WHERE query_id=Q65 AND municipio=X
+        PG-->>UI: rows ANTIGOS — live intacto
     end
 
     alt fail == 0 para TODAS as qids em shadow
         W->>PG: BEGIN
-        W->>PG: UPSERT live ← pending (atômico, todos qids)
+        W->>PG: UPSERT live ← pending — atômico, todos qids
         W->>PG: DELETE __pending rows
         W->>PG: COMMIT
         Note over UI,PG: readers passam a ver NOVOS<br/>todos os qids simultaneamente
-    else fail > 0 em qualquer qid
+    else fail &gt; 0 em qualquer qid
         W->>W: ABORT swap
-        Note over PG: live ANTIGO mantido<br/>__pending será descartado no próximo deploy<br/>(Reset shadow rows step)
+        Note over PG: live ANTIGO mantido<br/>__pending será descartado no próximo deploy<br/>via Reset shadow rows step
     end
 ```
 

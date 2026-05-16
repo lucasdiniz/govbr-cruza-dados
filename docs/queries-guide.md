@@ -13,20 +13,20 @@ Este guia cobre o ciclo de vida de uma query nova no `govbr-cruza-dados`. Para c
 
 ```mermaid
 flowchart TD
-    A[Definir tema/objeto da investigação] --> B[Escolher Q## livre<br/>(grep -h '-- Q' queries/*.sql)]
-    B --> C[Header obrigatório<br/>-- Q##: Titulo curto]
-    C --> D[Escrever SQL<br/>placeholders %(municipio)s, etc.]
-    D --> E[EXPLAIN ANALYZE local]
-    E --> F{Custo > 30s?}
-    F -- não --> G[python -m etl.run_queries --query Q##]
-    F -- sim --> H[Adicionar índice em<br/>sql/19_indices_queries.sql]
-    H --> I{Ainda lento?}
-    I -- sim --> J[Pré-computar via MV<br/>em sql/12_views.sql]
+    A["Definir tema/objeto da investigação"] --> B["Escolher Q## livre<br/>grep -h '-- Q' queries/*.sql"]
+    B --> C["Header obrigatório<br/>-- Q##: Titulo curto"]
+    C --> D["Escrever SQL<br/>placeholders %(municipio)s, etc."]
+    D --> E["EXPLAIN ANALYZE local"]
+    E --> F{"Custo > 30s?"}
+    F -- não --> G["python -m etl.run_queries --query Q##"]
+    F -- sim --> H["Adicionar índice em<br/>sql/19_indices_queries.sql"]
+    H --> I{"Ainda lento?"}
+    I -- sim --> J["Pré-computar via MV<br/>em sql/12_views.sql"]
     I -- não --> G
     J --> G
-    G --> K{Query da UI?}
-    K -- sim --> L[Registrar via _reg em<br/>web/queries/registry.py]
-    K -- não --> M[Relatório markdown<br/>opcional em relatorios/]
+    G --> K{"Query da UI?"}
+    K -- sim --> L["Registrar via _reg em<br/>web/queries/registry.py"]
+    K -- não --> M["Relatório markdown<br/>opcional em relatorios/"]
     L --> M
     M --> N[PR]
 ```
