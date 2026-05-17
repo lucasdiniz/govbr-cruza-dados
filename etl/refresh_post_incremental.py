@@ -1,0 +1,273 @@
+"""Refresh de Materialized Views + tabelas _tmp_ apos ETL incremental.
+
+Roda como step final do `etl_phase=incremental` no deploy.yml quando uma
+source que tem MVs dependentes foi processada (atualmente: bolsa_familia).
+
+Por que existe:
+- O framework incremental P1-P6 (etl/incremental/) e generico: nao sabe
+  quais MVs dependem de cada source. Atualizar bolsa_familia sem refresh
+  deixa mv_pessoa_pb / mv_servidor_pb_risco / mv_municipio_pb_kpi_score
+  com dados velhos.
+- Refresh manual via deploy.yml inputs e fragil (esquecivel + drift).
+- Centralizando aqui: cada source que vira incremental registra sua
+  refresh fn em SOURCE_REFRESH_FNS. Step do deploy chama com --source X.
+
+Por que hard-fail:
+- Warm cache subsequente leria dados velhos se MVs nao refrescaram.
+- Site continua servindo a MV antiga (que existe) ate refresh terminar —
+  preferimos falhar o deploy do que entregar warm cache stale.
+
+Por que autocommit toggle:
+- REFRESH MATERIALIZED VIEW CONCURRENTLY exige rodar FORA de transacao
+  explicita (mesmo motivo de CREATE INDEX CONCURRENTLY). Padrao
+  etl/10_indices.py:32-36.
+
+CLI:
+    python -m etl.refresh_post_incremental --source bolsa_familia
+"""
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+import time
+from pathlib import Path
+from typing import Callable
+
+import psycopg2
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────
+
+def _run_sql(conn, label: str, sql: str, *, autocommit: bool = False) -> float:
+    """Executa SQL. Se autocommit=True, toggle conn.autocommit no escopo.
+
+    Retorna tempo gasto (segundos).
+    """
+    prev = conn.autocommit
+    if autocommit and not prev:
+        conn.commit()  # encerra qualquer txn pendente
+        conn.autocommit = True
+    t0 = time.time()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        if not conn.autocommit:
+            conn.commit()
+        dt = time.time() - t0
+        logger.info("%s OK em %.1fs", label, dt)
+        return dt
+    finally:
+        if autocommit and not prev:
+            conn.autocommit = prev
+
+
+def _read_sql_file(name: str) -> str:
+    path = Path(__file__).resolve().parents[1] / "sql" / name
+    return path.read_text(encoding="utf-8")
+
+
+def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
+    """Popula _nk_md5 nas rows legacy de bolsa_familia em batches.
+
+    Workaround para PG 16: PROCEDURE com COMMIT interno falha quando chamada
+    via psql -c "CALL ..." (psql wrappa em transacao implicita). psycopg2
+    com autocommit=True permite COMMIT entre batches sem problema.
+
+    Idempotente: WHERE _nk_md5 IS NULL. Pode ser interrompido e re-rodado.
+    """
+    logger.info("populate_nk_md5_bolsa_familia: BATCH_SIZE=%d", batch_size)
+    prev_autocommit = conn.autocommit
+    conn.autocommit = True
+    t0 = time.time()
+    total = 0
+    try:
+        with conn.cursor() as cur:
+            while True:
+                cur.execute("""
+                    UPDATE bolsa_familia SET _nk_md5 = etl_admin.row_hash_md5(
+                        coalesce(mes_competencia, ''),
+                        coalesce(mes_referencia, ''),
+                        coalesce(uf, ''),
+                        coalesce(cd_municipio_siafi, ''),
+                        coalesce(nm_municipio, ''),
+                        coalesce(cpf_favorecido, ''),
+                        coalesce(nis_favorecido, ''),
+                        coalesce(nm_favorecido, ''),
+                        coalesce(valor_parcela::text, '')
+                    )
+                    WHERE id IN (
+                        SELECT id FROM bolsa_familia
+                        WHERE _nk_md5 IS NULL ORDER BY id LIMIT %s
+                    )
+                """, (batch_size,))
+                n = cur.rowcount
+                if n == 0:
+                    break
+                total += n
+                logger.info(
+                    "populate _nk_md5: total %s rows (%.0fs)",
+                    f"{total:,}", time.time() - t0,
+                )
+    finally:
+        conn.autocommit = prev_autocommit
+    logger.info("populate_nk_md5_bolsa_familia: DONE — %d rows em %.0fs",
+                total, time.time() - t0)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Refresh por source
+# ──────────────────────────────────────────────────────────────────────────
+
+def refresh_for_bolsa_familia(conn) -> None:
+    """Refresh das MVs que dependem de bolsa_familia.
+
+    Ordem (Layer 1 -> tmp -> Layer 2):
+      1. ANALYZE bolsa_familia (planner stats — barato e necessario)
+      2. REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pessoa_pb (L1)
+      3. _tmp_bf via TRUNCATE+INSERT consumindo sql/41c_tmp_bf_body.sql
+         (DROP _tmp_bf falha — mv_servidor_pb_risco depende por OID)
+      4. mv_servidor_pb_risco: REFRESH CONCURRENTLY (usa _tmp_bf novo)
+      5. mv_municipio_pb_kpi_score: REFRESH CONCURRENTLY (depende de
+         mv_pessoa_pb agregado)
+
+    Hard-fail: qualquer step lanca → script aborta com exit code 1.
+    """
+    logger.info("=" * 60)
+    logger.info("refresh_for_bolsa_familia: iniciando")
+    logger.info("=" * 60)
+
+    total_t0 = time.time()
+
+    # 1. ANALYZE — refresh planner stats antes de queries pesadas.
+    _run_sql(conn, "ANALYZE bolsa_familia", "ANALYZE bolsa_familia")
+
+    # 2. mv_pessoa_pb (L1): SUM/COUNT bolsa_familia por cpf_digitos_6 + nome.
+    _run_sql(
+        conn,
+        "REFRESH mv_pessoa_pb",
+        "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pessoa_pb",
+        autocommit=True,
+    )
+
+    # 3. _tmp_bf rebuild via TRUNCATE+INSERT atomic.
+    # Body extraido para sql/41c_tmp_bf_body.sql — drift com sql/12_views.sql
+    # quebra esta logica (validado em smoke tests).
+    body = _read_sql_file("41c_tmp_bf_body.sql")
+    # 41c contem comentarios + statement final. Garantimos TRUNCATE antes em
+    # uma unica transacao para nao deixar a MV servindo dados inconsistentes
+    # entre TRUNCATE e INSERT.
+    _run_sql(
+        conn,
+        "_tmp_bf TRUNCATE + INSERT",
+        f"BEGIN; TRUNCATE TABLE _tmp_bf; INSERT INTO _tmp_bf {body} COMMIT;",
+    )
+
+    # 4. mv_servidor_pb_risco: depende de _tmp_bf novo.
+    # IMPORTANTE: a MV nao suporta REFRESH "limpo" porque _tmp_bf nao tem
+    # UNIQUE INDEX (foi criado via CREATE TABLE AS, sem PK). Mas
+    # mv_servidor_pb_risco TEM idx_mv_srv_cpf_nome UNIQUE → suporta
+    # REFRESH CONCURRENTLY.
+    _run_sql(
+        conn,
+        "REFRESH mv_servidor_pb_risco",
+        "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_servidor_pb_risco",
+        autocommit=True,
+    )
+
+    # 5. mv_municipio_pb_kpi_score: agrega indicadores PB incluindo BF
+    # (via mv_pessoa_pb). Validar dependencia em runtime via pg_depend
+    # para nao quebrar silenciosamente se 12_views.sql for refatorado.
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM pg_depend d
+                JOIN pg_class c1 ON c1.oid = d.refobjid
+                JOIN pg_class c2 ON c2.oid = d.objid
+                WHERE c1.relname = 'mv_pessoa_pb'
+                  AND c2.relname = 'mv_municipio_pb_kpi_score'
+            )
+        """)
+        depends = cur.fetchone()[0]
+    if depends:
+        _run_sql(
+            conn,
+            "REFRESH mv_municipio_pb_kpi_score",
+            "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_kpi_score",
+            autocommit=True,
+        )
+    else:
+        logger.info("mv_municipio_pb_kpi_score nao depende de mv_pessoa_pb — skip.")
+
+    total_dt = time.time() - total_t0
+    logger.info("refresh_for_bolsa_familia: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Registry — fontes que tem refresh hooks
+# ──────────────────────────────────────────────────────────────────────────
+
+SOURCE_REFRESH_FNS: dict[str, Callable] = {
+    "bolsa_familia": refresh_for_bolsa_familia,
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Refresh MVs apos ETL incremental por source"
+    )
+    parser.add_argument(
+        "--source",
+        required=True,
+        choices=sorted(SOURCE_REFRESH_FNS.keys()),
+        help="Source registrada em SOURCE_REFRESH_FNS",
+    )
+    parser.add_argument(
+        "--populate-only",
+        action="store_true",
+        help="So roda populate_nk_md5 (sem MV refresh). Usado entre sql/41 e "
+             "sql/41z no deploy step. Apenas para source=bolsa_familia.",
+    )
+    parser.add_argument(
+        "--dsn",
+        default=None,
+        help="Override DSN (default: etl.config.DSN)",
+    )
+    args = parser.parse_args()
+
+    if args.dsn is None:
+        from etl.config import DSN
+        args.dsn = DSN
+
+    conn = psycopg2.connect(args.dsn)
+    try:
+        if args.populate_only:
+            if args.source != "bolsa_familia":
+                logger.error("--populate-only so suporta source=bolsa_familia")
+                return 2
+            populate_nk_md5_bolsa_familia(conn)
+        else:
+            fn = SOURCE_REFRESH_FNS[args.source]
+            fn(conn)
+    except Exception:
+        logger.exception("refresh_for_%s FAILED", args.source)
+        return 1
+    finally:
+        conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
