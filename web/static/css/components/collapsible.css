@@ -1,22 +1,25 @@
-/* === components/empresa-collapsible.css === */
-/* Estilos pras secoes colapsaveis das paginas /empresa/<cnpj> e
-   /empresa/<cnpj>/<municipio>. Usa <details>/<summary> nativo
-   envolvido por <section class="empresa-section empresa-collapsible">.
-   Macro Jinja: partials/empresa/_collapsible.html. */
+/* === components/collapsible.css === */
+/* Estilos genericos pra secoes colapsaveis (<details>/<summary>).
+   Macro Jinja: partials/_collapsible.html — usa as classes
+   .collapsible-section, .collapsible-details, .collapsible-summary etc.
+   Pode ser usado em qualquer pagina (empresa, cidade, servidor, contrato);
+   a section recebe tambem uma classe wrapper (default: empresa-section). */
 
 @layer components {
 
-/* Wrapper section continua usando .empresa-section pra spacing/margin
-   padrao; classe adicional .empresa-collapsible serve apenas pra
-   escopear os estilos abaixo. */
-.empresa-collapsible-details {
+.collapsible-section {
+    /* Sem regras proprias: spacing/margin vem da classe wrapper
+       (empresa-section, cidade-section etc) que o macro adiciona. */
+}
+
+.collapsible-details {
     /* Hide chrome do <details> nativo: usamos summary custom estilizado */
     margin: 0;
 }
 
 /* Sumario clicavel. Cobre toda a largura da secao, com chevron rotativo
    indicando estado. Reset do triangulo nativo de <summary>. */
-.empresa-collapsible-summary {
+.collapsible-summary {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -28,20 +31,20 @@
     user-select: none;
     transition: background-color 120ms ease;
 }
-.empresa-collapsible-summary::-webkit-details-marker {
+.collapsible-summary::-webkit-details-marker {
     display: none;
 }
-.empresa-collapsible-summary:hover,
-.empresa-collapsible-summary:focus-visible {
+.collapsible-summary:hover,
+.collapsible-summary:focus-visible {
     background-color: color-mix(in oklab, var(--md-sys-color-on-surface) 5%, transparent);
     outline: none;
 }
-.empresa-collapsible-summary:focus-visible {
+.collapsible-summary:focus-visible {
     outline: 2px solid var(--md-sys-color-primary);
     outline-offset: 1px;
 }
 
-.empresa-collapsible-eyebrow {
+.collapsible-eyebrow {
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -52,7 +55,7 @@
     border-radius: 999px;
 }
 
-.empresa-collapsible-title {
+.collapsible-title {
     margin: 0;
     flex: 1 1 auto;
     font-size: 1.15rem;
@@ -61,7 +64,7 @@
     color: var(--md-sys-color-on-surface);
 }
 
-.empresa-collapsible-count {
+.collapsible-count {
     font-weight: 400;
     color: var(--md-sys-color-on-surface-variant);
     font-size: 0.95rem;
@@ -70,7 +73,7 @@
 
 /* Chevron: rotaciona 90° quando details[open]. Usa o caractere unicode >
    pra evitar dependencia de fonte de icone. */
-.empresa-collapsible-chevron {
+.collapsible-chevron {
     flex: 0 0 auto;
     width: 1.5rem;
     height: 1.5rem;
@@ -82,18 +85,18 @@
     color: var(--md-sys-color-primary);
     transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.empresa-collapsible-details[open] > .empresa-collapsible-summary .empresa-collapsible-chevron {
+.collapsible-details[open] > .collapsible-summary .collapsible-chevron {
     transform: rotate(90deg);
 }
 
 /* Body com fade-in suave. CSS animation simples (sem @starting-style
    pra compat ampla). */
-.empresa-collapsible-body {
+.collapsible-body {
     padding-top: 0.75rem;
-    animation: empresa-collapsible-reveal 200ms ease;
+    animation: collapsible-reveal 200ms ease;
 }
 
-@keyframes empresa-collapsible-reveal {
+@keyframes collapsible-reveal {
     from {
         opacity: 0;
         transform: translateY(-4px);
@@ -106,32 +109,26 @@
 
 /* Reduced motion: desativa animacoes do reveal e rotacao do chevron. */
 @media (prefers-reduced-motion: reduce) {
-    .empresa-collapsible-body { animation: none; }
-    .empresa-collapsible-chevron { transition: none; }
+    .collapsible-body { animation: none; }
+    .collapsible-chevron { transition: none; }
 }
 
-/* Print: sempre abre tudo pra leitura offline. */
+/* Print: esconde apenas o chevron (visualmente irrelevante no papel).
+   Forcar abrir <details> colapsada via CSS NAO funciona (eh user-agent
+   shadow DOM); o JS components/collapsible.js cuida disso no beforeprint. */
 @media print {
-    .empresa-collapsible-details[open],
-    .empresa-collapsible-details {
-        display: block;
-    }
-    .empresa-collapsible-details > .empresa-collapsible-body {
-        display: block !important;
-        animation: none;
-    }
-    .empresa-collapsible-chevron {
+    .collapsible-chevron {
         display: none;
     }
 }
 
 /* Mobile: padding menor + summary mais compacto. */
 @media (max-width: 600px) {
-    .empresa-collapsible-summary {
+    .collapsible-summary {
         padding: 0.5rem 0.5rem;
         margin: 0 -0.5rem;
     }
-    .empresa-collapsible-title {
+    .collapsible-title {
         font-size: 1.05rem;
     }
 }

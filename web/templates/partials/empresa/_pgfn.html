@@ -1,7 +1,6 @@
-{# Dividas ativas PGFN. Colapsavel por default (lista detalhada, secundaria
-   ao resumo + flags). Veja partials/empresa/_collapsible.html pro macro. #}
+{# Dividas ativas PGFN. Veja partials/_collapsible.html pro macro. #}
 {% if pgfn %}
-{% from "partials/empresa/_collapsible.html" import collapsible %}
+{% from "partials/_collapsible.html" import collapsible %}
 {% call collapsible('pgfn', 'Divida ativa da Uniao (PGFN)', count=pgfn|length) %}
 <p class="text-sm text-muted">
     Inscricoes da empresa em divida ativa federal. Total: <strong>{{ kpi_total_divida_pgfn|short_brl }}</strong>.

@@ -1,7 +1,7 @@
 {# Municipios que pagaram esta empresa. Colapsavel — pode ter dezenas
    de entries pra empresas que cobrem PB inteiro. #}
 {% if municipios_pagantes %}
-{% from "partials/empresa/_collapsible.html" import collapsible %}
+{% from "partials/_collapsible.html" import collapsible %}
 {% call collapsible('municipios-pagantes', 'Municipios que pagaram esta empresa', count=municipios_pagantes|length) %}
 <p class="text-sm text-muted">Pagamentos identificados no TCE-PB. Clique no municipio para o panorama da prefeitura, ou em "Detalhes" para o recorte desta empresa naquele municipio.</p>
 <div class="tbl-wrap">

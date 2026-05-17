@@ -1,7 +1,7 @@
 {# Quadro societario (CPFs vem mascarados pela RFB - seguro expor). Colapsavel —
    secao informacional, importante mas raramente o motivo primario da visita. #}
 {% if socios %}
-{% from "partials/empresa/_collapsible.html" import collapsible %}
+{% from "partials/_collapsible.html" import collapsible %}
 {% call collapsible('socios', 'Quadro societario', count=socios|length) %}
 <p class="text-sm text-muted">CPFs sao publicados parcialmente mascarados pela Receita Federal.</p>
 <div class="tbl-wrap">

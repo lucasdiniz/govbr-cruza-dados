@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollDeep();
     initPageEngagement();
     initEmpresaStickyCta();
-    if (typeof window.initEmpresaCollapsibles === 'function') window.initEmpresaCollapsibles();
+    if (typeof window.initCollapsibles === 'function') window.initCollapsibles();
     if (typeof window.initDialogEngagement === 'function') window.initDialogEngagement();
 
     // Outbound link tracking: listener delegado captura clicks em <a href>

@@ -423,11 +423,13 @@ JS_FILES: list[str] = [
     "components/empenho-table.js",
     "components/empresa-card.js",
     "components/empresa-sticky-cta.js",
-    # empresa-collapsible: deep-link via hash + tracking pras <details>
-    # sections de PGFN/empenhos/socios etc nas paginas /empresa/<cnpj>
-    # e /empresa/<cnpj>/<municipio>. Init em pages/main.js (no-op em
-    # paginas sem .empresa-collapsible-details).
-    "components/empresa-collapsible.js",
+    # collapsible: hash sync + tracking + print pras <details> sections
+    # renderizadas via macro partials/_collapsible.html (usado em
+    # /empresa/<cnpj>, /empresa/<cnpj>/<municipio>, e potencialmente em
+    # outras paginas). "Abrir + scroll via hash" eh delegado pro stack
+    # de anchor-auto-expand + lib/expand-context.js. Init em pages/main.js
+    # (no-op em paginas sem .collapsible-details).
+    "components/collapsible.js",
     "components/servidor-dialog.js",
     "components/fornecedor-dialog.js",
     "components/heatmap-dialog.js",

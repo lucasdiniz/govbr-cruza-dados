@@ -1,7 +1,7 @@
 {# Acordos de leniencia (CGU). Colapsavel — raramente preenchido (poucas
    empresas tem leniencia) e bem detalhado quando tem. #}
 {% if acordos_leniencia %}
-{% from "partials/empresa/_collapsible.html" import collapsible %}
+{% from "partials/_collapsible.html" import collapsible %}
 {% call collapsible('leniencia', 'Acordos de leniencia', count=acordos_leniencia|length) %}
 <ul class="empresa-acordos">
     {% for a in acordos_leniencia %}

@@ -4,7 +4,7 @@
    outros municipios durante a vigencia da sancao.
    Var esperada: pagamentos_sancao_outros (lista). #}
 {% if pagamentos_sancao_outros %}
-{% from "partials/empresa/_collapsible.html" import collapsible %}
+{% from "partials/_collapsible.html" import collapsible %}
 {% call collapsible('sancao-outros', 'Pagamentos durante sancao em outros municipios', count=pagamentos_sancao_outros|length) %}
 <p class="text-sm text-muted">
     Periodos em que esta empresa estava com sancao ativa (CEIS/CNEP)
