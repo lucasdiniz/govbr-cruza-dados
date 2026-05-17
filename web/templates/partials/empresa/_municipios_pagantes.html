@@ -1,41 +1,43 @@
+{# Municipios que pagaram esta empresa. Colapsavel — pode ter dezenas
+   de entries pra empresas que cobrem PB inteiro. #}
 {% if municipios_pagantes %}
-<section class="empresa-section" id="municipios-pagantes">
-    <h2>Municipios que pagaram esta empresa</h2>
-    <p class="text-sm text-muted">Pagamentos identificados no TCE-PB. Clique no municipio para o panorama da prefeitura, ou em "Detalhes" para o recorte desta empresa naquele municipio.</p>
-    <div class="tbl-wrap">
-        <table class="stack-mobile">
-            <thead>
-                <tr>
-                    <th>Municipio</th>
-                    <th class="text-right">Total pago</th>
-                    <th class="text-right">Empenhos</th>
-                    <th>Recorte</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for mp in municipios_pagantes %}
-                {% set _slug = mp.slug or (mp.municipio | municipio_slug) %}
-                <tr>
-                    <td data-label="Municipio">
-                        {% if _slug %}
-                            <a href="/cidade/{{ _slug }}">{{ mp.municipio|clean_text }}</a>
-                        {% else %}
-                            {{ mp.municipio|clean_text }}
-                        {% endif %}
-                    </td>
-                    <td data-label="Total pago" class="text-right num">{{ mp.total_pago|short_brl }}</td>
-                    <td data-label="Empenhos" class="text-right num">{{ mp.qtd_empenhos|short_number }}</td>
-                    <td data-label="Recorte">
-                        {% if _slug and cnpj %}
-                            <a class="text-sm" href="/empresa/{{ cnpj }}/{{ _slug }}" title="Detalhes desta empresa em {{ mp.municipio|clean_text }}">Ver detalhes &rarr;</a>
-                        {% else %}
-                            &mdash;
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</section>
+{% from "partials/_collapsible.html" import collapsible %}
+{% call collapsible('municipios-pagantes', 'Municipios que pagaram esta empresa', count=municipios_pagantes|length) %}
+<p class="text-sm text-muted">Pagamentos identificados no TCE-PB. Clique no municipio para o panorama da prefeitura, ou em "Detalhes" para o recorte desta empresa naquele municipio.</p>
+<div class="tbl-wrap">
+    <table class="stack-mobile">
+        <thead>
+            <tr>
+                <th>Municipio</th>
+                <th class="text-right">Total pago</th>
+                <th class="text-right">Empenhos</th>
+                <th>Recorte</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mp in municipios_pagantes %}
+            {% set _slug = mp.slug or (mp.municipio | municipio_slug) %}
+            <tr>
+                <td data-label="Municipio">
+                    {% if _slug %}
+                        <a href="/cidade/{{ _slug }}">{{ mp.municipio|clean_text }}</a>
+                    {% else %}
+                        {{ mp.municipio|clean_text }}
+                    {% endif %}
+                </td>
+                <td data-label="Total pago" class="text-right num">{{ mp.total_pago|short_brl }}</td>
+                <td data-label="Empenhos" class="text-right num">{{ mp.qtd_empenhos|short_number }}</td>
+                <td data-label="Recorte">
+                    {% if _slug and cnpj %}
+                        <a class="text-sm" href="/empresa/{{ cnpj }}/{{ _slug }}" title="Detalhes desta empresa em {{ mp.municipio|clean_text }}">Ver detalhes &rarr;</a>
+                    {% else %}
+                        &mdash;
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endcall %}
 {% endif %}

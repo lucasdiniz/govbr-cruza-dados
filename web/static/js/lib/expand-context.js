@@ -26,5 +26,20 @@ function expandReportContext(target) {
     target.querySelectorAll(':scope > .collapsed, :scope .async-collapsed').forEach(el => {
         el.classList.remove('collapsed', 'async-collapsed');
     });
+    // Secoes colapsaveis genericas (<details class="collapsible-details">):
+    // abrir quando o alvo eh a <section> wrapper, OU quando o alvo eh
+    // um descendente da <details>.
+    // Sem isso, anchor-auto-expand interceptaria o click + preventDefault,
+    // o hashchange nao dispararia, e a section ficaria fechada apos um
+    // in-page link.
+    if (target.matches && target.matches('section.collapsible-section')) {
+        const det = target.querySelector(':scope > .collapsible-details');
+        if (det && !det.open) det.open = true;
+    }
+    const ancestorDetails = target.closest && target.closest('details.collapsible-details');
+    if (ancestorDetails && !ancestorDetails.open) {
+        ancestorDetails.open = true;
+    }
 }
+
 

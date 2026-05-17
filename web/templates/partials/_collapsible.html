@@ -1,0 +1,62 @@
+{# Macro pra envolver uma section colapsavel sem repetir markup.
+
+   Uso (Jinja `{% call %}`):
+
+       {% call collapsible('pgfn', 'Divida ativa da Uniao (PGFN)', count=pgfn|length) %}
+           <p>...conteudo da section...</p>
+       {% endcall %}
+
+   Por que <details>/<summary>:
+     - Acessivel por padrao (toggle nativo do browser, role=group + aria-expanded
+       implicito, foco com Tab, ativa com Space/Enter).
+     - SEO-safe: Google indexa conteudo dentro de <details> (testado em 2023+),
+       MAS conteudo hidden-by-default tem peso reduzido em ranking. Por isso
+       o default agora eh open=True — user fecha se quiser reduzir scroll.
+     - Print friendly: components/collapsible.js abre tudo em beforeprint.
+     - Funciona sem JS. JS em components/collapsible.js adiciona:
+        (a) abrir secao quando URL hash bate o id
+        (b) atualizar URL hash quando user abre uma secao
+        (c) tracking Umami opcional via evento 'secao-toggle'
+        (d) restore de open-state pos-print
+
+   Estado default: ABERTO (`open=True`). Razao: SEO + prominence de sinais
+   investigativos (PGFN, sancoes outras). User pode colapsar manualmente
+   pra reduzir scroll. Passar `open=False` pra casos raros (ex: dados
+   ultra-volumosos onde o usuario precisa optar in).
+
+   Params:
+       section_id: HTML id no <section> wrapper. Permite deep-link via /#id
+                   e leitura por JS hook.
+       title: texto do <h2> (default semantica). Pode conter chars que
+              vao escapar via {{ }} no caller — neste macro recebemos string
+              pura, sem markup.
+       count: opcional. Se truthy, vira sufixo " (N)" no titulo pra dar
+              hint do volume sem precisar abrir.
+       open: bool, default True. Passar open=False pra colapsar por default.
+       eyebrow: opcional, texto curto sobre o titulo (categoria/tag).
+       wrapper_class: classe extra no <section> alem de
+              "collapsible-section". Default "empresa-section" pra herdar
+              spacing das paginas /empresa. Outras paginas podem passar
+              outro valor (ex: "cidade-section") ou string vazia.
+       section_attrs: dict de data-attrs adicionais pro <section> wrapper.
+              Util quando um controller JS precisa dos attrs no DOM desde
+              o load (ex: empenhos-controller.js precisa de
+              data-empenhos-mount na <section> antes do user abrir).
+#}
+{% macro collapsible(section_id, title, count=None, open=True, eyebrow=None, wrapper_class='empresa-section', section_attrs={}) %}
+<section class="collapsible-section {{ wrapper_class }}" id="{{ section_id }}"
+    {%- for k, v in section_attrs.items() if v is not none %} {{ k }}{% if v != '' %}="{{ v }}"{% endif %}{% endfor %}>
+    <details class="collapsible-details" data-collapsible-id="{{ section_id }}"{% if open %} open{% endif %}>
+        <summary class="collapsible-summary">
+            {% if eyebrow %}<span class="collapsible-eyebrow">{{ eyebrow }}</span>{% endif %}
+            <h2 class="collapsible-title">
+                {{ title }}{% if count %} <span class="collapsible-count">({{ count }})</span>{% endif %}
+            </h2>
+            <span class="collapsible-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapsible-body">
+            {{ caller() }}
+        </div>
+    </details>
+</section>
+{% endmacro %}

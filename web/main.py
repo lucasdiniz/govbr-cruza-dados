@@ -423,6 +423,13 @@ JS_FILES: list[str] = [
     "components/empenho-table.js",
     "components/empresa-card.js",
     "components/empresa-sticky-cta.js",
+    # collapsible: hash sync + tracking + print pras <details> sections
+    # renderizadas via macro partials/_collapsible.html (usado em
+    # /empresa/<cnpj>, /empresa/<cnpj>/<municipio>, e potencialmente em
+    # outras paginas). "Abrir + scroll via hash" eh delegado pro stack
+    # de anchor-auto-expand + lib/expand-context.js. Init em pages/main.js
+    # (no-op em paginas sem .collapsible-details).
+    "components/collapsible.js",
     "components/servidor-dialog.js",
     "components/fornecedor-dialog.js",
     "components/heatmap-dialog.js",

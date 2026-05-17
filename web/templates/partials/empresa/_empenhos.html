@@ -13,13 +13,16 @@
            via JS no body).
        empenhos_municipio: nome canonico OU None (None = global).
 
-   JS empenhos-controller.js procura `[data-empenhos-mount]` e wirea
-   filter bar + paginacao. Tabela inicial eh server-side renderizada
-   abaixo (SEO friendly + first-paint sem JS).
+   Usa o macro `collapsible` (partials/_collapsible.html) via section_attrs
+   pra colocar TODOS os data-attrs no <section> wrapper, que eh onde
+   empenhos-controller.js procura `[data-empenhos-mount]` pra wirear filter
+   bar + paginacao. Single-source-of-truth com as outras secoes colapsaveis
+   (PGFN, leniencia etc).
 
    Linhas sao clickaveis: abrem #empresa-dialog via openEmpenhoDialog
    (precisa do partial dialogs/_empresa_dialog.html no template).
 #}
+{% from "partials/_collapsible.html" import collapsible %}
 {% set _empenhos_endpoint = empenhos_endpoint or '/api/empresa/empenhos' %}
 {% set _empenhos_scope = empenhos_scope or 'municipio' %}
 {% set _show_municipio_col = (_empenhos_scope == 'global') %}
@@ -29,18 +32,25 @@
    esse comportamento via data-empenhos-total-known. #}
 {% set _empenhos_total_known = (empenhos_total is defined) and (empenhos_total is not none) %}
 {% set _empenhos_total = empenhos_total if _empenhos_total_known else (empenhos|length if empenhos else 0) %}
-<section class="empresa-section empenhos-section"
-         id="empenhos-recentes"
-         data-empenhos-mount
-         data-empenhos-endpoint="{{ _empenhos_endpoint }}"
-         data-empenhos-scope="{{ _empenhos_scope }}"
-         data-empenhos-cnpj="{{ empenhos_cnpj or cnpj or '' }}"
-         {% if empenhos_municipio %}data-empenhos-municipio="{{ empenhos_municipio }}"{% endif %}
-         {% if empenhos_cpf_cnpj %}data-empenhos-cpf-cnpj="{{ empenhos_cpf_cnpj }}"{% endif %}
-         data-empenhos-total="{{ _empenhos_total }}"
-         data-empenhos-total-known="{{ '1' if _empenhos_total_known else '0' }}"
-         data-empenhos-initial="{{ '1' if empenhos else '0' }}">
-    <h2>Empenhos</h2>
+{% set _count_pt = ('{:,}'.format(_empenhos_total)).replace(',', '.') if _empenhos_total_known and _empenhos_total else none %}
+{% set _empenhos_attrs = {
+    'data-empenhos-mount': '',
+    'data-empenhos-endpoint': _empenhos_endpoint,
+    'data-empenhos-scope': _empenhos_scope,
+    'data-empenhos-cnpj': empenhos_cnpj or cnpj or '',
+    'data-empenhos-municipio': empenhos_municipio or none,
+    'data-empenhos-cpf-cnpj': empenhos_cpf_cnpj or none,
+    'data-empenhos-total': _empenhos_total,
+    'data-empenhos-total-known': '1' if _empenhos_total_known else '0',
+    'data-empenhos-initial': '1' if empenhos else '0',
+} %}
+{% call collapsible(
+    'empenhos-recentes',
+    'Empenhos',
+    count=_count_pt,
+    wrapper_class='empresa-section empenhos-section',
+    section_attrs=_empenhos_attrs
+) %}
     {% if _empenhos_total_known and _empenhos_total %}
     <p class="text-sm text-muted" data-empenhos-summary>
         {{ "{:,}".format(_empenhos_total).replace(',', '.') }} empenhos encontrados.
@@ -120,4 +130,4 @@
             <md-icon slot="icon">chevron_right</md-icon>
         </md-text-button>
     </nav>
-</section>
+{% endcall %}
