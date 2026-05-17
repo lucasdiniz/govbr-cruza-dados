@@ -27,6 +27,7 @@ def _load_all_specs():
     """Discover all LoaderSpec instances in etl.incremental.specs.*"""
     from etl.incremental.specs import pb_pagamento, pb_empenho, pb_contrato
     from etl.incremental.specs import tce_pb_despesa, tce_pb_servidor, tce_pb_licitacao, tce_pb_receita
+    from etl.incremental.specs import bolsa_familia
     from etl.incremental.specs.pb_extras import ALL_SPECS as PB_EXTRAS
 
     specs = {
@@ -39,6 +40,7 @@ def _load_all_specs():
             pb_pagamento.SPEC,
             pb_empenho.SPEC,
             pb_contrato.SPEC,
+            bolsa_familia.SPEC,
         ]
     }
     for spec in PB_EXTRAS.values():
