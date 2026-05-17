@@ -242,7 +242,9 @@ Resultado esperado:
 - `/cidade/joao-pessoa` deve retornar 200 apenas se cache/MVs estiverem
   populados;
 - rotas cache-only podem retornar **503** em cache miss, o que é esperado em
-  banco vazio.
+  banco vazio. (Exceção: `/empresa/<cnpj>` e `/empresa/<cnpj>/<slug>` retornam
+  **404** em cache miss desde ADR-0009 — semântica de "URL não representa
+  recurso qualificado em `mv_empresa_pb`".)
 
 ## Fluxo mental do projeto
 

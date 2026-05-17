@@ -239,6 +239,26 @@ etl_phase: incremental
 incremental_only: "tce_pb.tce_pb_despesa"
 ```
 
+## One-off inputs hygiene
+
+Alguns inputs do `deploy.yml` foram criados para remediar incidentes ou bugs específicos. Após rodarem em produção e o problema ser resolvido, **viram débito técnico**: inflam o UI do `workflow_dispatch`, confundem novos contributors, e arrastam código de step que nunca mais é executado.
+
+**Inputs atualmente nessa categoria** (candidatos a remoção em sweeps periódicos):
+
+| Input | Origem | Remoção sugerida quando... |
+| --- | --- | --- |
+| `run_normalize_fix` | [ADR-0007](adr/0007-etl-normalize-fix.md) | Rodou em prod + ETL atual já aplica EXISTS guard automaticamente |
+| `rebuild_tmp_for_servidor` | [ADR-0007](adr/0007-etl-normalize-fix.md) | Rodou em prod + `_tmp_*` rebuilds reincorporados no fluxo normal |
+| `cleanup_orphan_empresa_cache` | [ADR-0009](adr/0009-orphan-empresa-cache-cleanup.md) | Rodou em prod + nenhuma nova contaminação esperada por meses |
+
+**Diretriz**: ao introduzir input novo nessa categoria:
+
+1. **Documente o trigger condition + critério de remoção** no ADR associado.
+2. **Abra issue de followup** referenciando o ADR.
+3. **Periodicamente** (a cada 3-6 meses), faça PR de sweep removendo inputs cujos critérios de remoção foram satisfeitos. ADRs ficam como histórico institucional; o YAML fica enxuto.
+
+Caso alternativo (preferível quando possível): em vez de adicionar input permanente no `deploy.yml`, escreva script ad-hoc em `scripts/` invocado manualmente uma vez no servidor via SSH. Sem dívida técnica subsequente.
+
 ## Setup OIDC Azure (1x, ~5min)
 
 Exemplo para criar uma App Registration/Service Principal federado para o workflow da branch `main`. Substitua placeholders pelos valores reais.

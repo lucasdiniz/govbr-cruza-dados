@@ -150,6 +150,19 @@ real data. Before merging new reports or editing identifiers, run
   - Numeric `N` — **1-based index** into the `phases` list in
     `etl/run_all.py` (Phase 0 Download counts as item 1) — **not** the
     "Fase N" label in the phase name.
+- **`deploy.yml` one-off inputs are technical debt.** Inputs like
+  `run_normalize_fix`, `rebuild_tmp_for_servidor`, `cleanup_orphan_empresa_cache`,
+  and ad-hoc `refresh_mvs` targets were created to remediate specific bugs
+  (typically a corresponding ADR). After they run **once** in production
+  they become dead code. When adding a similar one-off step:
+  1. Document the **trigger condition** and **expected removal criteria** in
+     the related ADR (e.g. "remove after running once in prod and verifying
+     X").
+  2. Open a follow-up issue to remove it.
+  3. Periodically (every few months) sweep `deploy.yml` and delete inputs
+     whose ADRs are `Status: Superseded` / no longer applicable.
+  See [`docs/deploy.md`](docs/deploy.md) section "One-off inputs hygiene" for
+  the current debt list.
 - **Do not commit** scratch outputs from local DB inspection: `db_*.txt`,
   `pg_*.txt`, `mv_status.txt`, `*_debug*.txt`, `*.log`, `q##_result.csv`.
 

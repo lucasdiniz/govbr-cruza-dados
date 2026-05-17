@@ -54,10 +54,11 @@ empenho disponível". Inconsistência clara para o usuário.
 
 3. **DELETE entries stale** — hard remove do cache. Sitemap regenera
    natural (só qualifying da MV). URLs órfãs acessadas via cache
-   miss → 503 com Retry-After, Google de-indexa em semanas.
+   miss → **404 Not Found** (rota mudou de 503 para 404 junto com
+   este ADR — ver "Decision" abaixo). Google de-indexa em ~7-30 dias.
    Vantagem: simplicidade, self-healing, qualidade do índice
-   melhorada. Desvantagem: ~511k URLs indexadas viram 503/404
-   durante de-indexação.
+   melhorada. Desvantagem: ~511k URLs indexadas viram 404 durante
+   de-indexação.
 
 4. **Adicionar `allow_empty=True` em `compute_empresa_perfil_dict`** —
    warm processaria empresas órfãs reescrevendo cache com payload
@@ -80,9 +81,42 @@ guard).
 ## Decision
 
 Adotamos **alternativa 3** (DELETE entries stale) com função
-**standalone** invocável independentemente do warm cycle:
+**standalone** invocável independentemente do warm cycle, **acompanhada
+de mudança no contrato de cache miss da rota `/empresa/<cnpj>` (e
+`/empresa/<cnpj>/<slug>`)** de `503 Service Unavailable` para
+`404 Not Found`.
 
-### Implementação
+### Rota: cache miss = 404 (era 503)
+
+Antes deste ADR, `web/routes/empresa.py` retornava `503` com
+`Retry-After: 3600` em cache miss. A intenção original era proteger o
+DB em cold start (warm ainda não completou) e dizer ao crawler "volte
+depois". Mas com:
+
+- **Warm cycle pós-PR #156** que cobre todas as empresas qualificadas
+  em `mv_empresa_pb`,
+- **`cleanup_orphan_empresa_cache`** que remove entries de CNPJs não
+  mais qualificados,
+- **Sitemap gated** (só inclui CNPJs após warm),
+
+um cache miss em `/empresa/<cnpj>` significa essencialmente uma das
+três situações:
+
+1. CNPJ inexistente / URL inventada;
+2. CNPJ órfão (foi removido do cache pelo cleanup);
+3. CNPJ recém-qualificado entre warms (caso raríssimo — crawler só
+   descobre via sitemap, que só lista pós-warm).
+
+Em todos os casos, **a URL não representa um recurso válido no
+domínio PB**. `404 Not Found` é semanticamente correto e produz
+melhor sinal SEO: Google de-indexa URLs 404 em ~7-30 dias, vs
+semanas-meses pra 503 transient. Para as ~511k URLs órfãs que estão
+sendo limpas, isso acelera materialmente a saída do índice.
+
+Cold start (warm ainda rodando após restart) continua possível mas é
+caso transitório e raro — o trade-off pra produção é favorável.
+
+### Implementação do cleanup
 
 `web/warm_cache.py` ganha função `cleanup_orphan_empresa_cache(dry_run,
 batch_size, verbose)`:
@@ -170,7 +204,7 @@ gh workflow run deploy.yml -f etl_phase=web \
 ### Positive
 
 - **Simplicidade arquitetural**: ~30 linhas de código + step no
-  deploy. Sem tabela nova, sem mudança na rota, sem flag no compute.
+  deploy. Sem tabela nova, sem flag no compute.
 - **Self-healing futuro**: se nova contaminação aparecer (improvável
   pós ADR-0007), basta rerodar `cleanup_orphan_empresa_cache=true`.
   Idempotente.
@@ -179,23 +213,29 @@ gh workflow run deploy.yml -f etl_phase=web \
 - **Sitemap regenera natural**: usa `_get_qualifying_empresas` da
   `mv_empresa_pb`. Sem URLs órfãs no sitemap novo.
 - **Qualidade do índice melhora**: 511k URLs servindo dados falsos
-  saem do Google (semanas via 503 → de-index).
+  saem do Google em ~7-30 dias (vs semanas-meses se rota fosse 503).
+- **Semântica HTTP correta**: 404 reflete "URL não existe" para
+  CNPJs fora de `mv_empresa_pb`.
 
 ### Negative / Trade-offs
 
-- **511k URLs indexadas viram 503 transient**: Google demora semanas
-  para de-indexar. Período de transição com URLs "quebradas" no
-  índice. Mitigação: dados serviam contaminação, perda real é zero.
+- **511k URLs indexadas viram 404 transient**: Google ainda demora
+  ~7-30 dias para de-indexar. Período de transição com URLs "Not
+  Found" no índice. Mitigação: dados serviam contaminação, perda
+  real é zero.
 - **Sem rastro histórico de URLs órfãs**: se um dia precisarmos saber
   "quais empresas foram cacheadas antes do fix", a info é perdida.
   Mitigação: git tem o código antigo; Google Search Console mantém
   histórico de URLs descobertas.
-- **Acessos diretos a URLs órfãs durante de-indexação**: usuário com
-  link salvo vê 503 com Retry-After 1h. Confuso mas raro — URLs de
-  empresas fantasma têm baixíssimo tráfego.
-- **Drop_cache risk inalterado**: se `drop_cache=true` rodar, todo
-  cache vai e qualifying empresas são re-warmadas via warm cycle.
-  Empresas órfãs sumem do cache (que é o resultado desejado).
+- **Cold start mostra 404 em vez de 503**: usuário/crawler acessando
+  durante warm ainda rodando vê 404 (era 503 transient). Mitigação:
+  cold start é raro (deploys ~mensais), e o caso "novo CNPJ qualificado
+  ainda não cacheado" só é descoberto via sitemap (que só lista pós-
+  warm).
+- **Drop_cache risk**: se `drop_cache=true` rodar, **todas** as URLs
+  retornam 404 até o warm reconstruir o cache. Antes era 503 (less
+  drastic). Mitigação: `drop_cache=true` é operação rara/manual com
+  janela controlada.
 
 ### Mitigations
 
@@ -209,6 +249,7 @@ gh workflow run deploy.yml -f etl_phase=web \
 
 - Code:
   - [`web/warm_cache.py::cleanup_orphan_empresa_cache`](../../web/warm_cache.py)
+  - [`web/routes/empresa.py`](../../web/routes/empresa.py) — `empresa_perfil` + `empresa_perfil_municipio` (cache miss = 404).
 - Workflow:
   - [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
     (input `cleanup_orphan_empresa_cache`).
