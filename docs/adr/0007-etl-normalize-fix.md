@@ -71,19 +71,40 @@ VIEW CONCURRENTLY** como mecanismo de propagação:
    adicionado `AND EXISTS (SELECT 1 FROM estabelecimento WHERE cnpj_completo = doc)`.
    Garante que cargas futuras não populam mais `cnpj_basico` contaminado.
 
-2. **Fase 9 nova (cleanup retroativo + cpf_digitos)**: para cada row contaminada
-   (`cnpj_basico` populado mas `doc` não em estabelecimento), em uma única
-   `UPDATE`:
-   - `cnpj_basico = NULL` (filtros `WHERE cnpj_basico IS NOT NULL` excluem
-     automaticamente).
-   - `cpf_digitos = SUBSTRING(doc FROM 4 FOR 11)` (preserva os 11 dígitos
-     do CPF original — viabiliza páginas futuras `/empenho-pf/<cpf>` e
-     cross-source matching com servidores/Bolsa Família).
-   
-   Aplicado em 10 tabelas (`tce_pb_despesa` + 9 `pb_*`). Idempotente.
+2. **Funções `is_valid_cpf(text)` e `is_valid_cnpj(text)`**: PL/pgSQL
+   `IMMUTABLE STRICT` que validam DV matemático (módulo 11, algoritmo
+   oficial RFB). Rejeitam NULL, length mismatch, chars não-numéricos e
+   sequências triviais (`000000000-00`, `111...`, etc).
 
-3. **`ALTER TABLE ADD COLUMN cpf_digitos VARCHAR(11)` + index parcial**:
+3. **Fase 9 nova (2 UPDATEs separados + cpf_digitos via DV)**:
+   - **UPDATE 1** anula `cnpj_basico` contaminado: `WHERE cnpj_basico IS NOT NULL AND NOT EXISTS estabelecimento`. Cobre qualquer doc 14-char não-RFB (CPF padded, MEI não-sincronizado, lixo).
+   - **UPDATE 2** extrai `cpf_digitos` **apenas quando** o doc NÃO é CNPJ válido E os 11 chars (posição 4-14) SÃO CPF válido:
+     ```sql
+     UPDATE … SET cpf_digitos = SUBSTRING(doc FROM 4 FOR 11)
+     WHERE cpf_digitos IS NULL
+       AND LENGTH(doc) = 14
+       AND NOT EXISTS (estabelecimento)
+       AND NOT is_valid_cnpj(doc)              -- doc não é CNPJ matemático
+       AND is_valid_cpf(SUBSTRING(doc FROM 4 FOR 11));
+     ```
+
+   **Por que DV check em vez de prefix heurístico `LEFT '000'`**: validação empírica em 16/05/2026 mostrou que docs não-RFB com prefix ≠ `000` (ex: `65494241000180` MEI André Japiassu, `04000000062504` Min. Fazenda) têm DV CNPJ **válido** — são CNPJs reais não-sincronizados, não "lixo". Heurística por prefix rejeitaria esses corretamente mas não distingue de CPFs com primeiro dígito ≠ 0 (hipotético). DV check é o discriminator definitivo.
+
+   Aplicado em 10 tabelas (`tce_pb_despesa` + 9 `pb_*`). Idempotente: `UPDATE 1 WHERE cnpj_basico IS NOT NULL`; `UPDATE 2 WHERE cpf_digitos IS NULL`.
+
+4. **`ALTER TABLE ADD COLUMN cpf_digitos VARCHAR(11)` + index parcial**:
    `WHERE cpf_digitos IS NOT NULL` evita inchar índice com rows-de-CNPJ.
+
+### Comportamento garantido para MEIs/CNPJs novos não-sincronizados
+
+| Cenário | `cnpj_basico` | `cpf_digitos` |
+|---|---|---|
+| CNPJ real em RFB | populado | NULL |
+| MEI/CNPJ real **não em RFB** | NULL temporariamente | NULL (DV CNPJ válido bloqueia extração) |
+| CPF padded válido | NULL | populado (DV CPF passa nos chars 4-14) |
+| Doc lixo (DVs inválidos) | NULL | NULL |
+
+Quando RFB sincronizar com o MEI/CNPJ novo, próximo run de `etl.15_normalizar` é idempotente — Fase 5/7 popula `cnpj_basico` retroativamente, sem precisar de intervenção manual.
 
 ### Migration standalone
 

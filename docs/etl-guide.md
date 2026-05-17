@@ -242,15 +242,19 @@ def run() -> None:
 - **Erros silenciosos em `etl/15_normalizar.py:_exec`** — a função engole
   exceções de `CREATE INDEX`, então uma fase pode "concluir" com índice
   faltando. Sempre verifique `\d+ <tabela>` no psql após mudar normalização.
-- **`cnpj_basico` requer EXISTS guard contra `estabelecimento`.** Quando o
+- **`cnpj_basico` requer EXISTS guard contra `estabelecimento` + extração de `cpf_digitos` via DV check.** Quando o
   documento original (`cpf_cnpj`, `cpfcnpj_credor`, etc) tem 14 caracteres,
-  o ETL faz `cnpj_basico = LEFT(doc, 8)`. CPFs (11 dígitos) vêm armazenados
-  com padding de zeros à esquerda — `LEFT(..., 8)` desses gera "cnpj_basico"
-  que colide com PJ real. Desde a Fase 5/7 de `etl.15_normalizar` (versão
-  pós-PR feat/etl-cnpj-basico-fix), todos os `UPDATE cnpj_basico` validam
-  via `AND EXISTS (SELECT 1 FROM estabelecimento WHERE cnpj_completo = doc)`.
-  Cleanup retroativo na **Fase 9** anula `cnpj_basico` populated por runs
-  antigos sem guard. Veja [`docs/adr/0007`](adr/0007-etl-normalize-fix.md).
+  o ETL faz `cnpj_basico = LEFT(doc, 8) WHERE EXISTS estabelecimento`. CPFs
+  (11 dígitos) vêm armazenados com padding de zeros à esquerda — `LEFT(..., 8)`
+  desses colidiria com `cnpj_basico` de PJ real (PR #151/#153/#156 fix).
+  Desde a Fase 5/7 de `etl.15_normalizar` (versão pós-PR feat/etl-cnpj-basico-fix),
+  todos os `UPDATE cnpj_basico` validam via `AND EXISTS (SELECT 1 FROM
+  estabelecimento WHERE cnpj_completo = doc)`. Fase 9 nova faz cleanup
+  retroativo + extrai `cpf_digitos` via DV check matemático (funções
+  `is_valid_cpf()`/`is_valid_cnpj()` com módulo 11 oficial RFB). Garantia:
+  MEIs/CNPJs reais não-sincronizados (DV CNPJ válido) **nunca** viram
+  "CPF sintético" — ficam aguardando RFB sync e ETL idempotente popula
+  retroativamente. Veja [`docs/adr/0007`](adr/0007-etl-normalize-fix.md).
 - **`run_all` continua após falha de fase.** Cada fase é envolvida em
   try/except — uma falha não aborta o pipeline. Verifique os logs (e o
   resumo `_emit_notice` no GitHub Actions) ao final.
