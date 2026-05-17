@@ -1529,7 +1529,11 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         empresas.append(r)
                     result["empresas"] = empresas
 
-                # Bolsa Família (apenas durante vínculo ativo)
+                # Bolsa Familia: historico COMPLETO de parcelas (todos os
+                # snapshots mensais cumulativos) + agregados estatisticos +
+                # flag indicando quais parcelas caem dentro do periodo do
+                # vinculo TCE-PB. LIMIT 240 = 20 anos * 12 meses (defensivo,
+                # mesmo CPF tem 1 parcela por mes_competencia x mes_referencia).
                 cur.execute("""
                     WITH vinculo AS (
                         SELECT COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
@@ -1537,27 +1541,66 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         FROM tce_pb_servidor
                         WHERE cpf_digitos_6 = %s AND nome_upper = %s
                           AND ano_mes >= '2022-01'
+                    ),
+                    bf_filtrado AS (
+                        SELECT bf.mes_competencia, bf.mes_referencia,
+                               bf.valor_parcela, bf.nm_municipio, bf.uf,
+                               (bf.mes_competencia >= v.inicio
+                                AND bf.mes_competencia <= v.fim) AS durante_vinculo
+                        FROM bolsa_familia bf
+                        CROSS JOIN vinculo v
+                        WHERE bf.cpf_digitos = %s
+                          AND UPPER(TRIM(bf.nm_favorecido)) = %s
                     )
-                    SELECT bf.mes_competencia, bf.valor_parcela, bf.nm_municipio
-                    FROM bolsa_familia bf, vinculo v
-                    WHERE bf.cpf_digitos = %s
-                      AND UPPER(TRIM(bf.nm_favorecido)) = %s
-                      AND bf.mes_competencia >= v.inicio
-                      AND bf.mes_competencia <= v.fim
-                    ORDER BY bf.mes_competencia DESC
-                    LIMIT 5
+                    SELECT mes_competencia, mes_referencia, valor_parcela,
+                           nm_municipio, uf, durante_vinculo
+                    FROM bf_filtrado
+                    ORDER BY mes_competencia DESC, mes_referencia DESC
+                    LIMIT 240
                 """, (cpf6, nome, cpf6, nome))
                 bf_cols = [d[0] for d in cur.description]
                 bf_rows = cur.fetchall()
                 if bf_rows:
                     bf_list = []
+                    total_recebido = 0.0
+                    total_durante_vinculo = 0.0
+                    qtd_durante_vinculo = 0
+                    meses_competencia: set[str] = set()
+                    primeiro_mes = None
+                    ultimo_mes = None
                     for row in bf_rows:
                         r = _row_to_dict(bf_cols, row)
                         for k, v in r.items():
                             if hasattr(v, 'as_tuple'):
                                 r[k] = float(v)
                         bf_list.append(r)
-                    result["bolsa_familia"] = bf_list
+                        valor = r.get("valor_parcela") or 0.0
+                        total_recebido += float(valor)
+                        if r.get("durante_vinculo"):
+                            total_durante_vinculo += float(valor)
+                            qtd_durante_vinculo += 1
+                        mc = r.get("mes_competencia")
+                        if mc:
+                            meses_competencia.add(mc)
+                            if primeiro_mes is None or mc < primeiro_mes:
+                                primeiro_mes = mc
+                            if ultimo_mes is None or mc > ultimo_mes:
+                                ultimo_mes = mc
+                    qtd_meses = len(meses_competencia)
+                    valor_medio = (total_recebido / len(bf_list)) if bf_list else 0.0
+                    result["bolsa_familia"] = {
+                        "parcelas": bf_list,
+                        "stats": {
+                            "qtd_parcelas": len(bf_list),
+                            "qtd_meses": qtd_meses,
+                            "total_recebido": round(total_recebido, 2),
+                            "valor_medio": round(valor_medio, 2),
+                            "primeiro_mes": primeiro_mes,
+                            "ultimo_mes": ultimo_mes,
+                            "qtd_durante_vinculo": qtd_durante_vinculo,
+                            "total_durante_vinculo": round(total_durante_vinculo, 2),
+                        },
+                    }
 
                 # Vínculo como servidor
                 cur.execute("""
