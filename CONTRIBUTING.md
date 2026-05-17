@@ -13,6 +13,8 @@ Este documento descreve o que precisa para contribuir. Para entender a arquitetu
 - [Convenções de SQL e queries Q##](#convenções-de-sql-e-queries-q)
 - [Convenções de relatórios](#convenções-de-relatórios)
 - [Convenções de commits e PRs](#convenções-de-commits-e-prs)
+- [Checklist de PR](#checklist-de-pr)
+- [Contribuindo com agentes de IA](#contribuindo-com-agentes-de-ia)
 - [O que você pode tocar / pode não tocar](#o-que-você-pode-tocar--pode-não-tocar)
 - [Onde pedir ajuda](#onde-pedir-ajuda)
 
@@ -228,6 +230,76 @@ Escopo é livre (`web`, `etl`, `deploy`, `queries`, `seguranca`, etc.).
 ### Tamanho do PR
 
 PRs menores são preferíveis. Se a mudança naturalmente quebra em fases (ex: refactor + feature), separe em PRs encadeados (`base: feat/parte-1`).
+
+## Checklist de PR
+
+Antes de abrir ou mergear um PR, **sempre revise estes pontos** — mudanças
+não-óbvias na arquitetura ou na superfície pública do projeto exigem
+documentação acompanhada:
+
+- [ ] **README** — a mudança introduz uma feature nova, comando, env var, ou
+  conceito fundamental que o `README.md` precisa mencionar? Atualize a seção
+  apropriada (quick start, features, ou "Documentação adicional").
+- [ ] **`docs/`** — o guia de área correto está atualizado?
+  - `etl-guide.md` / `etl-incremental-guide.md` — mudou pipeline ETL
+  - `web-guide.md` — mudou rota, template, componente MD3
+  - `queries-guide.md` — adicionou Q##
+  - `mv-guide.md` — mexeu em MV
+  - `cache.md` — mexeu em `web_cache` ou shadow rewarm
+  - `deploy.md` / `ops.md` — mudou deploy ou runbook
+  - Atualize ou adicione diagramas Mermaid se o fluxo/topologia mudou.
+- [ ] **ADR** — a mudança é uma decisão arquitetural não-óbvia (afeta múltiplos
+  módulos, tem trade-offs não-triviais, alguém razoável poderia ter escolhido
+  diferente)? Se sim, **crie `docs/adr/NNNN-titulo.md`** seguindo o template em
+  [`docs/adr/README.md`](docs/adr/README.md). ADRs são **imutáveis** uma vez
+  `Accepted` — para revisar uma decisão, crie um ADR novo que supersede o
+  antigo.
+- [ ] **Glossário** — termo novo do domínio que merece entrada em
+  [`docs/glossario.md`](docs/glossario.md)?
+- [ ] **Testes** — `tests/incremental/` cobre o framework incremental;
+  para mudanças one-off, `python -m compileall etl -q` é o baseline mínimo.
+- [ ] **Audit scripts** — mexeu em `relatorios/` ou identificadores? Rode
+  `python scripts/audit_report_identifiers.py --strict` (offline) antes do PR.
+- [ ] **Trailer Copilot** em todo commit:
+  `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
+
+Esse checklist é a versão "humana" do que o [`AGENTS.md`](AGENTS.md) também
+exige para agentes de IA — fica consistente entre as duas audiências.
+
+## Contribuindo com agentes de IA
+
+O projeto foi escrito majoritariamente com auxílio de assistentes de IA
+(GitHub Copilot, Claude Code, Codex) e está estruturado para que novos
+contributors usem seus próprios agentes com baixa fricção.
+
+A fonte canônica de instruções para agentes vive em
+[`AGENTS.md`](AGENTS.md) na raiz do repositório. Ela é lida automaticamente
+por:
+
+- **GitHub Copilot CLI** — também lê `.github/copilot-instructions.md`
+- **Claude Code** — também lê `CLAUDE.md`
+- **Cursor**, **Aider**, **Codex CLI**, **Continue.dev** — leem `AGENTS.md`
+  diretamente
+
+`CLAUDE.md` e `.github/copilot-instructions.md` são arquivos-ponteiro curtos
+que apontam para `AGENTS.md`. **Edite só o `AGENTS.md`** — os outros dois
+ficam quase imutáveis. Justificativa em
+[ADR-0008](docs/adr/0008-agents-md-canonical.md).
+
+O `AGENTS.md` cobre:
+
+- Mapa de leitura dos `docs/` em ordem de prioridade
+- Comandos críticos de setup
+- Arquitetura essencial (com pointers para detalhes)
+- Convenções (no-pandas, no-ORM, RFB latin-1, etc.)
+- **Quirks descobertos pelos agentes** — gotchas em MD3, Jinja, MV, Mermaid,
+  cache typing, deploy. Internalize antes de mexer na área correspondente.
+- Checklist de PR (mesma versão acima, para consumo do agente)
+- Trailer obrigatório
+
+Se você adicionar uma convenção nova ou descobrir um quirk não-óbvio durante
+sua contribuição, **atualize o `AGENTS.md`** no mesmo PR — esse arquivo é o
+contrato de conhecimento institucional.
 
 ## O que você pode tocar / pode não tocar
 

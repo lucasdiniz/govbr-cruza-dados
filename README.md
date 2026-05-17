@@ -389,6 +389,7 @@ Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específic
 - [`docs/glossario.md`](docs/glossario.md) — 60+ termos do domínio público brasileiro (empenho, UG, CEIS, LGPD, etc.)
 - [`docs/onboarding.md`](docs/onboarding.md) — walk-through clone → `uvicorn` em 3 caminhos
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — convenções de código, commits, PRs
+- [`AGENTS.md`](AGENTS.md) — instruções canônicas para agentes de IA (Copilot CLI, Claude Code, Cursor, Aider, Codex). Inclui mapa de docs, comandos, convenções, quirks descobertos e checklist obrigatório de PR. Veja [ADR-0008](docs/adr/0008-agents-md-canonical.md)
 
 ### Guias por área
 
@@ -411,7 +412,7 @@ Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específic
 
 ### Decisões arquiteturais (ADRs)
 
-- [`docs/adr/`](docs/adr/) — 5 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web
+- [`docs/adr/`](docs/adr/) — 8 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web, MV atomic swap, ETL normalize fix, AGENTS.md canonical
 
 ### Referência
 
