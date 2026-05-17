@@ -112,6 +112,21 @@ on:
         required: false
         type: string
         default: ''
+      run_normalize_fix:
+        description: 'Roda sql/15a_fix_cnpj_basico_contamination.sql (UPDATE retroativo anulando cnpj_basico contaminado por CPF padded + extrai cpf_digitos pra futuras queries de PF). Idempotente. UPDATE nao bloqueia SELECTs (MVCC) — zero downtime na web. Tempo: ~15-40 min em prod. Combine com refresh_mvs depois pra propagar fix nas MVs. Veja docs/adr/0007.'
+        required: false
+        type: boolean
+        default: false
+      rebuild_tmp_for_servidor:
+        description: 'Roda sql/15c_rebuild_tmp_for_servidor.sql (rebuild de _tmp_fornecedor_gov + _tmp_conflito via TRUNCATE+INSERT). Necessario ANTES de refresh_mvs=mv_servidor_pb_risco para propagar o fix de cnpj_basico (essa MV usa _tmp_* backing tables que nao sao recalculadas por REFRESH CONCURRENTLY). Pode rodar com run_normalize_fix=true na mesma execucao. Tempo: 5-15 min.'
+        required: false
+        type: boolean
+        default: false
+      refresh_mvs:
+        description: 'Lista CSV de MVs para REFRESH MATERIALIZED VIEW CONCURRENTLY (zero-downtime, requer UNIQUE INDEX). Ex: "mv_empresa_pb,mv_municipio_pb_kpi_score". Roda APOS run_normalize_fix/rebuild_tmp_for_servidor (se setados) e ANTES do warm. Ordem importa: passe L1 primeiro (mv_servidor_pb_base, mv_pessoa_pb, etc), depois L2 (mv_servidor_pb_risco, mv_municipio_pb_kpi_score). Pra mv_q67_dated_pb, sql/15b_add_unique_index_mv_q67.sql precisa ter rodado antes (incluido em run_normalize_fix). Pra mv_servidor_pb_risco, rebuild_tmp_for_servidor=true precisa ter rodado antes. Apenas [a-zA-Z0-9_,] permitidos.'
+        required: false
+        type: string
+        default: ''
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -169,14 +184,18 @@ jobs:
           #   - qualquer etl_phase != web (ETL/SQL/N usam mais RAM e CPU)
           #   - warm_cache=true (1 ciclo de warm leva ~20h, beneficia muito de B4)
           #   - rewarm_cache_keys != '' (warm shadow tb roda — precisa B4)
-          # Caso contrario (etl_phase=web sem warm sem rewarm), mantem B2 (8GB).
+          # Caso contrario (etl_phase=web sem warm sem rewarm/mv_swap/normalize_fix/refresh_mvs), mantem B2 (8GB).
           # Disco segue a VM: Premium para trabalho pesado, Standard para web.
           if [ "${{ inputs.etl_phase }}" = "web" ] \
              && [ "${{ inputs.warm_cache }}" != "true" ] \
-             && [ -z "${{ inputs.rewarm_cache_keys }}" ]; then
+             && [ -z "${{ inputs.rewarm_cache_keys }}" ] \
+             && [ -z "${{ inputs.mv_swap }}" ] \
+             && [ "${{ inputs.run_normalize_fix }}" != "true" ] \
+             && [ -z "${{ inputs.refresh_mvs }}" ] \
+             && [ "${{ inputs.rebuild_tmp_for_servidor }}" != "true" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
-            echo "etl_phase=web warm_cache=false rewarm=empty → B2 + Standard SSD (web)"
+            echo "etl_phase=web sem trabalho pesado → B2 + Standard SSD (web)"
           else
             echo "target_size=${{ env.VM_SIZE_ETL }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_HEAVY }}" >> "$GITHUB_OUTPUT"
@@ -744,6 +763,90 @@ jobs:
             echo "=== Atomic swap: $MV ==="
             python -m etl.mv_swap "$MV" "$SQL_FILE" 2>&1
             echo "=== $MV swapped ==="
+          done
+
+      # ── ETL normalize fix (opt-in, zero-downtime) ──
+      # Roda sql/15a_fix_cnpj_basico_contamination.sql: UPDATE retroativo
+      # que anula cnpj_basico contaminado por CPF padded (LEFT(cpf_cnpj, 8)
+      # sem validar contra estabelecimento). Idempotente — WHERE NOT EXISTS
+      # garante que segunda execucao nao faz nada.
+      #
+      # Zero downtime: UPDATE nao bloqueia SELECTs (MVCC). MVs continuam
+      # servindo dados velhos durante o UPDATE. Para propagar o fix nas MVs,
+      # combine com refresh_mvs depois (REFRESH MATERIALIZED VIEW CONCURRENTLY).
+      #
+      # Tempo estimado em prod: ~10-30 min. Ver docs/adr/0007 + docs/etl-guide.md.
+      - name: "ETL: normalize fix (cnpj_basico cleanup)"
+        if: inputs.run_normalize_fix == true
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== Aplicando sql/15a_fix_cnpj_basico_contamination.sql ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+            -f sql/15a_fix_cnpj_basico_contamination.sql 2>&1
+          echo "=== Normalize fix complete ==="
+          echo "=== Aplicando sql/15b_add_unique_index_mv_q67.sql (pre-flight refresh_mvs) ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+            -f sql/15b_add_unique_index_mv_q67.sql 2>&1
+          echo "=== UNIQUE INDEX mv_q67_dated_pb pronto ==="
+
+      # ── Rebuild _tmp_* tables pra mv_servidor_pb_risco (opt-in) ──
+      # mv_servidor_pb_risco depende de _tmp_fornecedor_gov + _tmp_conflito
+      # (backing tables que NAO sao recalculadas por REFRESH MV CONCURRENTLY).
+      # Pra propagar fix de cnpj_basico contaminado, rebuild essas tables
+      # via TRUNCATE+INSERT em transacao atomica.
+      # Roda APOS run_normalize_fix (se setado) e ANTES de refresh_mvs.
+      - name: "Rebuild _tmp_* backing tables (mv_servidor_pb_risco)"
+        if: inputs.rebuild_tmp_for_servidor == true
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== Aplicando sql/15c_rebuild_tmp_for_servidor.sql ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+            -f sql/15c_rebuild_tmp_for_servidor.sql 2>&1
+          echo "=== _tmp_* tables rebuilt ==="
+
+      # ── Refresh MVs (opt-in, zero-downtime) ──
+      # Roda REFRESH MATERIALIZED VIEW CONCURRENTLY em cada MV listada.
+      # CONCURRENTLY usa SHARE UPDATE EXCLUSIVE lock (vs ACCESS EXCLUSIVE),
+      # permitindo leituras concorrentes durante o refresh. Requer UNIQUE INDEX
+      # na MV.
+      #
+      # Caso de uso principal: propagar fix de dados (run_normalize_fix=true)
+      # nas MVs sem dropar/recriar (zero downtime, vs etl_phase=sql 1-2h).
+      #
+      # Ordem importa: passe L1 primeiro (mv_servidor_pb_base, mv_pessoa_pb,
+      # mv_empresa_governo, mv_empresa_pb, mv_municipio_pb_risco), depois L2
+      # (mv_servidor_pb_risco, mv_municipio_pb_kpi_score, mv_municipio_pb_mapa).
+      - name: "MV refresh concurrently"
+        if: inputs.refresh_mvs != ''
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+
+          # Sanitize
+          MVS_RAW="${{ inputs.refresh_mvs }}"
+          MVS=$(echo "$MVS_RAW" | tr -cd 'a-zA-Z0-9_,')
+          if [ "$MVS" != "$MVS_RAW" ]; then
+            echo "::error::refresh_mvs contem caracteres invalidos. Apenas [a-zA-Z0-9_,] permitidos."
+            exit 1
+          fi
+
+          IFS=',' read -ra MV_LIST <<< "$MVS"
+          for MV in "${MV_LIST[@]}"; do
+            echo "=== REFRESH MATERIALIZED VIEW CONCURRENTLY $MV ==="
+            START=$(date +%s)
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -c "REFRESH MATERIALIZED VIEW CONCURRENTLY $MV;" 2>&1
+            END=$(date +%s)
+            echo "=== $MV refreshed in $((END-START))s ==="
           done
 
       # ── Deploy web services ──
@@ -1922,7 +2025,13 @@ jobs:
     if: |
       always() &&
       needs.deploy.result == 'success' &&
-      (inputs.etl_phase != 'web' || inputs.warm_cache == true || inputs.rewarm_cache_keys != '')
+      (inputs.etl_phase != 'web' ||
+       inputs.warm_cache == true ||
+       inputs.rewarm_cache_keys != '' ||
+       inputs.mv_swap != '' ||
+       inputs.run_normalize_fix == true ||
+       inputs.rebuild_tmp_for_servidor == true ||
+       inputs.refresh_mvs != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

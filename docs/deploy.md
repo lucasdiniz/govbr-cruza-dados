@@ -114,6 +114,8 @@ Definidos em [`../.github/workflows/deploy.yml`](../.github/workflows/deploy.yml
 | `expose_cidade_resumo_sitemap` | choice | `keep` | Controla `/cidade/<slug>/<yyyy-mm>` no sitemap. `enable` exige cache e gate de 80%. |
 | `download_sources` | csv/string | vazio | Re-baixa fontes específicas via `etl.00_download --only` antes de rodar ETL/fase. Útil quando cleanup apagou CSVs. |
 | `mv_swap` | csv/string | vazio | Lista CSV de MVs para atomic swap zero-downtime (ex: `mv_empresa_pb`). Pra cada MV, lê `deploy/mv_updates/<mv>.sql` (com sufixo `_swap`). Roda após ETL phase, antes do warm. Permite atualizar UMA MV sem dropar todas (~1s downtime vs 1-2h do `etl_phase=sql`). Sanitizado para `[A-Za-z0-9_,]`. Veja [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime). |
+| `run_normalize_fix` | boolean | `false` | Roda `sql/15a_fix_cnpj_basico_contamination.sql` (UPDATE retroativo anulando `cnpj_basico` contaminado por CPF padded) + `sql/15b_add_unique_index_mv_q67.sql` (pre-flight para `REFRESH CONCURRENTLY`). Idempotente, zero downtime (UPDATE não bloqueia SELECT). Veja [ADR-0007](adr/0007-etl-normalize-fix.md). |
+| `refresh_mvs` | csv/string | vazio | Lista CSV de MVs para `REFRESH MATERIALIZED VIEW CONCURRENTLY` (zero-downtime, requer UNIQUE INDEX). Caso típico: propagar fix de dados (`run_normalize_fix=true`) nas MVs sem dropar/recriar. Ordem importa: L1 antes de L2. Sanitizado `[A-Za-z0-9_,]`. |
 
 ## Cenários típicos
 
@@ -188,6 +190,38 @@ rewarm_cache_keys: EMPRESA_PERFIL,EMPRESA_PERFIL_MUN
 Requer arquivo `deploy/mv_updates/<mv_name>.sql` com a nova definição (sufixo `_swap` em todos os identifiers). Framework em [`../etl/mv_swap.py`](../etl/mv_swap.py); passos completos em [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime).
 
 Comparado a `etl_phase=sql` (DROP+CREATE de todas as MVs em `sql/12_views.sql`, 1-2h + VM resize), o swap usa a VM atual e tem downtime real de ~1s (só a transação de RENAME). Combine com `rewarm_cache_keys` se a MV alimenta `web_cache` keys.
+
+### ETL normalize fix (cleanup `cnpj_basico` contaminado)
+
+Pra corrigir contaminação de `cnpj_basico` por CPF padded em todas as MVs/queries de uma vez (alternativa a aplicar mv_swap MV-por-MV), use a sequência:
+
+```yaml
+# 1. UPDATE retroativo (zero downtime, 10-30 min)
+etl_phase: web
+run_normalize_fix: true
+```
+
+Depois, refresh das MVs afetadas em ordem L1 → L2:
+
+```yaml
+# 2. MVs L1 (independentes)
+etl_phase: web
+refresh_mvs: mv_pessoa_pb,mv_empresa_governo,mv_empresa_pb,mv_municipio_pb_risco
+```
+
+```yaml
+# 3. MVs L2 (dependem de L1)
+etl_phase: web
+refresh_mvs: mv_servidor_pb_risco,mv_municipio_pb_kpi_score,mv_municipio_pb_mapa,mv_q67_dated_pb
+```
+
+```yaml
+# 4. Rewarm cache (shadow zero-downtime)
+etl_phase: web
+rewarm_cache_keys: EMPRESA_PERFIL,EMPRESA_PERFIL_MUN,KPI_SUMMARY,MAPA,Q67,PERFIL,TOP_FORNECEDORES,TOP_SERVIDORES
+```
+
+Total downtime: **zero**. Detalhes em [ADR-0007](adr/0007-etl-normalize-fix.md).
 
 ### Habilitar sitemap de empresas
 
