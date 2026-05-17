@@ -38,7 +38,9 @@ _CSV_DIRS: dict[str, list[str]] = {
     "etl.13_sancoes":       ["sancoes"],
     "etl.14_viagens":       ["viagens"],
     "etl.16_tse":           ["tse"],
-    "etl.17_bolsa_familia": ["bolsa_familia"],
+    # NOTA: etl.17_bolsa_familia removida deste mapa — Bolsa Familia agora
+    # roda via framework incremental (etl_phase=incremental), que cuida da
+    # propria limpeza de CSVs. A fase classica e no-op (ver ADR-0009).
     "etl.18_tse_prestacao": ["tse"],          # mesma pasta que 16_tse
     "etl.19_tce_pb":        ["tce_pb"],
     "etl.20_dados_pb":      ["dados_pb"],

@@ -1,95 +1,29 @@
-"""Carrega dados do Novo Bolsa Familia.
+"""Bolsa Familia — fase classica desativada (migrada para framework incremental).
 
-Fonte: portaldatransparencia.gov.br/download-de-dados/novo-bolsa-familia
-Arquivos: YYYYMM_NovoBolsaFamilia.csv (;, Latin-1, com header, valor com virgula)
-~20M registros por mes.
+A carga de Bolsa Familia agora roda via `etl/incremental/specs/bolsa_familia.py`
+(framework P1-P6, snapshots mensais acumulativos). Esta fase classica permanece
+no orquestrador `etl/run_all.py` apenas como no-op para preservar o indice de
+fases (etl_phase numerico do deploy.yml e tests).
+
+Acionamento:
+- `etl_phase=incremental` (com `incremental_only=bolsa_familia.bolsa_familia` opcional)
+- Schema canonico (`sql/17_schema_bolsa_familia.sql`) continua sendo aplicado
+  pela fase 1 (`etl.01_schema`) de forma idempotente (CREATE IF NOT EXISTS).
+- Migration `sql/41_bolsa_familia_incremental.sql` aplicada pelo step
+  "ETL: Incremental" do deploy.
+
+Ver ADR-0009 para a decisao completa.
 """
-
-from etl.config import DATA_DIR, SQL_DIR
-from etl.db import get_conn, table_count
 
 
 def run():
-    conn = get_conn()
-    try:
-        sql = (SQL_DIR / "17_schema_bolsa_familia.sql").read_text(encoding="utf-8")
-        with conn.cursor() as cur:
-            cur.execute(sql)
-        conn.commit()
-
-        bf_dir = DATA_DIR / "bolsa_familia"
-        files = sorted(bf_dir.glob("*_NovoBolsaFamilia.csv"))
-        if not files:
-            print("    AVISO: Nenhum arquivo *_NovoBolsaFamilia.csv encontrado.")
-            return
-
-        staging = "_stg_bolsa_familia"
-
-        for filepath in files:
-            print(f"    Carregando {filepath.name} para staging...")
-
-            with conn.cursor() as cur:
-                cur.execute(f"TRUNCATE {staging}")
-            conn.commit()
-
-            copy_sql = f"""COPY {staging} FROM STDIN WITH (
-                FORMAT csv, DELIMITER ';', HEADER true, NULL '',
-                ENCODING 'LATIN1', QUOTE '"'
-            )"""
-
-            with open(filepath, "rb") as f:
-                with conn.cursor() as cur:
-                    cur.copy_expert(copy_sql, f)
-            conn.commit()
-
-            print(f"    Inserindo em bolsa_familia...")
-            with conn.cursor() as cur:
-                cur.execute(f"""
-                    INSERT INTO bolsa_familia (
-                        mes_competencia, mes_referencia, uf, cd_municipio_siafi,
-                        nm_municipio, cpf_favorecido, nis_favorecido, nm_favorecido,
-                        valor_parcela
-                    )
-                    SELECT
-                        TRIM(c0), TRIM(c1), TRIM(c2), TRIM(c3),
-                        TRIM(c4), TRIM(c5), TRIM(c6), TRIM(c7),
-                        CASE WHEN TRIM(c8) ~ '^[\\d.,]+$' AND TRIM(c8) != ''
-                             THEN CAST(REPLACE(REPLACE(TRIM(c8), '.', ''), ',', '.') AS NUMERIC)
-                             ELSE NULL END
-                    FROM {staging}
-                """)
-            conn.commit()
-            print(f"    {filepath.name} carregado.")
-
-        # Limpar staging
-        with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {staging}")
-        conn.commit()
-
-        count = table_count(conn, "bolsa_familia")
-        print(f"    bolsa_familia: {count} registros")
-
-        print("    Criando indices...")
-        # Disable parallel workers to reduce temp disk usage on large tables
-        with conn.cursor() as cur:
-            cur.execute("SET max_parallel_maintenance_workers = 0;")
-        conn.commit()
-
-        # Create indexes one at a time, committing after each to release temp space
-        bf_indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_bf_cpf ON bolsa_familia(cpf_favorecido);",
-            "CREATE INDEX IF NOT EXISTS idx_bf_nis ON bolsa_familia(nis_favorecido);",
-            "CREATE INDEX IF NOT EXISTS idx_bf_nome ON bolsa_familia USING gin(nm_favorecido gin_trgm_ops);",
-            "CREATE INDEX IF NOT EXISTS idx_bf_municipio ON bolsa_familia(cd_municipio_siafi);",
-            "CREATE INDEX IF NOT EXISTS idx_bf_uf ON bolsa_familia(uf);",
-        ]
-        for idx_sql in bf_indexes:
-            with conn.cursor() as cur:
-                cur.execute(idx_sql)
-            conn.commit()
-        print("    Indices Bolsa Familia criados.")
-    finally:
-        conn.close()
+    print(
+        "    SKIP: Bolsa Familia migrou para ETL incremental "
+        "(etl_phase=incremental, spec bolsa_familia.bolsa_familia). "
+        "Ver ADR-0009 e docs/etl-incremental-guide.md.",
+        flush=True,
+    )
+    return
 
 
 if __name__ == "__main__":
