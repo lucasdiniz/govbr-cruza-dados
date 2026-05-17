@@ -119,7 +119,24 @@ CSV_HEADER_REWRITES = {
     "VALOR PARCELA": "VALOR_PARCELA",
 }
 
-COLUMN_RENAMES = {c: c.lower() for c in COLUMNS}
+# Column renames: CSV col raw (UPPERCASE) -> target col (lowercase).
+# CRITICO: a tabela bolsa_familia usa nomes LEGADOS estilo SIAFI antigo
+# (cd_municipio_siafi, nm_municipio, nm_favorecido), NAO o padrao Portal
+# (codigo_municipio_siafi, nome_municipio, nome_favorecido). Mapping
+# explicito abaixo evita o bug que blanket lowercase causaria (INSERT em
+# coluna inexistente). Validado contra sql/17_schema_bolsa_familia.sql
+# (schema canonico) e information_schema.columns em prod 2026-05.
+COLUMN_RENAMES = {
+    "MES_COMPETENCIA": "mes_competencia",
+    "MES_REFERENCIA": "mes_referencia",
+    "UF": "uf",
+    "CODIGO_MUNICIPIO_SIAFI": "cd_municipio_siafi",
+    "NOME_MUNICIPIO": "nm_municipio",
+    "CPF_FAVORECIDO": "cpf_favorecido",
+    "NIS_FAVORECIDO": "nis_favorecido",
+    "NOME_FAVORECIDO": "nm_favorecido",
+    "VALOR_PARCELA": "valor_parcela",
+}
 
 COLUMN_TYPES = {c: "TEXT" for c in COLUMNS}
 COLUMN_TYPES["VALOR_PARCELA"] = "NUMERIC"

@@ -107,6 +107,34 @@ def test_build_upsert_sql_target_uses_lowercase_renames():
     assert "mes_competencia" in sql
 
 
+def test_build_upsert_sql_target_uses_legacy_column_names():
+    """CRITICAL regression: a tabela bolsa_familia usa nomes LEGADOS estilo
+    SIAFI antigo (cd_municipio_siafi, nm_municipio, nm_favorecido), NAO
+    o padrao Portal (codigo_municipio_siafi, nome_municipio, nome_favorecido).
+
+    Sem esse mapping explicito, blanket lowercase `{c: c.lower() for c}`
+    geraria INSERT em colunas inexistentes e o framework quebraria no
+    primeiro upsert apos sql/41 + sql/41z ja rodarem em prod.
+
+    Achado pelo GPT-5.5 na rodada de revisao final.
+    """
+    import re
+    sql = build_upsert_sql(SPEC, stg_typed="_stg_test", bucket_id="2026-04")
+    m = re.search(r"INSERT INTO public\.bolsa_familia \(([^)]+)\)", sql)
+    assert m, "regex INSERT INTO falhou"
+    target_cols = [c.strip() for c in m.group(1).split(",")]
+
+    # Nomes que DEVEM aparecer (legacy SIAFI):
+    assert "cd_municipio_siafi" in target_cols
+    assert "nm_municipio" in target_cols
+    assert "nm_favorecido" in target_cols
+
+    # Nomes que NAO devem aparecer (padrao Portal, divergente do schema):
+    assert "codigo_municipio_siafi" not in target_cols
+    assert "nome_municipio" not in target_cols
+    assert "nome_favorecido" not in target_cols
+
+
 # ─── csv_header_rewrites ──────────────────────────────────────────────────
 
 
