@@ -1247,6 +1247,14 @@ def download_bolsa_familia(anos=None):
 
     Baixa apenas o snapshot mais recente disponivel, tentando do mes atual
     para tras ate encontrar um que esteja publicado.
+
+    NOTA: preserva zips/CSVs de meses anteriores no disco (mudanca em
+    relacao a versao classica). A logica destrutiva de unlink foi removida
+    porque o framework ETL incremental (etl/incremental/specs/bolsa_familia.py)
+    pode reaproveitar snapshots ja baixados, e o auto-cleanup post-load do
+    framework e responsavel pela limpeza apos carga bem-sucedida.
+
+    Ver ADR-0009.
     """
     dest = DATA_DIR / "bolsa_familia"
     dest.mkdir(parents=True, exist_ok=True)
@@ -1268,14 +1276,6 @@ def download_bolsa_familia(anos=None):
             return
         if _download(url, zip_path):
             _unzip(zip_path, dest)
-            # Remove old zips/csvs to keep only the latest
-            for old in dest.iterdir():
-                if old == zip_path:
-                    continue
-                if old.name.endswith(".zip") or old.name.endswith(".csv"):
-                    if str(ym) not in old.name:
-                        old.unlink()
-                        print(f"    [limpou] {old.name}")
             return
     print("    [falhou] nenhum snapshot encontrado nos ultimos 12 meses")
 
