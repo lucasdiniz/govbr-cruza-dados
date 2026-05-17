@@ -100,10 +100,14 @@ Results land in `resultados/Q##_*.csv`.
 **Materialized views** (`sql/12_views.sql`): layered — **L1** independent MVs
 (`mv_empresa_governo`, `mv_pessoa_pb`, `mv_municipio_pb_risco`,
 `mv_servidor_pb_base`) → **L2** MVs that depend on them (`mv_servidor_pb_risco`,
-`mv_empresa_pb`, `mv_rede_pb`) → plain views (`v_risk_score_empresa`,
-`v_risk_score_pb`). The file drops everything in reverse-dependency order at
-the top; when adding an MV keep that pattern and add a
-`REFRESH MATERIALIZED VIEW CONCURRENTLY` line in the footer comment. Detail:
+`mv_empresa_pb`, `mv_rede_pb`, `mv_municipio_pb_kpi_score`,
+`mv_municipio_pb_mapa`, `mv_q67_dated_pb`) → plain views
+(`v_risk_score_empresa`, `v_risk_score_pb`). The file drops everything at
+the top with `CASCADE` in intended reverse-dependency order, then recreates
+L1 → L2 → views. When adding an MV, follow the pattern in both blocks **and**
+add a `REFRESH MATERIALIZED VIEW CONCURRENTLY` line in the footer comment
+(needs a `UNIQUE INDEX` on the MV). The L2 list above is the current set;
+treat `sql/12_views.sql` as the source of truth. Detail:
 [`docs/mv-guide.md`](docs/mv-guide.md) and [ADR-0002](docs/adr/0002-mv-layered.md).
 
 **Web app** (`web/`): FastAPI + Jinja2, **no ORM** — raw SQL via `web/db.py`
@@ -137,11 +141,15 @@ real data. Before merging new reports or editing identifiers, run
 - **Reports mask CPFs** as `***.NNN.NNN-**` (keeps the 6 middle digits, mirrors
   `cpf_digitos_6` in MVs). CNPJs stay fully visible (public RFB data).
 - **Deploy is GitHub Actions** against a self-hosted runner
-  (`.github/workflows/deploy.yml`). The `etl_phase` input is the **1-based
-  index into the `phases` list** in `etl/run_all.py` (Phase 0 Download counts
-  as item 1) — **not** the "Fase N" label in the phase name. `etl_phase=sql`
-  runs indices/normalization/views only; `etl_phase=web` syncs code and
-  restarts systemd units only.
+  (`.github/workflows/deploy.yml`). The `etl_phase` input accepts:
+  - `all` — full ETL from Phase 0 Download through MV refresh + warm
+  - `incremental` — runs the P1-P6 framework ([ADR-0004](docs/adr/0004-etl-incremental-framework.md));
+    optional `incremental_specs` input narrows which specs run
+  - `sql` — indices/normalization/views only (no ETL)
+  - `web` — code sync + systemd restart only (no ETL/SQL)
+  - Numeric `N` — **1-based index** into the `phases` list in
+    `etl/run_all.py` (Phase 0 Download counts as item 1) — **not** the
+    "Fase N" label in the phase name.
 - **Do not commit** scratch outputs from local DB inspection: `db_*.txt`,
   `pg_*.txt`, `mv_status.txt`, `*_debug*.txt`, `*.log`, `q##_result.csv`.
 
@@ -164,9 +172,14 @@ before editing the relevant area.
   `.report-section`, `.finding-card`, `details.collapsible-details`). New
   collapsible components should register there.
 - **`anchor-auto-expand` intercepts every `a[href^="#"]` click** with
-  `preventDefault()` + `replaceState()` and does **not** dispatch
-  `hashchange`. Components that react to anchor navigation must hook into
-  `expandReportContext`, not `hashchange`.
+  `preventDefault()` + `history.replaceState()`. Because `replaceState`
+  doesn't fire a `hashchange` event, click-driven anchor navigation never
+  triggers `hashchange` handlers. The component itself **does** listen on
+  `hashchange` to handle browser back/forward across hash anchors. When
+  adding components that should respond to anchor navigation, register them
+  in `expandReportContext` rather than wiring your own `hashchange`
+  listener — the central registry covers both click and browser-history
+  paths.
 - **`<details>` `toggle` event fires asynchronously** (queued task). To suppress
   handlers during programmatic expansion (e.g. print mode), use a flag and
   clear it with `setTimeout(0)` — never clear synchronously after setting
@@ -210,11 +223,18 @@ before editing the relevant area.
   at the top, recreates L1 → L2 → views. Adding a new MV requires updating
   both blocks **and** the `REFRESH MATERIALIZED VIEW CONCURRENTLY` footer.
   `REFRESH CONCURRENTLY` needs a UNIQUE INDEX on the MV.
-- **Query timeouts in production.** Q61/Q65/Q77 (heatmap/kpis/run) timeout in
-  large cities (São Bento do Una, João Pessoa). Nginx `proxy_read_timeout=60s`
-  kills the request before `QueryDef.timeout_sec` (default 30s). When tuning,
-  audit `sql/19_indices_queries.sql` indices and consider pre-computing into
-  a MV instead.
+- **Query timeouts in production.** `QueryDef.timeout_sec` is per-query in
+  [`web/queries/registry.py`](web/queries/registry.py); default `30s`. Real
+  values for the heavy queries:
+  - **Q65** (fornecedor sancionado recebendo) — `timeout=90`; Nginx
+    `proxy_read_timeout=60s` is the binding ceiling here — large cities
+    (São Bento do Una, João Pessoa) hit nginx 504 before the app times out.
+  - **Q77** (fracionamento de despesa) — `timeout=45`; tight per-query
+    budget, can still trigger app-side timeout in big municipalities.
+  - **Q61** (divergência empenhado vs pago) — `timeout=15`; rarely reaches
+    nginx ceiling.
+  When tuning, audit `sql/19_indices_queries.sql` indices first, then
+  consider pre-computing into a MV instead of raising the timeout.
 
 ### Mermaid in `docs/`
 
@@ -261,9 +281,9 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   `enhancement` for tech-debt / web / infra.
 - **Self-hosted runner is single-slot** — deploys process one at a time.
   Long ETL deploys (8h+) block queued `web` deploys. Plan accordingly.
-- **`deploy.yml` etl_phase**: `web` = code sync + systemd restart only;
-  `sql` = indices/normalization/views only; numeric `N` = 1-based index into
-  the `phases` list (Phase 0 Download counts as item 1).
+- **`deploy.yml` etl_phase** (see the "Conventions" section above for the
+  full enumeration): `all` / `incremental` / `sql` / `web` / numeric `N`
+  (1-based index into the `phases` list).
 - **Multi-worktree `gh pr merge` warning.** When merging from a worktree that
   isn't `main`, `gh pr merge --squash --delete-branch` may print
   `fatal: 'main' is already used by worktree at ...`. **This is cosmetic** —
@@ -301,8 +321,9 @@ Before opening or merging a PR, verify:
 ## Privacy & security
 
 - This is a **private repo** at the moment (basic-auth hardening on
-  `/_traffic/*` pending) — don't post repo URLs publicly. See [security
-  policy](SECURITY.md) when it lands.
+  `/_traffic/*` pending) — don't post repo URLs publicly. A formal
+  `SECURITY.md` is pending; in the meantime report vulnerabilities via
+  [GitHub Security Advisory](https://github.com/lucasdiniz/govbr-cruza-dados/security/advisories).
 - Data is public BR open data. Reports may cite real CNPJs (public);
   CPFs must always be masked as `***.NNN.NNN-**`. LGPD considerations live in
   [`docs/privacidade.md`](docs/privacidade.md) and
