@@ -12,6 +12,90 @@ import time
 from etl.db import get_conn
 
 
+# Funcoes DV check pra distinguir CPF padded de CNPJ legitimo nao-sincronizado.
+# IMMUTABLE: planner pode cachear chamadas. Usadas no WHERE de UPDATE cpf_digitos.
+# Algoritmo modulo 11 oficial Receita Federal. Rejeitam strings vazias, com
+# chars nao-numericos, ou todos digitos iguais (000000000-00, 111... etc).
+
+_IS_VALID_CPF_SQL = """
+CREATE OR REPLACE FUNCTION is_valid_cpf(doc TEXT) RETURNS BOOLEAN AS $$
+DECLARE
+    d INT[];
+    i INT;
+    sum1 INT := 0;
+    sum2 INT := 0;
+    dv1 INT;
+    dv2 INT;
+    all_same BOOLEAN;
+BEGIN
+    IF doc IS NULL OR LENGTH(doc) <> 11 OR doc !~ '^[0-9]{11}$' THEN
+        RETURN FALSE;
+    END IF;
+    FOR i IN 1..11 LOOP
+        d[i] := SUBSTRING(doc FROM i FOR 1)::INT;
+    END LOOP;
+    all_same := TRUE;
+    FOR i IN 2..11 LOOP
+        IF d[i] <> d[1] THEN all_same := FALSE; EXIT; END IF;
+    END LOOP;
+    IF all_same THEN RETURN FALSE; END IF;
+    FOR i IN 1..9 LOOP
+        sum1 := sum1 + d[i] * (11 - i);
+    END LOOP;
+    dv1 := 11 - (sum1 % 11);
+    IF dv1 >= 10 THEN dv1 := 0; END IF;
+    IF dv1 <> d[10] THEN RETURN FALSE; END IF;
+    FOR i IN 1..10 LOOP
+        sum2 := sum2 + d[i] * (12 - i);
+    END LOOP;
+    dv2 := 11 - (sum2 % 11);
+    IF dv2 >= 10 THEN dv2 := 0; END IF;
+    RETURN dv2 = d[11];
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT
+"""
+
+_IS_VALID_CNPJ_SQL = """
+CREATE OR REPLACE FUNCTION is_valid_cnpj(doc TEXT) RETURNS BOOLEAN AS $$
+DECLARE
+    d INT[];
+    i INT;
+    sum1 INT := 0;
+    sum2 INT := 0;
+    dv1 INT;
+    dv2 INT;
+    pesos1 INT[] := ARRAY[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    pesos2 INT[] := ARRAY[6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    all_same BOOLEAN;
+BEGIN
+    IF doc IS NULL OR LENGTH(doc) <> 14 OR doc !~ '^[0-9]{14}$' THEN
+        RETURN FALSE;
+    END IF;
+    FOR i IN 1..14 LOOP
+        d[i] := SUBSTRING(doc FROM i FOR 1)::INT;
+    END LOOP;
+    all_same := TRUE;
+    FOR i IN 2..14 LOOP
+        IF d[i] <> d[1] THEN all_same := FALSE; EXIT; END IF;
+    END LOOP;
+    IF all_same THEN RETURN FALSE; END IF;
+    FOR i IN 1..12 LOOP
+        sum1 := sum1 + d[i] * pesos1[i];
+    END LOOP;
+    dv1 := 11 - (sum1 % 11);
+    IF dv1 >= 10 THEN dv1 := 0; END IF;
+    IF dv1 <> d[13] THEN RETURN FALSE; END IF;
+    FOR i IN 1..13 LOOP
+        sum2 := sum2 + d[i] * pesos2[i];
+    END LOOP;
+    dv2 := 11 - (sum2 % 11);
+    IF dv2 >= 10 THEN dv2 := 0; END IF;
+    RETURN dv2 = d[14];
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT
+"""
+
+
 def _exec(conn, desc, sql, autocommit=False):
     """Executa um statement com log de progresso."""
     print(f"  {desc}...", end=" ", flush=True)
@@ -328,21 +412,27 @@ def run():
         # digitos do CPF pra cpf_digitos (preserva info pra queries de PF futuras,
         # ex: /empenho-pf/<cpf>).
         #
-        # SEPARADO EM 2 UPDATES (achado em GPT-5.5 review):
-        # - UPDATE 1 anula cnpj_basico contaminado: cobre rows velhas (single run).
-        # - UPDATE 2 popula cpf_digitos com LEFT '000' guard: cobre rows novas
-        #   (cargas incrementais futuras tem cnpj_basico=NULL gracas ao EXISTS
-        #   guard em Fase 5/7, entao um UPDATE combinado WHERE cnpj_basico IS NOT
-        #   NULL nao alcancaria essas rows). LEFT '000' filtra lixo de docs
-        #   malformados (ex: SEFAZ com CNPJ esquisito) que nao deveriam virar
-        #   "CPF" sintetico.
+        # 2 UPDATES separados:
+        # - UPDATE 1 anula cnpj_basico contaminado (qualquer doc nao-RFB).
+        # - UPDATE 2 popula cpf_digitos APENAS se doc NAO eh CNPJ matematicamente
+        #   valido E os 11 digitos apos posicao 4 SAO CPF valido (modulo 11).
+        #   Isso evita "engolir" MEIs e CNPJs reais nao-sincronizados em RFB —
+        #   eles tem DV CNPJ valido e ficam aguardando o RFB sync. Apos sync,
+        #   etl.15_normalizar idempotente popula cnpj_basico retroativamente.
+        #
+        # Usa funcoes is_valid_cnpj() e is_valid_cpf() criadas via CREATE OR
+        # REPLACE FUNCTION (idempotente).
         #
         # Idempotente: UPDATE 1 WHERE cnpj_basico IS NOT NULL; UPDATE 2 WHERE
-        # cpf_digitos IS NULL. Segunda execucao nao encontra rows.
+        # cpf_digitos IS NULL.
         #
-        # Tempo estimado em prod (B4): ~15-40 min total (dois scans em tce_pb_despesa
-        # com 16M rows, mas filtros WHERE bem seletivos). UPDATE nao bloqueia
-        # SELECTs (MVCC).
+        # Tempo estimado em prod (B4): ~30-60 min total (DV check ~2x mais lento
+        # que prefix heuristico). UPDATE nao bloqueia SELECTs (MVCC).
+
+        # ── Criar funcoes DV check (idempotente via CREATE OR REPLACE) ──
+        _exec(conn, "create is_valid_cpf()", _IS_VALID_CPF_SQL)
+        _exec(conn, "create is_valid_cnpj()", _IS_VALID_CNPJ_SQL)
+
         for tbl, doc_col in [
             ("tce_pb_despesa", "cpf_cnpj"),
             ("pb_pagamento", "cpfcnpj_credor"),
@@ -370,16 +460,19 @@ def run():
                 f"  AND LENGTH({doc_col}) = 14 "
                 f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
             )
-            # 3. UPDATE 2: popula cpf_digitos pra CPFs padded (incremental).
-            #    Guard LEFT '000' filtra docs malformados.
+            # 3. UPDATE 2: popula cpf_digitos APENAS se doc NAO eh CNPJ valido
+            #    E os 11 chars apos posicao 4 sao CPF valido. Garante que MEIs
+            #    e CNPJs reais nao-sincronizados (DV CNPJ valido) NAO virem
+            #    "CPFs sinteticos" — ficam aguardando RFB sync.
             _exec(
                 conn,
-                f"{tbl}: extrair cpf_digitos",
+                f"{tbl}: extrair cpf_digitos (DV validated)",
                 f"UPDATE {tbl} SET cpf_digitos = SUBSTRING({doc_col} FROM 4 FOR 11) "
                 f"WHERE cpf_digitos IS NULL "
                 f"  AND LENGTH({doc_col}) = 14 "
-                f"  AND LEFT({doc_col}, 3) = '000' "
-                f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
+                f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col}) "
+                f"  AND NOT is_valid_cnpj({doc_col}) "
+                f"  AND is_valid_cpf(SUBSTRING({doc_col} FROM 4 FOR 11))",
             )
             # 4. Indice parcial em cpf_digitos.
             _exec(
