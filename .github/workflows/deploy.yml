@@ -113,12 +113,17 @@ on:
         type: string
         default: ''
       run_normalize_fix:
-        description: 'Roda sql/15a_fix_cnpj_basico_contamination.sql (UPDATE retroativo anulando cnpj_basico contaminado por CPF padded). Idempotente. UPDATE nao bloqueia SELECTs (MVCC) — zero downtime na web. Tempo: ~10-30 min em prod. Combine com refresh_mvs depois pra propagar fix nas MVs. Veja docs/adr/0007 e docs/etl-guide.md.'
+        description: 'Roda sql/15a_fix_cnpj_basico_contamination.sql (UPDATE retroativo anulando cnpj_basico contaminado por CPF padded + extrai cpf_digitos pra futuras queries de PF). Idempotente. UPDATE nao bloqueia SELECTs (MVCC) — zero downtime na web. Tempo: ~15-40 min em prod. Combine com refresh_mvs depois pra propagar fix nas MVs. Veja docs/adr/0007.'
+        required: false
+        type: boolean
+        default: false
+      rebuild_tmp_for_servidor:
+        description: 'Roda sql/15c_rebuild_tmp_for_servidor.sql (rebuild de _tmp_fornecedor_gov + _tmp_conflito via TRUNCATE+INSERT). Necessario ANTES de refresh_mvs=mv_servidor_pb_risco para propagar o fix de cnpj_basico (essa MV usa _tmp_* backing tables que nao sao recalculadas por REFRESH CONCURRENTLY). Pode rodar com run_normalize_fix=true na mesma execucao. Tempo: 5-15 min.'
         required: false
         type: boolean
         default: false
       refresh_mvs:
-        description: 'Lista CSV de MVs para REFRESH MATERIALIZED VIEW CONCURRENTLY (zero-downtime, requer UNIQUE INDEX). Ex: "mv_empresa_pb,mv_municipio_pb_kpi_score". Roda APOS run_normalize_fix (se setado) e ANTES do warm. Ordem importa: passe L1 primeiro (mv_servidor_pb_base, mv_pessoa_pb, etc), depois L2 (mv_servidor_pb_risco, mv_municipio_pb_kpi_score). Pra mv_q67_dated_pb, sql/15b_add_unique_index_mv_q67.sql precisa ter rodado antes. Apenas [a-zA-Z0-9_,] permitidos.'
+        description: 'Lista CSV de MVs para REFRESH MATERIALIZED VIEW CONCURRENTLY (zero-downtime, requer UNIQUE INDEX). Ex: "mv_empresa_pb,mv_municipio_pb_kpi_score". Roda APOS run_normalize_fix/rebuild_tmp_for_servidor (se setados) e ANTES do warm. Ordem importa: passe L1 primeiro (mv_servidor_pb_base, mv_pessoa_pb, etc), depois L2 (mv_servidor_pb_risco, mv_municipio_pb_kpi_score). Pra mv_q67_dated_pb, sql/15b_add_unique_index_mv_q67.sql precisa ter rodado antes (incluido em run_normalize_fix). Pra mv_servidor_pb_risco, rebuild_tmp_for_servidor=true precisa ter rodado antes. Apenas [a-zA-Z0-9_,] permitidos.'
         required: false
         type: string
         default: ''
@@ -179,14 +184,18 @@ jobs:
           #   - qualquer etl_phase != web (ETL/SQL/N usam mais RAM e CPU)
           #   - warm_cache=true (1 ciclo de warm leva ~20h, beneficia muito de B4)
           #   - rewarm_cache_keys != '' (warm shadow tb roda — precisa B4)
-          # Caso contrario (etl_phase=web sem warm sem rewarm), mantem B2 (8GB).
+          # Caso contrario (etl_phase=web sem warm sem rewarm/mv_swap/normalize_fix/refresh_mvs), mantem B2 (8GB).
           # Disco segue a VM: Premium para trabalho pesado, Standard para web.
           if [ "${{ inputs.etl_phase }}" = "web" ] \
              && [ "${{ inputs.warm_cache }}" != "true" ] \
-             && [ -z "${{ inputs.rewarm_cache_keys }}" ]; then
+             && [ -z "${{ inputs.rewarm_cache_keys }}" ] \
+             && [ -z "${{ inputs.mv_swap }}" ] \
+             && [ "${{ inputs.run_normalize_fix }}" != "true" ] \
+             && [ -z "${{ inputs.refresh_mvs }}" ] \
+             && [ "${{ inputs.rebuild_tmp_for_servidor }}" != "true" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
-            echo "etl_phase=web warm_cache=false rewarm=empty → B2 + Standard SSD (web)"
+            echo "etl_phase=web sem trabalho pesado → B2 + Standard SSD (web)"
           else
             echo "target_size=${{ env.VM_SIZE_ETL }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_HEAVY }}" >> "$GITHUB_OUTPUT"
@@ -783,6 +792,24 @@ jobs:
           PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
             -f sql/15b_add_unique_index_mv_q67.sql 2>&1
           echo "=== UNIQUE INDEX mv_q67_dated_pb pronto ==="
+
+      # ── Rebuild _tmp_* tables pra mv_servidor_pb_risco (opt-in) ──
+      # mv_servidor_pb_risco depende de _tmp_fornecedor_gov + _tmp_conflito
+      # (backing tables que NAO sao recalculadas por REFRESH MV CONCURRENTLY).
+      # Pra propagar fix de cnpj_basico contaminado, rebuild essas tables
+      # via TRUNCATE+INSERT em transacao atomica.
+      # Roda APOS run_normalize_fix (se setado) e ANTES de refresh_mvs.
+      - name: "Rebuild _tmp_* backing tables (mv_servidor_pb_risco)"
+        if: inputs.rebuild_tmp_for_servidor == true
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          echo "=== Aplicando sql/15c_rebuild_tmp_for_servidor.sql ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+            -f sql/15c_rebuild_tmp_for_servidor.sql 2>&1
+          echo "=== _tmp_* tables rebuilt ==="
 
       # ── Refresh MVs (opt-in, zero-downtime) ──
       # Roda REFRESH MATERIALIZED VIEW CONCURRENTLY em cada MV listada.
@@ -1998,7 +2025,13 @@ jobs:
     if: |
       always() &&
       needs.deploy.result == 'success' &&
-      (inputs.etl_phase != 'web' || inputs.warm_cache == true || inputs.rewarm_cache_keys != '')
+      (inputs.etl_phase != 'web' ||
+       inputs.warm_cache == true ||
+       inputs.rewarm_cache_keys != '' ||
+       inputs.mv_swap != '' ||
+       inputs.run_normalize_fix == true ||
+       inputs.rebuild_tmp_for_servidor == true ||
+       inputs.refresh_mvs != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

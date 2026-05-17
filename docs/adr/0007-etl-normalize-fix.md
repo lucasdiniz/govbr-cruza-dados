@@ -71,9 +71,19 @@ VIEW CONCURRENTLY** como mecanismo de propagação:
    adicionado `AND EXISTS (SELECT 1 FROM estabelecimento WHERE cnpj_completo = doc)`.
    Garante que cargas futuras não populam mais `cnpj_basico` contaminado.
 
-2. **Cleanup retroativo (Fase 9 nova)**: `UPDATE ... SET cnpj_basico = NULL
-   WHERE cnpj_basico IS NOT NULL AND NOT EXISTS (...)`. Aplicado em 10
-   tabelas (`tce_pb_despesa` + 9 `pb_*`). Idempotente.
+2. **Fase 9 nova (cleanup retroativo + cpf_digitos)**: para cada row contaminada
+   (`cnpj_basico` populado mas `doc` não em estabelecimento), em uma única
+   `UPDATE`:
+   - `cnpj_basico = NULL` (filtros `WHERE cnpj_basico IS NOT NULL` excluem
+     automaticamente).
+   - `cpf_digitos = SUBSTRING(doc FROM 4 FOR 11)` (preserva os 11 dígitos
+     do CPF original — viabiliza páginas futuras `/empenho-pf/<cpf>` e
+     cross-source matching com servidores/Bolsa Família).
+   
+   Aplicado em 10 tabelas (`tce_pb_despesa` + 9 `pb_*`). Idempotente.
+
+3. **`ALTER TABLE ADD COLUMN cpf_digitos VARCHAR(11)` + index parcial**:
+   `WHERE cpf_digitos IS NOT NULL` evita inchar índice com rows-de-CNPJ.
 
 ### Migration standalone
 
@@ -84,10 +94,35 @@ script SQL puro, executável via `psql -f` sem precisar rodar
 ### Pre-flight para `mv_q67_dated_pb`
 
 `sql/15b_add_unique_index_mv_q67.sql`: `CREATE UNIQUE INDEX CONCURRENTLY`
-em `mv_q67_dated_pb (municipio, ano, COALESCE(cnpj_basico, ''))`.
-`mv_q67_dated_pb` foi criada via hotfix (PR #54) sem UNIQUE INDEX —
-sem ele, `REFRESH MATERIALIZED VIEW CONCURRENTLY` falha. `CREATE INDEX
-CONCURRENTLY` não bloqueia leituras.
+em `mv_q67_dated_pb (municipio, ano, cnpj_basico) NULLS NOT DISTINCT`
+(PG15+). `mv_q67_dated_pb` foi criada via hotfix (PR #54) sem UNIQUE
+INDEX — sem ele, `REFRESH MATERIALIZED VIEW CONCURRENTLY` falha.
+`CREATE INDEX CONCURRENTLY` não bloqueia leituras.
+
+Por que `NULLS NOT DISTINCT` (e não expression index com `COALESCE`):
+PostgreSQL exige UNIQUE INDEX com colunas plain (não expressões) para
+`REFRESH MATERIALIZED VIEW CONCURRENTLY` (achado em GPT-5.5 review).
+`NULLS NOT DISTINCT` força Postgres a tratar NULLs como iguais sem
+recorrer a expressão.
+
+### Rebuild atômico de `_tmp_*` para `mv_servidor_pb_risco`
+
+`mv_servidor_pb_risco` depende de 5 backing tables (`_tmp_socio_empresas`,
+`_tmp_fornecedor_gov`, `_tmp_conflito`, `_tmp_bf`, `_tmp_duplo`) populadas
+durante `etl.21_views`. `REFRESH MATERIALIZED VIEW CONCURRENTLY` recomputa
+a MV a partir dessas tables — mas se elas estão stale (contaminadas), o
+REFRESH propaga a contaminação.
+
+Das 5 tables, apenas 2 sofrem do bug:
+- `_tmp_fornecedor_gov` — lê `tce_pb_despesa`
+- `_tmp_conflito` — lê `_tmp_d_agg` (que vem de `tce_pb_despesa`)
+
+`sql/15c_rebuild_tmp_for_servidor.sql`: rebuild atômico (transaction) via
+`TRUNCATE + INSERT` (preserva dependência metadata com `mv_servidor_pb_risco`).
+Tempo estimado: 5-15 min em prod.
+
+⚠️ Drift risk: 15c duplica lógica de `sql/12_views.sql:495-561`. Se
+aquela seção mudar, atualize 15c.
 
 ### Propagação via REFRESH CONCURRENTLY
 
@@ -108,19 +143,27 @@ basta. **Não precisamos de mv_swap atômico para este fix.**
 
 ### Deploy workflow
 
-Dois inputs novos em `.github/workflows/deploy.yml`:
+Três inputs novos em `.github/workflows/deploy.yml`:
 
 - `run_normalize_fix` (bool): executa `sql/15a_fix_cnpj_basico_contamination.sql`
   + `sql/15b_add_unique_index_mv_q67.sql`. Roda APÓS ETL phases, ANTES
   do warm.
+- `rebuild_tmp_for_servidor` (bool): executa `sql/15c_rebuild_tmp_for_servidor.sql`.
+  Necessário antes de `refresh_mvs=mv_servidor_pb_risco`.
 - `refresh_mvs` (CSV): executa `REFRESH MATERIALIZED VIEW CONCURRENTLY`
   em cada MV listada. Sanitizado regex `[a-zA-Z0-9_,]`.
+
+Todos os 3 acionam VM auto-resize para B4 + Premium SSD via preflight
+(achado em GPT-5.5 review — antes apenas `etl_phase != web`, `warm_cache`
+e `rewarm_cache_keys` acionavam).
 
 Sequência típica:
 
 ```bash
-# 1. Aplicar cleanup ETL (zero downtime)
-gh workflow run deploy.yml -f etl_phase=web -f run_normalize_fix=true
+# 1. Aplicar cleanup ETL + UNIQUE INDEX mv_q67 + rebuild _tmp_* (zero downtime)
+gh workflow run deploy.yml -f etl_phase=web \
+  -f run_normalize_fix=true \
+  -f rebuild_tmp_for_servidor=true
 
 # 2. Propagar nas MVs L1 (zero downtime)
 gh workflow run deploy.yml -f etl_phase=web \

@@ -312,14 +312,17 @@ def run():
         print("\n  Aplicando sql/19_indices_queries.sql (indices das queries de fraude)...")
         _apply_indices_queries_sql(conn)
 
-        print("\n  === Fase 9: Cleanup retroativo de cnpj_basico contaminado ===")
+        print("\n  === Fase 9: Cleanup cnpj_basico contaminado + extrair cpf_digitos ===")
         # Runs anteriores populavam cnpj_basico = LEFT(doc, 8) sem validar contra
         # estabelecimento (RFB). CPFs padded de 14 chars (ex: CPF 140.207.524-35
         # -> 00014020752435) recebiam cnpj_basico que colide com PJ real (AVICOLA
-        # CHESTER 00014020000111). Anulamos retroativamente.
+        # CHESTER 00014020000111). Anulamos retroativamente E extraimos os 11
+        # digitos do CPF pra cpf_digitos (preserva info pra queries de PF futuras,
+        # ex: /empenho-pf/<cpf>).
         #
-        # Idempotente: WHERE NOT EXISTS -> segunda execucao nao encontra mais
-        # rows pra anular (ja foram anulados ou eram CNPJs reais desde o inicio).
+        # Idempotente: WHERE cnpj_basico IS NOT NULL + NOT EXISTS -> segunda
+        # execucao nao encontra rows pra anular (ja foram anulados).
+        # cpf_digitos: WHERE cpf_digitos IS NULL.
         #
         # Tempo estimado em prod (B4): ~10-30 min total. UPDATE nao bloqueia
         # SELECTs (MVCC). MVs continuam servindo dados velhos ate REFRESH
@@ -337,13 +340,32 @@ def run():
             ("pb_empenho_suplementacao", "cpfcnpj_credor"),
             ("pb_diaria", "cpfcnpj_credor"),
         ]:
+            # 1. ADD cpf_digitos VARCHAR(11): coluna pra 11 digitos do CPF extraidos
+            #    de doc 14-char padded. Preserva CPFs como identidade queryavel
+            #    apos cnpj_basico ser anulado.
             _exec(
                 conn,
-                f"{tbl}: NULL cnpj_basico contaminado",
-                f"UPDATE {tbl} SET cnpj_basico = NULL "
+                f"{tbl}: ADD cpf_digitos",
+                f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11)",
+            )
+            # 2. Single UPDATE: anula cnpj_basico contaminado + popula cpf_digitos.
+            #    Postgres garante atomicidade por row. WHERE elimina rows ja
+            #    processadas (idempotente).
+            _exec(
+                conn,
+                f"{tbl}: NULL cnpj_basico + extrair cpf_digitos",
+                f"UPDATE {tbl} SET cnpj_basico = NULL, cpf_digitos = SUBSTRING({doc_col} FROM 4 FOR 11) "
                 f"WHERE cnpj_basico IS NOT NULL "
                 f"  AND LENGTH({doc_col}) = 14 "
                 f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
+            )
+            # 3. Indice parcial em cpf_digitos: rapido pra queries futuras de PF
+            #    sem inchar o indice com rows sem CPF.
+            _exec(
+                conn,
+                f"idx {tbl} cpf_digitos",
+                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_{tbl}_cpf_digitos ON {tbl}(cpf_digitos) WHERE cpf_digitos IS NOT NULL",
+                autocommit=True,
             )
 
         print("\n  Normalização e índices concluídos.")
