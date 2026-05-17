@@ -28,6 +28,7 @@ veja [`docs/architecture.md`](../architecture.md).
 | ADR-0006 | [Atomic swap de Materialized Views (zero-downtime updates)](0006-mv-atomic-swap.md) | Accepted | 2026-05-16 |
 | ADR-0007 | [ETL-level fix para contaminação de cnpj_basico + REFRESH CONCURRENTLY](0007-etl-normalize-fix.md) | Accepted | 2026-05-16 |
 | ADR-0008 | [AGENTS.md como fonte canônica de instruções para agentes de IA](0008-agents-md-canonical.md) | Accepted | 2026-05-17 |
+| ADR-0009 | [Cleanup de entries órfãs em `web_cache` pós-MV refresh](0009-orphan-empresa-cache-cleanup.md) | Accepted | 2026-05-17 |
 
 ## Convenções
 

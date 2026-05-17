@@ -127,6 +127,11 @@ on:
         required: false
         type: string
         default: ''
+      cleanup_orphan_empresa_cache:
+        description: 'Roda DELETE em web_cache (EMPRESA_PERFIL + EMPRESA_PERFIL_MUN) para entries cujo cnpj_basico nao existe mais em mv_empresa_pb. Usar APOS run_normalize_fix + refresh_mvs (que removeram empresas contaminadas por CPF padded). Sintoma sem cleanup: paginas /empresa/<cnpj>/<slug> orfas servem KPIs falsos do cache enquanto tabela live retorna 0. STANDALONE — nao redispara warm. Idempotente. Tempo: ~1-5 min. Ver ADR-0009.'
+        required: false
+        type: boolean
+        default: false
 
 # OIDC federado pro Azure (sem secrets de SP, sem expiracao).
 permissions:
@@ -848,6 +853,31 @@ jobs:
             END=$(date +%s)
             echo "=== $MV refreshed in $((END-START))s ==="
           done
+
+      # ── Cleanup orphan empresa cache (opt-in, standalone) ──
+      # DELETE entries em web_cache (EMPRESA_PERFIL + EMPRESA_PERFIL_MUN)
+      # apontando para CNPJs nao mais qualificados em mv_empresa_pb. Stale
+      # entries surgem apos ETL normalize fix (ADR-0007) remover CPFs
+      # padded contaminados que faziam empresas reais "fantasma" aparecerem
+      # recebendo R$ X mil. Apos refresh_mvs=mv_empresa_pb a MV fica limpa,
+      # mas o web_cache mantem entries antigas — warm cycle sobrescreve
+      # apenas empresas qualificadas atuais. Cleanup faz hard DELETE
+      # cirurgico (NOT EXISTS na MV).
+      #
+      # Use APOS run_normalize_fix + refresh_mvs (mv_empresa_pb incluso).
+      # Idempotente. NAO dispara warm. Tempo: ~1-5 min em prod (DELETE
+      # em batches via ctid pra nao segurar lock).
+      #
+      # Ver ADR-0009 + docs/cache.md secao "Cleanup de entries orfas".
+      - name: "Cleanup orphan empresa cache"
+        if: inputs.cleanup_orphan_empresa_cache == true
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          source .env 2>/dev/null || true
+          echo "=== Cleanup orphan empresa cache (standalone) ==="
+          python -m web.warm_cache --cleanup-orphan-empresa 2>&1
 
       # ── Deploy web services ──
       - name: Deploy web frontend and cache warmer

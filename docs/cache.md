@@ -136,6 +136,32 @@ curl -X POST https://transparenciapb.org/api/cache/invalidate \
 - **Cobertura mínima 80%** antes de `expose_empresa_sitemap=enable` no deploy — gate manual no `deploy.yml`.
 - **Shadow rows persistem entre deploys?** Não. O step "Reset shadow rows" do `deploy.yml` deleta `*__pending` no início de cada deploy, evitando shadow stale quando o SQL mudou entre runs.
 
+## Cleanup de entries órfãs (`cleanup_orphan_empresa_cache`)
+
+Entries órfãs surgem quando o ETL normalize remove dados-fonte que sustentavam uma empresa (caso típico: contaminação por CPF padded — ver [ADR-0007](adr/0007-etl-normalize-fix.md)). Após `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_pb`, a MV fica limpa, mas `web_cache` mantém entries antigas para CNPJs não mais qualificados — o warm cycle só faz UPSERT sobre **empresas qualificadas atuais**, nunca toca órfãs.
+
+**Sintoma**: páginas `/empresa/<cnpj>/<slug>` órfãs servem KPIs do cache stale (R$ X mil, N empenhos) enquanto a tabela live retorna "Nenhum empenho disponível".
+
+**Fix**: função standalone `cleanup_orphan_empresa_cache` em [`web/warm_cache.py`](../web/warm_cache.py) faz hard DELETE em batches via `ctid` das entries `EMPRESA_PERFIL` + `EMPRESA_PERFIL_MUN` onde `substring(municipio, 1, 8) NOT IN mv_empresa_pb.cnpj_basico`:
+
+```bash
+# Dry-run: conta sem deletar
+python -m web.warm_cache --cleanup-orphan-empresa --dry-run
+
+# Live: DELETE em batches de 5000 (default)
+python -m web.warm_cache --cleanup-orphan-empresa
+```
+
+Via deploy:
+
+```bash
+gh workflow run deploy.yml -f etl_phase=web -f cleanup_orphan_empresa_cache=true
+```
+
+**Não dispara warm cycle** — standalone, ~1-5 min em prod. URLs órfãs viram cache miss (503 com Retry-After 1h) e Google de-indexa em semanas. Sitemap regenera natural só com qualifying da MV.
+
+Use **após** `run_normalize_fix=true` + `refresh_mvs=mv_empresa_pb` (que removeram empresas contaminadas). Idempotente. Ver [ADR-0009](adr/0009-orphan-empresa-cache-cleanup.md) para racional completo (alternativas avaliadas, trade-offs).
+
 ## Operações em produção
 
 A receita operacional canônica (mudou SQL de uma query → quero atualizar cache sem downtime):

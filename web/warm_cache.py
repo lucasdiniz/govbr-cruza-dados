@@ -384,6 +384,161 @@ def _swap_all_pending_shadows(verbose: bool = True) -> tuple[int, int]:
         )
     return swapped, len(aborted) + len(skipped_zero)
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# CLEANUP ORPHAN EMPRESA CACHE — DELETE entries stale pos-MV refresh
+# ─────────────────────────────────────────────────────────────────────────
+# Stale entries surgem quando o ETL normalize remove CPFs padded contaminados
+# de tabelas-fonte (ADR-0007). Empresas "fantasma" (ex: AVICOLA CHESTER
+# MONGAGUA LTDA com cnpj_basico 00014020 colidindo com prefixo de CPFs
+# mascarados 000.014.020-XX) saem de mv_empresa_pb apos REFRESH CONCURRENTLY,
+# mas suas entries em web_cache (EMPRESA_PERFIL, EMPRESA_PERFIL_MUN)
+# permanecem stale: o warm cycle sobrescreve apenas empresas qualificadas
+# atuais, nunca toca as orfas.
+#
+# Sintoma: paginas /empresa/<cnpj>/<slug> orfas servem KPIs falsos do cache
+# (R$ X mil, N empenhos) com tabela live retornando 0 — inconsistencia
+# visivel ao usuario (descoberta apos PR #156 / ADR-0007).
+#
+# Decisao de DELETE (vs zerar agregados ou tabela durable de URLs): ver
+# ADR-0009. Resumo: simplicidade arquitetural, sitemap regenera natural
+# (so qualifying da MV), Google de-indexa URLs orfas via 503 transient
+# (cache miss). Dados "vazios" (cadastrais OK + agregados zero) sao tao
+# uteis ao usuario quanto a ausencia da pagina.
+#
+# Esta funcao roda STANDALONE — nao depende nem dispara warm cycle. Pode
+# ser invocada via:
+#   python -m web.warm_cache --cleanup-orphan-empresa
+#   python -m web.warm_cache --cleanup-orphan-empresa --dry-run
+# Ou via deploy.yml input `cleanup_orphan_empresa_cache=true`.
+# ─────────────────────────────────────────────────────────────────────────
+
+def cleanup_orphan_empresa_cache(
+    dry_run: bool = False, batch_size: int = 5000, verbose: bool = True
+) -> tuple[int, int]:
+    """DELETE entries em web_cache (EMPRESA_PERFIL, EMPRESA_PERFIL_MUN)
+    apontando para CNPJs nao mais qualificados em mv_empresa_pb.
+
+    Identifica stale via NOT EXISTS (SELECT 1 FROM mv_empresa_pb WHERE
+    cnpj_basico = substring(municipio, 1, 8)):
+      - EMPRESA_PERFIL: municipio = cnpj_completo (14 digitos)
+      - EMPRESA_PERFIL_MUN: municipio = '<cnpj14>:<slug>' (composite)
+
+    Em ambos os casos substring(municipio, 1, 8) extrai o cnpj_basico.
+    Filtros casam.
+
+    DELETEs sao em batches via WITH ... USING ctid pra:
+      - Nao segurar lock longo em web_cache (que e read-heavy pelo cruza-web).
+      - Permitir progress log e interrupcao limpa.
+
+    Args:
+        dry_run: se True, so loga contagem (sem DELETE).
+        batch_size: rows por iteracao. Default 5k = ~100 iteracoes pra
+            511k rows tipicas pos-fix.
+        verbose: log progresso a cada batch.
+
+    Returns: (deleted_perfil, deleted_perfil_mun).
+    """
+    print(
+        f"=== Cleanup orphan empresa cache ({'DRY-RUN' if dry_run else 'LIVE'}) ===",
+        flush=True,
+    )
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            # Pre-flight: web_cache existe? mv_empresa_pb existe?
+            cur.execute("SELECT to_regclass('public.web_cache')")
+            wc_ok = cur.fetchone()[0]
+            cur.execute("SELECT to_regclass('public.mv_empresa_pb')")
+            mv_ok = cur.fetchone()[0]
+            if not wc_ok or not mv_ok:
+                print(
+                    f"  web_cache={wc_ok}, mv_empresa_pb={mv_ok} — abortando "
+                    f"(uma das relacoes nao existe).",
+                    flush=True,
+                )
+                return 0, 0
+
+            # Conta total estimado antes de comecar (info pro user).
+            for qid in ("EMPRESA_PERFIL", "EMPRESA_PERFIL_MUN"):
+                cur.execute(
+                    """
+                    SELECT count(*) FROM web_cache wc
+                    WHERE wc.query_id = %s
+                      AND NOT EXISTS (
+                          SELECT 1 FROM mv_empresa_pb m
+                          WHERE m.cnpj_basico = substring(wc.municipio, 1, 8)
+                      )
+                    """,
+                    (qid,),
+                )
+                est = cur.fetchone()[0]
+                print(f"  {qid}: {est} entries orfas identificadas", flush=True)
+
+            if dry_run:
+                print("  DRY-RUN — nenhuma row deletada.", flush=True)
+                return 0, 0
+
+            # DELETE em batches por qid. Usa WITH ... USING ctid pra
+            # contornar a limitacao do PG (LIMIT direto em DELETE nao
+            # suportado) E permitir progress log entre batches.
+            deleted_total: dict[str, int] = {
+                "EMPRESA_PERFIL": 0,
+                "EMPRESA_PERFIL_MUN": 0,
+            }
+            for qid in ("EMPRESA_PERFIL", "EMPRESA_PERFIL_MUN"):
+                batch = 0
+                t0 = time.time()
+                while True:
+                    cur.execute(
+                        """
+                        WITH stale AS (
+                            SELECT wc.ctid
+                            FROM web_cache wc
+                            WHERE wc.query_id = %s
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM mv_empresa_pb m
+                                  WHERE m.cnpj_basico = substring(wc.municipio, 1, 8)
+                              )
+                            LIMIT %s
+                        )
+                        DELETE FROM web_cache wc
+                        USING stale s
+                        WHERE wc.ctid = s.ctid
+                        """,
+                        (qid, batch_size),
+                    )
+                    n = cur.rowcount
+                    deleted_total[qid] += n
+                    batch += 1
+                    if verbose and (batch % 10 == 0 or n < batch_size):
+                        elapsed = time.time() - t0
+                        rate = deleted_total[qid] / elapsed if elapsed > 0 else 0
+                        print(
+                            f"  {qid}: batch {batch} ({n} deleted) — "
+                            f"total {deleted_total[qid]} ({rate:.0f}/s, "
+                            f"{elapsed:.1f}s)",
+                            flush=True,
+                        )
+                    if n == 0:
+                        break
+                print(
+                    f"  {qid}: DONE — {deleted_total[qid]} deleted em {batch} batches",
+                    flush=True,
+                )
+    finally:
+        conn.close()
+
+    print(
+        f"=== Cleanup complete: "
+        f"{deleted_total['EMPRESA_PERFIL']} EMPRESA_PERFIL + "
+        f"{deleted_total['EMPRESA_PERFIL_MUN']} EMPRESA_PERFIL_MUN ===",
+        flush=True,
+    )
+    return deleted_total["EMPRESA_PERFIL"], deleted_total["EMPRESA_PERFIL_MUN"]
+
+
 # Timeouts (segundos) usados pelo warmer. Sao MAIORES que os do frontend
 # porque rodamos em background e queremos popular o cache mesmo para queries
 # pesadas. Falhar aqui significa cache miss eterno no usuario final.
@@ -1186,7 +1341,29 @@ def main():
             "Use com --mun ou --loop (que ja sao escopados a cidades)."
         ),
     )
+    parser.add_argument(
+        "--cleanup-orphan-empresa",
+        action="store_true",
+        help=(
+            "STANDALONE: DELETE entries em web_cache (EMPRESA_PERFIL, "
+            "EMPRESA_PERFIL_MUN) apontando para CNPJs nao mais qualificados "
+            "em mv_empresa_pb. NAO dispara warm cycle. Use apos ETL "
+            "normalize fix (ADR-0007) ou refresh de mv_empresa_pb que "
+            "removeu empresas (ex: contaminacao por CPF padded). Idempotente. "
+            "Combine com --dry-run pra so contar."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Usado com --cleanup-orphan-empresa: so loga contagem sem deletar.",
+    )
     args = parser.parse_args()
+
+    # Standalone cleanup: nao dispara warm, sai apos limpar.
+    if args.cleanup_orphan_empresa:
+        cleanup_orphan_empresa_cache(dry_run=args.dry_run, verbose=True)
+        sys.exit(0)
 
     conn = psycopg2.connect(DSN)
     conn.autocommit = True
