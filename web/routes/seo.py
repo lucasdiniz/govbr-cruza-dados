@@ -551,16 +551,33 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: int) -> Response
     quebrando todas as URLs municipios-scoped no sitemap. (P1 do GPT-5.5
     review do PR #62.)
 
-    Validacao adicional: 1-9999 via regex. Shards inexistentes (alem do
-    numero de shards atual) retornam urlset vazio (200 valido) — Google
-    tolera, e evita 404 transitorio se sitemap-index aponta pra shard
-    que ainda nao foi cacheado.
+    Validacao adicional: 1-9999 via regex. Shard past-end (alem do numero
+    real de shards atualmente) retorna 410 Gone — sinaliza ao Google que
+    o sub-sitemap nao existe mais, removendo do indice mais rapido que
+    urlset vazio (que aparece como "Tag XML ausente" em Search Console
+    quando a MV encolhe — ex: pos cleanup de PR #165, ADR-0009).
 
-    Cache 1h por shard em _SITEMAP_CACHE['empresas'][n].
+    Sem buffer: `_empresas_qualificadas_count()` le da mesma fonte que o
+    sitemap-index (`_build_sitemap_index` em linha ~417), ambos usam o
+    mesmo cache TTL de 24h. Se index lista shards 1..N, count tambem
+    devolve N — sem janela de inconsistencia que justifique buffer.
+    Buffer +1 (sugestao inicial) deixava o primeiro shard past-end
+    ainda retornando urlset vazio 200, reproduzindo o bug exato em
+    `max_shard+1`. (HIGH GPT 5.5 review PR #167.)
+
+    Cache 24h por shard em _SITEMAP_CACHE['empresas'][n].
     """
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
     n = shard_n
+
+    # Past-end detection: shard alem do numero real atual = 410 Gone.
+    # Count ja cacheado 24h (_empresas_qualificadas_count usa _SITEMAP_TTL).
+    total = _empresas_qualificadas_count()
+    if total > 0:
+        max_shard = math.ceil(total / EMPRESA_SHARD_SIZE)
+        if n > max_shard:
+            raise HTTPException(status_code=410)
 
     origin = _site_origin(request)
     now = time.time()
@@ -599,14 +616,22 @@ _EMPRESAS_MUN_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
 @router.get("/sitemap-empresas-municipios-{shard_n:int}.xml")
 async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) -> Response:
     """Sub-sitemap shard das URLs /empresa/<cnpj>/<slug>. Mesma logica do
-    shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna urlset
-    vazio sem cache. Cache 1h por shard.
+    shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna 410
+    Gone (era urlset vazio antes do fix do encolhimento MV, ver PR #165
+    + ADR-0009). Cache 24h por shard.
 
     Path converter `int` evita conflito com a rota irma (sem isso ambas
     competem pelo mesmo path). Vide P1 do GPT-5.5 review."""
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
     n = shard_n
+
+    # Past-end detection (mesmo padrao de sitemap-empresas-N, sem buffer).
+    total = _empresas_municipios_qualificadas_count()
+    if total > 0:
+        max_shard = math.ceil(total / EMPRESA_SHARD_SIZE)
+        if n > max_shard:
+            raise HTTPException(status_code=410)
 
     origin = _site_origin(request)
     now = time.time()
@@ -740,7 +765,17 @@ def _build_licitacoes_shard_sitemap(origin: str, shard_n: int) -> str:
 @router.get("/sitemap-licitacoes-{shard_n:int}.xml")
 async def sitemap_licitacoes_shard_xml(request: Request, shard_n: int) -> Response:
     """Sub-sitemap shard de licitacoes. 1-indexed. Past-end retorna urlset
-    vazio (mesmo padrao /sitemap-empresas-N.xml)."""
+    vazio (mesmo padrao /sitemap-empresas-N.xml pre-PR #167).
+
+    Sem fix de 410 Gone aplicado aqui — `_licitacoes_qualificadas_count()`
+    le de web_cache (`query_id = 'LICITACAO_PERFIL'`), valor que oscila
+    durante warm. Count cacheado por 24h enquanto warm popula gradualmente
+    (50k -> 350k) faria 410 spurious em shards 4-7 que ainda virao a ser
+    populados. (HIGH Opus 4.7 review PR #167.) urlset vazio HTTP 200 e
+    seguro durante warm — Google retentara apos warm completar e index
+    refletir count final. Encolhimento da MV de licitacoes nao foi
+    observado historicamente (ao contrario de empresas/empresas-municipios
+    pos-cleanup de PR #165)."""
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
     origin = _site_origin(request)
