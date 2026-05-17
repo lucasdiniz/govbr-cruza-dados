@@ -255,14 +255,11 @@ def run():
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "tce_desp: UPDATE cnpj_basico",
               "UPDATE tce_pb_despesa SET cnpj_basico = LEFT(cpf_cnpj, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpf_cnpj) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj)")
-        # cpf_digitos preserva CPF padded pra queries futuras de PF (ex:
-        # /empenho-pf/<cpf>). Filtro LEFT '000' evita extrair lixo de docs
-        # malformados (ex: SEFAZ com CNPJ esquisito que nao bate em RFB).
-        # Idempotente: WHERE cpf_digitos IS NULL.
+        # cpf_digitos: extracao com DV check matematico acontece na Fase 9.
+        # Aqui so adicionamos a coluna (rapido, idempotente) — o UPDATE com DV
+        # validation roda na Fase 9 pra todas as 10 tabelas afetadas.
         _exec(conn, "tce_desp: ADD cpf_digitos",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11)")
-        _exec(conn, "tce_desp: UPDATE cpf_digitos",
-              "UPDATE tce_pb_despesa SET cpf_digitos = SUBSTRING(cpf_cnpj FROM 4 FOR 11) WHERE cpf_digitos IS NULL AND LENGTH(cpf_cnpj) = 14 AND LEFT(cpf_cnpj, 3) = '000' AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj)")
         _exec(conn, "tce_desp: ADD ano",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS ano SMALLINT")
         _exec(conn, "tce_desp: UPDATE ano",
