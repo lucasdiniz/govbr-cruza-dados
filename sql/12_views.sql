@@ -561,6 +561,13 @@ DROP TABLE IF EXISTS _tmp_d_agg;
 DROP TABLE IF EXISTS _tmp_se_unnest;
 
 -- Step 4: Bolsa Família match (apenas durante vínculo ativo)
+--
+-- IMPORTANTE: a query abaixo (CREATE TABLE _tmp_bf AS WITH ... SELECT ...)
+-- DEVE bater EXATAMENTE com sql/41c_tmp_bf_body.sql, que e consumido por
+-- etl/refresh_post_incremental.py durante etl_phase=incremental para fazer
+-- TRUNCATE+INSERT atomic de _tmp_bf (DROP nao funciona — MV depende por
+-- metadata, ver nota nas linhas 645-651). Drift entre os dois deixa
+-- mv_servidor_pb_risco com dados inconsistentes. Ver ADR-0009.
 DROP TABLE IF EXISTS _tmp_bf;
 CREATE TABLE _tmp_bf AS
 WITH vinculo AS (
