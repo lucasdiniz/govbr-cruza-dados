@@ -79,6 +79,13 @@ GRANT SELECT, INSERT, UPDATE ON
     public.pb_unidade_gestora
 TO etl_incremental;
 
+-- Novo Bolsa Familia (Portal da Transparencia) — ADR-0009
+-- Snapshots mensais acumulativos via framework incremental.
+-- SEM DELETE/TRUNCATE/DROP (mesmo principio P1 dos targets PB).
+GRANT SELECT, INSERT, UPDATE ON
+    public.bolsa_familia
+TO etl_incremental;
+
 -- Sequences (BIGSERIAL/SERIAL precisa USAGE para nextval)
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO etl_incremental;
 
