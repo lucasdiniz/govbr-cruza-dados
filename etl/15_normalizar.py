@@ -162,11 +162,15 @@ def run():
 
         print("\n  === Fase 5: TCE-PB normalização ===")
 
-        # tce_pb_despesa: cnpj_basico (8 dig) para JOINs
+        # tce_pb_despesa: cnpj_basico (8 dig) para JOINs. Guard NOT EXISTS impede
+        # contaminacao por CPF padded: CPFs (11 digitos) sao armazenados em
+        # cpf_cnpj com prefixo de zeros (ex: CPF 140.207.524-35 -> 00014020752435).
+        # LEFT(cpf_cnpj, 8) sem validar colide com cnpj_basico de PJ real (AVICOLA
+        # CHESTER 00014020000111 colide com prefixo do CPF acima).
         _exec(conn, "tce_desp: ADD cnpj_basico",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "tce_desp: UPDATE cnpj_basico",
-              "UPDATE tce_pb_despesa SET cnpj_basico = LEFT(cpf_cnpj, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpf_cnpj) = 14")
+              "UPDATE tce_pb_despesa SET cnpj_basico = LEFT(cpf_cnpj, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpf_cnpj) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj)")
         _exec(conn, "tce_desp: ADD ano",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS ano SMALLINT")
         _exec(conn, "tce_desp: UPDATE ano",
@@ -206,11 +210,12 @@ def run():
 
         print("\n  === Fase 7: dados.pb.gov.br normalização ===")
 
-        # pb_pagamento: cpfcnpj_credor ja limpo no ETL. Adicionar cnpj_basico e cpf_digitos_6
+        # pb_pagamento: cpfcnpj_credor ja limpo no ETL. Adicionar cnpj_basico e cpf_digitos_6.
+        # EXISTS guard impede contaminacao por CPF padded (ver tce_desp acima).
         _exec(conn, "pb_pag: ADD cnpj_basico",
               "ALTER TABLE pb_pagamento ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_pag: UPDATE cnpj_basico",
-              "UPDATE pb_pagamento SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14")
+              "UPDATE pb_pagamento SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
         _exec(conn, "pb_pag: ADD cpf_digitos_6",
               "ALTER TABLE pb_pagamento ADD COLUMN IF NOT EXISTS cpf_digitos_6 VARCHAR(6)")
         _exec(conn, "pb_pag: UPDATE cpf_digitos_6",
@@ -220,41 +225,42 @@ def run():
         _exec(conn, "pb_pag: UPDATE nome_upper",
               "UPDATE pb_pagamento SET nome_upper = UPPER(TRIM(nome_credor)) WHERE nome_upper IS NULL AND nome_credor IS NOT NULL")
 
-        # pb_empenho: cnpj_basico (PJ) — CPF mascarado com *** nao tem digitos uteis
+        # pb_empenho: cnpj_basico (PJ) — CPF mascarado com *** nao tem digitos uteis.
+        # EXISTS guard impede contaminacao por CPF padded.
         _exec(conn, "pb_emp: ADD cnpj_basico",
               "ALTER TABLE pb_empenho ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_emp: UPDATE cnpj_basico",
-              "UPDATE pb_empenho SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+              "UPDATE pb_empenho SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
 
         # pb_contrato: cnpj_basico
         _exec(conn, "pb_ctr: ADD cnpj_basico",
               "ALTER TABLE pb_contrato ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_ctr: UPDATE cnpj_basico",
-              "UPDATE pb_contrato SET cnpj_basico = LEFT(cpfcnpj_contratado, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_contratado) = 14 AND cpfcnpj_contratado NOT LIKE '***%'")
+              "UPDATE pb_contrato SET cnpj_basico = LEFT(cpfcnpj_contratado, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_contratado) = 14 AND cpfcnpj_contratado NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_contratado)")
 
         # pb_saude: cnpj_basico
         _exec(conn, "pb_saude: ADD cnpj_basico",
               "ALTER TABLE pb_saude ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_saude: UPDATE cnpj_basico",
-              "UPDATE pb_saude SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14")
+              "UPDATE pb_saude SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
 
         # pb_convenio: cnpj_basico
         _exec(conn, "pb_conv: ADD cnpj_basico",
               "ALTER TABLE pb_convenio ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_conv: UPDATE cnpj_basico",
-              "UPDATE pb_convenio SET cnpj_basico = LEFT(cnpj_convenente, 8) WHERE cnpj_basico IS NULL AND LENGTH(cnpj_convenente) = 14")
+              "UPDATE pb_convenio SET cnpj_basico = LEFT(cnpj_convenente, 8) WHERE cnpj_basico IS NULL AND LENGTH(cnpj_convenente) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cnpj_convenente)")
 
         # pb_liquidacao_despesa: cnpj_basico (PJ; CPF pode vir mascarado)
         _exec(conn, "pb_liq_desp: ADD cnpj_basico",
               "ALTER TABLE pb_liquidacao_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_liq_desp: UPDATE cnpj_basico",
-              "UPDATE pb_liquidacao_despesa SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+              "UPDATE pb_liquidacao_despesa SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
 
         # pb_empenho_anulacao: cnpj_basico + nome_upper
         _exec(conn, "pb_emp_anul: ADD cnpj_basico",
               "ALTER TABLE pb_empenho_anulacao ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_emp_anul: UPDATE cnpj_basico",
-              "UPDATE pb_empenho_anulacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+              "UPDATE pb_empenho_anulacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
         _exec(conn, "pb_emp_anul: ADD nome_upper",
               "ALTER TABLE pb_empenho_anulacao ADD COLUMN IF NOT EXISTS nome_upper TEXT")
         _exec(conn, "pb_emp_anul: UPDATE nome_upper",
@@ -264,7 +270,7 @@ def run():
         _exec(conn, "pb_emp_supl: ADD cnpj_basico",
               "ALTER TABLE pb_empenho_suplementacao ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_emp_supl: UPDATE cnpj_basico",
-              "UPDATE pb_empenho_suplementacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+              "UPDATE pb_empenho_suplementacao SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
         _exec(conn, "pb_emp_supl: ADD nome_upper",
               "ALTER TABLE pb_empenho_suplementacao ADD COLUMN IF NOT EXISTS nome_upper TEXT")
         _exec(conn, "pb_emp_supl: UPDATE nome_upper",
@@ -274,7 +280,7 @@ def run():
         _exec(conn, "pb_diaria: ADD cnpj_basico",
               "ALTER TABLE pb_diaria ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "pb_diaria: UPDATE cnpj_basico",
-              "UPDATE pb_diaria SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%'")
+              "UPDATE pb_diaria SET cnpj_basico = LEFT(cpfcnpj_credor, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpfcnpj_credor) = 14 AND cpfcnpj_credor NOT LIKE '***%' AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor)")
         _exec(conn, "pb_diaria: ADD nome_upper",
               "ALTER TABLE pb_diaria ADD COLUMN IF NOT EXISTS nome_upper TEXT")
         _exec(conn, "pb_diaria: UPDATE nome_upper",
@@ -305,6 +311,40 @@ def run():
         # tudo idempotente.
         print("\n  Aplicando sql/19_indices_queries.sql (indices das queries de fraude)...")
         _apply_indices_queries_sql(conn)
+
+        print("\n  === Fase 9: Cleanup retroativo de cnpj_basico contaminado ===")
+        # Runs anteriores populavam cnpj_basico = LEFT(doc, 8) sem validar contra
+        # estabelecimento (RFB). CPFs padded de 14 chars (ex: CPF 140.207.524-35
+        # -> 00014020752435) recebiam cnpj_basico que colide com PJ real (AVICOLA
+        # CHESTER 00014020000111). Anulamos retroativamente.
+        #
+        # Idempotente: WHERE NOT EXISTS -> segunda execucao nao encontra mais
+        # rows pra anular (ja foram anulados ou eram CNPJs reais desde o inicio).
+        #
+        # Tempo estimado em prod (B4): ~10-30 min total. UPDATE nao bloqueia
+        # SELECTs (MVCC). MVs continuam servindo dados velhos ate REFRESH
+        # MATERIALIZED VIEW CONCURRENTLY pos-cleanup (rodado separadamente
+        # via deploy.yml refresh_mvs).
+        for tbl, doc_col in [
+            ("tce_pb_despesa", "cpf_cnpj"),
+            ("pb_pagamento", "cpfcnpj_credor"),
+            ("pb_empenho", "cpfcnpj_credor"),
+            ("pb_contrato", "cpfcnpj_contratado"),
+            ("pb_saude", "cpfcnpj_credor"),
+            ("pb_convenio", "cnpj_convenente"),
+            ("pb_liquidacao_despesa", "cpfcnpj_credor"),
+            ("pb_empenho_anulacao", "cpfcnpj_credor"),
+            ("pb_empenho_suplementacao", "cpfcnpj_credor"),
+            ("pb_diaria", "cpfcnpj_credor"),
+        ]:
+            _exec(
+                conn,
+                f"{tbl}: NULL cnpj_basico contaminado",
+                f"UPDATE {tbl} SET cnpj_basico = NULL "
+                f"WHERE cnpj_basico IS NOT NULL "
+                f"  AND LENGTH({doc_col}) = 14 "
+                f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
+            )
 
         print("\n  Normalização e índices concluídos.")
 
