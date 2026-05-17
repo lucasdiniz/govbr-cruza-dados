@@ -551,16 +551,30 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: int) -> Response
     quebrando todas as URLs municipios-scoped no sitemap. (P1 do GPT-5.5
     review do PR #62.)
 
-    Validacao adicional: 1-9999 via regex. Shards inexistentes (alem do
-    numero de shards atual) retornam urlset vazio (200 valido) — Google
-    tolera, e evita 404 transitorio se sitemap-index aponta pra shard
-    que ainda nao foi cacheado.
+    Validacao adicional: 1-9999 via regex. Shard past-end (alem do numero
+    real de shards atualmente) retorna 410 Gone — sinaliza ao Google que
+    o sub-sitemap nao existe mais, removendo do indice mais rapido que
+    urlset vazio (que aparece como "Tag XML ausente" em Search Console
+    quando a MV encolhe — ex: pos cleanup de PR #165, ADR-0009).
+
+    Buffer de 1 shard: tolera crescimento da MV entre count e build
+    (sitemap-index pode listar 1 shard a mais do que count atual indica
+    se MV acabou de crescer).
 
     Cache 1h por shard em _SITEMAP_CACHE['empresas'][n].
     """
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
     n = shard_n
+
+    # Past-end detection: shard alem do numero real atual = 410 Gone.
+    # Count ja cacheado 1h (_empresas_qualificadas_count usa _SITEMAP_TTL).
+    total = _empresas_qualificadas_count()
+    if total > 0:
+        max_shard = math.ceil(total / EMPRESA_SHARD_SIZE)
+        # +1 buffer pra tolerar crescimento entre count cache miss e build.
+        if n > max_shard + 1:
+            raise HTTPException(status_code=410)
 
     origin = _site_origin(request)
     now = time.time()
@@ -599,14 +613,22 @@ _EMPRESAS_MUN_SHARD_RE = re.compile(r"^[1-9]\d{0,3}$")
 @router.get("/sitemap-empresas-municipios-{shard_n:int}.xml")
 async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) -> Response:
     """Sub-sitemap shard das URLs /empresa/<cnpj>/<slug>. Mesma logica do
-    shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna urlset
-    vazio sem cache. Cache 1h por shard.
+    shard /sitemap-empresas-{n}.xml: regex 1-9999, past-end retorna 410
+    Gone (era urlset vazio antes do fix do encolhimento MV, ver PR #165
+    + ADR-0009). Cache 1h por shard.
 
     Path converter `int` evita conflito com a rota irma (sem isso ambas
     competem pelo mesmo path). Vide P1 do GPT-5.5 review."""
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
     n = shard_n
+
+    # Past-end detection (mesmo padrao de sitemap-empresas-N).
+    total = _empresas_municipios_qualificadas_count()
+    if total > 0:
+        max_shard = math.ceil(total / EMPRESA_SHARD_SIZE)
+        if n > max_shard + 1:
+            raise HTTPException(status_code=410)
 
     origin = _site_origin(request)
     now = time.time()
@@ -739,10 +761,18 @@ def _build_licitacoes_shard_sitemap(origin: str, shard_n: int) -> str:
 
 @router.get("/sitemap-licitacoes-{shard_n:int}.xml")
 async def sitemap_licitacoes_shard_xml(request: Request, shard_n: int) -> Response:
-    """Sub-sitemap shard de licitacoes. 1-indexed. Past-end retorna urlset
-    vazio (mesmo padrao /sitemap-empresas-N.xml)."""
+    """Sub-sitemap shard de licitacoes. 1-indexed. Past-end retorna 410
+    Gone (mesmo padrao de sitemap-empresas-N apos PR #165 / ADR-0009)."""
     if shard_n < 1 or shard_n > 9999:
         raise HTTPException(status_code=404)
+
+    # Past-end detection.
+    total = _licitacoes_qualificadas_count()
+    if total > 0:
+        max_shard = math.ceil(total / LICITACAO_SHARD_SIZE)
+        if shard_n > max_shard + 1:
+            raise HTTPException(status_code=410)
+
     origin = _site_origin(request)
     now = time.time()
     shard_cache = _SITEMAP_CACHE["licitacoes"].get(shard_n)

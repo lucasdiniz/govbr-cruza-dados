@@ -160,6 +160,8 @@ gh workflow run deploy.yml -f etl_phase=web -f cleanup_orphan_empresa_cache=true
 
 **Não dispara warm cycle** — standalone, ~1-5 min em prod. URLs órfãs viram cache miss → **404 Not Found** (a rota `/empresa/<cnpj>` retorna 404 em cache miss desde a mudança que acompanhou ADR-0009/ADR-0007). Google de-indexa em ~7-30 dias (vs semanas/meses se fosse 503 transient). Sitemap regenera natural só com qualifying da MV.
 
+**Shards de sitemap past-end** (ex: `/sitemap-empresas-municipios-9.xml` quando só existem 7 shards reais pós-cleanup) retornam **410 Gone** desde o fix do encolhimento MV. Antes retornavam `<urlset></urlset>` HTTP 200 — válido para sitemap.org mas Google Search Console acusava "Tag XML ausente" e mantinha shard no índice histórico. Implementado em [`web/routes/seo.py`](../web/routes/seo.py) com buffer de 1 shard para tolerar crescimento da MV entre count e build.
+
 Use **após** `run_normalize_fix=true` + `refresh_mvs=mv_empresa_pb` (que removeram empresas contaminadas). Idempotente. Ver [ADR-0009](adr/0009-orphan-empresa-cache-cleanup.md) para racional completo (alternativas avaliadas, trade-offs).
 
 ## Operações em produção
