@@ -1,0 +1,139 @@
+/* === components/empresa-collapsible.css === */
+/* Estilos pras secoes colapsaveis das paginas /empresa/<cnpj> e
+   /empresa/<cnpj>/<municipio>. Usa <details>/<summary> nativo
+   envolvido por <section class="empresa-section empresa-collapsible">.
+   Macro Jinja: partials/empresa/_collapsible.html. */
+
+@layer components {
+
+/* Wrapper section continua usando .empresa-section pra spacing/margin
+   padrao; classe adicional .empresa-collapsible serve apenas pra
+   escopear os estilos abaixo. */
+.empresa-collapsible-details {
+    /* Hide chrome do <details> nativo: usamos summary custom estilizado */
+    margin: 0;
+}
+
+/* Sumario clicavel. Cobre toda a largura da secao, com chevron rotativo
+   indicando estado. Reset do triangulo nativo de <summary>. */
+.empresa-collapsible-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    padding: 0.6rem 0.75rem;
+    margin: 0 -0.75rem; /* alinha o card-feel com bordas da secao */
+    border-radius: 8px;
+    list-style: none;
+    user-select: none;
+    transition: background-color 120ms ease;
+}
+.empresa-collapsible-summary::-webkit-details-marker {
+    display: none;
+}
+.empresa-collapsible-summary:hover,
+.empresa-collapsible-summary:focus-visible {
+    background-color: color-mix(in oklab, var(--md-sys-color-on-surface) 5%, transparent);
+    outline: none;
+}
+.empresa-collapsible-summary:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 1px;
+}
+
+.empresa-collapsible-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--md-sys-color-on-surface-variant);
+    padding: 0.15rem 0.5rem;
+    background: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
+    border-radius: 999px;
+}
+
+.empresa-collapsible-title {
+    margin: 0;
+    flex: 1 1 auto;
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--md-sys-color-on-surface);
+}
+
+.empresa-collapsible-count {
+    font-weight: 400;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 0.95rem;
+    margin-left: 0.25rem;
+}
+
+/* Chevron: rotaciona 90° quando details[open]. Usa o caractere unicode >
+   pra evitar dependencia de fonte de icone. */
+.empresa-collapsible-chevron {
+    flex: 0 0 auto;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--md-sys-color-primary);
+    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.empresa-collapsible-details[open] > .empresa-collapsible-summary .empresa-collapsible-chevron {
+    transform: rotate(90deg);
+}
+
+/* Body com fade-in suave. CSS animation simples (sem @starting-style
+   pra compat ampla). */
+.empresa-collapsible-body {
+    padding-top: 0.75rem;
+    animation: empresa-collapsible-reveal 200ms ease;
+}
+
+@keyframes empresa-collapsible-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Reduced motion: desativa animacoes do reveal e rotacao do chevron. */
+@media (prefers-reduced-motion: reduce) {
+    .empresa-collapsible-body { animation: none; }
+    .empresa-collapsible-chevron { transition: none; }
+}
+
+/* Print: sempre abre tudo pra leitura offline. */
+@media print {
+    .empresa-collapsible-details[open],
+    .empresa-collapsible-details {
+        display: block;
+    }
+    .empresa-collapsible-details > .empresa-collapsible-body {
+        display: block !important;
+        animation: none;
+    }
+    .empresa-collapsible-chevron {
+        display: none;
+    }
+}
+
+/* Mobile: padding menor + summary mais compacto. */
+@media (max-width: 600px) {
+    .empresa-collapsible-summary {
+        padding: 0.5rem 0.5rem;
+        margin: 0 -0.5rem;
+    }
+    .empresa-collapsible-title {
+        font-size: 1.05rem;
+    }
+}
+
+} /* end @layer components */

@@ -19,6 +19,13 @@
 
    Linhas sao clickaveis: abrem #empresa-dialog via openEmpenhoDialog
    (precisa do partial dialogs/_empresa_dialog.html no template).
+
+   Container: <section.empresa-section> com data-empenhos-mount no
+   proprio <section>. NAO usa o macro `collapsible` porque o controller
+   JS depende do <section.empenhos-section> existir desde o load
+   (filter bar registrada antes do user abrir). Em vez disso, embrulha
+   o <h2> + filter + table em um <details>/<summary> manual mantendo
+   o mesmo padrao visual do collapsible.
 #}
 {% set _empenhos_endpoint = empenhos_endpoint or '/api/empresa/empenhos' %}
 {% set _empenhos_scope = empenhos_scope or 'municipio' %}
@@ -29,7 +36,7 @@
    esse comportamento via data-empenhos-total-known. #}
 {% set _empenhos_total_known = (empenhos_total is defined) and (empenhos_total is not none) %}
 {% set _empenhos_total = empenhos_total if _empenhos_total_known else (empenhos|length if empenhos else 0) %}
-<section class="empresa-section empenhos-section"
+<section class="empresa-section empenhos-section empresa-collapsible"
          id="empenhos-recentes"
          data-empenhos-mount
          data-empenhos-endpoint="{{ _empenhos_endpoint }}"
@@ -40,84 +47,96 @@
          data-empenhos-total="{{ _empenhos_total }}"
          data-empenhos-total-known="{{ '1' if _empenhos_total_known else '0' }}"
          data-empenhos-initial="{{ '1' if empenhos else '0' }}">
-    <h2>Empenhos</h2>
-    {% if _empenhos_total_known and _empenhos_total %}
-    <p class="text-sm text-muted" data-empenhos-summary>
-        {{ "{:,}".format(_empenhos_total).replace(',', '.') }} empenhos encontrados.
-        Clique em uma linha para ver os detalhes.
-    </p>
-    {% else %}
-    <p class="text-sm text-muted" data-empenhos-summary>
-        Clique em uma linha para ver os detalhes.
-    </p>
-    {% endif %}
+    <details class="empresa-collapsible-details" data-collapsible-id="empenhos-recentes">
+        <summary class="empresa-collapsible-summary">
+            <h2 class="empresa-collapsible-title">
+                Empenhos
+                {% if _empenhos_total_known and _empenhos_total %}
+                <span class="empresa-collapsible-count">({{ "{:,}".format(_empenhos_total).replace(',', '.') }})</span>
+                {% endif %}
+            </h2>
+            <span class="empresa-collapsible-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="empresa-collapsible-body">
+            {% if _empenhos_total_known and _empenhos_total %}
+            <p class="text-sm text-muted" data-empenhos-summary>
+                {{ "{:,}".format(_empenhos_total).replace(',', '.') }} empenhos encontrados.
+                Clique em uma linha para ver os detalhes.
+            </p>
+            {% else %}
+            <p class="text-sm text-muted" data-empenhos-summary>
+                Clique em uma linha para ver os detalhes.
+            </p>
+            {% endif %}
 
-    {% include "partials/empresa/_empenhos_filter.html" %}
+            {% include "partials/empresa/_empenhos_filter.html" %}
 
-    <div data-empenhos-table>
-        {% if empenhos %}
-        <div class="tbl-wrap">
-            <table class="stack-mobile data-table empresa-empenhos-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Numero</th>
-                        {% if _show_municipio_col %}<th>Municipio</th>{% endif %}
-                        <th>Elemento de despesa</th>
-                        <th>Modalidade / Licitacao</th>
-                        <th class="text-right">Empenhado</th>
-                        <th class="text-right">Pago</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for e in empenhos %}
-                    {% set sem_lic = (not e.numero_licitacao) or (e.numero_licitacao == '000000000') or ((e.modalidade_licitacao or '')|lower).startswith('sem licit') %}
-                    <tr class="clickable-row"{% if e.id %} data-empenho-id="{{ e.id }}"{% endif %}>
-                        <td data-label="Data">{{ e.data_empenho|date_br }}</td>
-                        <td data-label="Numero"><code>{{ e.numero_empenho|clean_text or '—' }}</code></td>
-                        {% if _show_municipio_col %}
-                        <td data-label="Municipio">{{ e.municipio|clean_text or '—' }}</td>
-                        {% endif %}
-                        <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>
-                        <td data-label="Modalidade">
-                            {% if sem_lic %}
-                                <span class="badge badge-yellow" title="Empenho sem licitacao identificada">Sem licitacao</span>
-                            {% else %}
-                                {{ e.modalidade_licitacao|clean_text or '—' }}
-                                {% if e.numero_licitacao and e.numero_licitacao != '000000000' %}
-                                    <br><span class="text-sm text-muted"><code>{{ e.numero_licitacao }}</code></span>
+            <div data-empenhos-table>
+                {% if empenhos %}
+                <div class="tbl-wrap">
+                    <table class="stack-mobile data-table empresa-empenhos-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Numero</th>
+                                {% if _show_municipio_col %}<th>Municipio</th>{% endif %}
+                                <th>Elemento de despesa</th>
+                                <th>Modalidade / Licitacao</th>
+                                <th class="text-right">Empenhado</th>
+                                <th class="text-right">Pago</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in empenhos %}
+                            {% set sem_lic = (not e.numero_licitacao) or (e.numero_licitacao == '000000000') or ((e.modalidade_licitacao or '')|lower).startswith('sem licit') %}
+                            <tr class="clickable-row"{% if e.id %} data-empenho-id="{{ e.id }}"{% endif %}>
+                                <td data-label="Data">{{ e.data_empenho|date_br }}</td>
+                                <td data-label="Numero"><code>{{ e.numero_empenho|clean_text or '—' }}</code></td>
+                                {% if _show_municipio_col %}
+                                <td data-label="Municipio">{{ e.municipio|clean_text or '—' }}</td>
                                 {% endif %}
-                            {% endif %}
-                        </td>
-                        <td data-label="Empenhado" class="text-right num">{{ e.valor_empenhado|short_brl }}</td>
-                        <td data-label="Pago" class="text-right num"><strong>{{ e.valor_pago|short_brl }}</strong></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        {# Sem empenhos no warmer cache OU payload velho (pre-PR pagination).
-           Frontend faz lazy fetch live ao mount; placeholder enquanto. #}
-        <div class="empenhos-loading-placeholder text-sm text-muted" role="status">
-            Carregando empenhos...
-        </div>
-        {% endif %}
-    </div>
+                                <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>
+                                <td data-label="Modalidade">
+                                    {% if sem_lic %}
+                                        <span class="badge badge-yellow" title="Empenho sem licitacao identificada">Sem licitacao</span>
+                                    {% else %}
+                                        {{ e.modalidade_licitacao|clean_text or '—' }}
+                                        {% if e.numero_licitacao and e.numero_licitacao != '000000000' %}
+                                            <br><span class="text-sm text-muted"><code>{{ e.numero_licitacao }}</code></span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td data-label="Empenhado" class="text-right num">{{ e.valor_empenhado|short_brl }}</td>
+                                <td data-label="Pago" class="text-right num"><strong>{{ e.valor_pago|short_brl }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                {# Sem empenhos no warmer cache OU payload velho (pre-PR pagination).
+                   Frontend faz lazy fetch live ao mount; placeholder enquanto. #}
+                <div class="empenhos-loading-placeholder text-sm text-muted" role="status">
+                    Carregando empenhos...
+                </div>
+                {% endif %}
+            </div>
 
-    <nav class="empenhos-pagination" data-empenhos-pagination
-         aria-label="Paginacao de empenhos"
-         hidden>
-        <md-text-button data-empenhos-prev disabled aria-label="Pagina anterior">
-            <md-icon slot="icon">chevron_left</md-icon>
-            Anterior
-        </md-text-button>
-        <span class="empenhos-page-info" data-empenhos-page-info aria-live="polite">
-            Pagina 1
-        </span>
-        <md-text-button data-empenhos-next aria-label="Proxima pagina">
-            Proxima
-            <md-icon slot="icon">chevron_right</md-icon>
-        </md-text-button>
-    </nav>
+            <nav class="empenhos-pagination" data-empenhos-pagination
+                 aria-label="Paginacao de empenhos"
+                 hidden>
+                <md-text-button data-empenhos-prev disabled aria-label="Pagina anterior">
+                    <md-icon slot="icon">chevron_left</md-icon>
+                    Anterior
+                </md-text-button>
+                <span class="empenhos-page-info" data-empenhos-page-info aria-live="polite">
+                    Pagina 1
+                </span>
+                <md-text-button data-empenhos-next aria-label="Proxima pagina">
+                    Proxima
+                    <md-icon slot="icon">chevron_right</md-icon>
+                </md-text-button>
+            </nav>
+        </div>
+    </details>
 </section>

@@ -423,6 +423,11 @@ JS_FILES: list[str] = [
     "components/empenho-table.js",
     "components/empresa-card.js",
     "components/empresa-sticky-cta.js",
+    # empresa-collapsible: deep-link via hash + tracking pras <details>
+    # sections de PGFN/empenhos/socios etc nas paginas /empresa/<cnpj>
+    # e /empresa/<cnpj>/<municipio>. Init em pages/main.js (no-op em
+    # paginas sem .empresa-collapsible-details).
+    "components/empresa-collapsible.js",
     "components/servidor-dialog.js",
     "components/fornecedor-dialog.js",
     "components/heatmap-dialog.js",
