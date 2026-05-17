@@ -171,6 +171,14 @@ def run():
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cnpj_basico VARCHAR(8)")
         _exec(conn, "tce_desp: UPDATE cnpj_basico",
               "UPDATE tce_pb_despesa SET cnpj_basico = LEFT(cpf_cnpj, 8) WHERE cnpj_basico IS NULL AND LENGTH(cpf_cnpj) = 14 AND EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj)")
+        # cpf_digitos preserva CPF padded pra queries futuras de PF (ex:
+        # /empenho-pf/<cpf>). Filtro LEFT '000' evita extrair lixo de docs
+        # malformados (ex: SEFAZ com CNPJ esquisito que nao bate em RFB).
+        # Idempotente: WHERE cpf_digitos IS NULL.
+        _exec(conn, "tce_desp: ADD cpf_digitos",
+              "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11)")
+        _exec(conn, "tce_desp: UPDATE cpf_digitos",
+              "UPDATE tce_pb_despesa SET cpf_digitos = SUBSTRING(cpf_cnpj FROM 4 FOR 11) WHERE cpf_digitos IS NULL AND LENGTH(cpf_cnpj) = 14 AND LEFT(cpf_cnpj, 3) = '000' AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj)")
         _exec(conn, "tce_desp: ADD ano",
               "ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS ano SMALLINT")
         _exec(conn, "tce_desp: UPDATE ano",
@@ -320,14 +328,21 @@ def run():
         # digitos do CPF pra cpf_digitos (preserva info pra queries de PF futuras,
         # ex: /empenho-pf/<cpf>).
         #
-        # Idempotente: WHERE cnpj_basico IS NOT NULL + NOT EXISTS -> segunda
-        # execucao nao encontra rows pra anular (ja foram anulados).
-        # cpf_digitos: WHERE cpf_digitos IS NULL.
+        # SEPARADO EM 2 UPDATES (achado em GPT-5.5 review):
+        # - UPDATE 1 anula cnpj_basico contaminado: cobre rows velhas (single run).
+        # - UPDATE 2 popula cpf_digitos com LEFT '000' guard: cobre rows novas
+        #   (cargas incrementais futuras tem cnpj_basico=NULL gracas ao EXISTS
+        #   guard em Fase 5/7, entao um UPDATE combinado WHERE cnpj_basico IS NOT
+        #   NULL nao alcancaria essas rows). LEFT '000' filtra lixo de docs
+        #   malformados (ex: SEFAZ com CNPJ esquisito) que nao deveriam virar
+        #   "CPF" sintetico.
         #
-        # Tempo estimado em prod (B4): ~10-30 min total. UPDATE nao bloqueia
-        # SELECTs (MVCC). MVs continuam servindo dados velhos ate REFRESH
-        # MATERIALIZED VIEW CONCURRENTLY pos-cleanup (rodado separadamente
-        # via deploy.yml refresh_mvs).
+        # Idempotente: UPDATE 1 WHERE cnpj_basico IS NOT NULL; UPDATE 2 WHERE
+        # cpf_digitos IS NULL. Segunda execucao nao encontra rows.
+        #
+        # Tempo estimado em prod (B4): ~15-40 min total (dois scans em tce_pb_despesa
+        # com 16M rows, mas filtros WHERE bem seletivos). UPDATE nao bloqueia
+        # SELECTs (MVCC).
         for tbl, doc_col in [
             ("tce_pb_despesa", "cpf_cnpj"),
             ("pb_pagamento", "cpfcnpj_credor"),
@@ -340,27 +355,33 @@ def run():
             ("pb_empenho_suplementacao", "cpfcnpj_credor"),
             ("pb_diaria", "cpfcnpj_credor"),
         ]:
-            # 1. ADD cpf_digitos VARCHAR(11): coluna pra 11 digitos do CPF extraidos
-            #    de doc 14-char padded. Preserva CPFs como identidade queryavel
-            #    apos cnpj_basico ser anulado.
+            # 1. ADD cpf_digitos VARCHAR(11) (idempotente)
             _exec(
                 conn,
                 f"{tbl}: ADD cpf_digitos",
                 f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11)",
             )
-            # 2. Single UPDATE: anula cnpj_basico contaminado + popula cpf_digitos.
-            #    Postgres garante atomicidade por row. WHERE elimina rows ja
-            #    processadas (idempotente).
+            # 2. UPDATE 1: anula cnpj_basico contaminado (retroativo).
             _exec(
                 conn,
-                f"{tbl}: NULL cnpj_basico + extrair cpf_digitos",
-                f"UPDATE {tbl} SET cnpj_basico = NULL, cpf_digitos = SUBSTRING({doc_col} FROM 4 FOR 11) "
+                f"{tbl}: NULL cnpj_basico contaminado",
+                f"UPDATE {tbl} SET cnpj_basico = NULL "
                 f"WHERE cnpj_basico IS NOT NULL "
                 f"  AND LENGTH({doc_col}) = 14 "
                 f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
             )
-            # 3. Indice parcial em cpf_digitos: rapido pra queries futuras de PF
-            #    sem inchar o indice com rows sem CPF.
+            # 3. UPDATE 2: popula cpf_digitos pra CPFs padded (incremental).
+            #    Guard LEFT '000' filtra docs malformados.
+            _exec(
+                conn,
+                f"{tbl}: extrair cpf_digitos",
+                f"UPDATE {tbl} SET cpf_digitos = SUBSTRING({doc_col} FROM 4 FOR 11) "
+                f"WHERE cpf_digitos IS NULL "
+                f"  AND LENGTH({doc_col}) = 14 "
+                f"  AND LEFT({doc_col}, 3) = '000' "
+                f"  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = {doc_col})",
+            )
+            # 4. Indice parcial em cpf_digitos.
             _exec(
                 conn,
                 f"idx {tbl} cpf_digitos",

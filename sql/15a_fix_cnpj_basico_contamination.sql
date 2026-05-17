@@ -10,13 +10,20 @@
 -- 00014020752435), e LEFT(..., 8) gera "cnpj_basico" que colide com PJ real
 -- (ex: AVICOLA CHESTER MONGAGUA, CNPJ 00.014.020/0001-11).
 --
--- ESTRATEGIA: pra cada row contaminada (cnpj_basico nao-NULL mas doc nao
--- existe em estabelecimento):
---   1. ANULAR cnpj_basico (filtros "WHERE cnpj_basico IS NOT NULL" excluem
---      automaticamente).
---   2. EXTRAIR cpf_digitos (11 chars apos os 3 zeros de padding) pra
---      preservar identidade da PF — viabiliza futuras paginas /empenho-pf/<cpf>,
---      cross-source matching (servidor x credor PF, etc).
+-- ESTRATEGIA: 2 UPDATEs separados por tabela (achado em GPT-5.5 re-review):
+--   1. ANULAR cnpj_basico onde nao existe em estabelecimento (qualquer doc
+--      14-char nao-RFB — inclui CPF padded e tambem CNPJs malformados tipo
+--      SEFAZ '04000000062504').
+--   2. EXTRAIR cpf_digitos apenas pra docs que comecam com '000' (CPF
+--      padded "verdadeiro"). Filtro LEFT '000' evita popular cpf_digitos
+--      com lixo de CNPJ malformado.
+--
+-- POR QUE 2 UPDATEs:
+-- Em cargas futuras (apos esta migration + EXISTS guard preventivo em
+-- etl/15_normalizar.py), CPFs padded entram com cnpj_basico=NULL desde o
+-- inicio. Um UPDATE combinado WHERE cnpj_basico IS NOT NULL nao alcancaria
+-- essas rows pra popular cpf_digitos. UPDATE 2 com WHERE cpf_digitos IS
+-- NULL cobre tanto retroativo quanto incremental.
 --
 -- Impacto medido (DB local) — rows que terao cnpj_basico anulado:
 --   tce_pb_despesa:  5.8M empenhos (36.7% de 16M)
@@ -24,16 +31,17 @@
 --   pb_saude:        34 docs (1.4%)
 --   pb_contrato:     1 doc
 --
--- IDEMPOTENCIA: WHERE cnpj_basico IS NOT NULL + NOT EXISTS = segunda execucao
--- nao encontra rows pra anular. ALTER TABLE IF NOT EXISTS + CREATE INDEX
--- CONCURRENTLY IF NOT EXISTS sao idempotentes.
+-- IDEMPOTENCIA: UPDATE 1 WHERE cnpj_basico IS NOT NULL; UPDATE 2 WHERE
+-- cpf_digitos IS NULL. Segunda execucao nao encontra rows pra processar.
+-- ALTER TABLE IF NOT EXISTS + CREATE INDEX CONCURRENTLY IF NOT EXISTS
+-- sao idempotentes.
 --
 -- DOWNTIME: ZERO. UPDATE nao bloqueia SELECT (MVCC). MVs continuam servindo
 -- dados velhos durante o UPDATE (snapshots independentes). Apos UPDATE,
 -- rodar REFRESH MATERIALIZED VIEW CONCURRENTLY em cada MV afetada.
 --
--- TEMPO ESTIMADO (B4): 15-40 min total (UPDATE em 5.8M rows da tce_pb_despesa
--- + creates de indice). WAL crescera ~5GB temporario.
+-- TEMPO ESTIMADO (B4): 20-50 min total (2 UPDATEs por tabela + creates de
+-- indice). WAL crescera ~5GB temporario.
 --
 -- REQUER:
 --   - Tabela estabelecimento populada (vem do RFB, fase 3 do ETL).
@@ -59,79 +67,125 @@ ALTER TABLE pb_empenho_anulacao       ADD COLUMN IF NOT EXISTS cpf_digitos VARCH
 ALTER TABLE pb_empenho_suplementacao  ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11);
 ALTER TABLE pb_diaria                 ADD COLUMN IF NOT EXISTS cpf_digitos VARCHAR(11);
 
--- ── UPDATE combinado: anula cnpj_basico + extrai cpf_digitos por row ──
--- Postgres atomiza UPDATE por row, entao ambas as colunas saem juntas.
+-- ── UPDATE 1: anular cnpj_basico contaminado (retroativo) ──
+-- Idempotente: WHERE cnpj_basico IS NOT NULL. Cobre TODOS os docs 14-char
+-- nao-RFB (CPF padded ou CNPJ malformado).
 
--- TCE-PB (maior, 5.8M rows previstos de UPDATE)
-UPDATE tce_pb_despesa
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpf_cnpj FROM 4 FOR 11)
+UPDATE tce_pb_despesa SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpf_cnpj) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj);
 
--- dados.pb (estadual)
-UPDATE pb_pagamento
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_pagamento SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_empenho
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_empenho SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_contrato
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_contratado FROM 4 FOR 11)
+UPDATE pb_contrato SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_contratado) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_contratado);
 
-UPDATE pb_saude
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_saude SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_convenio
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cnpj_convenente FROM 4 FOR 11)
+UPDATE pb_convenio SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cnpj_convenente) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cnpj_convenente);
 
-UPDATE pb_liquidacao_despesa
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_liquidacao_despesa SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_empenho_anulacao
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_empenho_anulacao SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_empenho_suplementacao
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_empenho_suplementacao SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
-UPDATE pb_diaria
-   SET cnpj_basico = NULL,
-       cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+UPDATE pb_diaria SET cnpj_basico = NULL
  WHERE cnpj_basico IS NOT NULL
    AND LENGTH(cpfcnpj_credor) = 14
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+-- ── UPDATE 2: extrair cpf_digitos pra CPFs padded "verdadeiros" (LEFT '000') ──
+-- Idempotente: WHERE cpf_digitos IS NULL. Cobre rows velhas (retroativo) E
+-- rows novas (cargas incrementais que entram com cnpj_basico=NULL gracas ao
+-- EXISTS guard preventivo em etl/15_normalizar.py).
+-- Filtro LEFT '000' garante que docs malformados (ex: SEFAZ) nao virem
+-- "CPFs" sinteticos.
+
+UPDATE tce_pb_despesa SET cpf_digitos = SUBSTRING(cpf_cnpj FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpf_cnpj) = 14
+   AND LEFT(cpf_cnpj, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpf_cnpj);
+
+UPDATE pb_pagamento SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_empenho SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_contrato SET cpf_digitos = SUBSTRING(cpfcnpj_contratado FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_contratado) = 14
+   AND LEFT(cpfcnpj_contratado, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_contratado);
+
+UPDATE pb_saude SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_convenio SET cpf_digitos = SUBSTRING(cnpj_convenente FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cnpj_convenente) = 14
+   AND LEFT(cnpj_convenente, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cnpj_convenente);
+
+UPDATE pb_liquidacao_despesa SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_empenho_anulacao SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_empenho_suplementacao SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
+   AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
+
+UPDATE pb_diaria SET cpf_digitos = SUBSTRING(cpfcnpj_credor FROM 4 FOR 11)
+ WHERE cpf_digitos IS NULL
+   AND LENGTH(cpfcnpj_credor) = 14
+   AND LEFT(cpfcnpj_credor, 3) = '000'
    AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = cpfcnpj_credor);
 
 -- ── Indices parciais em cpf_digitos pra queries de PF ──
@@ -162,5 +216,5 @@ SELECT
   'tce_pb_despesa' AS tbl,
   COUNT(*) FILTER (WHERE cnpj_basico IS NOT NULL) AS com_basico_cnpj_real,
   COUNT(*) FILTER (WHERE cnpj_basico IS NULL AND cpf_digitos IS NOT NULL) AS com_cpf_pf,
-  COUNT(*) FILTER (WHERE cnpj_basico IS NULL AND cpf_digitos IS NULL) AS sem_id
+  COUNT(*) FILTER (WHERE cnpj_basico IS NULL AND cpf_digitos IS NULL AND LENGTH(cpf_cnpj) = 14) AS sem_id_lixo
 FROM tce_pb_despesa;
