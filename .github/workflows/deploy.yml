@@ -1066,6 +1066,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
@@ -1073,7 +1074,7 @@ jobs:
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
           echo "=== ANALYZE em tabelas hot ==="
-          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score mv_q67_dated_pb; do
+          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score mv_q67_dated_pb bolsa_familia; do
             echo "  ANALYZE $tbl..."
             PGPASSWORD="$PASS" psql -U govbr -d govbr -c "ANALYZE $tbl" 2>&1 | tail -1
           done
@@ -1245,6 +1246,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
@@ -1343,6 +1345,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         continue-on-error: true
         run: |
