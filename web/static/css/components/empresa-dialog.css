@@ -91,6 +91,45 @@
 .empresa-card.severity-blue { border-left: 4px solid var(--md-sys-color-primary); }
 .empresa-card.severity-green { border-left: 4px solid var(--md-comp-success); }
 
+/* Bolsa Familia — tabela de parcelas individuais.
+   Renderizada em <details> dentro do servidor-dialog (ver
+   web/static/js/components/servidor-dialog.js). Padrao M3 + token-based,
+   sem cores hardcoded. Linhas com row-flag-red = parcela recebida durante
+   periodo do vinculo TCE-PB. */
+.bf-historico {
+    margin-top: 1rem;
+}
+.bf-historico > summary {
+    cursor: pointer;
+    padding: .4rem .6rem;
+    color: var(--md-sys-color-primary);
+    font-size: var(--md-sys-typescale-body-medium-size);
+}
+.bf-parcelas-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: .6rem;
+    font-size: var(--md-sys-typescale-body-small-size);
+}
+.bf-parcelas-table th,
+.bf-parcelas-table td {
+    padding: .35rem .5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.bf-parcelas-table th {
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: 500;
+    background: var(--md-sys-color-surface-container);
+}
+.bf-parcelas-table td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.bf-parcelas-table tr.row-flag-red td {
+    background: color-mix(in srgb, var(--md-sys-color-error) 6%, transparent);
+}
+
 .empresa-header {
     display: flex;
     align-items: baseline;
