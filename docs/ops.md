@@ -186,6 +186,59 @@ warm_cache: true
 
 5. Se live cache está quebrado e precisa remover imediatamente, use `invalidate_cache_keys=<QID>` sabendo que causa cache miss até rewarm.
 
+## Runbook: Bolsa Família — populate `_nk_md5` interrompido (ADR-0010)
+
+Sintoma: deploy `etl_phase=incremental` falhou no step "Populate _nk_md5" (ou foi cancelado manualmente). Tabela `bolsa_familia` tem coluna `_nk_md5` mas com rows IS NULL.
+
+```bash
+# 1. Confirmar quantas rows faltam:
+PGPASSWORD=$PASS psql -U govbr -d govbr -c "
+SELECT count(*) FILTER (WHERE _nk_md5 IS NULL) AS missing,
+       count(*) AS total FROM bolsa_familia"
+
+# 2. Re-rodar APENAS o populate (idempotente — WHERE _nk_md5 IS NULL):
+cd /home/govbr/govbr-project && source venv/bin/activate
+python -m etl.refresh_post_incremental --source bolsa_familia --populate-only
+
+# 3. Quando 0 rows IS NULL, finalizar com sql/41z (dedupe + UNIQUE INDEX):
+PGPASSWORD=$PASS psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f sql/41z_bolsa_familia_finalize.sql
+```
+
+Tempo estimado: ~15-30min em SSD VM para 18,7M rows.
+
+Workaround interativo (se psycopg2 não estiver disponível):
+
+```bash
+# Sessão psql interativa — autocommit por padrão, COMMIT em PROCEDURE funciona:
+PGPASSWORD=$PASS psql -U govbr -d govbr
+govbr=# CALL etl_admin.populate_nk_md5_bolsa_familia(100000);
+```
+
+(NÃO funciona com `psql -c "CALL ..."` por causa de transação implícita — ver AGENTS.md.)
+
+## Runbook: Bolsa Família — `ix_bolsa_familia_nk_md5` INVALID
+
+Sintoma: `sql/41z_bolsa_familia_finalize.sql` aborta com `ERRO: ix_bolsa_familia_nk_md5 esta INVALID`. Significa que `CREATE UNIQUE INDEX CONCURRENTLY` falhou no meio (provavelmente por duplicata em `_nk_md5`).
+
+```bash
+# 1. Drop INVALID index:
+PGPASSWORD=$PASS psql -U govbr -d govbr -c "DROP INDEX IF EXISTS ix_bolsa_familia_nk_md5"
+
+# 2. Identificar duplicatas restantes:
+PGPASSWORD=$PASS psql -U govbr -d govbr -c "
+SELECT _nk_md5, count(*) FROM bolsa_familia
+WHERE _nk_md5 IS NOT NULL
+GROUP BY 1 HAVING count(*) > 1 LIMIT 10"
+
+# 3. Investigar manualmente. Se forem true duplicates (todas 9 cols iguais),
+#    sql/41z step "6. Dedupe" já lida (DELETE WHERE rn>1).
+#    Re-rodar:
+PGPASSWORD=$PASS psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f sql/41z_bolsa_familia_finalize.sql
+```
+
+Se forem rows que parecem distintas mas hash colidiu: investigar
+`etl_admin.row_hash_md5` (não deve acontecer com a versão atual `array_to_json` — collision-free).
+
 ## Runbook: backup DB
 
 **Status atual: pendente.** Não há estratégia documentada de backup/restore validada em produção. Este é um gap operacional A4.

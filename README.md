@@ -11,7 +11,7 @@ Alimenta o portal público **[transparenciapb.org](https://transparenciapb.org)*
 Carrega ~350M registros (~210GB raw) de 18+ fontes públicas brasileiras em um PostgreSQL 16 e cruza pessoas/empresas por CPF/CNPJ para revelar padrões suspeitos, conflitos de interesse e anomalias de contratação.
 
 - **24 fases de ETL** orquestradas por `python -m etl.run_all` (modelo full-reload)
-- **Framework ETL incremental** ([`etl/incremental/`](etl/incremental/README.md)) para fontes append-only com watermark, conditional GET e DLQ — hoje cobre 20 specs do TCE-PB e dados.pb.gov.br (~40M rows)
+- **Framework ETL incremental** ([`etl/incremental/`](etl/incremental/README.md)) para fontes append-only com watermark, conditional GET e DLQ — hoje cobre 21 specs do TCE-PB, dados.pb.gov.br e Bolsa Família (~60M rows)
 - **125+ queries SQL** em 17 arquivos temáticos (Q01-Q310)
 - **40+ relatórios** investigativos derivados dos resultados
 - **Materialized views em camadas** (L1 → L2 → views planas) para score de risco por município, empresa, pessoa e rede societária
@@ -414,7 +414,7 @@ Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específic
 
 ### Decisões arquiteturais (ADRs)
 
-- [`docs/adr/`](docs/adr/) — 9 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web, MV atomic swap, ETL normalize fix, AGENTS.md canonical, orphan empresa cache cleanup
+- [`docs/adr/`](docs/adr/) — 11 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web, MV atomic swap, ETL normalize fix, AGENTS.md canonical, orphan empresa cache cleanup, Bolsa Família incremental (ADR-0010), remover LIMIT top tabelas (ADR-0011 Proposed)
 
 ### Referência
 

@@ -358,7 +358,14 @@ Programa de transferência de renda federal. Beneficiário identificado por NIS 
 
 - **Tabela**: `bolsa_familia`
 - **CPF**: mascarado (`***.NNN.NNN-**`)
-- **Caveat investigativo**: servidor público recebendo Bolsa Família simultaneamente = `flag_servidor_bolsa_familia` (`mv_servidor_pb_risco`)
+- **`cpf_digitos`**: tem **6 dígitos** centrais (não 11 como em outras tabelas — ver ADR-0010 e `COMMENT ON COLUMN bolsa_familia.cpf_digitos`).
+- **ETL**: incremental (snapshots mensais cumulativos, ADR-0010). `etl_phase=incremental` carrega tudo; `incremental_only=bolsa_familia.bolsa_familia` só BF.
+- **NK**: synthetic md5 das 9 cols (padrão `pb_extras`, `sql/35a-d`). Coluna `_nk_md5` + trigger `BEFORE INSERT`.
+- **Caveat investigativo**: servidor público recebendo Bolsa Família simultaneamente = `flag_servidor_bolsa_familia` (`mv_servidor_pb_risco`). Histórico completo agora visível em `/api/servidor/detalhes` (não apenas "Sim/Não" como antes do ADR-0010).
+
+### Novo Bolsa Família
+
+Substituiu o Auxílio Brasil em **março/2023**. Mesma estrutura de tabela (`bolsa_familia`), mesma fonte (Portal da Transparência), URL diferente (`/download-de-dados/novo-bolsa-familia/{YYYYMM}`). `etl/incremental/specs/bolsa_familia.py:_enumerate_buckets` começa em 2023-03.
 
 ### NIS — Número de Identificação Social
 

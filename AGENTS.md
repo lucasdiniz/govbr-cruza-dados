@@ -236,6 +236,25 @@ before editing the relevant area.
   at the top, recreates L1 → L2 → views. Adding a new MV requires updating
   both blocks **and** the `REFRESH MATERIALIZED VIEW CONCURRENTLY` footer.
   `REFRESH CONCURRENTLY` needs a UNIQUE INDEX on the MV.
+- **`_tmp_bf` rebuild via TRUNCATE+INSERT** (ADR-0010): `DROP TABLE _tmp_bf`
+  falha porque `mv_servidor_pb_risco` mantém dependência por OID
+  (sql/12_views.sql:645-651). SELECT body extraído para
+  [`sql/41c_tmp_bf_body.sql`](sql/41c_tmp_bf_body.sql) e usado tanto por
+  [`12_views.sql:563-584`](sql/12_views.sql) quanto por
+  [`etl/refresh_post_incremental.py`](etl/refresh_post_incremental.py).
+  Drift entre os dois quebra a MV — comentário cross-ref no `12_views.sql`.
+- **PG 16 quirk — COMMIT em PROCEDURE bloqueado por psql `-c`/`-f`** (ADR-0010):
+  `CALL` que executa `COMMIT` interno falha com `ERRO: encerramento de
+  transação inválido` quando rodada via `psql -c "CALL ..."` ou `psql -f`
+  com a CALL no arquivo (PG wrappa em transação implícita). Workaround:
+  rodar a procedure via `psycopg2.connect()` com `conn.autocommit = True`
+  explícito (ver `etl/refresh_post_incremental.py:populate_nk_md5_bolsa_familia`).
+  Padrão `sql/35b_pb_extras_synthetic_nk_populate.sql` usa o mesmo design
+  de PROCEDURE batched + COMMIT.
+- **Bolsa Família tem `cpf_digitos` com 6 dígitos**, não 11 (ADR-0010).
+  Portal divulga CPF mascarado `***.NNN.NNN-**`. `mv_pessoa_pb.cpf_digitos_6`
+  faz o match. `COMMENT ON COLUMN bolsa_familia.cpf_digitos` documenta isso
+  em `sql/41_bolsa_familia_incremental.sql`.
 - **Query timeouts in production.** `QueryDef.timeout_sec` is per-query in
   [`web/queries/registry.py`](web/queries/registry.py); default `30s`. Real
   values for the heavy queries:
@@ -285,6 +304,23 @@ parse clean as of PR #155. See those PRs for the exact pattern.
 - **`audit_report_identifiers.py`** with `--strict` runs offline (no Postgres),
   checks only CPF masking. Without `--strict` it validates CNPJs against
   local `empresa` + `estabelecimento` (requires ~58GB of RFB data loaded).
+- **Bolsa Família incremental** (ADR-0010): a tabela `bolsa_familia` agora
+  acumula snapshots mensais via framework P1-P6. Spec em
+  [`etl/incremental/specs/bolsa_familia.py`](etl/incremental/specs/bolsa_familia.py).
+  Acionamento: `etl_phase=incremental` (todas specs) ou `etl_phase=incremental`
+  + `incremental_only=bolsa_familia.bolsa_familia`. Migration `sql/41_*.sql`
+  é idempotente e roda no step `ETL: Incremental`. Refresh de MVs dependentes
+  (`mv_pessoa_pb`, `mv_servidor_pb_risco`, `mv_municipio_pb_kpi_score`) +
+  `_tmp_bf` rebuild fica em `etl/refresh_post_incremental.py`.
+- **BF usa NK synthetic md5** (ADR-0010): NK natural não cobre 100% dos
+  casos (21% rows com CPF vazio, parcelas retroativas no mesmo `mes_competencia`).
+  Trigger `BEFORE INSERT compute_nk_md5_bolsa_familia` calcula hash das 9
+  cols. `UNIQUE INDEX ix_bolsa_familia_nk_md5`. Mesmo padrão de `pb_extras`
+  (`sql/35a-d`).
+- **CSV headers do Portal BF** vêm com acento e espaço (`"MÊS COMPETÊNCIA"`).
+  Framework agora suporta `spec.csv_header_rewrites: dict[str, str]` que
+  mapeia raw → SQL-safe antes do match com `spec.columns`. Default `{}` =
+  no-op para specs existentes (TCE-PB / Dados-PB / pb_extras).
 
 ### Git / Workflow / Deploy
 
