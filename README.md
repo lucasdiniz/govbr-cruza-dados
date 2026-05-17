@@ -166,11 +166,12 @@ Use `cpf_cnpj` completo (14 dígitos) — não `cnpj_basico` (8 dígitos), que s
 
 ### Web cache e shadow rewarm
 
-A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto dela, sem rodar SQL pesado em request time). Três modos de atualização:
+A tabela `web_cache` armazena resultados pré-computados (FastAPI lê direto dela, sem rodar SQL pesado em request time). Quatro modos de manutenção:
 
 - **drop_cache** — `TRUNCATE web_cache` (12-18h de cache miss; use só em mudança de schema).
 - **invalidate_cache_keys** — `DELETE` cirúrgico HARD por **substring** de qid (causa cache miss até warm). Cuidado: `PERFIL` casa também `EMPRESA_PERFIL`, `PERFIL_DATED`, etc.
 - **rewarm_cache_keys** — shadow rewarm **zero-downtime**: warm escreve em `<qid>__pending`, swap atômico promove `__pending` → live só se todas as queries da chave passaram (fail==0); caso contrário, aborta e mantém live antigo. **Default recomendado** para mudanças em `web/queries/registry.py`.
+- **cleanup_orphan_empresa_cache** — `DELETE` standalone de entries `EMPRESA_PERFIL` + `EMPRESA_PERFIL_MUN` cujo `cnpj_basico` não existe mais em `mv_empresa_pb` (típico após `run_normalize_fix` + `refresh_mvs=mv_empresa_pb` que removeu empresas contaminadas por CPF padded). Não dispara warm. Ver [ADR-0009](docs/adr/0009-orphan-empresa-cache-cleanup.md).
 
 Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMARY` (mesmo prefixo).
 
@@ -339,6 +340,7 @@ O `preflight` faz resize VM/disco para cima quando o `etl_phase` exige; o `postf
 | `drop_cache` | bool | TRUNCATE web_cache antes do warm |
 | `invalidate_cache_keys` | csv | DELETE cirúrgico HARD por **substring** (`LIKE '%termo%'`); `PERFIL` casa também `EMPRESA_PERFIL` |
 | `rewarm_cache_keys` | csv | shadow rewarm zero-downtime (preferido) |
+| `cleanup_orphan_empresa_cache` | bool | DELETE entries de `EMPRESA_PERFIL`/`EMPRESA_PERFIL_MUN` para CNPJs fora de `mv_empresa_pb` (após `refresh_mvs=mv_empresa_pb`) |
 | `warm_skip_hours` | int | controle de skip/rebuild do warm |
 | `expose_empresa_sitemap` / `_licitacoes_` / `_cidade_resumo_` | keep/enable/disable | toggle de URLs no sitemap |
 | `download_sources` | csv | re-baixa fontes específicas antes da fase |
@@ -412,7 +414,7 @@ Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específic
 
 ### Decisões arquiteturais (ADRs)
 
-- [`docs/adr/`](docs/adr/) — 8 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web, MV atomic swap, ETL normalize fix, AGENTS.md canonical
+- [`docs/adr/`](docs/adr/) — 9 ADRs: no-pandas, MV layered, shadow rewarm, framework incremental, no-ORM web, MV atomic swap, ETL normalize fix, AGENTS.md canonical, orphan empresa cache cleanup
 
 ### Referência
 
