@@ -2,7 +2,7 @@
 -- Fonte: portaldatransparencia.gov.br/download-de-dados/novo-bolsa-familia
 --
 -- IDEMPOTENTE: Bolsa Familia migrou para o framework ETL incremental
--- (ver ADR-0009). Schema canonico nunca mais e re-criado destrutivamente —
+-- (ver ADR-0010). Schema canonico nunca mais e re-criado destrutivamente —
 -- migration sql/41_bolsa_familia_incremental.sql adiciona o que falta
 -- (UNIQUE INDEX, inserted_at, etc).
 --

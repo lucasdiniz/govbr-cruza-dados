@@ -567,7 +567,7 @@ DROP TABLE IF EXISTS _tmp_se_unnest;
 -- etl/refresh_post_incremental.py durante etl_phase=incremental para fazer
 -- TRUNCATE+INSERT atomic de _tmp_bf (DROP nao funciona — MV depende por
 -- metadata, ver nota nas linhas 645-651). Drift entre os dois deixa
--- mv_servidor_pb_risco com dados inconsistentes. Ver ADR-0009.
+-- mv_servidor_pb_risco com dados inconsistentes. Ver ADR-0010.
 DROP TABLE IF EXISTS _tmp_bf;
 CREATE TABLE _tmp_bf AS
 WITH vinculo AS (

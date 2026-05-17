@@ -79,7 +79,7 @@ GRANT SELECT, INSERT, UPDATE ON
     public.pb_unidade_gestora
 TO etl_incremental;
 
--- Novo Bolsa Familia (Portal da Transparencia) — ADR-0009
+-- Novo Bolsa Familia (Portal da Transparencia) — ADR-0010
 -- Snapshots mensais acumulativos via framework incremental.
 -- SEM DELETE/TRUNCATE/DROP (mesmo principio P1 dos targets PB).
 GRANT SELECT, INSERT, UPDATE ON

@@ -22,7 +22,7 @@
 --   Synthetic md5 da hash de todas as 9 cols cobre 100% dos casos sem
 --   perda; segue padrao pb_extras + tem dedupe step inline.
 --
--- Ver ADR-0009.
+-- Ver ADR-0010.
 
 
 -- ============================================================================
@@ -46,7 +46,7 @@ ALTER TABLE bolsa_familia
 
 COMMENT ON COLUMN bolsa_familia.inserted_at IS
     'Timestamp de insercao da row pelo framework ETL incremental. '
-    'Para rows inseridas pela fase classica legada (pre-ADR-0009) o valor '
+    'Para rows inseridas pela fase classica legada (pre-ADR-0010) o valor '
     'sera o timestamp da primeira aplicacao desta migration.';
 
 -- _nk_md5: synthetic NK calculada via trigger BEFORE INSERT (etapa 2 abaixo).
@@ -58,7 +58,7 @@ COMMENT ON COLUMN bolsa_familia._nk_md5 IS
     'cd_municipio_siafi, nm_municipio, cpf_favorecido, nis_favorecido, '
     'nm_favorecido, valor_parcela). Calculado por trigger BEFORE INSERT. '
     'UNIQUE INDEX em (_nk_md5) garante idempotencia em republish do Portal. '
-    'Ver sql/35a (padrao pb_extras) e ADR-0009.';
+    'Ver sql/35a (padrao pb_extras) e ADR-0010.';
 
 
 -- ============================================================================
@@ -104,10 +104,18 @@ FOR EACH ROW EXECUTE FUNCTION etl_admin.compute_nk_md5_bolsa_familia();
 -- Pode ser interrompido (Ctrl+C) e re-executado sem perda.
 --
 -- IMPORTANTE: COMMIT dentro de PROCEDURE precisa rodar fora de transacao
--- explicita. psql wrappa CALL em transacao quando rodado com `-1` ou
--- `--single-transaction` (NAO usamos). O step do deploy.yml chama
--- separadamente com `psql -c "CALL ..."` para garantir autocommit.
--- Ver sql/41b_bolsa_familia_populate_nk_md5.sql.
+-- explicita. No PG 16, `psql -c "CALL ..."`, `psql -f` com a CALL inline e
+-- ate stdin wrappam o comando em transacao implicita, fazendo o COMMIT
+-- interno da PROCEDURE falhar com "encerramento de transacao invalido".
+-- O step do deploy.yml chama via Python autocommit explicito:
+--    python -m etl.refresh_post_incremental --source bolsa_familia --populate-only
+-- A funcao Python em etl/refresh_post_incremental.py:populate_nk_md5_bolsa_familia
+-- replica a logica desta PROCEDURE com `conn.autocommit = True` antes do
+-- loop. A PROCEDURE serve como (a) documentacao SQL da logica de batches,
+-- (b) ponto de entrada para recovery interativo via `psql` (sessao
+-- interativa NAO wrappa CALL em transacao):
+--    PGPASSWORD=$PASS psql -U govbr -d govbr
+--    govbr=# CALL etl_admin.populate_nk_md5_bolsa_familia(100000);
 
 CREATE OR REPLACE PROCEDURE etl_admin.populate_nk_md5_bolsa_familia(batch_size int DEFAULT 100000)
 LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
@@ -149,6 +157,6 @@ END $$;
 -- ============================================================================
 -- Steps 4-7 (dedupe + UNIQUE INDEX + validation) ficam em sql/41z_*.sql.
 -- Motivo: precisam rodar DEPOIS da CALL (que tem que ser comando psql -c
--- separado por causa de COMMIT-em-PROCEDURE). Ver ADR-0009 secao "Deploy
+-- separado por causa de COMMIT-em-PROCEDURE). Ver ADR-0010 secao "Deploy
 -- ordering" e docs/ops.md.
 -- ============================================================================

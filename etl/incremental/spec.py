@@ -124,7 +124,7 @@ class LoaderSpec:
     # validate_csv_header (parser.py). Default `{}` — sem efeito para specs
     # existentes. Necessario para fontes como Portal da Transparencia que
     # publicam headers nao-SQL-safe. Ver etl/incremental/specs/bolsa_familia.py
-    # e ADR-0009.
+    # e ADR-0010.
     csv_header_rewrites: dict[str, str] = field(default_factory=dict)
     # Bucket file pattern: callable que dado bucket_id (str) retorna lista de
     # nomes de arquivo esperados (sem path).

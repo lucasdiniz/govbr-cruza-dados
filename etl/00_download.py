@@ -1254,7 +1254,7 @@ def download_bolsa_familia(anos=None):
     pode reaproveitar snapshots ja baixados, e o auto-cleanup post-load do
     framework e responsavel pela limpeza apos carga bem-sucedida.
 
-    Ver ADR-0009.
+    Ver ADR-0010.
     """
     dest = DATA_DIR / "bolsa_familia"
     dest.mkdir(parents=True, exist_ok=True)

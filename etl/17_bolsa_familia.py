@@ -12,7 +12,7 @@ Acionamento:
 - Migration `sql/41_bolsa_familia_incremental.sql` aplicada pelo step
   "ETL: Incremental" do deploy.
 
-Ver ADR-0009 para a decisao completa.
+Ver ADR-0010 para a decisao completa.
 """
 
 
@@ -20,7 +20,7 @@ def run():
     print(
         "    SKIP: Bolsa Familia migrou para ETL incremental "
         "(etl_phase=incremental, spec bolsa_familia.bolsa_familia). "
-        "Ver ADR-0009 e docs/etl-incremental-guide.md.",
+        "Ver ADR-0010 e docs/etl-incremental-guide.md.",
         flush=True,
     )
     return

@@ -33,7 +33,7 @@ nomes raw para os SQL-safe que aparecem em spec.columns (e.g.
 "MES_COMPETENCIA"). Encoding latin-1 garante leitura correta dos acentos
 antes do rewrite.
 
-Ver ADR-0009 e docs/etl-incremental-guide.md.
+Ver ADR-0010 e docs/etl-incremental-guide.md.
 """
 from __future__ import annotations
 

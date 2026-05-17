@@ -3,15 +3,16 @@
 --
 -- Roda APOS:
 --   1. sql/41_bolsa_familia_incremental.sql (cria cols, trigger, procedure)
---   2. psql -c "CALL etl_admin.populate_nk_md5_bolsa_familia(100000);"
---      (popula _nk_md5 em batches — precisa rodar em comando separado para
---      evitar problema de COMMIT-em-PROCEDURE com psql -f -v ON_ERROR_STOP)
+--   2. python -m etl.refresh_post_incremental --source bolsa_familia --populate-only
+--      (popula _nk_md5 em batches via psycopg2 autocommit explicito —
+--      psql -c/-f wrappa CALL em transacao implicita no PG 16, fazendo
+--      o COMMIT-em-PROCEDURE falhar.)
 --
 -- Aplicar via `psql -v ON_ERROR_STOP=1 -f sql/41z_*.sql` SEM
 -- `--single-transaction` (CREATE INDEX CONCURRENTLY exige autocommit).
 --
 -- Idempotente: detecta INVALID indexes de runs falhos previos e refaz.
--- Ver ADR-0009.
+-- Ver ADR-0010.
 
 
 -- ============================================================================
@@ -25,8 +26,9 @@ BEGIN
     IF n_null > 0 THEN
         RAISE EXCEPTION
             'bolsa_familia: % rows com _nk_md5 NULL. '
-            'Rode `psql -c "CALL etl_admin.populate_nk_md5_bolsa_familia(100000);"` '
-            'antes de continuar.', n_null;
+            'Rode `python -m etl.refresh_post_incremental --source bolsa_familia --populate-only` '
+            'antes de continuar (NAO use psql -c "CALL ..." — PG 16 wrappa em transacao implicita '
+            'e o COMMIT-em-PROCEDURE falha; ver ADR-0010 e docs/ops.md).', n_null;
     END IF;
     RAISE NOTICE 'bolsa_familia: 100%% das rows tem _nk_md5 populado.';
 END $$;
