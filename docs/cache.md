@@ -158,7 +158,7 @@ Via deploy:
 gh workflow run deploy.yml -f etl_phase=web -f cleanup_orphan_empresa_cache=true
 ```
 
-**Não dispara warm cycle** — standalone, ~1-5 min em prod. URLs órfãs viram cache miss (503 com Retry-After 1h) e Google de-indexa em semanas. Sitemap regenera natural só com qualifying da MV.
+**Não dispara warm cycle** — standalone, ~1-5 min em prod. URLs órfãs viram cache miss → **404 Not Found** (a rota `/empresa/<cnpj>` retorna 404 em cache miss desde a mudança que acompanhou ADR-0009/ADR-0007). Google de-indexa em ~7-30 dias (vs semanas/meses se fosse 503 transient). Sitemap regenera natural só com qualifying da MV.
 
 Use **após** `run_normalize_fix=true` + `refresh_mvs=mv_empresa_pb` (que removeram empresas contaminadas). Idempotente. Ver [ADR-0009](adr/0009-orphan-empresa-cache-cleanup.md) para racional completo (alternativas avaliadas, trade-offs).
 

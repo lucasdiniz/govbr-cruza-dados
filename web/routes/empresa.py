@@ -2,10 +2,14 @@
 
 ARQUITETURA pos-incidente do PR #57:
 - Rota e CACHE-ONLY: le de web_cache (chave EMPRESA_PERFIL:<cnpj>) e renderiza.
-- Cache miss = 503 com Retry-After (NAO faz live query — protege DB do
-  thundering herd que derrubou o site quando IndexNow notificou Bing sobre
-  45K URLs simultaneamente). Cache-miss-only e seguro porque empresas so
-  entram no sitemap depois de warmed.
+- Cache miss = 404 (NAO faz live query — protege DB do thundering herd que
+  derrubou o site quando IndexNow notificou Bing sobre 45K URLs simultaneamente).
+  Cache-miss-only e seguro porque empresas so entram no sitemap depois de
+  warmed, e cleanup_orphan_empresa_cache (ADR-0009) garante que entries
+  stale para CNPJs nao mais qualificados sao removidas. Miss aqui significa
+  URL nao representa empresa qualificada na PB — 404 e semanticamente
+  correto e acelera de-index de URLs antigas no Google (vs 503 transient
+  que demora semanas-meses).
 - A funcao `compute_empresa_perfil_dict` executa as 8 queries e monta o
   dict completo. Eh chamada APENAS pelo warmer (web/warm_cache.py), nunca
   inline na rota.
@@ -627,7 +631,7 @@ def compute_empresa_municipio_perfil_dict(
 
 @router.get("/empresa/{cnpj}")
 async def empresa_perfil(request: Request, cnpj: str):
-    """Renderiza /empresa/<14-digits>. Le de web_cache. Cache miss = 503.
+    """Renderiza /empresa/<14-digits>. Le de web_cache. Cache miss = 404.
 
     NUNCA executa as 8 queries inline. O incidente do PR #57 mostrou que
     sob trafego de crawler agressivo (Bing + 45K URLs do IndexNow), o pool
@@ -653,7 +657,7 @@ async def empresa_perfil(request: Request, cnpj: str):
     # de filial (ordem != 0001), redireciona pra matriz canonica usando DV
     # computado matematicamente (sem DB hit, mantem cache-only invariant).
     # Sem isso, links do dialog de fornecedor que usam exactDoc da filial
-    # cairiam em 503 mesmo apos warmer rodar (caught by GPT-5.5 review #58).
+    # cairiam em 404 mesmo apos warmer rodar (caught by GPT-5.5 review #58).
     cnpj_ordem = canonical[8:12]
     if cnpj_ordem != "0001":
         try:
@@ -680,21 +684,26 @@ async def empresa_perfil(request: Request, cnpj: str):
                     request, "results/empresa.html", data
                 )
 
-    # Cache miss. Em fluxo normal (pos-warm), so deveria acontecer pra:
-    # (a) CNPJ que nao ta em mv_empresa_pb (deveria ser 404), ou
-    # (b) primeiras requests apos restart antes de warm completar.
-    # Retornamos 503 com Retry-After 1h pra crawler back off. A AUSENCIA
-    # do CNPJ no sitemap (gated) significa que crawlers nem deveriam
-    # estar aqui — se chegou ate aqui, eh acesso direto/legado.
-    _log.info("cache miss /empresa/%s — returning 503", canonical)
-    return Response(
-        status_code=503,
-        headers={"Retry-After": "3600"},
-        content=(
-            "Perfil em construcao — esta empresa ainda nao foi pre-processada. "
-            "Tente novamente mais tarde."
-        ),
-        media_type="text/plain; charset=utf-8",
+    # Cache miss. Pos-warm cycle + cleanup_orphan_empresa_cache (ADR-0009),
+    # a tabela web_cache contem apenas CNPJs qualificados em mv_empresa_pb.
+    # Miss aqui significa:
+    #   (a) CNPJ inexistente (URL inventada ou digitada errada);
+    #   (b) CNPJ orfao (foi removido do cache pelo cleanup pos-MV refresh
+    #       que retirou empresas-fantasma contaminadas por CPF padded);
+    #   (c) edge case raro: empresa nova entre warms (so visivel via
+    #       sitemap apos proximo warm).
+    # Em (a) e (b), 404 e o codigo HTTP correto (URL nao representa um
+    # recurso valido na PB). Em (c), 404 pode causar de-index transiente
+    # de uma URL recem-criada, mas como crawlers descobrem essas URLs
+    # via sitemap (que so lista apos warm), o caso e improvavel.
+    # 404 acelera de-index das ~511k URLs orfas no Google (vs 503 que
+    # Google trata como transient e demora semanas-meses pra de-indexar).
+    _log.info("cache miss /empresa/%s — returning 404 (URL not in qualifying set)", canonical)
+    return templates.TemplateResponse(
+        request,
+        "errors/404.html",
+        {"path": str(request.url.path)},
+        status_code=404,
     )
 
 
@@ -708,7 +717,7 @@ async def empresa_perfil_municipio(
     request: Request, cnpj: str, municipio_slug_in: str
 ):
     """Renderiza /empresa/<14-digits>/<municipio-slug>. Cache-only (mesmo
-    invariant da rota global): cache miss = 503 com Retry-After 1h.
+    invariant da rota global): cache miss = 404 (ver docstring do modulo).
 
     Validacoes em ordem:
     1. CNPJ canonico (14 digitos numericos puros, sem mascara).
@@ -716,7 +725,7 @@ async def empresa_perfil_municipio(
     3. Slug municipio resolve via slug_to_municipio. None = 404.
     4. Slug nao canonico -> 301 pro slug canonico.
     5. Lookup web_cache(EMPRESA_PERFIL_MUN, "<cnpj>:<slug>"). Hit -> render.
-       Miss -> 503.
+       Miss -> 404.
     """
     from web.main import templates
 
@@ -805,17 +814,14 @@ async def empresa_perfil_municipio(
                 )
 
     _log.info(
-        "cache miss /empresa/%s/%s — returning 503",
+        "cache miss /empresa/%s/%s — returning 404 (URL not in qualifying set)",
         canonical_cnpj, canonical_slug,
     )
-    return Response(
-        status_code=503,
-        headers={"Retry-After": "3600"},
-        content=(
-            "Perfil em construcao — este recorte (empresa × municipio) "
-            "ainda nao foi pre-processado. Tente novamente mais tarde."
-        ),
-        media_type="text/plain; charset=utf-8",
+    return templates.TemplateResponse(
+        request,
+        "errors/404.html",
+        {"path": str(request.url.path)},
+        status_code=404,
     )
 
 
