@@ -230,12 +230,10 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         if (hasDuranteVinculo && Math.abs((stats.total_durante_vinculo || 0) - (stats.total_recebido || 0)) > 0.01) {
             // So mostra "Recebido enquanto servidor" se for diferente do total
             // (caso contrario, todos os meses estao no vinculo => stats
-            // sao iguais e duplicar o valor confunde).
+            // sao iguais e duplicar o valor confunde). Quando 100% das
+            // parcelas caem no vinculo, o destaque fica nas linhas da grade
+            // (badge "Era servidor" por mes) — nao precisa stat-cell extra.
             html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido enquanto era servidor publico')}</span></div>`;
-        } else if (hasDuranteVinculo) {
-            // Todos meses sao "durante vinculo" — destaca o total ja existente
-            // com badge red em vez de duplicar.
-            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo Bolsa Familia recebido como servidor')}</span></div>`;
         }
         html += '</div>';
         // Constroi grade mes-a-mes:
@@ -345,9 +343,19 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                         ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
                         : '';
                     // Cabecalho do mes
+                    // Coluna referencia: mostra mes_referencia da unica parcela
+                    // (caso comum); se houver multiplas parcelas retroativas,
+                    // mostra contagem (detalhes vem nas linhas indentadas abaixo).
+                    let refCell;
+                    if (parcelas.length > 1) {
+                        refCell = `${parcelas.length} parcelas (retroativas)`;
+                    } else {
+                        const ref = parcelas[0].mes_referencia;
+                        refCell = ref ? _fmtDate(ref) : '';
+                    }
                     let html2 = `<tr class="bf-mes-header${anyDuranteVinculo ? ' row-flag-red' : ''}">
                         <td><strong>${_fmtDate(k)}</strong>${badge}</td>
-                        <td class="text-sm text-muted">${parcelas.length > 1 ? parcelas.length + ' parcelas (retroativas)' : ''}</td>
+                        <td class="text-sm text-muted">${refCell}</td>
                         <td>${_esc(parcelas[0].nm_municipio || '-')}${parcelas[0].uf ? ' / ' + _esc(parcelas[0].uf) : ''}</td>
                         <td><strong>${_shortBrl(totalNoMes)}</strong></td>
                     </tr>`;
