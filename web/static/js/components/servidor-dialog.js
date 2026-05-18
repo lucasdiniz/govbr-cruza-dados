@@ -231,11 +231,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             // So mostra "Recebido enquanto servidor" se for diferente do total
             // (caso contrario, todos os meses estao no vinculo => stats
             // sao iguais e duplicar o valor confunde).
-            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido durante vinculo TCE-PB')}</span></div>`;
-        } else if (hasDuranteVinculo) {
-            // Todos meses sao "durante vinculo" — destaca o total ja existente
-            // com badge red em vez de duplicar.
-            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo BF durante vinculo TCE-PB')}</span></div>`;
+            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido enquanto era servidor publico')}</span></div>`;
         }
         html += '</div>';
 
@@ -327,7 +323,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         // via ETL incremental). Meses anteriores nao tem dado, por isso
         // nao mostramos linhas vazias para 2023-03..2025-12 — seria ruido.
         const coberturaLabel = `Cobertura: ${_fmtDate(String(BF_GRID_MIN_YM))} em diante. Meses anteriores nao estao disponiveis ainda.`;
-        const coberturaTec = `Snapshots BF acumulados desde ${_fmtDate(String(BF_GRID_MIN_YM))}. Historico anterior depende de novos deploys ETL incremental.`;
+        const coberturaTec = `Periodo coberto: ${_fmtDate(String(BF_GRID_MIN_YM))} em diante.`;
         html += `<p class="bf-cobertura text-xs text-muted"><span class="citizen-only">${coberturaLabel}</span><span class="auditor-only">${coberturaTec}</span></p>`;
         html += `<table class="bf-parcelas-table">
             <thead><tr>
