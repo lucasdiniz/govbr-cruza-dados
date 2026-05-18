@@ -41,17 +41,33 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     title.textContent = `Empenho ${data.numero_empenho}`;
     let html = _historyNote('Historico completo do empenho — este detalhamento nao muda com o filtro de periodo da pagina.');
 
-    // Descricao do empenho (historico livre escrito pelo orgao explicando
-    // o gasto). Primeiro bloco apos a nota de historico porque eh o texto
-    // que melhor responde "o que e este empenho?" pra usuario casual.
-    // Antes (PR #150) estava mesclada na secao final "Origem e descricao"
-    // mas usuario reportou que enterrar a descricao no fim do dialog
-    // confunde a leitura — descricao eh o "lede" do empenho.
+    // "Detalhes" — tab unica combinando descricao (historico livre do
+    // orgao) + valores (empenhado/liquidado/pago). Antes (PR #168) eram
+    // duas tabs separadas ("Descricao" e "Valores"), mas usuario reportou
+    // que fragmentava demais a leitura: a primeira tab do dialog deve
+    // responder de uma vez "o que e este empenho e quanto vale". A
+    // descricao continua sendo o "lede" (primeiro bloco visivel), seguida
+    // pelos valores. data-nav-label="Detalhes" sobrescreve o auto-derive
+    // do _dialogSectionNavLabel (que usaria o h4).
+    html += '<div class="dialog-section" data-nav-label="Detalhes"><h4>Detalhes</h4>';
     if (data.historico) {
-        html += `<div class="dialog-section"><h4>${dualLabel('O que diz o empenho','Descricao')}</h4>`;
-        html += `<p class="text-sm empenho-historico" style="line-height:1.6;margin:0">${_esc(data.historico)}</p>`;
-        html += '</div>';
+        html += `<p class="text-sm empenho-historico" style="line-height:1.6;margin:0 0 .85rem">${_esc(data.historico)}</p>`;
     }
+    html += `<div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_empenhado)}</span>
+            <span class="stat-label">${dualLabel('Reservado','Empenhado')}</span>
+        </div>
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_liquidado)}</span>
+            <span class="stat-label">${dualLabel('Servico entregue','Liquidado')}</span>
+        </div>
+        <div class="stat-cell">
+            <span class="stat-value">${_shortBrl(data.valor_pago)}</span>
+            <span class="stat-label">${dualLabel('Dinheiro saiu','Pago')}</span>
+        </div>
+    </div>`;
+    html += '</div>';
 
     // Licitacao vinculada — primeiro bloco logo apos descricao, pra dar
     // contexto imediato do empenho (qual processo originou o pagamento).
@@ -105,28 +121,9 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
         }
     }
 
-    // Historico do empenho movido para secao "Descricao" no topo do
-    // dialog (logo apos a nota de historico). Esta secao "Origem" agora
-    // contem apenas campos estruturais (UG, fonte, unidade, municipio,
-    // data) — o "de onde veio" o gasto.
-
-    // Valores
-    html += '<div class="dialog-section"><h4>Valores</h4>';
-    html += `<div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
-        <div class="stat-cell">
-            <span class="stat-value">${_shortBrl(data.valor_empenhado)}</span>
-            <span class="stat-label">${dualLabel('Reservado','Empenhado')}</span>
-        </div>
-        <div class="stat-cell">
-            <span class="stat-value">${_shortBrl(data.valor_liquidado)}</span>
-            <span class="stat-label">${dualLabel('Servico entregue','Liquidado')}</span>
-        </div>
-        <div class="stat-cell">
-            <span class="stat-value">${_shortBrl(data.valor_pago)}</span>
-            <span class="stat-label">${dualLabel('Dinheiro saiu','Pago')}</span>
-        </div>
-    </div>`;
-    html += '</div>';
+    // Descricao + Valores combinados na primeira secao "Detalhes" (acima).
+    // Manter ordem do dialog: Detalhes -> Licitacao -> Credor ->
+    // Classificacao -> Pagador.
 
     // Credor
     html += `<div class="dialog-section"><h4>${dualLabel('Quem recebeu','Credor')}</h4>`;
@@ -162,12 +159,17 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     html += '</div></div>';
     html += '</div>';
 
-    // Origem — campos estruturais do empenho (UG, fonte, unidade,
-    // municipio, data). Descricao livre fica na secao "Descricao" no
-    // topo do dialog (separada propositalmente apos feedback do usuario:
-    // misturar texto livre + campos estruturais no fim do dialog
-    // dificulta leitura).
-    html += `<div class="dialog-section"><h4>${dualLabel('De onde veio','Origem')}</h4>`;
+    // "Pagador" — campos estruturais do orgao publico que emitiu o
+    // empenho (UG, unidade orcamentaria, fonte do recurso, municipio,
+    // data). Antes chamava "Origem" mas o label era ambiguo (origem do
+    // que? do recurso? da licitacao?). Agora "Quem pagou / Orgao pagador"
+    // espelha o par "Quem recebeu / Credor" logo acima — citizen-mode
+    // pergunta-resposta simetrica. Descricao livre do empenho ficou em
+    // "Detalhes" (primeira tab), separada propositalmente apos feedback
+    // do usuario: misturar texto livre + campos estruturais no fim do
+    // dialog dificulta leitura. data-nav-label="Pagador" sobrescreve o
+    // auto-derive do _dialogSectionNavLabel.
+    html += `<div class="dialog-section" data-nav-label="Pagador"><h4>${dualLabel('Quem pagou','Orgao pagador')}</h4>`;
     html += '<div class="empresa-card"><div class="empresa-details">';
     html += `<span><strong>Data:</strong> ${_fmtDate(data.data_empenho)}</span>`;
     if (data.descricao_ug) html += `<span><strong>${dualLabel('Setor:','UG:')}</strong> ${_esc(data.descricao_ug)}</span>`;

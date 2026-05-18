@@ -22,9 +22,9 @@ function _dialogSectionNavLabel(rawText) {
     if (/despesas vinculadas|pagamentos desta licitacao/i.test(text)) return 'Despesas';
     if (/quem recebeu|^credor/i.test(text)) return 'Credor';
     if (/em que foi gasto|classificacao orcamentaria/i.test(text)) return 'Classificacao';
-    if (/de onde veio|^origem/i.test(text)) return 'Origem';
+    if (/de onde veio|^origem|quem pagou|orgao pagador/i.test(text)) return 'Pagador';
     if (/^valores$/i.test(text)) return 'Valores';
-    if (/^descricao$/i.test(text)) return 'Descricao';
+    if (/^descricao$|^detalhes$|o que diz o empenho/i.test(text)) return 'Detalhes';
     if (/pagamentos do governo as empresas|empenhos recebidos pelas empresas/i.test(text)) return 'Empenhos';
     return text.split(' ').slice(0, 2).join(' ');
 }

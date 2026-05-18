@@ -111,6 +111,38 @@
     margin-top: .6rem;
     font-size: var(--md-sys-typescale-body-small-size);
 }
+
+/* Callout informativo sobre as regras do PBF dentro do servidor-dialog.
+   Inserido depois dos stats agregados (com o badge vermelho "Recebeu
+   enquanto servidor") pra contextualizar por que receber BF tendo
+   vinculo de servidor pode ser irregular. Usa secondary-container
+   (menos dominante que o .dialog-history-note primario) pra nao
+   competir visualmente com o callout azul no topo do dialog. */
+.bf-regras-info {
+    display: block;
+    margin: .85rem 0;
+    padding: .75rem .9rem;
+    border-radius: var(--md-sys-shape-corner-medium);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-small-size);
+    line-height: 1.5;
+}
+.bf-regras-info p { margin: 0 0 .55rem; }
+.bf-regras-info p:last-child { margin-bottom: 0; }
+.bf-regras-info ul.bf-regras-info__lista {
+    margin: .35rem 0 .55rem 1.1rem;
+    padding: 0;
+    list-style: disc;
+}
+.bf-regras-info ul.bf-regras-info__lista li { margin: .15rem 0; }
+.bf-regras-info .bf-regras-info__fonte {
+    color: var(--md-sys-color-on-surface-variant);
+    font-style: italic;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    margin-top: .55rem;
+}
 .bf-parcelas-table th,
 .bf-parcelas-table td {
     padding: .35rem .5rem;
