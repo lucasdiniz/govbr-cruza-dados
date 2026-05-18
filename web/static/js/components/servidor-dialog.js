@@ -238,6 +238,36 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo BF durante vinculo TCE-PB')}</span></div>`;
         }
         html += '</div>';
+
+        // Texto informativo sobre as regras do PBF (versao cidadao +
+        // auditor). Inserido logo apos os stats agregados — especialmente
+        // relevante quando o badge vermelho "Recebeu enquanto servidor"
+        // aparece, pois contextualiza por que ter emprego + BF eh
+        // potencialmente problematico. Fontes confirmadas: gov.br/mds
+        // (FAQ oficial e pagina principal do PBF) e Lei 14.601/2023.
+        // Importante: regra mudou em jul/2025 — agora sao 3 categorias
+        // (12m para renda instavel, 2m para renda fixa, 24m grandfathered).
+        // CadUnico recebe alimentacao automatica de renda formal via
+        // eSocial/RAIS/CAGED desde 2023, entao omissao eh detectada.
+        html += `<aside class="bf-regras-info" role="note" aria-label="Regras do Bolsa Familia">
+            <div class="citizen-only">
+                <p>O Bolsa Familia e para familias com renda baixa — ate <strong>R$ 218 por pessoa, por mes</strong>. Quando alguem da familia consegue emprego ou a renda aumenta, e obrigatorio atualizar o Cadastro Unico.</p>
+                <p>Se a renda por pessoa passar de R$ 218 mas ficar <strong>ate R$ 706</strong>, a familia entra na <strong>Regra de Protecao</strong>: continua recebendo <strong>metade</strong> do beneficio por <strong>ate 12 meses</strong> (caso tipico de emprego formal). Acima de R$ 706, o beneficio e cancelado.</p>
+                <p>Se mais tarde a renda cair de novo abaixo de R$ 218, a familia pode voltar ao programa com prioridade em ate <strong>3 anos</strong> (Retorno Garantido). <strong>Receber sem comunicar emprego ou renda extra da bloqueio, devolucao do dinheiro e pode virar processo por estelionato</strong> — o governo cruza automaticamente o CadUnico com eSocial, RAIS e CAGED.</p>
+                <p class="bf-regras-info__fonte">Regras do Programa Bolsa Familia (Lei 14.601/2023).</p>
+            </div>
+            <div class="auditor-only">
+                <p><strong>Programa Bolsa Familia (Lei 14.601, de 19/06/2023):</strong> renda per capita maxima de R$ 218/mes para elegibilidade.</p>
+                <p><strong>Regra de Protecao (vigente desde jul/2025 — 3 categorias):</strong> familia que ultrapassa R$ 218 mas fica ate R$ 706 per capita mantem 50% do beneficio por:</p>
+                <ul class="bf-regras-info__lista">
+                    <li><strong>12 meses</strong> — renda instavel (emprego formal, MEI, autonomo);</li>
+                    <li><strong>2 meses</strong> — renda fixa (aposentadoria, BPC, pensao);</li>
+                    <li><strong>24 meses</strong> com teto R$ 759 — direito adquirido para familias que ja estavam na regra ate jun/2025.</li>
+                </ul>
+                <p><strong>Retorno Garantido:</strong> reingresso prioritario em ate 3 anos se renda cair a &le; R$ 218.</p>
+                <p><strong>Cruzamentos automaticos</strong> alimentam o CadUnico com renda formal (eSocial/RAIS/CAGED, INSS, RFB). Deteccao de irregularidade pela Rede Federal de Fiscalizacao (art. 13, Lei 14.601/2023) implica cancelamento, devolucao dos valores e eventual responsabilizacao penal por estelionato (CP art. 171).</p>
+            </div>
+        </aside>`;
         // Constroi grade mes-a-mes:
         // - Janela: max(BF_GRID_MIN_YM, primeiro_mes BF) ate
         //   max(ultimo_mes BF, ultimo mes do vinculo).
