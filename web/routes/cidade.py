@@ -1647,6 +1647,33 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         empresas.append(r)
                     result["empresas"] = empresas
 
+                # Vínculo como servidor (DEVE rodar ANTES de BF porque o
+                # bloco BF usa `vinculos` para decidir se servidor sem
+                # parcela ainda tem snapshots a reportar).
+                cur.execute("""
+                    SELECT municipio, descricao_cargo, data_admissao,
+                           MIN(ano_mes) AS primeiro_registro,
+                           MAX(ano_mes) AS ultimo_registro,
+                           MAX(valor_vantagem) AS maior_salario
+                    FROM tce_pb_servidor
+                    WHERE cpf_digitos_6 = %s AND nome_upper = %s
+                    GROUP BY municipio, descricao_cargo, data_admissao
+                    ORDER BY MAX(ano_mes) DESC
+                """, (cpf6, nome))
+                srv_cols = [d[0] for d in cur.description]
+                srv_rows = cur.fetchall()
+                vinculos = []
+                if srv_rows:
+                    for row in srv_rows:
+                        r = _row_to_dict(srv_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        vinculos.append(r)
+                    result["vinculos"] = vinculos
+
                 # Bolsa Familia: historico COMPLETO de parcelas (todos os
                 # snapshots mensais cumulativos) + agregados estatisticos +
                 # flag indicando quais parcelas caem dentro do periodo do
@@ -1667,31 +1694,6 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         "stats": None,
                         "meses_disponiveis": _get_bf_meses_disponiveis(),
                     }
-
-                # Vínculo como servidor
-                cur.execute("""
-                    SELECT municipio, descricao_cargo, data_admissao,
-                           MIN(ano_mes) AS primeiro_registro,
-                           MAX(ano_mes) AS ultimo_registro,
-                           MAX(valor_vantagem) AS maior_salario
-                    FROM tce_pb_servidor
-                    WHERE cpf_digitos_6 = %s AND nome_upper = %s
-                    GROUP BY municipio, descricao_cargo, data_admissao
-                    ORDER BY MAX(ano_mes) DESC
-                """, (cpf6, nome))
-                srv_cols = [d[0] for d in cur.description]
-                srv_rows = cur.fetchall()
-                if srv_rows:
-                    vinculos = []
-                    for row in srv_rows:
-                        r = _row_to_dict(srv_cols, row)
-                        for k, v in r.items():
-                            if hasattr(v, 'as_tuple'):
-                                r[k] = float(v)
-                            elif hasattr(v, 'isoformat'):
-                                r[k] = v.isoformat()
-                        vinculos.append(r)
-                    result["vinculos"] = vinculos
 
                 # Sancoes CEIS/CNEP das empresas vinculadas
                 if cnpjs:
