@@ -129,6 +129,14 @@
 .bf-parcelas-table tr.row-flag-red td {
     background: color-mix(in srgb, var(--md-sys-color-error) 6%, transparent);
 }
+.bf-parcelas-table tr.row-empty td {
+    color: var(--md-sys-color-on-surface-variant);
+    font-style: italic;
+    background: color-mix(in srgb, var(--md-sys-color-surface-variant) 30%, transparent);
+}
+.bf-parcelas-table tr.row-empty--vinculo td {
+    background: color-mix(in srgb, var(--md-comp-warning) 8%, transparent);
+}
 
 .empresa-header {
     display: flex;
