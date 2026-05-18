@@ -274,11 +274,16 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             (bfRaw && Array.isArray(bfRaw.meses_disponiveis))
                 ? bfRaw.meses_disponiveis.map(String) : []
         );
-        // Estende gridEnd ate o ultimo snapshot disponivel (para mostrar
-        // meses recentes que ainda nao tem parcela mas TEMOS snapshot).
+        // Clamp gridEnd ao ultimo snapshot BF disponivel. Razao: se vinculo
+        // TCE-PB tem ano_mes mais recente que o ultimo BF carregado (e.g.,
+        // vinculo 2026-03 mas BF carregado ate 2026-02), NAO mostrar esses
+        // meses na grade — evita renderizar 202603 enquanto ETL incremental
+        // ainda nao commitou aquele snapshot. Versao anterior usava `if (... >
+        // gridEnd) gridEnd = ...` (so estendia), o que permitia gridEnd ficar
+        // alem do max disponivel quando vincEnd era recente.
         if (mesesDisponiveis.size) {
             const maxDisponivelInt = Math.max(...[...mesesDisponiveis].map(ymToInt).filter(Boolean));
-            if (maxDisponivelInt > gridEnd) gridEnd = maxDisponivelInt;
+            gridEnd = maxDisponivelInt;
         }
         // Indexar parcelas por mes_competencia
         const parcelasPorMes = {};
