@@ -1128,8 +1128,17 @@ jobs:
       # Define WARM_SKIP_RECENT_HOURS no drop-in systemd. Comportamento por input:
       #
       #   warm_skip_hours vazio (default): CONTEXTUAL
-      #     - etl_phase in (all, sql, incremental): forca SKIP_HRS=0 (rebuild).
-      #       ETL mudou dados/MVs → cache existente esta stale.
+      #     - etl_phase in (all, sql): forca SKIP_HRS=0 (rebuild).
+      #       Essas fases reescrevem MVs/dados em larga escala (todas
+      #       afetadas), entao cache existente esta TOTALMENTE stale.
+      #     - etl_phase=incremental: SKIP_HRS=-1 (skip-if-cached).
+      #       Incremental afeta APENAS subset previsivel de queries (e.g.
+      #       BF -> KPI_SUMMARY/TOP_SERVIDORES/PERFIL). Para invalidar essas,
+      #       USAR `rewarm_cache_keys=K1,K2,...` (shadow rewarm seletivo).
+      #       Default contextual = -1 evita o anti-padrao de re-warm de
+      #       8k+ chaves quando so 800 mudaram. Convencao do projeto:
+      #       NUNCA dropar/rebuildar cache inteiro quando subset eh
+      #       conhecido. Ver docs/cache.md.
       #     - resto (web, phase N, etc): SKIP_HRS=-1 (skip-if-cached).
       #
       #   warm_skip_hours=-1: skip-if-cached SEMPRE, mesmo apos ETL. Opt-out
@@ -1144,10 +1153,12 @@ jobs:
       #     TRUNCATE-ado).
       #
       # Invalido (regex falha): fallback CONTEXTUAL (mesma logica do vazio) —
-      # safe-by-default, evita stale cache silencioso apos ETL.
+      # safe-by-default.
       #
       # Round 2 fixes do review GPT 5.5 PR #105: separar "default contextual"
       # de "user passou -1 explicito" via input default '' (vazio).
+      # Round 3 (PR #169 follow-up): tirar incremental do ETL_HEAVY —
+      # incremental afeta subset conhecido, exige rewarm_cache_keys explicito.
       - name: Configure warm cache skip mode
         if: |
           inputs.warm_cache == true ||
@@ -1158,12 +1169,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Detecta contexto de ETL pesado: dados/MVs mudaram, cache existente
-          # esta stale → default deve ser rebuild completo.
+          # Detecta contexto de ETL pesado: dados/MVs mudaram em LARGA escala
+          # (todas as queries afetadas) → default deve ser rebuild completo.
+          # incremental NAO entra aqui: afeta subset conhecido, deve usar
+          # rewarm_cache_keys seletivo.
           ETL_HEAVY=false
           if [ "${{ inputs.etl_phase }}" = "all" ] \
-            || [ "${{ inputs.etl_phase }}" = "sql" ] \
-            || [ "${{ inputs.etl_phase }}" = "incremental" ]; then
+            || [ "${{ inputs.etl_phase }}" = "sql" ]; then
             ETL_HEAVY=true
           fi
 
