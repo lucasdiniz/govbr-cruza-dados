@@ -55,6 +55,10 @@ on:
         description: 'CSV de specs incremental (e.g. "tce_pb.tce_pb_despesa,dados_pb.pb_pagamento"). Vazio = todas. So aplica quando etl_phase=incremental.'
         required: false
         default: ''
+      incremental_only_buckets:
+        description: 'CSV de bucket_ids para limitar processamento (e.g. "2026-02,2026-03"). Vazio = todos buckets enumerados pela spec. Util para BF onde rodar 38 buckets toma horas.'
+        required: false
+        default: ''
       drop_cache:
         description: 'TRUNCATE web_cache antes do warm. Use APENAS em mudancas de schema. Por padrao (false), cache antigo eh preservado e UPSERT-ado (evita 12-18h sem cache).'
         required: false
@@ -709,9 +713,12 @@ jobs:
 
           # Framework incremental runner
           if [ -n "${{ inputs.incremental_only }}" ]; then
-            python -m etl.incremental.runner --only "${{ inputs.incremental_only }}" 2>&1
+            python -m etl.incremental.runner \
+                --only "${{ inputs.incremental_only }}" \
+                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
           else
-            python -m etl.incremental.runner 2>&1
+            python -m etl.incremental.runner \
+                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
           fi
 
           # Refresh post-incremental para sources com MVs dependentes.
