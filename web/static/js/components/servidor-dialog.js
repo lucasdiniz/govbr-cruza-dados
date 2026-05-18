@@ -366,15 +366,27 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                     // este retorna HTML <span>; quebraria o attr. Usar
                     // texto plano + dualLabel APENAS no conteudo do badge.
                     const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
-                    const badgeTitle = "Parcela dentro do periodo do vinculo TCE-PB";
+                    const badgeTitle = "Parcela recebida enquanto era servidor publico";
                     const totalNoMes = parcelas.reduce((s, p) => s + (p.valor_parcela || 0), 0);
                     const badge = anyDuranteVinculo
                         ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
                         : '';
+                    // Coluna "Mes referencia" no header:
+                    //   - se ha varias parcelas no mes (retroativos), mostra "N parcelas
+                    //     (retroativas)" e os mes_referencia individuais vao nas detail rows;
+                    //   - se ha so 1 parcela, mostra direto o mes_referencia formatado dela
+                    //     (caso comum — sem isso a coluna ficaria sempre vazia).
+                    let refLabel;
+                    if (parcelas.length > 1) {
+                        refLabel = parcelas.length + ' parcelas (retroativas)';
+                    } else {
+                        const ref = parcelas[0].mes_referencia;
+                        refLabel = ref ? _fmtDate(ref) : '';
+                    }
                     // Cabecalho do mes
                     let html2 = `<tr class="bf-mes-header${anyDuranteVinculo ? ' row-flag-red' : ''}">
                         <td><strong>${_fmtDate(k)}</strong>${badge}</td>
-                        <td class="text-sm text-muted">${parcelas.length > 1 ? parcelas.length + ' parcelas (retroativas)' : ''}</td>
+                        <td class="text-sm text-muted">${refLabel}</td>
                         <td>${_esc(parcelas[0].nm_municipio || '-')}${parcelas[0].uf ? ' / ' + _esc(parcelas[0].uf) : ''}</td>
                         <td><strong>${_shortBrl(totalNoMes)}</strong></td>
                     </tr>`;
