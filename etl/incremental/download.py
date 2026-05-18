@@ -33,7 +33,11 @@ from . import db as etl_db
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "govbr-cruza-dados/0.1 (+etl-incremental)"
+# UA realista: Portal da Transparencia bloqueia bots/scrapers (405 Not
+# Allowed). ETL classico (etl/00_download.py:32) usa este UA e funciona.
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/131.0.0.0 Safari/537.36")
 DEFAULT_TIMEOUT = 600
 CHUNK_SIZE = 1024 * 1024  # 1MB
 
@@ -118,7 +122,10 @@ def conditional_download(
     # Build request
     headers = {
         "User-Agent": USER_AGENT,
-        "Accept": "*/*",
+        # Portal da Transparencia bloqueia "*/*" para alguns endpoints.
+        # text/html primeiro replica request de browser real (mesmo padrao
+        # de etl/00_download.py:136).
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
     }
     if not force_refetch:
