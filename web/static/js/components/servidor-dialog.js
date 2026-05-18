@@ -87,7 +87,19 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
     if (qtdSancionadas > 0) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell stat-cell--orange"><span class="stat-value">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
-    if (bfParcelas.length > 0) html += `<div class="stat-cell stat-cell--yellow"><span class="stat-value">${bfStats ? _shortBrl(bfStats.total_recebido) : 'Sim'}</span><span class="stat-label">${dualLabel('Recebeu Bolsa Familia','Total Bolsa Familia')}</span></div>`;
+    // Stat BF no overview:
+    //   - qtd_meses = quantos meses distintos tem registro de pagamento
+    //   - maior_valor = maior parcela individual recebida
+    // Mostra "N meses · R$ MAIOR" em vez do total — total fica na secao
+    // detalhada abaixo, evitando duplicidade.
+    if (bfParcelas.length > 0) {
+        const qtdMesesBF = bfStats ? bfStats.qtd_meses : new Set(bfParcelas.map(p => p.mes_competencia)).size;
+        const maiorValorBF = bfParcelas.reduce((m, p) => Math.max(m, p.valor_parcela || 0), 0);
+        html += `<div class="stat-cell stat-cell--yellow">`
+            + `<span class="stat-value">${qtdMesesBF} ${qtdMesesBF === 1 ? 'mes' : 'meses'}</span>`
+            + `<span class="stat-label">${dualLabel('Recebeu Bolsa Familia (maior parcela: ' + _shortBrl(maiorValorBF) + ')','Bolsa Familia — maior parcela: ' + _shortBrl(maiorValorBF))}</span>`
+            + `</div>`;
+    }
     if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${data.ceaf.length}</span><span class="stat-label">${dualLabel('Expulso do servico publico federal','Expulsao federal')}</span></div>`;
     html += '</div>';
 
@@ -180,10 +192,17 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     }
 
     // Bolsa Familia: secao dedicada com stats agregados + grade mes-a-mes
-    // mostrando todos os meses entre primeiro/ultimo (ou janela do vinculo),
-    // com "Sem registro" para meses sem parcela. Padrao: meses dentro do
-    // vinculo TCE-PB com parcela => highlight red badge. dualLabel
-    // cidadao/auditor.
+    // visivel por default (sem <details> wrapper). Janela: a partir de
+    // janeiro/2026 (primeiro mes onde temos snapshots cumulativos via
+    // framework incremental — meses anteriores so existem se ja foram
+    // carregados). Padrao: meses dentro do vinculo TCE-PB com parcela =>
+    // highlight red badge. dualLabel cidadao/auditor.
+    //
+    // Mes minimo da grade (BF_GRID_MIN_YM): controla o quao longe pra tras
+    // mostramos meses "sem registro". Atualmente 2026-01 porque o framework
+    // incremental comecou a carregar a partir desse mes. Quando carregarmos
+    // historico (e.g., 2023-03+), atualizar essa constante.
+    const BF_GRID_MIN_YM = 202601;
     if (bfParcelas.length) {
         const stats = bfStats || {
             qtd_parcelas: bfParcelas.length,
@@ -203,13 +222,20 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         if (stats.primeiro_mes && stats.ultimo_mes) {
             html += `<div class="stat-cell"><span class="stat-value">${_fmtDate(stats.primeiro_mes)} &rarr; ${_fmtDate(stats.ultimo_mes)}</span><span class="stat-label">${dualLabel('Periodo','Janela temporal')}</span></div>`;
         }
-        if (hasDuranteVinculo) {
+        if (hasDuranteVinculo && Math.abs((stats.total_durante_vinculo || 0) - (stats.total_recebido || 0)) > 0.01) {
+            // So mostra "Recebido enquanto servidor" se for diferente do total
+            // (caso contrario, todos os meses estao no vinculo => stats
+            // sao iguais e duplicar o valor confunde).
             html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido durante vinculo TCE-PB')}</span></div>`;
+        } else if (hasDuranteVinculo) {
+            // Todos meses sao "durante vinculo" — destaca o total ja existente
+            // com badge red em vez de duplicar.
+            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo BF durante vinculo TCE-PB')}</span></div>`;
         }
         html += '</div>';
         // Constroi grade mes-a-mes:
-        // - Determina janela: min(primeiro_mes BF, primeiro mes do vinculo)
-        //   ate max(ultimo_mes BF, ultimo mes do vinculo).
+        // - Janela: max(BF_GRID_MIN_YM, primeiro_mes BF) ate
+        //   max(ultimo_mes BF, ultimo mes do vinculo).
         // - Para cada mes, mostra parcelas que caem nele OU placeholder
         //   "Sem registro" se nao houver.
         const vincStart = vinculos.length ? vinculos
@@ -225,12 +251,11 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             const y = Math.floor(n/100), m = n % 100;
             return m === 12 ? (y+1) * 100 + 1 : n + 1;
         };
-        let gridStart = ymToInt(stats.primeiro_mes);
+        // Start: nunca anterior ao mes minimo (evita listar 30+ meses vazios
+        // ate o framework carregar historico). Mas se BF tem parcela mais
+        // antiga, comeca dela.
+        let gridStart = Math.max(BF_GRID_MIN_YM, ymToInt(stats.primeiro_mes) || BF_GRID_MIN_YM);
         let gridEnd = ymToInt(stats.ultimo_mes);
-        if (vincStart) {
-            const v = ymToInt(vincStart);
-            if (v && v < gridStart) gridStart = v;
-        }
         if (vincEnd) {
             const v = ymToInt(vincEnd);
             if (v && v > gridEnd) gridEnd = v;
@@ -247,18 +272,21 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         const vincEndInt = vincEnd ? ymToInt(vincEnd) : null;
         const inVinculo = (n) => vincStartInt && vincEndInt && n >= vincStartInt && n <= vincEndInt;
 
-        const totalMesesGrid = gridStart && gridEnd ? (gridEnd - gridStart + 1) : 0; // grosso modo (nao exato com mes 12->01)
-        // Default fechado para nao poluir dialog; user expande
-        html += `<details class="collapsible-details bf-historico">
-            <summary>${dualLabel('Ver mes a mes (incluindo meses sem registro)','Ver grade mensal completa')} (${stats.qtd_parcelas} parcelas)</summary>
-            <table class="bf-parcelas-table">
-                <thead><tr>
-                    <th>${dualLabel('Mes','Competencia')}</th>
-                    <th>${dualLabel('Mes referencia','Referencia')}</th>
-                    <th>${dualLabel('Cidade','Municipio')}</th>
-                    <th>${dualLabel('Valor','Valor parcela')}</th>
-                </tr></thead>
-                <tbody>`;
+        // Renderizar tabela DIRETO (sem <details>) — UX request: nao esconder.
+        // Cobertura atual: BF_GRID_MIN_YM em diante (snapshots cumulativos
+        // via ETL incremental). Meses anteriores nao tem dado, por isso
+        // nao mostramos linhas vazias para 2023-03..2025-12 — seria ruido.
+        const coberturaLabel = `Cobertura: ${_fmtDate(String(BF_GRID_MIN_YM))} em diante. Meses anteriores nao estao disponiveis ainda.`;
+        const coberturaTec = `Snapshots BF acumulados desde ${_fmtDate(String(BF_GRID_MIN_YM))}. Historico anterior depende de novos deploys ETL incremental.`;
+        html += `<p class="bf-cobertura text-xs text-muted"><span class="citizen-only">${coberturaLabel}</span><span class="auditor-only">${coberturaTec}</span></p>`;
+        html += `<table class="bf-parcelas-table">
+            <thead><tr>
+                <th>${dualLabel('Mes','Competencia')}</th>
+                <th>${dualLabel('Mes referencia','Referencia')}</th>
+                <th>${dualLabel('Cidade','Municipio')}</th>
+                <th>${dualLabel('Valor','Valor parcela')}</th>
+            </tr></thead>
+            <tbody>`;
         if (gridStart && gridEnd && gridStart <= gridEnd) {
             // Iterar do mais recente para o mais antigo (mesma ordem da lista)
             const meses = [];
@@ -281,13 +309,20 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                     // se QUALQUER parcela do grupo cair no vinculo (review
                     // Opus 4.7-high LOW-6: badge somia se parcelas[0] estava
                     // fora do vinculo mas parcelas[1+] dentro).
+                    //
+                    // IMPORTANTE: title= NAO pode conter dualLabel() porque
+                    // este retorna HTML <span>; quebraria o attr. Usar
+                    // texto plano + dualLabel APENAS no conteudo do badge.
                     const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
+                    const badgeTitle = "Parcela dentro do periodo do vinculo TCE-PB";
                     return parcelas.map((b, idx) => {
                         const cls = b.durante_vinculo ? ' class="row-flag-red"' : '';
-                        const badge = anyDuranteVinculo ? ` <span class="badge badge-red" title="${dualLabel('Recebeu enquanto era servidor publico','Parcela dentro do periodo do vinculo TCE-PB')}">${dualLabel('Era servidor','Durante vinculo')}</span>` : '';
+                        const badge = (anyDuranteVinculo && idx === 0)
+                            ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
+                            : '';
                         const competLabel = idx === 0 ? _fmtDate(b.mes_competencia) : '';
                         return `<tr${cls}>
-                            <td>${competLabel}${idx === 0 ? badge : ''}</td>
+                            <td>${competLabel}${badge}</td>
                             <td>${_fmtDate(b.mes_referencia)}</td>
                             <td>${_esc(b.nm_municipio || '-')}${b.uf ? ' / ' + _esc(b.uf) : ''}</td>
                             <td>${_shortBrl(b.valor_parcela)}</td>
@@ -306,8 +341,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 </tr>`;
             }).join('');
         }
-        html += `</tbody></table>
-        </details>`;
+        html += `</tbody></table>`;
         html += '</div>';
     }
 
