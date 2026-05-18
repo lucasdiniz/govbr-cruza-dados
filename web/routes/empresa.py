@@ -2,14 +2,17 @@
 
 ARQUITETURA pos-incidente do PR #57:
 - Rota e CACHE-ONLY: le de web_cache (chave EMPRESA_PERFIL:<cnpj>) e renderiza.
-- Cache miss = 404 (NAO faz live query — protege DB do thundering herd que
-  derrubou o site quando IndexNow notificou Bing sobre 45K URLs simultaneamente).
-  Cache-miss-only e seguro porque empresas so entram no sitemap depois de
-  warmed, e cleanup_orphan_empresa_cache (ADR-0009) garante que entries
-  stale para CNPJs nao mais qualificados sao removidas. Miss aqui significa
-  URL nao representa empresa qualificada na PB — 404 e semanticamente
-  correto e acelera de-index de URLs antigas no Google (vs 503 transient
-  que demora semanas-meses).
+- Cache miss = 410 Gone (NAO faz live query — protege DB do thundering herd
+  que derrubou o site quando IndexNow notificou Bing sobre 45K URLs
+  simultaneamente). Cache-miss-only e seguro porque empresas so entram no
+  sitemap depois de warmed, e cleanup_orphan_empresa_cache (ADR-0009)
+  garante que entries stale para CNPJs nao mais qualificados sao removidas.
+  Miss aqui significa URL nao representa empresa qualificada na PB —
+  410 e semanticamente correto e acelera de-index da URL no Google
+  (Google trata 410 como permanente e para de retentar em dias, vs 404
+  que insiste re-crawlando por semanas). Status revisado de 404 para 410
+  na revisao 2026-05-18 do ADR-0009 apos observar Googlebot persistindo
+  em ~6.7k retries/dia em URLs orfas.
 - A funcao `compute_empresa_perfil_dict` executa as 8 queries e monta o
   dict completo. Eh chamada APENAS pelo warmer (web/warm_cache.py), nunca
   inline na rota.
@@ -631,13 +634,18 @@ def compute_empresa_municipio_perfil_dict(
 
 @router.get("/empresa/{cnpj}")
 async def empresa_perfil(request: Request, cnpj: str):
-    """Renderiza /empresa/<14-digits>. Le de web_cache. Cache miss = 404.
+    """Renderiza /empresa/<14-digits>. Le de web_cache. Cache miss = 410 Gone.
 
     NUNCA executa as 8 queries inline. O incidente do PR #57 mostrou que
     sob trafego de crawler agressivo (Bing + 45K URLs do IndexNow), o pool
     de DB exauria em segundos e levava o site inteiro junto. Cache-only +
     sitemap-after-warm garante que crawler so encontra URLs com cache
     quente.
+
+    Cache miss retorna 410 (era 404 ate revisao 2026-05-18 do ADR-0009)
+    porque Googlebot insistia ~6.7k re-crawls/dia em URLs orfas
+    interpretando 404 como "talvez volte". 410 = "removido permanentemente",
+    de-index em dias vs semanas.
     """
     from web.main import templates
 
@@ -692,18 +700,22 @@ async def empresa_perfil(request: Request, cnpj: str):
     #       que retirou empresas-fantasma contaminadas por CPF padded);
     #   (c) edge case raro: empresa nova entre warms (so visivel via
     #       sitemap apos proximo warm).
-    # Em (a) e (b), 404 e o codigo HTTP correto (URL nao representa um
-    # recurso valido na PB). Em (c), 404 pode causar de-index transiente
-    # de uma URL recem-criada, mas como crawlers descobrem essas URLs
-    # via sitemap (que so lista apos warm), o caso e improvavel.
-    # 404 acelera de-index das ~511k URLs orfas no Google (vs 503 que
-    # Google trata como transient e demora semanas-meses pra de-indexar).
-    _log.info("cache miss /empresa/%s — returning 404 (URL not in qualifying set)", canonical)
+    # Em (a) e (b), 410 Gone e o codigo HTTP correto: a URL nao representa
+    # (e nunca mais representara) um recurso valido no dominio PB. Em (c),
+    # 410 pode causar de-index transiente de uma URL recem-criada, mas
+    # como crawlers descobrem essas URLs via sitemap (que so lista apos
+    # warm), o caso e improvavel e o efeito reverte no proximo crawl da
+    # URL ja warmed.
+    # Por que 410 e nao 404: observado em prod (18/May/2026) Googlebot
+    # persistindo ~6.7k retries/dia em URLs orfas — 404 sinaliza
+    # "talvez volte". 410 sinaliza "removido permanentemente" e Google
+    # para de retentar em dias (vs semanas com 404).
+    _log.info("cache miss /empresa/%s — returning 410 Gone (URL not in qualifying set)", canonical)
     return templates.TemplateResponse(
         request,
         "errors/404.html",
         {"path": str(request.url.path)},
-        status_code=404,
+        status_code=410,
     )
 
 
@@ -717,7 +729,7 @@ async def empresa_perfil_municipio(
     request: Request, cnpj: str, municipio_slug_in: str
 ):
     """Renderiza /empresa/<14-digits>/<municipio-slug>. Cache-only (mesmo
-    invariant da rota global): cache miss = 404 (ver docstring do modulo).
+    invariant da rota global): cache miss = 410 Gone (ver docstring do modulo).
 
     Validacoes em ordem:
     1. CNPJ canonico (14 digitos numericos puros, sem mascara).
@@ -725,7 +737,7 @@ async def empresa_perfil_municipio(
     3. Slug municipio resolve via slug_to_municipio. None = 404.
     4. Slug nao canonico -> 301 pro slug canonico.
     5. Lookup web_cache(EMPRESA_PERFIL_MUN, "<cnpj>:<slug>"). Hit -> render.
-       Miss -> 404.
+       Miss -> 410.
     """
     from web.main import templates
 
@@ -814,14 +826,14 @@ async def empresa_perfil_municipio(
                 )
 
     _log.info(
-        "cache miss /empresa/%s/%s — returning 404 (URL not in qualifying set)",
+        "cache miss /empresa/%s/%s — returning 410 Gone (URL not in qualifying set)",
         canonical_cnpj, canonical_slug,
     )
     return templates.TemplateResponse(
         request,
         "errors/404.html",
         {"path": str(request.url.path)},
-        status_code=404,
+        status_code=410,
     )
 
 

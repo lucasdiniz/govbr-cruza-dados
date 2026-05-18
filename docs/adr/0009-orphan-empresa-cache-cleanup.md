@@ -84,9 +84,10 @@ Adotamos **alternativa 3** (DELETE entries stale) com função
 **standalone** invocável independentemente do warm cycle, **acompanhada
 de mudança no contrato de cache miss da rota `/empresa/<cnpj>` (e
 `/empresa/<cnpj>/<slug>`)** de `503 Service Unavailable` para
-`404 Not Found`.
+`410 Gone` (atualizada de `404 Not Found` em revisão 2026-05-18,
+ver seção "Revisão 2026-05-18" abaixo).
 
-### Rota: cache miss = 404 (era 503)
+### Rota: cache miss = 410 Gone (era 503 → depois 404 → revisado para 410)
 
 Antes deste ADR, `web/routes/empresa.py` retornava `503` com
 `Retry-After: 3600` em cache miss. A intenção original era proteger o
@@ -108,13 +109,9 @@ três situações:
    descobre via sitemap, que só lista pós-warm).
 
 Em todos os casos, **a URL não representa um recurso válido no
-domínio PB**. `404 Not Found` é semanticamente correto e produz
-melhor sinal SEO: Google de-indexa URLs 404 em ~7-30 dias, vs
-semanas-meses pra 503 transient. Para as ~511k URLs órfãs que estão
-sendo limpas, isso acelera materialmente a saída do índice.
-
-Cold start (warm ainda rodando após restart) continua possível mas é
-caso transitório e raro — o trade-off pra produção é favorável.
+domínio PB**. Inicialmente adotamos `404 Not Found`. Após observação
+em produção (ver "Revisão 2026-05-18"), migramos para `410 Gone`
+para acelerar de-indexação.
 
 ### Implementação do cleanup
 
@@ -249,7 +246,7 @@ gh workflow run deploy.yml -f etl_phase=web \
 
 - Code:
   - [`web/warm_cache.py::cleanup_orphan_empresa_cache`](../../web/warm_cache.py)
-  - [`web/routes/empresa.py`](../../web/routes/empresa.py) — `empresa_perfil` + `empresa_perfil_municipio` (cache miss = 404).
+  - [`web/routes/empresa.py`](../../web/routes/empresa.py) — `empresa_perfil` + `empresa_perfil_municipio` (cache miss = 410 Gone, atualizado de 404 em 2026-05-18).
 - Workflow:
   - [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
     (input `cleanup_orphan_empresa_cache`).
@@ -263,3 +260,108 @@ gh workflow run deploy.yml -f etl_phase=web \
 - PRs:
   - [#156](https://github.com/lucasdiniz/govbr-cruza-dados/pull/156) —
     ETL normalize fix que motivou este ADR.
+
+---
+
+## Revisão 2026-05-18: cache miss = 410 Gone (era 404)
+
+### Observação em produção
+
+Após o ADR original (2026-05-17), análise de tráfego em 18/May/2026
+mostrou Googlebot **persistindo em ~6.7k re-crawls/dia** em URLs órfãs
+retornando 404. O comportamento esperado era de-indexação em 7-30
+dias, mas Google estava interpretando 404 como "recurso temporariamente
+ausente, vale a pena retentar" — mantendo crawl budget alocado em URLs
+que nunca mais existirão.
+
+Distribuição de status no dia 18/May/2026 (00:00-18:21 BR):
+
+| Status | Hits | % do total |
+|---|---:|---:|
+| 200 | 51,348 | 59.2% |
+| **404** | **33,743** | **38.9%** |
+| 301 | 1,206 | 1.4% |
+
+`66.249.74.38` (Googlebot principal) sozinho gerou 6,726 × 404 — quase
+todos em URLs `/empresa/<CNPJ>/<municipio>` órfãs. O mesmo padrão se
+repetiu em 17/May (~6.7k) — ou seja, o ritmo de retry não diminuiu
+após 24h+.
+
+### Mudança
+
+Substituímos `status_code=404` por `status_code=410` nos dois cache
+miss handlers (`empresa_perfil` e `empresa_perfil_municipio`).
+
+**Por que 410 é estritamente melhor para este caso**:
+
+1. **Semântica HTTP precisa**: 410 Gone significa "removido
+   permanentemente, não tente novamente". Google documenta que trata
+   410 como permanente e remove do índice em dias (vs semanas para 404).
+2. **Crawl budget preservado**: Googlebot para de retentar URLs 410,
+   liberando budget para crawlar páginas novas qualificadas.
+3. **Zero complexidade adicionada**: a mudança é literal de
+   `status_code=404` para `status_code=410`. O template `errors/404.html`
+   é reutilizado (status code é o que importa pra crawler, conteúdo é
+   genérico).
+4. **Nenhuma nova query**: avaliamos cachear um existence check em
+   `empresa` (RFB) para distinguir "CNPJ nunca existiu" de "CNPJ órfão",
+   mas isso adiciona complexidade (LRU cache, day-bucket TTL, thundering
+   herd protection) sem benefício prático — 99%+ dos cache misses em
+   produção são caso (b) "CNPJ órfão", justificando 410 universal.
+
+### Trade-offs aceitos
+
+| Caso | Status correto ideal | Status produzido | Impacto |
+|---|---|---|---|
+| (a) URL inventada `/empresa/99999999999999/x` | 404 | 410 | Mínimo — Google de-indexa essa URL "inventada" mais rápido (não é problema; era irrelevante de qualquer forma) |
+| (b) CNPJ órfão (PR #156 cleanup) | **410** | 410 ✅ | Resolve o problema raiz |
+| (c) Cold start / CNPJ novo entre warms | 503 / 404 transient | 410 transient | Pior caso teórico. Mitigação: warm cycle dura ~3h após deploy mensal; janela de exposição é curta. Crawler descobre URL nova via sitemap (que só lista pós-warm), tornando race improvável |
+
+### Por que não query+cache pra distinguir (a) de (b)/(c)
+
+Considerei (e descartei) cachear `SELECT 1 FROM empresa WHERE
+cnpj_basico = $1` com `lru_cache + day_bucket` para retornar 410
+apenas quando CNPJ existe na RFB (caso b) e 404 quando não (caso a).
+
+Razões contra:
+
+- **Complexidade não justificada**: ~30 linhas de código + LRU cache
+  + day bucket + risco de thundering herd em cold deploy. Para
+  distinguir um caso raro (URL inventada) de um caso dominante
+  (URL órfã do cleanup), sem ganho prático.
+- **Não há cliente para essa distinção**: humanos digitando URLs
+  inventadas são <1% do tráfego em rotas `/empresa/<CNPJ>/<slug>`.
+  Para esses, ver "Página gone" no lugar de "Página não encontrada"
+  não muda nada (template é o mesmo).
+- **Yagni**: se um dia precisarmos distinguir, adicionamos. Por
+  enquanto, 410 universal é simples e correto para >99% dos casos.
+
+### Consequences (adicionais ao decision original)
+
+#### Positive
+
+- **Crawl budget liberado**: 6.7k retries/dia esperados parar em
+  ~3-7 dias após Google internalizar 410.
+- **De-index acelerado**: ~511k URLs órfãs saem do Google em dias
+  (vs semanas com 404).
+- **Sinal mais limpo no Search Console**: URLs com 410 aparecem em
+  relatório "Removed" (intencional) em vez de "Not found" (warning).
+
+#### Negative
+
+- **Reversão demora mais**: se uma empresa órfã voltar a qualificar
+  (improvável), Google leva mais tempo pra re-indexar URL marcada
+  como 410 vs 404. Mitigação: cleanup é idempotente; quando empresa
+  re-qualifica, warm cycle popula cache e próximo crawl retorna 200.
+  Google reverte 410→200 quando recebe 200 em re-crawl.
+- **URLs digitadas inventadas (caso a) recebem 410**: semanticamente
+  impreciso ("removido" vs "nunca existiu"), mas inconsequente —
+  esses são <1% dos misses e usuário vê mesmo template.
+
+### Reverso da mudança (se necessário)
+
+Se por algum motivo precisarmos voltar para 404 (ex: Google muda
+comportamento de tratamento de 410), basta inverter `status_code=410`
+para `status_code=404` nos dois handlers. Sem mudança de template,
+schema, ou dependências.
+
