@@ -125,7 +125,14 @@ def main():
     parser.add_argument("--govbr-dsn", default=None, help="Override govbr DSN (admin)")
     parser.add_argument("--triggered-by", default=os.environ.get("ETL_TRIGGERED_BY", "cli"))
     parser.add_argument("--commit-sha", default=os.environ.get("GITHUB_SHA"))
-    parser.add_argument("--max-runtime-s", type=int, default=6 * 3600)
+    parser.add_argument(
+        "--max-runtime-s",
+        type=int,
+        default=24 * 3600,
+        help="Hard timeout via SIGALRM. Default 24h. BF em VM Azure pode "
+             "levar 3-4h por bucket; 38 buckets historicos = 5+ dias. "
+             "Self-hosted runner aceita ate 5 dias.",
+    )
     args = parser.parse_args()
 
     # Default DSNs from etl.config
