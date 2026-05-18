@@ -420,6 +420,12 @@ def _enumerate_buckets(
 
     # YEAR_WINDOW / MONTH_WINDOW: enumerate disk + group by bucket_from_filename
     by_bucket: dict[str, list[Path]] = {}
+    if not data_dir.exists():
+        # Fresh deploy: data_dir nao foi criado ainda. Framework cria via
+        # download.py:_download_one quando url_for_bucket gera URLs. Retorna
+        # vazio aqui para que _build_buckets caia no caminho de enumerate
+        # via spec.enumerate_buckets() + url_for_bucket.
+        return []
     for child in sorted(data_dir.iterdir()):
         if not child.is_file() or not child.name.lower().endswith(".csv"):
             continue
