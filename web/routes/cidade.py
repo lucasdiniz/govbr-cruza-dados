@@ -1573,6 +1573,23 @@ def _compute_servidor_bf(cpf6: str, nome: str) -> dict | None:
     }
 
 
+def _get_bf_meses_disponiveis() -> list[str]:
+    """Retorna lista de mes_competencia (YYYYMM) com snapshots BF carregados.
+
+    Cacheada in-memory (cached_query TTL CACHE_TTL) — global por instancia,
+    nao por servidor (independe de cpf6/nome). Permite ao frontend
+    distinguir 3 estados na grade mes-a-mes:
+      - Mes COM snapshot e SEM parcela do servidor: "Nao recebeu BF"
+      - Mes SEM snapshot: "Sem dados disponiveis ainda"
+      - Mes COM snapshot e COM parcela: linha normal
+    """
+    sql = "SELECT DISTINCT mes_competencia FROM bolsa_familia ORDER BY 1"
+    cols, rows = cached_query(
+        "bolsa_familia:meses_disponiveis", sql, None, timeout_sec=10
+    )
+    return [str(r[0]) for r in rows if r[0]]
+
+
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
@@ -1630,16 +1647,9 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         empresas.append(r)
                     result["empresas"] = empresas
 
-                # Bolsa Familia: historico COMPLETO de parcelas (todos os
-                # snapshots mensais cumulativos) + agregados estatisticos +
-                # flag indicando quais parcelas caem dentro do periodo do
-                # vinculo TCE-PB. Cache in-memory por (cpf6, nome) via
-                # cached_query (TTL padrao do web.db). LIMIT 240 defensivo.
-                bf_data = _compute_servidor_bf(cpf6, nome)
-                if bf_data:
-                    result["bolsa_familia"] = bf_data
-
-                # Vínculo como servidor
+                # Vínculo como servidor (DEVE rodar ANTES de BF porque o
+                # bloco BF usa `vinculos` para decidir se servidor sem
+                # parcela ainda tem snapshots a reportar).
                 cur.execute("""
                     SELECT municipio, descricao_cargo, data_admissao,
                            MIN(ano_mes) AS primeiro_registro,
@@ -1652,8 +1662,8 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 """, (cpf6, nome))
                 srv_cols = [d[0] for d in cur.description]
                 srv_rows = cur.fetchall()
+                vinculos = []
                 if srv_rows:
-                    vinculos = []
                     for row in srv_rows:
                         r = _row_to_dict(srv_cols, row)
                         for k, v in r.items():
@@ -1663,6 +1673,27 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                                 r[k] = v.isoformat()
                         vinculos.append(r)
                     result["vinculos"] = vinculos
+
+                # Bolsa Familia: historico COMPLETO de parcelas (todos os
+                # snapshots mensais cumulativos) + agregados estatisticos +
+                # flag indicando quais parcelas caem dentro do periodo do
+                # vinculo TCE-PB. Cache in-memory por (cpf6, nome) via
+                # cached_query (TTL padrao do web.db). LIMIT 240 defensivo.
+                bf_data = _compute_servidor_bf(cpf6, nome)
+                if bf_data:
+                    # Adicionar lista global de meses com snapshots (cacheada
+                    # separadamente) para o frontend distinguir "sem snapshot"
+                    # de "snapshot existe mas servidor nao recebeu".
+                    bf_data["meses_disponiveis"] = _get_bf_meses_disponiveis()
+                    result["bolsa_familia"] = bf_data
+                elif vinculos:
+                    # Servidor sem nenhuma parcela BF — mas ainda precisamos
+                    # avisar quais meses temos no banco.
+                    result["bolsa_familia"] = {
+                        "parcelas": [],
+                        "stats": None,
+                        "meses_disponiveis": _get_bf_meses_disponiveis(),
+                    }
 
                 # Sancoes CEIS/CNEP das empresas vinculadas
                 if cnpjs:
