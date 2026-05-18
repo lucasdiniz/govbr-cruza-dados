@@ -1573,21 +1573,52 @@ def _compute_servidor_bf(cpf6: str, nome: str) -> dict | None:
     }
 
 
+_BF_MESES_CACHE: tuple[float, list[str]] | None = None
+_BF_MESES_TTL = 3600  # 1h — mes_competencia novo so entra apos ETL incremental
+
+
 def _get_bf_meses_disponiveis() -> list[str]:
     """Retorna lista de mes_competencia (YYYYMM) com snapshots BF carregados.
 
-    Cacheada in-memory (cached_query TTL CACHE_TTL) — global por instancia,
-    nao por servidor (independe de cpf6/nome). Permite ao frontend
-    distinguir 3 estados na grade mes-a-mes:
+    Cache em modulo (1h TTL) — mes_competencia novo so entra com deploy
+    ETL incremental, refresh manual via restart eh aceitavel.
+
+    Performance: `SELECT DISTINCT mes_competencia FROM bolsa_familia`
+    em 18M+ linhas faz seq scan e estoura timeout (PR #175 regression).
+    Usa pg_stats most_common_vals (metadata do ANALYZE) — para coluna
+    de cardinality baixa (mes_competencia, ~12 valores), MCV cobre 100%
+    com folga. Query metadata-only, retorna em <1ms.
+
+    Permite ao frontend distinguir 3 estados na grade mes-a-mes:
       - Mes COM snapshot e SEM parcela do servidor: "Nao recebeu BF"
       - Mes SEM snapshot: "Sem dados disponiveis ainda"
       - Mes COM snapshot e COM parcela: linha normal
+
+    Fail-safe: qualquer erro retorna [] (frontend cai no comportamento
+    pre-PR #175 sem distincao de estados, mas o resto da API sobrevive).
     """
-    sql = "SELECT DISTINCT mes_competencia FROM bolsa_familia ORDER BY 1"
-    cols, rows = cached_query(
-        "bolsa_familia:meses_disponiveis", sql, None, timeout_sec=10
-    )
-    return [str(r[0]) for r in rows if r[0]]
+    import time as _time
+    global _BF_MESES_CACHE
+    now = _time.time()
+    if _BF_MESES_CACHE is not None:
+        ts, vals = _BF_MESES_CACHE
+        if now - ts < _BF_MESES_TTL:
+            return vals
+    sql = """
+        SELECT unnest(most_common_vals::text::text[])::text AS mes
+        FROM pg_stats
+        WHERE schemaname = 'public'
+          AND tablename = 'bolsa_familia'
+          AND attname = 'mes_competencia'
+        ORDER BY 1
+    """
+    try:
+        _, rows = execute_query(sql, None, timeout_sec=3)
+        vals = sorted(set(str(r[0]) for r in rows if r[0]))
+    except Exception:
+        vals = []
+    _BF_MESES_CACHE = (now, vals)
+    return vals
 
 
 @router.post("/api/servidor/detalhes")
