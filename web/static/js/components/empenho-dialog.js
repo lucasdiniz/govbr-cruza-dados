@@ -41,7 +41,19 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     title.textContent = `Empenho ${data.numero_empenho}`;
     let html = _historyNote('Historico completo do empenho — este detalhamento nao muda com o filtro de periodo da pagina.');
 
-    // Licitacao vinculada — primeiro bloco logo apos o historico, pra dar
+    // Descricao do empenho (historico livre escrito pelo orgao explicando
+    // o gasto). Primeiro bloco apos a nota de historico porque eh o texto
+    // que melhor responde "o que e este empenho?" pra usuario casual.
+    // Antes (PR #150) estava mesclada na secao final "Origem e descricao"
+    // mas usuario reportou que enterrar a descricao no fim do dialog
+    // confunde a leitura — descricao eh o "lede" do empenho.
+    if (data.historico) {
+        html += `<div class="dialog-section"><h4>${dualLabel('O que diz o empenho','Descricao')}</h4>`;
+        html += `<p class="text-sm empenho-historico" style="line-height:1.6;margin:0">${_esc(data.historico)}</p>`;
+        html += '</div>';
+    }
+
+    // Licitacao vinculada — primeiro bloco logo apos descricao, pra dar
     // contexto imediato do empenho (qual processo originou o pagamento).
     // Renderiza como link direto pra /licitacao/<mun>/<ano>/<ug>/<modnum>
     // quando temos os campos canonicos vindos de tce_pb_licitacao via
@@ -93,11 +105,10 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
         }
     }
 
-    // Historico do empenho movido pra dentro da secao Origem mesclada
-    // (logo abaixo). Antes era secao propria "Descricao" entre o bloco
-    // de licitacao e o de valores, mas vinha duplicada visualmente com
-    // o campo "Origem do recurso" — agruparmos os dois descreve melhor
-    // o "de onde veio + o que diz o empenho" como uma unica narrativa.
+    // Historico do empenho movido para secao "Descricao" no topo do
+    // dialog (logo apos a nota de historico). Esta secao "Origem" agora
+    // contem apenas campos estruturais (UG, fonte, unidade, municipio,
+    // data) — o "de onde veio" o gasto.
 
     // Valores
     html += '<div class="dialog-section"><h4>Valores</h4>';
@@ -151,13 +162,12 @@ async function openEmpenhoDialog(empenhoId, options = {}) {
     html += '</div></div>';
     html += '</div>';
 
-    // Origem do recurso + descricao do empenho — mescladas em uma secao so:
-    // o texto livre do historico de empenho complementa os campos de
-    // origem (UG, fonte, unidade) explicando o "porque" daquele gasto.
-    html += `<div class="dialog-section"><h4>${dualLabel('De onde veio e o que diz o empenho','Origem e descricao')}</h4>`;
-    if (data.historico) {
-        html += `<p class="text-sm empenho-historico" style="line-height:1.6;margin:0 0 var(--space-3) 0">${_esc(data.historico)}</p>`;
-    }
+    // Origem — campos estruturais do empenho (UG, fonte, unidade,
+    // municipio, data). Descricao livre fica na secao "Descricao" no
+    // topo do dialog (separada propositalmente apos feedback do usuario:
+    // misturar texto livre + campos estruturais no fim do dialog
+    // dificulta leitura).
+    html += `<div class="dialog-section"><h4>${dualLabel('De onde veio','Origem')}</h4>`;
     html += '<div class="empresa-card"><div class="empresa-details">';
     html += `<span><strong>Data:</strong> ${_fmtDate(data.data_empenho)}</span>`;
     if (data.descricao_ug) html += `<span><strong>${dualLabel('Setor:','UG:')}</strong> ${_esc(data.descricao_ug)}</span>`;
