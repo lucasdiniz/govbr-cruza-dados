@@ -113,6 +113,13 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", default="", help='CSV "source.table,source.table"')
+    parser.add_argument(
+        "--only-buckets",
+        default="",
+        help='CSV de bucket_ids para limitar processamento (e.g. "2026-02,2026-03"). '
+             'Util para BF onde rodar 38 buckets historicos toma horas. '
+             'Bucket IDs no formato YYYY-MM (MONTH_WINDOW) ou YYYY (YEAR_WINDOW).',
+    )
     parser.add_argument("--data-dir", default=os.environ.get("DATA_DIR"))
     parser.add_argument("--dsn", default=None, help="Override DSN")
     parser.add_argument("--govbr-dsn", default=None, help="Override govbr DSN (admin)")
@@ -163,6 +170,12 @@ def main():
 
     from etl.incremental.orchestrator import run_incremental_for_source
 
+    # Parse --only-buckets em lista (ou None se vazio)
+    only_buckets_list = None
+    if args.only_buckets:
+        only_buckets_list = [b.strip() for b in args.only_buckets.split(",") if b.strip()]
+        logger.info("Limiting to buckets: %s", only_buckets_list)
+
     summaries = []
     for key, spec in specs_to_run.items():
         logger.info("=== START %s ===", key)
@@ -176,6 +189,7 @@ def main():
                 triggered_by=args.triggered_by,
                 commit_sha=args.commit_sha,
                 max_runtime_s=args.max_runtime_s,
+                only_buckets=only_buckets_list,
             )
         except Exception as e:
             logger.exception("=== FAIL %s: %s ===", key, e)
