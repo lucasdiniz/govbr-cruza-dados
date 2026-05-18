@@ -65,6 +65,13 @@ def validate_csv_header(csv_path: Path, spec: LoaderSpec) -> str:
                         quotechar=spec.csv_quotechar)
     headers = next(reader)
 
+    # Aplica csv_header_rewrites: mapa nomes raw (acentos/espacos do CSV) para
+    # nomes SQL-safe declarados em spec.columns. Necessario p/ fontes como
+    # Portal da Transparencia (e.g. "MES COMPETENCIA" -> "MES_COMPETENCIA").
+    # Default {} = no-op para specs existentes. Ver ADR-0010.
+    if spec.csv_header_rewrites:
+        headers = [spec.csv_header_rewrites.get(h, h) for h in headers]
+
     expected = list(spec.columns)
     if headers != expected:
         raise SchemaDriftError(

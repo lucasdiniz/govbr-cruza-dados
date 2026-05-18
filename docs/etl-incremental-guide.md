@@ -313,6 +313,48 @@ do framework: bucket month-window, conditional refetch (`refetch_recent_buckets=
 para correções retroativas), NK com coluna nullable, encoding latin-1 com
 fallback, `DedupeStrategy.UPSERT_DO_NOTHING`.
 
+### Caso especial: Bolsa Família (ADR-0010)
+
+[`etl/incremental/specs/bolsa_familia.py`](../etl/incremental/specs/bolsa_familia.py)
+ilustra dois pontos não cobertos pelo exemplo padrão:
+
+1. **`nk_synthetic_md5=True`** — quando a NK natural não cobre 100% sem perda
+   de dado (no caso BF: 21% rows com CPF vazio + parcelas retroativas no
+   mesmo `mes_competencia`). Padrão `sql/35a-d` aplica: coluna `_nk_md5` +
+   trigger `BEFORE INSERT etl_admin.compute_nk_md5_X` + `UNIQUE INDEX` em
+   `(_nk_md5)`. Cobre 100% via hash de todas as cols semanticamente relevantes.
+
+2. **`csv_header_rewrites`** — quando os headers raw do CSV têm caracteres
+   não-SQL-safe (espaços, acentos). Portal da Transparência publica
+   `"MÊS COMPETÊNCIA"`, `"CÓDIGO MUNICÍPIO SIAFI"`, etc. O dict mapeia raw → SQL-safe
+   antes do match com `spec.columns`. Encoding `latin-1` preserva acentos.
+
+3. **Refresh de MVs dependentes** — BF feeds `mv_pessoa_pb`,
+   `mv_servidor_pb_risco`, `mv_municipio_pb_kpi_score` + `_tmp_bf`. O hook é
+   [`etl/refresh_post_incremental.py`](../etl/refresh_post_incremental.py)
+   com `SOURCE_REFRESH_FNS = {"bolsa_familia": refresh_for_bolsa_familia}`.
+   Step `ETL: Incremental` no deploy.yml chama automaticamente quando BF
+   está no escopo da run.
+
+### Padrão de uso (acionamento)
+
+```bash
+# Processa TODAS as specs incrementais:
+gh workflow run deploy.yml -f etl_phase=incremental
+
+# Apenas uma spec específica (CSV — pode ser múltiplas separadas por vírgula):
+gh workflow run deploy.yml -f etl_phase=incremental \
+    -f incremental_only=bolsa_familia.bolsa_familia
+
+# Múltiplas:
+gh workflow run deploy.yml -f etl_phase=incremental \
+    -f incremental_only=tce_pb.tce_pb_despesa,bolsa_familia.bolsa_familia
+```
+
+**NÃO** criar novo `etl_phase=<source>_incremental` (polui enum + vira dead
+code após primeira execução). Padrão único: `etl_phase=incremental` +
+`incremental_only=<source>.<table>`. Ver ADR-0010.
+
 ## Caveats conhecidos
 
 - **`pb_contrato 2022/2023 partial`** — CSVs com errors documentados no

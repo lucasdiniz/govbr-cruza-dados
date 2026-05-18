@@ -671,12 +671,55 @@ jobs:
           sudo systemctl restart tor 2>/dev/null || true
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
           echo "=== Incremental ETL framework ==="
+
+          # Determinar se BF esta no escopo desta run.
+          # Match preciso (regex bounded) — evita falso-positivo se outra spec
+          # tiver "bolsa_familia" no nome no futuro.
+          BF_IN_SCOPE=false
+          if [ -z "${{ inputs.incremental_only }}" ]; then
+            BF_IN_SCOPE=true
+          elif echo "${{ inputs.incremental_only }}" | grep -qE "(^|,)bolsa_familia\.bolsa_familia(,|$)"; then
+            BF_IN_SCOPE=true
+          fi
+
+          # Migration idempotente sql/41 antes do runner (apenas se BF in scope).
+          # Aplica defs (cols, COMMENTs, trigger, procedure). ON_ERROR_STOP=1 +
+          # SEM --single-transaction. As DDL aqui sao seguras em transacao;
+          # CREATE INDEX CONCURRENTLY fica para sql/41z apos o populate.
+          if [ "$BF_IN_SCOPE" = "true" ]; then
+            echo "=== sql/41 (defs idempotent: _nk_md5 + trigger + procedure) ==="
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -f sql/41_bolsa_familia_incremental.sql
+
+            # Populate _nk_md5 em rows legacy via psycopg2 autocommit (CALL via
+            # psql wrappa em transacao e COMMIT-em-PROCEDURE falha no PG 16).
+            # Idempotente: WHERE _nk_md5 IS NULL.
+            # ETA: ~30min em prod SSD (18.7M rows, batches de 100k). Index
+            # parcial automatico no plan path. Pode ser interrompido e retomado.
+            echo "=== Populate _nk_md5 (BATCHED via psycopg2 autocommit) ==="
+            python -m etl.refresh_post_incremental --source bolsa_familia --populate-only
+
+            echo "=== sql/41z (dedupe + UNIQUE INDEX CONCURRENTLY) ==="
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -f sql/41z_bolsa_familia_finalize.sql
+          fi
+
+          # Framework incremental runner
           if [ -n "${{ inputs.incremental_only }}" ]; then
             python -m etl.incremental.runner --only "${{ inputs.incremental_only }}" 2>&1
           else
             python -m etl.incremental.runner 2>&1
           fi
+
+          # Refresh post-incremental para sources com MVs dependentes.
+          if [ "$BF_IN_SCOPE" = "true" ]; then
+            echo "=== Refresh MVs apos bolsa_familia ==="
+            python -m etl.refresh_post_incremental --source bolsa_familia 2>&1
+          fi
+
           # Refresh da MV de sitemap apos incremental: mv_empresa_municipio_pagantes
           # depende de tce_pb_despesa que pode ter ganhado novos rows na fase
           # incremental (TCE-PB esta no escopo POC v7). Sem refresh, sitemap fica
@@ -1023,6 +1066,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
@@ -1030,7 +1074,7 @@ jobs:
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
           echo "=== ANALYZE em tabelas hot ==="
-          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score mv_q67_dated_pb; do
+          for tbl in tce_pb_despesa pgfn_divida estabelecimento socio mv_pessoa_pb mv_empresa_governo mv_empresa_pb mv_servidor_pb_risco mv_municipio_pb_mapa mv_municipio_pb_kpi_score mv_q67_dated_pb bolsa_familia; do
             echo "  ANALYZE $tbl..."
             PGPASSWORD="$PASS" psql -U govbr -d govbr -c "ANALYZE $tbl" 2>&1 | tail -1
           done
@@ -1202,6 +1246,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         run: |
           set -euo pipefail
@@ -1300,6 +1345,7 @@ jobs:
           inputs.warm_cache == true ||
           inputs.etl_phase == 'all' ||
           inputs.etl_phase == 'sql' ||
+          inputs.etl_phase == 'incremental' ||
           inputs.rewarm_cache_keys != ''
         continue-on-error: true
         run: |

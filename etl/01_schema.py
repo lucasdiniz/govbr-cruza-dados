@@ -14,6 +14,9 @@ SQL_FILES = [
     "08_schema_renuncias.sql",
     "09_schema_complementar.sql",
     "10_schema_pessoa.sql",
+    # Bolsa Familia: schema canonico idempotente; tabela e criada aqui (em vez
+    # de pela fase classica neutralizada). Ver ADR-0010.
+    "17_schema_bolsa_familia.sql",
 ]
 
 

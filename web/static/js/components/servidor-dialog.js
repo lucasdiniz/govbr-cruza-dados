@@ -60,7 +60,18 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     // Stats grid
     const vinculos = data.vinculos || [];
     const empresas = data.empresas || [];
-    const bf = data.bolsa_familia || [];
+    // BF agora pode ser array (formato antigo) ou {parcelas, stats} (novo
+    // — apos commit feat(web): /api/servidor/detalhes historico completo).
+    // Normaliza para acessar uniformemente parcelas[] e stats{}.
+    const bfRaw = data.bolsa_familia;
+    let bfParcelas = [];
+    let bfStats = null;
+    if (Array.isArray(bfRaw)) {
+        bfParcelas = bfRaw;
+    } else if (bfRaw && typeof bfRaw === 'object') {
+        bfParcelas = Array.isArray(bfRaw.parcelas) ? bfRaw.parcelas : [];
+        bfStats = bfRaw.stats || null;
+    }
     const qtdEmpresas = cnpjsNorm.length;
     const qtdSancionadas = Object.keys(sancoes).length;
     const qtdPgfn = Object.keys(pgfn).length;
@@ -76,7 +87,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
     if (qtdSancionadas > 0) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell stat-cell--orange"><span class="stat-value">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
-    if (bf.length > 0) html += `<div class="stat-cell stat-cell--yellow"><span class="stat-value">Sim</span><span class="stat-label">Bolsa Familia</span></div>`;
+    if (bfParcelas.length > 0) html += `<div class="stat-cell stat-cell--yellow"><span class="stat-value">${bfStats ? _shortBrl(bfStats.total_recebido) : 'Sim'}</span><span class="stat-label">${dualLabel('Recebeu Bolsa Familia','Total Bolsa Familia')}</span></div>`;
     if (data.ceaf && data.ceaf.length) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${data.ceaf.length}</span><span class="stat-label">${dualLabel('Expulso do servico publico federal','Expulsao federal')}</span></div>`;
     html += '</div>';
 
@@ -168,21 +179,135 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         html += '</div>';
     }
 
-    // Bolsa Familia
-    if (bf.length) {
-        html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia')}</h4>`;
-        const ultimo = bf[0];
-        const total = bf.reduce((s, b) => s + (b.valor_parcela || 0), 0);
-        html += `<div class="empresa-card">
-            <div class="empresa-header">
-                <strong>${_esc(ultimo.nm_municipio || '-')}</strong>
-                <span class="badge badge-yellow">Ultimo recebimento: ${_fmtDate(ultimo.mes_competencia)}</span>
-            </div>
-            <div class="empresa-details">
-                <span>Valor ultima parcela: ${_shortBrl(ultimo.valor_parcela)}</span>
-                <span>Ultimos ${bf.length} registros somam ${_shortBrl(total)}</span>
-            </div>
-        </div>`;
+    // Bolsa Familia: secao dedicada com stats agregados + grade mes-a-mes
+    // mostrando todos os meses entre primeiro/ultimo (ou janela do vinculo),
+    // com "Sem registro" para meses sem parcela. Padrao: meses dentro do
+    // vinculo TCE-PB com parcela => highlight red badge. dualLabel
+    // cidadao/auditor.
+    if (bfParcelas.length) {
+        const stats = bfStats || {
+            qtd_parcelas: bfParcelas.length,
+            qtd_meses: bfParcelas.length,
+            total_recebido: bfParcelas.reduce((s, b) => s + (b.valor_parcela || 0), 0),
+            primeiro_mes: bfParcelas[bfParcelas.length - 1]?.mes_competencia || null,
+            ultimo_mes: bfParcelas[0]?.mes_competencia || null,
+            qtd_durante_vinculo: 0,
+            total_durante_vinculo: 0,
+        };
+        const hasDuranteVinculo = (stats.qtd_durante_vinculo || 0) > 0;
+        html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia — historico completo')}</h4>`;
+        // Stats overview cells (secao propria)
+        html += '<div class="stats-grid">';
+        html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(stats.total_recebido)}</span><span class="stat-label">${dualLabel('Total recebido','Total acumulado')}</span></div>`;
+        html += `<div class="stat-cell"><span class="stat-value">${stats.qtd_meses}</span><span class="stat-label">${dualLabel('Meses com pagamento','Meses competencia distintos')}</span></div>`;
+        if (stats.primeiro_mes && stats.ultimo_mes) {
+            html += `<div class="stat-cell"><span class="stat-value">${_fmtDate(stats.primeiro_mes)} &rarr; ${_fmtDate(stats.ultimo_mes)}</span><span class="stat-label">${dualLabel('Periodo','Janela temporal')}</span></div>`;
+        }
+        if (hasDuranteVinculo) {
+            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido durante vinculo TCE-PB')}</span></div>`;
+        }
+        html += '</div>';
+        // Constroi grade mes-a-mes:
+        // - Determina janela: min(primeiro_mes BF, primeiro mes do vinculo)
+        //   ate max(ultimo_mes BF, ultimo mes do vinculo).
+        // - Para cada mes, mostra parcelas que caem nele OU placeholder
+        //   "Sem registro" se nao houver.
+        const vincStart = vinculos.length ? vinculos
+            .map(v => (v.primeiro_registro || (v.data_admissao || '').slice(0, 7).replace('-', '')) || '')
+            .filter(Boolean).sort()[0] : null;
+        const vincEnd = vinculos.length ? vinculos
+            .map(v => (v.ultimo_registro || '').replace('-', ''))
+            .filter(Boolean).sort().slice(-1)[0] : null;
+        // Helpers
+        const ymToInt = (ym) => parseInt(String(ym || '').replace('-', '').slice(0, 6), 10);
+        const intToYm = (n) => `${Math.floor(n/100)}${String(n%100).padStart(2,'0')}`;
+        const ymNext = (n) => {
+            const y = Math.floor(n/100), m = n % 100;
+            return m === 12 ? (y+1) * 100 + 1 : n + 1;
+        };
+        let gridStart = ymToInt(stats.primeiro_mes);
+        let gridEnd = ymToInt(stats.ultimo_mes);
+        if (vincStart) {
+            const v = ymToInt(vincStart);
+            if (v && v < gridStart) gridStart = v;
+        }
+        if (vincEnd) {
+            const v = ymToInt(vincEnd);
+            if (v && v > gridEnd) gridEnd = v;
+        }
+        // Indexar parcelas por mes_competencia
+        const parcelasPorMes = {};
+        for (const p of bfParcelas) {
+            const k = String(p.mes_competencia || '');
+            if (!parcelasPorMes[k]) parcelasPorMes[k] = [];
+            parcelasPorMes[k].push(p);
+        }
+        // Range vinculo (para marcar visualmente)
+        const vincStartInt = vincStart ? ymToInt(vincStart) : null;
+        const vincEndInt = vincEnd ? ymToInt(vincEnd) : null;
+        const inVinculo = (n) => vincStartInt && vincEndInt && n >= vincStartInt && n <= vincEndInt;
+
+        const totalMesesGrid = gridStart && gridEnd ? (gridEnd - gridStart + 1) : 0; // grosso modo (nao exato com mes 12->01)
+        // Default fechado para nao poluir dialog; user expande
+        html += `<details class="collapsible-details bf-historico">
+            <summary>${dualLabel('Ver mes a mes (incluindo meses sem registro)','Ver grade mensal completa')} (${stats.qtd_parcelas} parcelas)</summary>
+            <table class="bf-parcelas-table">
+                <thead><tr>
+                    <th>${dualLabel('Mes','Competencia')}</th>
+                    <th>${dualLabel('Mes referencia','Referencia')}</th>
+                    <th>${dualLabel('Cidade','Municipio')}</th>
+                    <th>${dualLabel('Valor','Valor parcela')}</th>
+                </tr></thead>
+                <tbody>`;
+        if (gridStart && gridEnd && gridStart <= gridEnd) {
+            // Iterar do mais recente para o mais antigo (mesma ordem da lista)
+            const meses = [];
+            let cur = gridStart;
+            let safety = 0;
+            while (cur <= gridEnd && safety < 600) {
+                meses.push(cur);
+                cur = ymNext(cur);
+                safety++;
+            }
+            meses.reverse();  // mais recente primeiro
+            html += meses.map(mInt => {
+                const k = intToYm(mInt);
+                const parcelas = parcelasPorMes[k];
+                const inVinc = inVinculo(mInt);
+                if (parcelas && parcelas.length) {
+                    // Pode haver multiplas parcelas no mesmo mes_competencia
+                    // (mes_referencia diferentes — recebimentos retroativos).
+                    // Badge "Era servidor" no header do grupo deve aparecer
+                    // se QUALQUER parcela do grupo cair no vinculo (review
+                    // Opus 4.7-high LOW-6: badge somia se parcelas[0] estava
+                    // fora do vinculo mas parcelas[1+] dentro).
+                    const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
+                    return parcelas.map((b, idx) => {
+                        const cls = b.durante_vinculo ? ' class="row-flag-red"' : '';
+                        const badge = anyDuranteVinculo ? ` <span class="badge badge-red" title="${dualLabel('Recebeu enquanto era servidor publico','Parcela dentro do periodo do vinculo TCE-PB')}">${dualLabel('Era servidor','Durante vinculo')}</span>` : '';
+                        const competLabel = idx === 0 ? _fmtDate(b.mes_competencia) : '';
+                        return `<tr${cls}>
+                            <td>${competLabel}${idx === 0 ? badge : ''}</td>
+                            <td>${_fmtDate(b.mes_referencia)}</td>
+                            <td>${_esc(b.nm_municipio || '-')}${b.uf ? ' / ' + _esc(b.uf) : ''}</td>
+                            <td>${_shortBrl(b.valor_parcela)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                // Sem registro neste mes — placeholder
+                const labelMes = _fmtDate(k);
+                const cls = inVinc ? ' class="row-empty row-empty--vinculo"' : ' class="row-empty"';
+                const subt = inVinc
+                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Dentro do vinculo TCE-PB')}</span>`
+                    : `<span class="text-xs text-muted">${dualLabel('Sem registro','Sem parcela')}</span>`;
+                return `<tr${cls}>
+                    <td>${labelMes}</td>
+                    <td colspan="3">${subt}</td>
+                </tr>`;
+            }).join('');
+        }
+        html += `</tbody></table>
+        </details>`;
         html += '</div>';
     }
 

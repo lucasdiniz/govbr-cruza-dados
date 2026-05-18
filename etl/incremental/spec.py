@@ -118,6 +118,14 @@ class LoaderSpec:
     bootstrap_tolerance_pct: float = 0.0
     max_field_size: int = 1_048_576            # 1MB per field
     refetch_recent_buckets: int = 1            # N tail buckets sempre re-baixados
+    # CSV header rewrites: mapeia nomes raw do CSV (potencialmente com acentos
+    # e/ou espacos — e.g. "MES COMPETENCIA") para os nomes que aparecem em
+    # spec.columns (e.g. "MES_COMPETENCIA"). Aplicado ANTES do header match em
+    # validate_csv_header (parser.py). Default `{}` — sem efeito para specs
+    # existentes. Necessario para fontes como Portal da Transparencia que
+    # publicam headers nao-SQL-safe. Ver etl/incremental/specs/bolsa_familia.py
+    # e ADR-0010.
+    csv_header_rewrites: dict[str, str] = field(default_factory=dict)
     # Bucket file pattern: callable que dado bucket_id (str) retorna lista de
     # nomes de arquivo esperados (sem path).
     file_pattern: Optional[Callable[[str], list[str]]] = None
@@ -186,6 +194,19 @@ class LoaderSpec:
                 "bootstrap_tolerance_pct must be in [0.0, 50.0]"
             )
 
+        # Validate csv_header_rewrites: valores devem estar em columns
+        if self.csv_header_rewrites:
+            cols_set_post = set(self.columns)
+            for raw, renamed in self.csv_header_rewrites.items():
+                if not raw or not renamed:
+                    raise ConfigError(
+                        "csv_header_rewrites: empty key/value not allowed"
+                    )
+                if renamed not in cols_set_post:
+                    raise ConfigError(
+                        f"csv_header_rewrites: target {renamed!r} not in columns"
+                    )
+
         # Validate derived_columns expressions (D9 AST-lite)
         # NOTA: skip validation se expr contém placeholders {bucket_id} —
         # serão resolvidos em runtime, não armazenados no SQL final puro.
@@ -228,6 +249,7 @@ class LoaderSpec:
             "derived_columns": dict(self.derived_columns),
             "is_zip_source": self.is_zip_source,
             "bootstrap_tolerance_pct": self.bootstrap_tolerance_pct,
+            "csv_header_rewrites": dict(self.csv_header_rewrites),
         }
         return hashlib.sha256(
             json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode()

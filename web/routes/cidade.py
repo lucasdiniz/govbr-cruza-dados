@@ -1472,6 +1472,107 @@ async def invalidate_web_cache(
         return JSONResponse({"error": "falha ao invalidar"}, status_code=500)
 
 
+def _compute_servidor_bf(cpf6: str, nome: str) -> dict | None:
+    """Computa historico Bolsa Familia + agregados de um servidor.
+
+    Cache in-memory por (cpf6, nome) via web.db.cached_query.
+
+    Trade-offs do cache:
+    - In-memory por worker, sem persistencia. TTL = CACHE_TTL da config.
+    - Para acelerar warm cache server-side persistente em web_cache (visivel
+      entre workers e reload), ver ADR-0010 (proposta de remover LIMIT 200
+      e migrar para lazy cache). Decisao: nao implementar persistente AGORA
+      porque (a) F10 acoplaria a LIMIT 200 dos top servidores; (b) endpoint
+      eh detalhe (nao hot path); (c) in-memory ja resolve cache miss imediato
+      do mesmo servidor.
+
+    Returns:
+        dict com {parcelas, stats} ou None se servidor nao recebeu BF.
+    """
+    sql = """
+        WITH vinculo AS (
+            -- IMPORTANTE: padronizar inicio/fim em formato YYYYMM (sem hifen)
+            -- para comparar lexicograficamente com bf.mes_competencia que e
+            -- YYYYMM. ano_mes do tce_pb_servidor vem com hifen "YYYY-MM";
+            -- comparar "202410" <= "2024-12" da FALSE por causa do '-' < '1'
+            -- (bug pre-existente em sql/12_views.sql, AMPLIFICADO aqui pelo
+            -- novo flag durante_vinculo exposto na UI). Ver ADR-0010 e
+            -- review Opus 4.7-high HIGH-2 (2026-05-17).
+            SELECT
+                COALESCE(
+                    TO_CHAR(MIN(data_admissao), 'YYYYMM'),
+                    REPLACE(MIN(ano_mes), '-', '')
+                ) AS inicio,
+                REPLACE(MAX(ano_mes), '-', '') AS fim
+            FROM tce_pb_servidor
+            WHERE cpf_digitos_6 = %(cpf6)s AND nome_upper = %(nome)s
+              AND ano_mes >= '2022-01'
+        ),
+        bf_filtrado AS (
+            SELECT bf.mes_competencia, bf.mes_referencia,
+                   bf.valor_parcela, bf.nm_municipio, bf.uf,
+                   (bf.mes_competencia >= v.inicio
+                    AND bf.mes_competencia <= v.fim) AS durante_vinculo
+            FROM bolsa_familia bf
+            CROSS JOIN vinculo v
+            WHERE bf.cpf_digitos = %(cpf6)s
+              AND UPPER(TRIM(bf.nm_favorecido)) = %(nome)s
+        )
+        SELECT mes_competencia, mes_referencia, valor_parcela,
+               nm_municipio, uf, durante_vinculo
+        FROM bf_filtrado
+        ORDER BY mes_competencia DESC, mes_referencia DESC
+        LIMIT 240
+    """
+    cache_key = f"servidor:{cpf6}:{nome.upper()}:bolsa_familia"
+    cols, rows = cached_query(
+        cache_key, sql, {"cpf6": cpf6, "nome": nome}, timeout_sec=15
+    )
+    if not rows:
+        return None
+
+    bf_list = []
+    total_recebido = 0.0
+    total_durante_vinculo = 0.0
+    qtd_durante_vinculo = 0
+    meses_competencia: set[str] = set()
+    primeiro_mes = None
+    ultimo_mes = None
+    for row in rows:
+        r = _row_to_dict(cols, row)
+        for k, v in r.items():
+            if hasattr(v, "as_tuple"):
+                r[k] = float(v)
+        bf_list.append(r)
+        valor = r.get("valor_parcela") or 0.0
+        total_recebido += float(valor)
+        if r.get("durante_vinculo"):
+            total_durante_vinculo += float(valor)
+            qtd_durante_vinculo += 1
+        mc = r.get("mes_competencia")
+        if mc:
+            meses_competencia.add(mc)
+            if primeiro_mes is None or mc < primeiro_mes:
+                primeiro_mes = mc
+            if ultimo_mes is None or mc > ultimo_mes:
+                ultimo_mes = mc
+    qtd_meses = len(meses_competencia)
+    valor_medio = (total_recebido / len(bf_list)) if bf_list else 0.0
+    return {
+        "parcelas": bf_list,
+        "stats": {
+            "qtd_parcelas": len(bf_list),
+            "qtd_meses": qtd_meses,
+            "total_recebido": round(total_recebido, 2),
+            "valor_medio": round(valor_medio, 2),
+            "primeiro_mes": primeiro_mes,
+            "ultimo_mes": ultimo_mes,
+            "qtd_durante_vinculo": qtd_durante_vinculo,
+            "total_durante_vinculo": round(total_durante_vinculo, 2),
+        },
+    }
+
+
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
@@ -1529,35 +1630,14 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                         empresas.append(r)
                     result["empresas"] = empresas
 
-                # Bolsa Família (apenas durante vínculo ativo)
-                cur.execute("""
-                    WITH vinculo AS (
-                        SELECT COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
-                               MAX(ano_mes) AS fim
-                        FROM tce_pb_servidor
-                        WHERE cpf_digitos_6 = %s AND nome_upper = %s
-                          AND ano_mes >= '2022-01'
-                    )
-                    SELECT bf.mes_competencia, bf.valor_parcela, bf.nm_municipio
-                    FROM bolsa_familia bf, vinculo v
-                    WHERE bf.cpf_digitos = %s
-                      AND UPPER(TRIM(bf.nm_favorecido)) = %s
-                      AND bf.mes_competencia >= v.inicio
-                      AND bf.mes_competencia <= v.fim
-                    ORDER BY bf.mes_competencia DESC
-                    LIMIT 5
-                """, (cpf6, nome, cpf6, nome))
-                bf_cols = [d[0] for d in cur.description]
-                bf_rows = cur.fetchall()
-                if bf_rows:
-                    bf_list = []
-                    for row in bf_rows:
-                        r = _row_to_dict(bf_cols, row)
-                        for k, v in r.items():
-                            if hasattr(v, 'as_tuple'):
-                                r[k] = float(v)
-                        bf_list.append(r)
-                    result["bolsa_familia"] = bf_list
+                # Bolsa Familia: historico COMPLETO de parcelas (todos os
+                # snapshots mensais cumulativos) + agregados estatisticos +
+                # flag indicando quais parcelas caem dentro do periodo do
+                # vinculo TCE-PB. Cache in-memory por (cpf6, nome) via
+                # cached_query (TTL padrao do web.db). LIMIT 240 defensivo.
+                bf_data = _compute_servidor_bf(cpf6, nome)
+                if bf_data:
+                    result["bolsa_familia"] = bf_data
 
                 # Vínculo como servidor
                 cur.execute("""
