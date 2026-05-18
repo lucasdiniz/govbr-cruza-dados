@@ -137,6 +137,21 @@
 .bf-parcelas-table tr.row-empty--vinculo td {
     background: color-mix(in srgb, var(--md-comp-warning) 8%, transparent);
 }
+.bf-parcelas-table tr.row-empty--sem-snapshot td {
+    color: var(--md-sys-color-on-surface-variant);
+    font-style: italic;
+    opacity: 0.65;
+}
+.bf-parcelas-table tr.bf-mes-header td {
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    padding-top: .5rem;
+}
+.bf-parcelas-table tr.bf-mes-detail td {
+    border-bottom: none;
+    padding-top: .15rem;
+    padding-bottom: .15rem;
+    font-size: var(--md-sys-typescale-body-small-size);
+}
 
 .empresa-header {
     display: flex;

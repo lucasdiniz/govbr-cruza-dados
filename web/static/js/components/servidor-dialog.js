@@ -203,8 +203,9 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     // incremental comecou a carregar a partir desse mes. Quando carregarmos
     // historico (e.g., 2023-03+), atualizar essa constante.
     const BF_GRID_MIN_YM = 202601;
-    if (bfParcelas.length) {
-        const stats = bfStats || {
+    if (bfParcelas.length || (bfRaw && Array.isArray(bfRaw.meses_disponiveis))) {
+        // bfStats pode ser null (caso "servidor sem parcela mas com vinculo")
+        const stats = bfStats || (bfParcelas.length ? {
             qtd_parcelas: bfParcelas.length,
             qtd_meses: bfParcelas.length,
             total_recebido: bfParcelas.reduce((s, b) => s + (b.valor_parcela || 0), 0),
@@ -212,7 +213,11 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             ultimo_mes: bfParcelas[0]?.mes_competencia || null,
             qtd_durante_vinculo: 0,
             total_durante_vinculo: 0,
-        };
+        } : {
+            qtd_parcelas: 0, qtd_meses: 0, total_recebido: 0,
+            primeiro_mes: null, ultimo_mes: null,
+            qtd_durante_vinculo: 0, total_durante_vinculo: 0,
+        });
         const hasDuranteVinculo = (stats.qtd_durante_vinculo || 0) > 0;
         html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia — historico completo')}</h4>`;
         // Stats overview cells (secao propria)
@@ -260,6 +265,21 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             const v = ymToInt(vincEnd);
             if (v && v > gridEnd) gridEnd = v;
         }
+        // Set de meses_competencia com snapshot carregado (vem do endpoint).
+        // Permite distinguir 3 estados:
+        //   - Tem snapshot + tem parcela: linha normal
+        //   - Tem snapshot + sem parcela: "Nao recebeu BF" (afirma)
+        //   - Sem snapshot: "Sem dados disponiveis ainda"
+        const mesesDisponiveis = new Set(
+            (bfRaw && Array.isArray(bfRaw.meses_disponiveis))
+                ? bfRaw.meses_disponiveis.map(String) : []
+        );
+        // Estende gridEnd ate o ultimo snapshot disponivel (para mostrar
+        // meses recentes que ainda nao tem parcela mas TEMOS snapshot).
+        if (mesesDisponiveis.size) {
+            const maxDisponivelInt = Math.max(...[...mesesDisponiveis].map(ymToInt).filter(Boolean));
+            if (maxDisponivelInt > gridEnd) gridEnd = maxDisponivelInt;
+        }
         // Indexar parcelas por mes_competencia
         const parcelasPorMes = {};
         for (const p of bfParcelas) {
@@ -302,39 +322,57 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 const k = intToYm(mInt);
                 const parcelas = parcelasPorMes[k];
                 const inVinc = inVinculo(mInt);
+                const temSnapshot = mesesDisponiveis.has(k);
                 if (parcelas && parcelas.length) {
                     // Pode haver multiplas parcelas no mesmo mes_competencia
                     // (mes_referencia diferentes — recebimentos retroativos).
-                    // Badge "Era servidor" no header do grupo deve aparecer
-                    // se QUALQUER parcela do grupo cair no vinculo (review
-                    // Opus 4.7-high LOW-6: badge somia se parcelas[0] estava
-                    // fora do vinculo mas parcelas[1+] dentro).
+                    // Renderiza 1 linha "header" com mes_competencia + badge,
+                    // + linhas indentadas para cada (mes_referencia, valor)
+                    // distintos.
                     //
                     // IMPORTANTE: title= NAO pode conter dualLabel() porque
                     // este retorna HTML <span>; quebraria o attr. Usar
                     // texto plano + dualLabel APENAS no conteudo do badge.
                     const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
                     const badgeTitle = "Parcela dentro do periodo do vinculo TCE-PB";
-                    return parcelas.map((b, idx) => {
-                        const cls = b.durante_vinculo ? ' class="row-flag-red"' : '';
-                        const badge = (anyDuranteVinculo && idx === 0)
-                            ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
-                            : '';
-                        const competLabel = idx === 0 ? _fmtDate(b.mes_competencia) : '';
-                        return `<tr${cls}>
-                            <td>${competLabel}${badge}</td>
-                            <td>${_fmtDate(b.mes_referencia)}</td>
-                            <td>${_esc(b.nm_municipio || '-')}${b.uf ? ' / ' + _esc(b.uf) : ''}</td>
-                            <td>${_shortBrl(b.valor_parcela)}</td>
-                        </tr>`;
-                    }).join('');
+                    const totalNoMes = parcelas.reduce((s, p) => s + (p.valor_parcela || 0), 0);
+                    const badge = anyDuranteVinculo
+                        ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
+                        : '';
+                    // Cabecalho do mes
+                    let html2 = `<tr class="bf-mes-header${anyDuranteVinculo ? ' row-flag-red' : ''}">
+                        <td><strong>${_fmtDate(k)}</strong>${badge}</td>
+                        <td class="text-sm text-muted">${parcelas.length > 1 ? parcelas.length + ' parcelas (retroativas)' : ''}</td>
+                        <td>${_esc(parcelas[0].nm_municipio || '-')}${parcelas[0].uf ? ' / ' + _esc(parcelas[0].uf) : ''}</td>
+                        <td><strong>${_shortBrl(totalNoMes)}</strong></td>
+                    </tr>`;
+                    // Linhas detalhe (so se mais de 1 parcela)
+                    if (parcelas.length > 1) {
+                        html2 += parcelas.map(b => {
+                            return `<tr class="bf-mes-detail">
+                                <td></td>
+                                <td class="text-sm text-muted">&hookrightarrow; ${dualLabel('referente a','ref.')} ${_fmtDate(b.mes_referencia)}</td>
+                                <td></td>
+                                <td>${_shortBrl(b.valor_parcela)}</td>
+                            </tr>`;
+                        }).join('');
+                    }
+                    return html2;
                 }
-                // Sem registro neste mes — placeholder
+                // Sem parcela neste mes — distinguir 3 estados
                 const labelMes = _fmtDate(k);
+                if (!temSnapshot) {
+                    // Sem dados disponiveis (snapshot nao carregado ainda)
+                    return `<tr class="row-empty row-empty--sem-snapshot">
+                        <td>${labelMes}</td>
+                        <td colspan="3"><span class="text-xs text-muted">${dualLabel('Sem dados disponiveis ainda','Snapshot BF nao carregado')}</span></td>
+                    </tr>`;
+                }
+                // Tem snapshot e nao recebeu — afirmar
                 const cls = inVinc ? ' class="row-empty row-empty--vinculo"' : ' class="row-empty"';
                 const subt = inVinc
-                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Dentro do vinculo TCE-PB')}</span>`
-                    : `<span class="text-xs text-muted">${dualLabel('Sem registro','Sem parcela')}</span>`;
+                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Dentro do vinculo TCE-PB — nao recebeu')}</span>`
+                    : `<span class="text-xs text-muted">${dualLabel('Nao recebeu BF neste mes','Sem parcela')}</span>`;
                 return `<tr${cls}>
                     <td>${labelMes}</td>
                     <td colspan="3">${subt}</td>
