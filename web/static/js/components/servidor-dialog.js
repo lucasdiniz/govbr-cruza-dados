@@ -231,11 +231,11 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             // So mostra "Recebido enquanto servidor" se for diferente do total
             // (caso contrario, todos os meses estao no vinculo => stats
             // sao iguais e duplicar o valor confunde).
-            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido durante vinculo TCE-PB')}</span></div>`;
+            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${_shortBrl(stats.total_durante_vinculo)}</span><span class="stat-label">${dualLabel('Recebido enquanto servidor','Recebido enquanto era servidor publico')}</span></div>`;
         } else if (hasDuranteVinculo) {
             // Todos meses sao "durante vinculo" — destaca o total ja existente
             // com badge red em vez de duplicar.
-            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo BF durante vinculo TCE-PB')}</span></div>`;
+            html += `<div class="stat-cell stat-cell--red"><span class="stat-value">100%</span><span class="stat-label">${dualLabel('Recebeu enquanto servidor','Todo Bolsa Familia recebido como servidor')}</span></div>`;
         }
         html += '</div>';
         // Constroi grade mes-a-mes:
@@ -339,7 +339,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                     // este retorna HTML <span>; quebraria o attr. Usar
                     // texto plano + dualLabel APENAS no conteudo do badge.
                     const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
-                    const badgeTitle = "Parcela dentro do periodo do vinculo TCE-PB";
+                    const badgeTitle = "Parcela recebida enquanto era servidor publico";
                     const totalNoMes = parcelas.reduce((s, p) => s + (p.valor_parcela || 0), 0);
                     const badge = anyDuranteVinculo
                         ? ` <span class="badge badge-red" title="${badgeTitle}">${dualLabel('Era servidor','Durante vinculo')}</span>`
@@ -376,8 +376,8 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 // Tem snapshot e nao recebeu — afirmar
                 const cls = inVinc ? ' class="row-empty row-empty--vinculo"' : ' class="row-empty"';
                 const subt = inVinc
-                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Em vinculo — sem parcela')}</span>`
-                    : `<span class="text-xs text-muted">${dualLabel('Nao recebeu BF neste mes','Sem parcela')}</span>`;
+                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Era servidor neste mes — sem parcela registrada')}</span>`
+                    : `<span class="text-xs text-muted">${dualLabel('Nao recebeu BF neste mes','Sem parcela registrada')}</span>`;
                 return `<tr${cls}>
                     <td>${labelMes}</td>
                     <td colspan="3">${subt}</td>
