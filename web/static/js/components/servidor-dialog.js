@@ -302,7 +302,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         // via ETL incremental). Meses anteriores nao tem dado, por isso
         // nao mostramos linhas vazias para 2023-03..2025-12 — seria ruido.
         const coberturaLabel = `Cobertura: ${_fmtDate(String(BF_GRID_MIN_YM))} em diante. Meses anteriores nao estao disponiveis ainda.`;
-        const coberturaTec = `Snapshots BF acumulados desde ${_fmtDate(String(BF_GRID_MIN_YM))}. Historico anterior depende de novos deploys ETL incremental.`;
+        const coberturaTec = `Periodo coberto: ${_fmtDate(String(BF_GRID_MIN_YM))} em diante.`;
         html += `<p class="bf-cobertura text-xs text-muted"><span class="citizen-only">${coberturaLabel}</span><span class="auditor-only">${coberturaTec}</span></p>`;
         html += `<table class="bf-parcelas-table">
             <thead><tr>
@@ -376,7 +376,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 // Tem snapshot e nao recebeu — afirmar
                 const cls = inVinc ? ' class="row-empty row-empty--vinculo"' : ' class="row-empty"';
                 const subt = inVinc
-                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Dentro do vinculo TCE-PB — nao recebeu')}</span>`
+                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Em vinculo — sem parcela')}</span>`
                     : `<span class="text-xs text-muted">${dualLabel('Nao recebeu BF neste mes','Sem parcela')}</span>`;
                 return `<tr${cls}>
                     <td>${labelMes}</td>
