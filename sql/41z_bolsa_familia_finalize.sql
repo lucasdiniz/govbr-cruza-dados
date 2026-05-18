@@ -64,25 +64,39 @@ END $$;
 -- local + VM. Sao true duplicates do ETL classico legacy (TRUNCATE-and-
 -- reload, sem dedupe). Mantemos a row com MENOR id (mais antiga).
 -- Padrao sql/35c_pb_extras_synthetic_nk_dedupe.sql.
+--
+-- GUARD: skip se ix_bolsa_familia_nk_md5 ja existe (UNIQUE constraint
+-- garante 0 dups daqui em diante; window scan completo eh desperdicio
+-- de I/O — Opus 4.7-high review MEDIUM-3).
 
 DO $$
 DECLARE
     n_deleted BIGINT;
+    index_exists BOOLEAN;
 BEGIN
-    WITH dups AS (
-        SELECT id, _nk_md5,
-               ROW_NUMBER() OVER (PARTITION BY _nk_md5 ORDER BY id) AS rn
-        FROM bolsa_familia
-        WHERE _nk_md5 IS NOT NULL
-    ),
-    deleted AS (
-        DELETE FROM bolsa_familia
-        WHERE id IN (SELECT id FROM dups WHERE rn > 1)
-        RETURNING 1
-    )
-    SELECT count(*) INTO n_deleted FROM deleted;
+    SELECT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'ix_bolsa_familia_nk_md5'
+    ) INTO index_exists;
 
-    RAISE NOTICE 'bolsa_familia dedupe: % rows deletadas (mantidas a mais antiga por _nk_md5)', n_deleted;
+    IF index_exists THEN
+        RAISE NOTICE 'bolsa_familia dedupe: skip (UNIQUE INDEX ja garante invariante)';
+    ELSE
+        WITH dups AS (
+            SELECT id, _nk_md5,
+                   ROW_NUMBER() OVER (PARTITION BY _nk_md5 ORDER BY id) AS rn
+            FROM bolsa_familia
+            WHERE _nk_md5 IS NOT NULL
+        ),
+        deleted AS (
+            DELETE FROM bolsa_familia
+            WHERE id IN (SELECT id FROM dups WHERE rn > 1)
+            RETURNING 1
+        )
+        SELECT count(*) INTO n_deleted FROM deleted;
+
+        RAISE NOTICE 'bolsa_familia dedupe: % rows deletadas (mantidas a mais antiga por _nk_md5)', n_deleted;
+    END IF;
 END $$;
 
 

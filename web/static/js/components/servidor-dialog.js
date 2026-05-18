@@ -277,9 +277,14 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 if (parcelas && parcelas.length) {
                     // Pode haver multiplas parcelas no mesmo mes_competencia
                     // (mes_referencia diferentes — recebimentos retroativos).
+                    // Badge "Era servidor" no header do grupo deve aparecer
+                    // se QUALQUER parcela do grupo cair no vinculo (review
+                    // Opus 4.7-high LOW-6: badge somia se parcelas[0] estava
+                    // fora do vinculo mas parcelas[1+] dentro).
+                    const anyDuranteVinculo = parcelas.some(p => p.durante_vinculo);
                     return parcelas.map((b, idx) => {
                         const cls = b.durante_vinculo ? ' class="row-flag-red"' : '';
-                        const badge = b.durante_vinculo ? ` <span class="badge badge-red" title="${dualLabel('Recebeu enquanto era servidor publico','Parcela dentro do periodo do vinculo TCE-PB')}">${dualLabel('Era servidor','Durante vinculo')}</span>` : '';
+                        const badge = anyDuranteVinculo ? ` <span class="badge badge-red" title="${dualLabel('Recebeu enquanto era servidor publico','Parcela dentro do periodo do vinculo TCE-PB')}">${dualLabel('Era servidor','Durante vinculo')}</span>` : '';
                         const competLabel = idx === 0 ? _fmtDate(b.mes_competencia) : '';
                         return `<tr${cls}>
                             <td>${competLabel}${idx === 0 ? badge : ''}</td>

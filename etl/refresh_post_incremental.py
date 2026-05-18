@@ -83,6 +83,10 @@ def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
     com autocommit=True permite COMMIT entre batches sem problema.
 
     Idempotente: WHERE _nk_md5 IS NULL. Pode ser interrompido e re-rodado.
+
+    Cria partial index temporario para acelerar batches (Opus 4.7-high
+    review MEDIUM-4 — sem isso, o WHERE IS NULL faz seq scan O(n) por
+    batch, gerando trabalho quadratico O(n²/batch) no total).
     """
     logger.info("populate_nk_md5_bolsa_familia: BATCH_SIZE=%d", batch_size)
     prev_autocommit = conn.autocommit
@@ -91,6 +95,16 @@ def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
     total = 0
     try:
         with conn.cursor() as cur:
+            # Criar partial index ANTES do loop (CONCURRENTLY exige autocommit).
+            # Idempotente (IF NOT EXISTS). Sera dropado no final.
+            logger.info("creating temporary partial index for populate speedup...")
+            cur.execute("""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS _tmp_idx_bf_nk_md5_null
+                ON bolsa_familia (id) WHERE _nk_md5 IS NULL
+            """)
+            # ANALYZE para o planner usar o partial index nos batches seguintes.
+            cur.execute("ANALYZE bolsa_familia")
+
             while True:
                 cur.execute("""
                     UPDATE bolsa_familia SET _nk_md5 = etl_admin.row_hash_md5(
@@ -117,6 +131,10 @@ def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
                     "populate _nk_md5: total %s rows (%.0fs)",
                     f"{total:,}", time.time() - t0,
                 )
+
+            # Drop partial index — nao serve apos populate completo.
+            logger.info("dropping temporary partial index...")
+            cur.execute("DROP INDEX IF EXISTS _tmp_idx_bf_nk_md5_null")
     finally:
         conn.autocommit = prev_autocommit
     logger.info("populate_nk_md5_bolsa_familia: DONE — %d rows em %.0fs",
@@ -162,14 +180,19 @@ def refresh_for_bolsa_familia(conn) -> None:
     # Body extraido para sql/41c_tmp_bf_body.sql — drift com sql/12_views.sql
     # quebra esta logica (validado em smoke tests).
     body = _read_sql_file("41c_tmp_bf_body.sql")
-    # 41c contem comentarios + statement final. Garantimos TRUNCATE antes em
-    # uma unica transacao para nao deixar a MV servindo dados inconsistentes
-    # entre TRUNCATE e INSERT.
-    _run_sql(
-        conn,
-        "_tmp_bf TRUNCATE + INSERT",
-        f"BEGIN; TRUNCATE TABLE _tmp_bf; INSERT INTO _tmp_bf {body} COMMIT;",
-    )
+    # Strip statement terminator do body antes de injetar — evita ambiguidade
+    # com concatenacoes futuras (Opus 4.7-high review LOW-5).
+    body_stripped = body.rstrip().rstrip(";").rstrip()
+    # TRUNCATE + INSERT atomic via transacao implicita do psycopg2
+    # (autocommit=False default). Os dois statements executam em UMA
+    # transacao; AccessExclusiveLock do TRUNCATE eh mantido ate o
+    # commit() em _run_sql. mv_servidor_pb_risco nao vai ver estado
+    # intermediario.
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE TABLE _tmp_bf")
+        cur.execute(f"INSERT INTO _tmp_bf {body_stripped}")
+    conn.commit()
+    logger.info("_tmp_bf TRUNCATE + INSERT OK")
 
     # 4. mv_servidor_pb_risco: depende de _tmp_bf novo.
     # IMPORTANTE: a MV nao suporta REFRESH "limpo" porque _tmp_bf nao tem

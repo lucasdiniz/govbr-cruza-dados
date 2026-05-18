@@ -1491,8 +1491,19 @@ def _compute_servidor_bf(cpf6: str, nome: str) -> dict | None:
     """
     sql = """
         WITH vinculo AS (
-            SELECT COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
-                   MAX(ano_mes) AS fim
+            -- IMPORTANTE: padronizar inicio/fim em formato YYYYMM (sem hifen)
+            -- para comparar lexicograficamente com bf.mes_competencia que e
+            -- YYYYMM. ano_mes do tce_pb_servidor vem com hifen "YYYY-MM";
+            -- comparar "202410" <= "2024-12" da FALSE por causa do '-' < '1'
+            -- (bug pre-existente em sql/12_views.sql, AMPLIFICADO aqui pelo
+            -- novo flag durante_vinculo exposto na UI). Ver ADR-0010 e
+            -- review Opus 4.7-high HIGH-2 (2026-05-17).
+            SELECT
+                COALESCE(
+                    TO_CHAR(MIN(data_admissao), 'YYYYMM'),
+                    REPLACE(MIN(ano_mes), '-', '')
+                ) AS inicio,
+                REPLACE(MAX(ano_mes), '-', '') AS fim
             FROM tce_pb_servidor
             WHERE cpf_digitos_6 = %(cpf6)s AND nome_upper = %(nome)s
               AND ano_mes >= '2022-01'

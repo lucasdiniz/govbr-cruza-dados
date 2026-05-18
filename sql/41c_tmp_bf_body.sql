@@ -24,8 +24,16 @@
 
 WITH vinculo AS (
     SELECT cpf_digitos_6, nome_upper,
-           COALESCE(TO_CHAR(MIN(data_admissao), 'YYYYMM'), MIN(ano_mes)) AS inicio,
-           MAX(ano_mes) AS fim
+           -- Padroniza inicio/fim em YYYYMM (sem hifen) p/ comparar com
+           -- bf.mes_competencia. ano_mes vem como "YYYY-MM"; bug pre-existente
+           -- de comparacao lexicografica ("202410" <= "2024-12" da FALSE por
+           -- '-' < '1'). Fix aplicado tambem em web/routes/cidade.py
+           -- _compute_servidor_bf. Ver ADR-0010 review HIGH-2.
+           COALESCE(
+               TO_CHAR(MIN(data_admissao), 'YYYYMM'),
+               REPLACE(MIN(ano_mes), '-', '')
+           ) AS inicio,
+           REPLACE(MAX(ano_mes), '-', '') AS fim
     FROM tce_pb_servidor
     WHERE cpf_digitos_6 IS NOT NULL AND nome_upper IS NOT NULL
       AND ano_mes >= '2022-01'
