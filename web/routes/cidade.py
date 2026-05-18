@@ -1705,17 +1705,9 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 if bf_data:
                     # Adicionar lista global de meses com snapshots (cacheada
                     # separadamente) para o frontend distinguir "sem snapshot"
-                    # de "snapshot existe mas servidor nao recebeu".
+                    # de "snapshot existe mas servidor nao recebeu" na grade.
                     bf_data["meses_disponiveis"] = _get_bf_meses_disponiveis()
                     result["bolsa_familia"] = bf_data
-                elif vinculos:
-                    # Servidor sem nenhuma parcela BF — mas ainda precisamos
-                    # avisar quais meses temos no banco.
-                    result["bolsa_familia"] = {
-                        "parcelas": [],
-                        "stats": None,
-                        "meses_disponiveis": _get_bf_meses_disponiveis(),
-                    }
 
                 # Sancoes CEIS/CNEP das empresas vinculadas
                 if cnpjs:

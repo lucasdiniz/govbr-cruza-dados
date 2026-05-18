@@ -203,9 +203,15 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     // incremental comecou a carregar a partir desse mes. Quando carregarmos
     // historico (e.g., 2023-03+), atualizar essa constante.
     const BF_GRID_MIN_YM = 202601;
-    if (bfParcelas.length || (bfRaw && Array.isArray(bfRaw.meses_disponiveis))) {
-        // bfStats pode ser null (caso "servidor sem parcela mas com vinculo")
-        const stats = bfStats || (bfParcelas.length ? {
+    // Mostrar secao APENAS se servidor tem ao menos uma parcela BF
+    // registrada. Caso "vinculo sem parcela" nao gera tab — usuario nao
+    // precisa ver uma grade vazia de "sem parcela registrada" pra cada
+    // mes; isso era ruido (especialmente em mobile onde a tab aparecia
+    // ate pra servidores que nunca receberam BF).
+    if (bfParcelas.length) {
+        // bfStats pode estar ausente em payloads antigos — fallback
+        // calcula a partir das parcelas.
+        const stats = bfStats || {
             qtd_parcelas: bfParcelas.length,
             qtd_meses: bfParcelas.length,
             total_recebido: bfParcelas.reduce((s, b) => s + (b.valor_parcela || 0), 0),
@@ -213,11 +219,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             ultimo_mes: bfParcelas[0]?.mes_competencia || null,
             qtd_durante_vinculo: 0,
             total_durante_vinculo: 0,
-        } : {
-            qtd_parcelas: 0, qtd_meses: 0, total_recebido: 0,
-            primeiro_mes: null, ultimo_mes: null,
-            qtd_durante_vinculo: 0, total_durante_vinculo: 0,
-        });
+        };
         const hasDuranteVinculo = (stats.qtd_durante_vinculo || 0) > 0;
         html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia — historico completo')}</h4>`;
         // Stats overview cells (secao propria)
