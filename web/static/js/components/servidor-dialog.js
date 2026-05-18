@@ -195,7 +195,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     // visivel por default (sem <details> wrapper). Janela: a partir de
     // janeiro/2026 (primeiro mes onde temos snapshots cumulativos via
     // framework incremental — meses anteriores so existem se ja foram
-    // carregados). Padrao: meses dentro do vinculo TCE-PB com parcela =>
+    // carregados). Padrao: parcela recebida durante vinculo ativo =>
     // highlight red badge. dualLabel cidadao/auditor.
     //
     // Mes minimo da grade (BF_GRID_MIN_YM): controla o quao longe pra tras
@@ -203,9 +203,10 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     // incremental comecou a carregar a partir desse mes. Quando carregarmos
     // historico (e.g., 2023-03+), atualizar essa constante.
     const BF_GRID_MIN_YM = 202601;
-    if (bfParcelas.length || (bfRaw && Array.isArray(bfRaw.meses_disponiveis))) {
-        // bfStats pode ser null (caso "servidor sem parcela mas com vinculo")
-        const stats = bfStats || (bfParcelas.length ? {
+    if (bfParcelas.length > 0) {
+        // bfStats pode ser null no formato antigo; com parcelas, recalculamos
+        // um resumo minimo no frontend.
+        const stats = bfStats || {
             qtd_parcelas: bfParcelas.length,
             qtd_meses: bfParcelas.length,
             total_recebido: bfParcelas.reduce((s, b) => s + (b.valor_parcela || 0), 0),
@@ -213,11 +214,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
             ultimo_mes: bfParcelas[0]?.mes_competencia || null,
             qtd_durante_vinculo: 0,
             total_durante_vinculo: 0,
-        } : {
-            qtd_parcelas: 0, qtd_meses: 0, total_recebido: 0,
-            primeiro_mes: null, ultimo_mes: null,
-            qtd_durante_vinculo: 0, total_durante_vinculo: 0,
-        });
+        };
         const hasDuranteVinculo = (stats.qtd_durante_vinculo || 0) > 0;
         html += `<div class="dialog-section"><h4>${dualLabel('Recebeu Bolsa Familia','Bolsa Familia — historico completo')}</h4>`;
         // Stats overview cells (secao propria)
@@ -300,7 +297,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
         // Set de meses_competencia com snapshot carregado (vem do endpoint).
         // Permite distinguir 3 estados:
         //   - Tem snapshot + tem parcela: linha normal
-        //   - Tem snapshot + sem parcela: "Nao recebeu BF" (afirma)
+        //   - Tem snapshot + sem parcela: "Nao recebeu Bolsa Familia" (afirma)
         //   - Sem snapshot: "Sem dados disponiveis ainda"
         const mesesDisponiveis = new Set(
             (bfRaw && Array.isArray(bfRaw.meses_disponiveis))
@@ -415,8 +412,8 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 // Tem snapshot e nao recebeu — afirmar
                 const cls = inVinc ? ' class="row-empty row-empty--vinculo"' : ' class="row-empty"';
                 const subt = inVinc
-                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu BF','Dentro do vinculo TCE-PB — nao recebeu')}</span>`
-                    : `<span class="text-xs text-muted">${dualLabel('Nao recebeu BF neste mes','Sem parcela')}</span>`;
+                    ? `<span class="text-xs text-muted">${dualLabel('Era servidor neste mes — nao recebeu Bolsa Familia','Vinculo ativo neste mes — sem parcela do Bolsa Familia')}</span>`
+                    : `<span class="text-xs text-muted">${dualLabel('Nao recebeu Bolsa Familia neste mes','Sem parcela')}</span>`;
                 return `<tr${cls}>
                     <td>${labelMes}</td>
                     <td colspan="3">${subt}</td>
