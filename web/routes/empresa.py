@@ -5,14 +5,20 @@ ARQUITETURA pos-incidente do PR #57:
 - Cache miss = 410 Gone (NAO faz live query — protege DB do thundering herd
   que derrubou o site quando IndexNow notificou Bing sobre 45K URLs
   simultaneamente). Cache-miss-only e seguro porque empresas so entram no
-  sitemap depois de warmed, e cleanup_orphan_empresa_cache (ADR-0009)
-  garante que entries stale para CNPJs nao mais qualificados sao removidas.
-  Miss aqui significa URL nao representa empresa qualificada na PB —
-  410 e semanticamente correto e acelera de-index da URL no Google
-  (Google trata 410 como permanente e para de retentar em dias, vs 404
-  que insiste re-crawlando por semanas). Status revisado de 404 para 410
-  na revisao 2026-05-18 do ADR-0009 apos observar Googlebot persistindo
-  em ~6.7k retries/dia em URLs orfas.
+  sitemap depois de warmed (gating em deploy.yml com coverage >= 80%), e
+  cleanup_orphan_empresa_cache (ADR-0009) garante que entries stale para
+  CNPJs nao mais qualificados sao removidas. Miss aqui significa URL nao
+  representa empresa qualificada na PB — 410 e semanticamente correto e
+  acelera de-index da URL no Google (Google trata 410 como permanente e
+  para de retentar em dias, vs 404 que insiste re-crawlando por semanas).
+  Status revisado de 404 para 410 na revisao 2026-05-18 do ADR-0009 apos
+  observar Googlebot persistindo em ~6.7k retries/dia em URLs orfas.
+- DB error (pool exhaustion, statement_timeout, conn drop) = 503 com
+  Retry-After. Distincao de cache miss vs DB error eh crucial: 410 em
+  DB error transiente marcaria URLs legitimas como permanentemente
+  removidas. read_web_cache retorna sentinel CACHE_ERROR para erros
+  e None para row genuinamente ausente. (Revisao 2026-05-19 do ADR-0009
+  apos review paralelo Opus 4.7-high + GPT-5.5 do PR #181.)
 - A funcao `compute_empresa_perfil_dict` executa as 8 queries e monta o
   dict completo. Eh chamada APENAS pelo warmer (web/warm_cache.py), nunca
   inline na rota.
@@ -31,7 +37,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
 from web.config import TIMEOUT_PROFILE
-from web.db import execute_query, get_conn, read_web_cache
+from web.db import CACHE_ERROR, execute_query, get_conn, read_web_cache
 from web.queries.empresa import (
     EMPRESA_AGREGADOS_PB_BY_BASICO,
     EMPRESA_EMPENHOS_COUNT_BY_MUN,
@@ -634,7 +640,13 @@ def compute_empresa_municipio_perfil_dict(
 
 @router.get("/empresa/{cnpj}")
 async def empresa_perfil(request: Request, cnpj: str):
-    """Renderiza /empresa/<14-digits>. Le de web_cache. Cache miss = 410 Gone.
+    """Renderiza /empresa/<14-digits>. Le de web_cache.
+
+    Resultado por cenario:
+    - Cache hit -> 200 OK
+    - Cache miss (row ausente) -> 410 Gone (URL permanentemente removida)
+    - DB error -> 503 Retry-After (transiente, qualifying empresa pode
+      estar com cache temporariamente inacessivel)
 
     NUNCA executa as 8 queries inline. O incidente do PR #57 mostrou que
     sob trafego de crawler agressivo (Bing + 45K URLs do IndexNow), o pool
@@ -646,6 +658,11 @@ async def empresa_perfil(request: Request, cnpj: str):
     porque Googlebot insistia ~6.7k re-crawls/dia em URLs orfas
     interpretando 404 como "talvez volte". 410 = "removido permanentemente",
     de-index em dias vs semanas.
+
+    DB error retorna 503 (revisao 2026-05-19) — antes era tratado como
+    cache miss permanente (410), marcando URLs legitimas como removidas
+    durante pool exhaustion / restart / failover. Distincao usa sentinel
+    CACHE_ERROR do read_web_cache.
     """
     from web.main import templates
 
@@ -683,6 +700,22 @@ async def empresa_perfil(request: Request, cnpj: str):
     # Lookup no web_cache. Schema: (query_id=EMPRESA_PERFIL, municipio=cnpj),
     # rows[0][0] = dict completo serializado como JSONB.
     cached = read_web_cache(CACHE_QUERY_ID, canonical)
+    if cached is CACHE_ERROR:
+        # DB error transiente (pool exhausted, statement_timeout, conn drop).
+        # Retornar 503 sinaliza ao crawler "tenta de novo" sem disparar
+        # de-indexacao (diferente de 410, que Google trata como permanente).
+        # Antes desta verificacao, `read_web_cache` retornava None em DB
+        # errors (bare except: pass) e a rota tratava como cache miss
+        # permanente -> 410, marcando URLs de empresas qualificadas como
+        # removidas durante incidentes transientes do DB. (HIGH bug
+        # convergente Opus 4.7-high + GPT-5.5 review PR #181.)
+        _log.warning("DB error reading cache for /empresa/%s — returning 503", canonical)
+        return Response(
+            status_code=503,
+            headers={"Retry-After": "60"},
+            content="Servico temporariamente indisponivel.",
+            media_type="text/plain; charset=utf-8",
+        )
     if cached is not None:
         cols, rows = cached
         if rows and rows[0]:
@@ -729,7 +762,13 @@ async def empresa_perfil_municipio(
     request: Request, cnpj: str, municipio_slug_in: str
 ):
     """Renderiza /empresa/<14-digits>/<municipio-slug>. Cache-only (mesmo
-    invariant da rota global): cache miss = 410 Gone (ver docstring do modulo).
+    invariant da rota global).
+
+    Resultado por cenario:
+    - Cache hit -> 200 OK
+    - Cache miss (row ausente) -> 410 Gone
+    - DB error -> 503 Retry-After
+    - Slug invalido -> 404 (ANTES do lookup de cache)
 
     Validacoes em ordem:
     1. CNPJ canonico (14 digitos numericos puros, sem mascara).
@@ -737,7 +776,7 @@ async def empresa_perfil_municipio(
     3. Slug municipio resolve via slug_to_municipio. None = 404.
     4. Slug nao canonico -> 301 pro slug canonico.
     5. Lookup web_cache(EMPRESA_PERFIL_MUN, "<cnpj>:<slug>"). Hit -> render.
-       Miss -> 410.
+       DB error -> 503. Miss -> 410.
     """
     from web.main import templates
 
@@ -816,6 +855,19 @@ async def empresa_perfil_municipio(
 
     cache_key = f"{canonical_cnpj}:{canonical_slug}"
     cached = read_web_cache(CACHE_QUERY_ID_MUN, cache_key)
+    if cached is CACHE_ERROR:
+        # DB error transiente — 503 em vez de 410 (ver docstring de
+        # empresa_perfil acima e ADR-0009 revisao 2026-05-19).
+        _log.warning(
+            "DB error reading cache for /empresa/%s/%s — returning 503",
+            canonical_cnpj, canonical_slug,
+        )
+        return Response(
+            status_code=503,
+            headers={"Retry-After": "60"},
+            content="Servico temporariamente indisponivel.",
+            media_type="text/plain; charset=utf-8",
+        )
     if cached is not None:
         _cols, rows = cached
         if rows and rows[0]:

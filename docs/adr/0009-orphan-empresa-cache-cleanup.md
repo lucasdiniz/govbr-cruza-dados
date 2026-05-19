@@ -365,3 +365,92 @@ comportamento de tratamento de 410), basta inverter `status_code=410`
 para `status_code=404` nos dois handlers. Sem mudança de template,
 schema, ou dependências.
 
+---
+
+## Revisão 2026-05-19: DB error distinto de cache miss (503 vs 410)
+
+### Observação em review paralelo do PR #181
+
+Review paralelo Opus 4.7-high + GPT-5.5 do PR #181 (revisão 2026-05-18)
+identificou bug HIGH **convergente em ambos os modelos**:
+
+`read_web_cache()` em `web/db.py` usava `try: ... except Exception: pass;
+return None`, tornando **DB errors indistinguiveis de cache miss**.
+Cenários afetados:
+
+1. **Pool exhaustion** (`POOL_MAX=16`) sob carga de crawler — exatamente
+   o padrão que motivou o PR #57.
+2. **DB restart / failover / network blip** durante o crawl.
+3. **`statement_timeout`** durante `cleanup_orphan_empresa_cache`
+   rodando `DELETE` em batches contra `web_cache`.
+4. **Cold start** com `_pool` não inicializado raising `RuntimeError`.
+5. **JSON corrompido** no payload do cache.
+
+Pré-PR #181, todos esses cenários retornavam `404 Not Found` — bug
+recoverable (Google retentava por semanas). **Pós-PR #181 retornavam
+`410 Gone`** — Google de-indexava permanente em dias. Uma janela de
+5 minutos de pool starvation durante crawl podia marcar páginas
+legítimas como removidas.
+
+### Mudança
+
+`web/db.py`:
+- Novo sentinel `CACHE_ERROR` (singleton de classe `_CacheError`)
+  retornado quando `read_web_cache()` falha por erro de DB/conexão.
+- Bare `except Exception: pass` substituído por log de WARNING
+  (visível em journalctl) — antes era silencioso, dificultando diagnóstico.
+- Tipo de retorno expandido: `tuple[cols, rows] | _CacheError | None`.
+
+`web/routes/empresa.py` (ambos `empresa_perfil` e `empresa_perfil_municipio`):
+- Branch novo: `if cached is CACHE_ERROR: return 503 com Retry-After`.
+- Comportamento atual mantido para `None` (cache miss permanente) e
+  hit válido.
+
+### Por que esse fix é mínimo
+
+Considerei (e descartei) abordagens mais elaboradas:
+
+- **Existence check em `mv_empresa_pb`** antes de decidir 410 vs 503:
+  ~30 linhas + LRU cache + day_bucket TTL + thundering herd protection.
+  Yagni para distinguir "URL nunca existiu" de "URL órfã" — >99% dos
+  misses são caso (b) órfão.
+- **Sentinel value no cache** marcando "qualifying mas rewarming":
+  exige mudança no warmer, no schema do `web_cache` e na lógica de
+  cleanup. Trade-off ruim.
+- **Feature flag pra rollout gradual**: 503 é universalmente seguro
+  (não causa de-indexação como 410), então rollout direto está OK.
+
+A mudança atual:
+- ~15 linhas em `web/db.py` (sentinel + log)
+- ~10 linhas por handler em `empresa.py` (verificar `is CACHE_ERROR`)
+- Total ~35 linhas
+
+### Trade-offs (após esta revisão)
+
+| Caso | Comportamento atual |
+|---|---|
+| (a) URL inventada `/empresa/99999999999999/x` | 410 Gone |
+| (b) CNPJ órfão (PR #156 cleanup) | 410 Gone ✅ |
+| (c) Cold start / CNPJ novo entre warms | 410 transient (raro — sitemap gated em deploy.yml exige cache coverage ≥80%) |
+| (d) **DB error transiente** (NOVO) | **503 Retry-After** ✅ |
+| (e) JSON corrompido no cache | 410 (cache hit mas dict vazio) — aceitável, cleanup re-popula |
+
+### Reversibilidade
+
+Se uma URL legítima ainda assim receber 410 (caso c muito raro), reverter
+para 200 leva 1 crawl pós-warm (Google atualiza status em re-crawl).
+Mas com sitemap gated + cache coverage 80%, esse caso é estatisticamente
+desprezível (vs ~6.7k retries/dia de URLs verdadeiramente órfãs).
+
+### Observabilidade
+
+`logging.getLogger("transparencia.db").warning(...)` em `read_web_cache`
+torna DB errors visíveis em `journalctl -u cruza-web` — antes eram
+silenciosos. Padrão de erro para alertar:
+
+```
+read_web_cache DB error for EMPRESA_PERFIL:00012345678901 — PoolError: connection pool exhausted
+```
+
+Monitorar pico desses warnings após deploy correlaciona com hits 503.
+
