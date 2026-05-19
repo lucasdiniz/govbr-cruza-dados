@@ -2098,15 +2098,18 @@ def _warm_cidade_resumo_phase() -> tuple[int, int, int]:
 # Naming convention das keys (rebase 2026-05-19):
 #   - '<scope>-urlset'       -> sitemap unico (sem shards)
 #   - '<scope>-shard:N'      -> shard N de um sitemap shardado
-#   - 'root-index'           -> sitemap-index top-level que agrega tudo
 #
-# Keys cacheadas:
-#   - 'root-index'                       -> /sitemap.xml
+# Keys cacheadas em L2:
 #   - 'cidades-urlset'                   -> /sitemap-cidades.xml
 #   - 'empresas-shard:N'                 -> /sitemap-empresas-N.xml
 #   - 'empresas-municipios-shard:N'      -> /sitemap-empresas-municipios-N.xml
 #   - 'licitacoes-shard:N'               -> /sitemap-licitacoes-N.xml (PR #108)
 #   - 'cidade-resumo-urlset'             -> /sitemap-cidade-resumo.xml (PR #108)
+#
+# NAO cacheado em L2: /sitemap.xml (root index). Build eh barato (<50ms)
+# e o XML reflete flags SITEMAP_INCLUDE_* do processo runtime — cachear
+# com flags do warmer geraria cache poisoning vs flags da rota.
+# (HIGH GPT-5.5 round 4 PR #85.)
 # ─────────────────────────────────────────────────────────────────────────
 
 
@@ -2171,7 +2174,6 @@ def _warm_sitemaps_phase() -> tuple[int, int, int]:
             _build_empresas_municipios_shard_sitemap,
             _build_empresas_shard_sitemap,
             _build_licitacoes_shard_sitemap,
-            _build_sitemap_index,
             _cidade_resumo_qualificados,
             _empresas_municipios_qualificadas_count,
             _empresas_qualificadas_count,
@@ -2179,23 +2181,18 @@ def _warm_sitemaps_phase() -> tuple[int, int, int]:
             _sitemap_pg_write,
         )
 
-        # 1. Index (root-index)
-        expected_keys.add("root-index")
-        try:
-            xml = _build_sitemap_index(origin)
-            if "/sitemap-empresas-" in xml:
-                if _sitemap_pg_write("root-index", xml):
-                    ok += 1
-                    print(f"  ok  root-index ({len(xml)} bytes)", flush=True)
-                else:
-                    fail += 1
-                    print("  fail  root-index (pg write retornou False)", flush=True)
-            else:
-                fail += 1
-                print("  fail  root-index (sem empresas shards — DB falhou?)", flush=True)
-        except Exception as exc:
-            fail += 1
-            print(f"  fail  root-index: {exc}", flush=True)
+        # 1. Index (root-index) NAO cacheado em L2.
+        #
+        # Por que pular: _build_sitemap_index gera <50ms (apenas string concat
+        # de URLs dos sub-sitemaps, sem queries pesadas). Mais importante: o
+        # XML do index reflete as flags SITEMAP_INCLUDE_EMPRESAS/LICITACOES/
+        # CIDADE_RESUMO ATUAIS do processo cruza-web. Cachear em L2 (escrito
+        # com todas as flags=1 pelo warmer) faria a rota servir um index com
+        # families que o processo runtime tem desabilitadas via drop-in
+        # systemd (cache poisoning entre warmer flags e route flags).
+        # (HIGH GPT-5.5 round 4 PR #85.)
+        #
+        # L1 in-memory continua, com anti-cache parcial que respeita flags.
 
         # 2. Cidades (cidades-urlset)
         expected_keys.add("cidades-urlset")
@@ -2219,6 +2216,13 @@ def _warm_sitemaps_phase() -> tuple[int, int, int]:
         # 3. Empresas shards (empresas-shard:N)
         try:
             total_emp = _empresas_qualificadas_count()
+            # Defensive: count helpers em seo.py swallow Exception e retornam
+            # 0 em DB error. Sem este guard, transient hiccup => total=0 =>
+            # for-loop nao itera => expected_keys SEM os keys reais =>
+            # prune DELETE em todos os shards previamente cacheados.
+            # (HIGH Opus 4.7 + GPT-5.5 round 4 PR #85.)
+            if total_emp == 0:
+                skip_prune_prefixes.add("empresas-shard:")
             num_shards_emp = math.ceil(total_emp / EMPRESA_SHARD_SIZE) if total_emp > 0 else 0
             print(f"  Empresas: total={total_emp:,} shards={num_shards_emp}", flush=True)
             for n in range(1, num_shards_emp + 1):
@@ -2248,6 +2252,9 @@ def _warm_sitemaps_phase() -> tuple[int, int, int]:
         # 4. Empresas × Municipios shards (empresas-municipios-shard:N)
         try:
             total_mun = _empresas_municipios_qualificadas_count()
+            # Defensive prune protection (vide comentario em empresas-shard).
+            if total_mun == 0:
+                skip_prune_prefixes.add("empresas-municipios-shard:")
             num_shards_mun = math.ceil(total_mun / EMPRESA_SHARD_SIZE) if total_mun > 0 else 0
             print(f"  Empresas-Mun: total={total_mun:,} shards={num_shards_mun}", flush=True)
             for n in range(1, num_shards_mun + 1):
@@ -2277,6 +2284,9 @@ def _warm_sitemaps_phase() -> tuple[int, int, int]:
         # 5. Licitacoes shards (licitacoes-shard:N) — alinhado com main PR #108
         try:
             total_lic = _licitacoes_qualificadas_count()
+            # Defensive prune protection (vide comentario em empresas-shard).
+            if total_lic == 0:
+                skip_prune_prefixes.add("licitacoes-shard:")
             num_shards_lic = math.ceil(total_lic / LICITACAO_SHARD_SIZE) if total_lic > 0 else 0
             print(f"  Licitacoes: total={total_lic:,} shards={num_shards_lic}", flush=True)
             for n in range(1, num_shards_lic + 1):

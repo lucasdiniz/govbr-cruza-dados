@@ -72,15 +72,20 @@ _SITEMAP_CACHE: dict[str, Any] = {
 # Naming convention das keys L2 (em web_cache.municipio column):
 #   '<scope>-urlset'        -> sitemap unico (sem shards)
 #   '<scope>-shard:N'       -> shard N de sitemap shardado
-#   'root-index'            -> sitemap-index top-level que agrega tudo
 #
 # Mapping L1 (bucket names acima) -> L2 (keys em web_cache):
-#   _SITEMAP_CACHE["index"]                  -> "root-index"
+#   _SITEMAP_CACHE["index"]                  -> [L1 apenas, nao em L2 *]
 #   _SITEMAP_CACHE["cidades"]                -> "cidades-urlset"
 #   _SITEMAP_CACHE["empresas"][N]            -> "empresas-shard:N"
 #   _SITEMAP_CACHE["empresas_municipios"][N] -> "empresas-municipios-shard:N"
 #   _SITEMAP_CACHE["licitacoes"][N]          -> "licitacoes-shard:N"
 #   _SITEMAP_CACHE["cidade_resumo"]          -> "cidade-resumo-urlset"
+#
+# (*) root-index NAO eh persistido em L2 porque (a) build eh barato
+# (<50ms, sem queries pesadas) e (b) o XML reflete as flags
+# SITEMAP_INCLUDE_* ATUAIS do processo runtime — cachear flags=1 do
+# warmer e servir pra processo com flags=0 seria cache poisoning.
+# (HIGH GPT-5.5 round 4 PR #85.)
 #
 # Warmer (`web/warm_cache.py:_warm_sitemaps_phase`) pre-popula todos os
 # entries L2 ao fim do warm cycle. invalidate_cache_keys=SITEMAP_XML
@@ -567,20 +572,22 @@ async def sitemap_xml(request: Request) -> Response:
             media_type="application/xml",
             headers={"Cache-Control": "public, max-age=3600"},
         )
-    # L2: web_cache (PG) — sobrevive restart. NAO persiste em L2 aqui:
-    # o XML do index eh gerado com origin derivado de request headers
-    # (X-Forwarded-Host pode ser cliente-injetado). Persistencia em L2
-    # fica restrita ao warmer (SITE_ORIGIN env controlado) pra evitar
-    # cache poisoning (P1 GPT 5.5 PR #85).
-    pg_xml = _sitemap_pg_read("root-index")
-    if pg_xml:
-        # Hidrata L1 com versao persistida (origin canonico do warmer).
-        _SITEMAP_CACHE["index"] = {"ts": now, "xml": pg_xml}
-        return Response(
-            content=pg_xml,
-            media_type="application/xml",
-            headers={"Cache-Control": "public, max-age=3600"},
-        )
+    # NOTA: root-index NAO usa L2 (web_cache) por dois motivos:
+    #
+    # 1. _build_sitemap_index eh barato (<50ms — apenas string concat de
+    #    URLs dos sub-sitemaps, sem queries pesadas). Diferente dos shards
+    #    que carregam 8-9MB de XML, o index nao tem o problema de cold
+    #    timeout que motivou o L2 cache em primeiro lugar.
+    #
+    # 2. O XML do index reflete as flags SITEMAP_INCLUDE_EMPRESAS/
+    #    LICITACOES/CIDADE_RESUMO ATUAIS do processo cruza-web. Cachear em
+    #    L2 (escrito com todas as flags=1 pelo warmer pra pre-gerar)
+    #    faria a rota servir um index com families que o processo runtime
+    #    tem desabilitadas via drop-in systemd — cache poisoning entre
+    #    warmer flags e route flags. (HIGH GPT-5.5 round 4 PR #85.)
+    #
+    # L1 in-memory continua ativo com anti-cache parcial (is_complete
+    # check abaixo) que respeita flags. L3 build live cobre cold start.
 
     xml = _build_sitemap_index(origin)
     # Anti-cache parcial: nao cachear sitemap-index quando uma flag
@@ -602,7 +609,7 @@ async def sitemap_xml(request: Request) -> Response:
     )
     if is_complete:
         _SITEMAP_CACHE["index"] = {"ts": now, "xml": xml}
-        # L2 nao escrita aqui — apenas warmer (vide comentario acima).
+        # L2 NAO escrita aqui (vide comentario acima — root-index nunca em L2).
     else:
         _log.warning(
             "Sitemap-index parcial (flags emp=%s lic=%s res=%s; has emp=%s lic=%s res=%s) — nao cacheando",
