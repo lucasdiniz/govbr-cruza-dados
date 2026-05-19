@@ -59,6 +59,99 @@ _SITEMAP_CACHE: dict[str, Any] = {
     "cidade_resumo": {"ts": 0.0, "xml": ""},
 }
 
+# ─── Persistencia em web_cache (L2 cache) ───
+# Resolve "Couldn't fetch" reportado no GSC pos-restart do cruza-web:
+# o _SITEMAP_CACHE acima eh in-memory (L1) e nao sobrevive a restart;
+# primeiro hit pos-restart pagava ~20s de build live (8-9MB XML por shard),
+# que GSC marca como timeout. Agora cache eh 2-camadas:
+#
+#   L1 = _SITEMAP_CACHE (in-memory, 24h TTL, fast lookup)
+#   L2 = web_cache table (PG, sem TTL, sobrevive restart)
+#   L3 = build live (fallback)
+#
+# Naming convention das keys L2 (em web_cache.municipio column):
+#   '<scope>-urlset'        -> sitemap unico (sem shards)
+#   '<scope>-shard:N'       -> shard N de sitemap shardado
+#
+# Mapping L1 (bucket names acima) -> L2 (keys em web_cache):
+#   _SITEMAP_CACHE["index"]                  -> [L1 apenas, nao em L2 *]
+#   _SITEMAP_CACHE["cidades"]                -> "cidades-urlset"
+#   _SITEMAP_CACHE["empresas"][N]            -> "empresas-shard:N"
+#   _SITEMAP_CACHE["empresas_municipios"][N] -> "empresas-municipios-shard:N"
+#   _SITEMAP_CACHE["licitacoes"][N]          -> "licitacoes-shard:N"
+#   _SITEMAP_CACHE["cidade_resumo"]          -> "cidade-resumo-urlset"
+#
+# (*) root-index NAO eh persistido em L2 porque (a) build eh barato
+# (<50ms, sem queries pesadas) e (b) o XML reflete as flags
+# SITEMAP_INCLUDE_* ATUAIS do processo runtime — cachear flags=1 do
+# warmer e servir pra processo com flags=0 seria cache poisoning.
+# (HIGH GPT-5.5 round 4 PR #85.)
+#
+# Warmer (`web/warm_cache.py:_warm_sitemaps_phase`) pre-popula todos os
+# entries L2 ao fim do warm cycle. invalidate_cache_keys=SITEMAP_XML
+# em deploy.yml limpa L2 (forca re-geracao no proximo warm).
+_SITEMAP_CACHE_QUERY_ID = "SITEMAP_XML"
+
+
+def _sitemap_pg_read(key: str) -> str | None:
+    """Tenta ler XML do web_cache (L2). Retorna None em falha/ausencia.
+
+    NOTA: db.read_web_cache retorna sentinel CACHE_ERROR em DB error
+    (PR #181) que eh iteravel e desempacota como ([], []). Nesse caso
+    `rows[0]` levanta IndexError implicitamente nao — `rows and rows[0]`
+    eh False, retornamos None. Resultado: DB error vira "cache miss",
+    rota cai em L3 (build live). Tradeoff aceitavel — alternativa seria
+    503 explicito mas sitemaps publicos nao deveriam retornar 503.
+    """
+    cached = db.read_web_cache(_SITEMAP_CACHE_QUERY_ID, key)
+    # Trata CACHE_ERROR (DB error) e None (cache miss) igualmente: None.
+    if cached is None or cached is db.CACHE_ERROR:
+        return None
+    _cols, rows = cached
+    if rows and rows[0] and isinstance(rows[0][0], str):
+        return rows[0][0]
+    return None
+
+
+def _sitemap_pg_write(key: str, xml: str) -> bool:
+    """Persiste XML no web_cache (L2). Retorna True em sucesso, False em erro.
+
+    IMPORTANTE: caller deve verificar o retorno. Falha aqui significa que
+    a rota servindo o sitemap vai precisar rebuilder live no proximo hit —
+    degradacao aceitavel, nao site-down.
+
+    L1 (_SITEMAP_CACHE in-memory) eh atualizado pelo caller (rota), nao
+    aqui — quem chama isto ja tem acesso ao XML pra escrever em ambos.
+    """
+    try:
+        import json as _json
+        with db.get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO web_cache (query_id, municipio, columns, rows, row_count, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, now())
+                    ON CONFLICT (query_id, municipio)
+                    DO UPDATE SET columns = EXCLUDED.columns,
+                                  rows = EXCLUDED.rows,
+                                  row_count = EXCLUDED.row_count,
+                                  updated_at = now()
+                    """,
+                    (
+                        _SITEMAP_CACHE_QUERY_ID,
+                        key,
+                        _json.dumps(["xml"]),
+                        _json.dumps([[xml]]),
+                        1,
+                    ),
+                )
+        return True
+    except Exception:
+        _log.exception("Falha ao persistir sitemap '%s' no web_cache", key)
+        return False
+
+
 # Tamanho de cada shard de empresas. Limite do protocolo eh 50K URLs por
 # arquivo; 49K deixa folga pra evitar overflow se o filtro mudar.
 EMPRESA_SHARD_SIZE = 49000
@@ -471,6 +564,7 @@ async def sitemap_xml(request: Request) -> Response:
     """
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     cached = _SITEMAP_CACHE["index"]
     if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
         return Response(
@@ -478,6 +572,22 @@ async def sitemap_xml(request: Request) -> Response:
             media_type="application/xml",
             headers={"Cache-Control": "public, max-age=3600"},
         )
+    # NOTA: root-index NAO usa L2 (web_cache) por dois motivos:
+    #
+    # 1. _build_sitemap_index eh barato (<50ms — apenas string concat de
+    #    URLs dos sub-sitemaps, sem queries pesadas). Diferente dos shards
+    #    que carregam 8-9MB de XML, o index nao tem o problema de cold
+    #    timeout que motivou o L2 cache em primeiro lugar.
+    #
+    # 2. O XML do index reflete as flags SITEMAP_INCLUDE_EMPRESAS/
+    #    LICITACOES/CIDADE_RESUMO ATUAIS do processo cruza-web. Cachear em
+    #    L2 (escrito com todas as flags=1 pelo warmer pra pre-gerar)
+    #    faria a rota servir um index com families que o processo runtime
+    #    tem desabilitadas via drop-in systemd — cache poisoning entre
+    #    warmer flags e route flags. (HIGH GPT-5.5 round 4 PR #85.)
+    #
+    # L1 in-memory continua ativo com anti-cache parcial (is_complete
+    # check abaixo) que respeita flags. L3 build live cobre cold start.
 
     xml = _build_sitemap_index(origin)
     # Anti-cache parcial: nao cachear sitemap-index quando uma flag
@@ -499,6 +609,7 @@ async def sitemap_xml(request: Request) -> Response:
     )
     if is_complete:
         _SITEMAP_CACHE["index"] = {"ts": now, "xml": xml}
+        # L2 NAO escrita aqui (vide comentario acima — root-index nunca em L2).
     else:
         _log.warning(
             "Sitemap-index parcial (flags emp=%s lic=%s res=%s; has emp=%s lic=%s res=%s) — nao cacheando",
@@ -516,15 +627,31 @@ async def sitemap_cidades_xml(request: Request) -> Response:
     """Sub-sitemap: paginas estaticas + /cidade/<slug>. Cacheado 1h."""
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     cached = _SITEMAP_CACHE["cidades"]
     if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
-        xml = cached["xml"]
+        return Response(
+            content=cached["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L2: web_cache (PG)
+    pg_xml = _sitemap_pg_read("cidades-urlset")
+    if pg_xml:
+        _SITEMAP_CACHE["cidades"] = {"ts": now, "xml": pg_xml}
+        return Response(
+            content=pg_xml,
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L3: build live
+    xml = _build_cidades_sitemap(origin)
+    cidades_n = xml.count("/cidade/")
+    if cidades_n >= 100:
+        _SITEMAP_CACHE["cidades"] = {"ts": now, "xml": xml}
+        # L2 nao escrita aqui — risco de cache poisoning via Host header.
+        # Warmer (SITE_ORIGIN env canonico) eh quem popula L2.
     else:
-        xml = _build_cidades_sitemap(origin)
-        cidades_n = xml.count("/cidade/")
-        if cidades_n >= 100:
-            _SITEMAP_CACHE["cidades"] = {"ts": now, "xml": xml}
-        else:
             _log.warning(
                 "Sitemap-cidades parcial (cidades=%d) — nao cacheando",
                 cidades_n,
@@ -581,27 +708,43 @@ async def sitemap_empresas_shard_xml(request: Request, shard_n: int) -> Response
 
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     shard_cache = _SITEMAP_CACHE["empresas"].get(n)
     if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
-        xml = shard_cache["xml"]
-    else:
-        xml = _build_empresas_shard_sitemap(origin, n)
-        urls_n = xml.count("/empresa/")
-        # NUNCA cachear shard vazio. Cenario: MV cresce de 143K pra 200K
-        # entre 2 requests. Shard 4 (antes past-end, vazio) agora tem
-        # ~49K URLs reais. Se cacheamos vazio, Google lê 0 URLs por ate
-        # 1h apos crescimento — perde ~49K paginas indexaveis. Query past-
-        # end com OFFSET alto eh barata (LIMIT 49000 + index hit) entao
-        # rebuilda em ~ms. (P2 do Opus 4.7 review do PR #60.)
-        if urls_n > 0:
-            _SITEMAP_CACHE["empresas"][n] = {"ts": now, "xml": xml}
-        elif n == 1:
-            _log.warning(
-                "Sitemap-empresas shard 1 vazio — nao cacheando "
-                "(DB pode ter falhado)"
-            )
-        # else (n > 1, vazio): nao cacheia, mas serve urlset vazio agora.
-        # Proxima request rebuilda — se MV cresceu, vai retornar URLs.
+        return Response(
+            content=shard_cache["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L2: web_cache (PG) — sobrevive restart
+    pg_xml = _sitemap_pg_read(f"empresas-shard:{n}")
+    if pg_xml:
+        _SITEMAP_CACHE["empresas"][n] = {"ts": now, "xml": pg_xml}
+        return Response(
+            content=pg_xml,
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L3: build live
+    xml = _build_empresas_shard_sitemap(origin, n)
+    urls_n = xml.count("/empresa/")
+    # NUNCA cachear shard vazio. Cenario: MV cresce de 143K pra 200K
+    # entre 2 requests. Shard 4 (antes past-end, vazio) agora tem
+    # ~49K URLs reais. Se cacheamos vazio, Google lê 0 URLs por ate
+    # 1h apos crescimento — perde ~49K paginas indexaveis. Query past-
+    # end com OFFSET alto eh barata (LIMIT 49000 + index hit) entao
+    # rebuilda em ~ms. (P2 do Opus 4.7 review do PR #60.)
+    if urls_n > 0:
+        _SITEMAP_CACHE["empresas"][n] = {"ts": now, "xml": xml}
+        # L2 nao escrita aqui — risco de cache poisoning via Host header.
+        # Warmer (SITE_ORIGIN env canonico) eh quem popula L2.
+    elif n == 1:
+        _log.warning(
+            "Sitemap-empresas shard 1 vazio — nao cacheando "
+            "(DB pode ter falhado)"
+        )
+    # else (n > 1, vazio): nao cacheia, mas serve urlset vazio agora.
+    # Proxima request rebuilda — se MV cresceu, vai retornar URLs.
     return Response(
         content=xml,
         media_type="application/xml",
@@ -635,19 +778,34 @@ async def sitemap_empresas_municipios_shard_xml(request: Request, shard_n: int) 
 
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     shard_cache = _SITEMAP_CACHE["empresas_municipios"].get(n)
     if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
-        xml = shard_cache["xml"]
-    else:
-        xml = _build_empresas_municipios_shard_sitemap(origin, n)
-        urls_n = xml.count("/empresa/")
-        if urls_n > 0:
-            _SITEMAP_CACHE["empresas_municipios"][n] = {"ts": now, "xml": xml}
-        elif n == 1:
-            _log.warning(
-                "Sitemap-empresas-municipios shard 1 vazio — nao cacheando "
-                "(DB pode ter falhado)"
-            )
+        return Response(
+            content=shard_cache["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L2: web_cache (PG)
+    pg_xml = _sitemap_pg_read(f"empresas-municipios-shard:{n}")
+    if pg_xml:
+        _SITEMAP_CACHE["empresas_municipios"][n] = {"ts": now, "xml": pg_xml}
+        return Response(
+            content=pg_xml,
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L3: build live
+    xml = _build_empresas_municipios_shard_sitemap(origin, n)
+    urls_n = xml.count("/empresa/")
+    if urls_n > 0:
+        _SITEMAP_CACHE["empresas_municipios"][n] = {"ts": now, "xml": xml}
+        # L2 nao escrita aqui (vide comentario em sitemap_empresas_shard_xml).
+    elif n == 1:
+        _log.warning(
+            "Sitemap-empresas-municipios shard 1 vazio — nao cacheando "
+            "(DB pode ter falhado)"
+        )
     return Response(
         content=xml,
         media_type="application/xml",
@@ -780,16 +938,33 @@ async def sitemap_licitacoes_shard_xml(request: Request, shard_n: int) -> Respon
         raise HTTPException(status_code=404)
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     shard_cache = _SITEMAP_CACHE["licitacoes"].get(shard_n)
     if shard_cache and shard_cache.get("xml") and (now - shard_cache["ts"] < _SITEMAP_TTL):
-        xml = shard_cache["xml"]
-    else:
-        xml = _build_licitacoes_shard_sitemap(origin, shard_n)
-        urls_n = xml.count("/licitacao/")
-        if urls_n > 0:
-            _SITEMAP_CACHE["licitacoes"][shard_n] = {"ts": now, "xml": xml}
-        elif shard_n == 1:
-            _log.warning("Sitemap-licitacoes shard 1 vazio — nao cacheando")
+        return Response(
+            content=shard_cache["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L2: web_cache (PG) — adicionado no rebase 2026-05-19 (issue HIGH GPT 5.5
+    # PR #85 round 3: sem L2, /sitemap-licitacoes-N.xml ainda pagaria build
+    # live pos-restart embora cache exista pra outros sitemaps).
+    pg_xml = _sitemap_pg_read(f"licitacoes-shard:{shard_n}")
+    if pg_xml:
+        _SITEMAP_CACHE["licitacoes"][shard_n] = {"ts": now, "xml": pg_xml}
+        return Response(
+            content=pg_xml,
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L3: build live
+    xml = _build_licitacoes_shard_sitemap(origin, shard_n)
+    urls_n = xml.count("/licitacao/")
+    if urls_n > 0:
+        _SITEMAP_CACHE["licitacoes"][shard_n] = {"ts": now, "xml": xml}
+        # L2 nao escrita aqui (cache poisoning guard).
+    elif shard_n == 1:
+        _log.warning("Sitemap-licitacoes shard 1 vazio — nao cacheando")
     return Response(
         content=xml,
         media_type="application/xml",
@@ -876,16 +1051,31 @@ async def sitemap_cidade_resumo_xml(request: Request) -> Response:
     """Sub-sitemap unico com todas as cidade-mes paginas (~14k URLs)."""
     origin = _site_origin(request)
     now = time.time()
+    # L1: in-memory cache
     cached = _SITEMAP_CACHE["cidade_resumo"]
     if cached["xml"] and (now - cached["ts"] < _SITEMAP_TTL):
-        xml = cached["xml"]
+        return Response(
+            content=cached["xml"],
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L2: web_cache (PG) — adicionado no rebase 2026-05-19.
+    pg_xml = _sitemap_pg_read("cidade-resumo-urlset")
+    if pg_xml:
+        _SITEMAP_CACHE["cidade_resumo"] = {"ts": now, "xml": pg_xml}
+        return Response(
+            content=pg_xml,
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    # L3: build live
+    xml = _build_cidade_resumo_sitemap(origin)
+    urls_n = xml.count("/cidade/")
+    if urls_n > 0:
+        _SITEMAP_CACHE["cidade_resumo"] = {"ts": now, "xml": xml}
+        # L2 nao escrita aqui (cache poisoning guard).
     else:
-        xml = _build_cidade_resumo_sitemap(origin)
-        urls_n = xml.count("/cidade/")
-        if urls_n > 0:
-            _SITEMAP_CACHE["cidade_resumo"] = {"ts": now, "xml": xml}
-        else:
-            _log.warning("Sitemap-cidade-resumo vazio — nao cacheando")
+        _log.warning("Sitemap-cidade-resumo vazio — nao cacheando")
     return Response(
         content=xml,
         media_type="application/xml",
