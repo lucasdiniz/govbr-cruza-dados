@@ -1391,6 +1391,7 @@ def main():
         ok_em = fail_em = skip_em = 0
         ok_l = fail_l = skip_l = 0
         ok_r = fail_r = skip_r = 0
+        ok_sm = fail_sm = skip_sm = 0
         if not skip_empresas_flag:
             ok_e, fail_e, skip_e = _warm_empresas_phase()
             ok_em, fail_em, skip_em = _warm_empresas_municipios_phase()
@@ -1409,10 +1410,16 @@ def main():
         _swap_all_pending_shadows(verbose=True)
         # Reset tracking pra eventual proximo ciclo (mode --loop).
         _shadow_results.clear()
+        # Sitemaps sempre rodam por ULTIMO (rapido, ~30-60s pra ~40 entries)
+        # — pre-popula web_cache pra eliminar timeout pos-restart do
+        # cruza-web. Roda APOS shadow swap porque os counts() referenciam
+        # MVs que ja devem estar no estado final (qids SITEMAP_XML nao
+        # participam de shadow swap). PR #85 + rebase 2026-05-19.
+        ok_sm, fail_sm, skip_sm = _warm_sitemaps_phase()
         return (
-            ok_p + ok_e + ok_em + ok_l + ok_r,
-            fail_p + fail_e + fail_em + fail_l + fail_r,
-            skip_e + skip_em + skip_l + skip_r,
+            ok_p + ok_e + ok_em + ok_l + ok_r + ok_sm,
+            fail_p + fail_e + fail_em + fail_l + fail_r + fail_sm,
+            skip_e + skip_em + skip_l + skip_r + skip_sm,
         )
 
     if args.daemon:
@@ -2081,6 +2088,306 @@ def _warm_cidade_resumo_phase() -> tuple[int, int, int]:
     )
     _record_shadow_result(CACHE_QUERY_ID_RESUMO, ok, fail)
     return ok, fail, skipped_resume + skipped_empty
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# _warm_sitemaps_phase — popula web_cache (query_id=SITEMAP_XML) com os
+# XMLs pre-gerados. Resolve o problema do GSC reportar "Couldn't fetch"
+# quando primeiro hit pos-restart do cruza-web bate em build live > 30s.
+#
+# Naming convention das keys (rebase 2026-05-19):
+#   - '<scope>-urlset'       -> sitemap unico (sem shards)
+#   - '<scope>-shard:N'      -> shard N de um sitemap shardado
+#   - 'root-index'           -> sitemap-index top-level que agrega tudo
+#
+# Keys cacheadas:
+#   - 'root-index'                       -> /sitemap.xml
+#   - 'cidades-urlset'                   -> /sitemap-cidades.xml
+#   - 'empresas-shard:N'                 -> /sitemap-empresas-N.xml
+#   - 'empresas-municipios-shard:N'      -> /sitemap-empresas-municipios-N.xml
+#   - 'licitacoes-shard:N'               -> /sitemap-licitacoes-N.xml (PR #108)
+#   - 'cidade-resumo-urlset'             -> /sitemap-cidade-resumo.xml (PR #108)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _warm_sitemaps_phase() -> tuple[int, int, int]:
+    """Pre-gera todos os sitemaps e armazena em web_cache (query_id=SITEMAP_XML).
+
+    Rapido (~30-60s pra ~40 entries em 145K empresas + 775K pares
+    + N licitacoes + 14K cidade-mes). Sempre roda (ignora SKIP_RECENT_HOURS)
+    — sitemaps sao baratos e essenciais pra primeiro hit pos-restart nao
+    quebrar.
+
+    DB pool: init_pool() + close_pool() balanceados em try/finally.
+    Sem close_pool, daemon mode vazaria conexoes a cada ciclo (Opus 4.7
+    P1 PR #85). As outras phases (_warm_empresas_phase,
+    _warm_empresas_municipios_phase) seguem o mesmo padrao.
+
+    Pruning: ao final, remove entries em web_cache cuja key nao foi
+    escrita neste ciclo (i.e., shards past-end ou tipo removido). Usa
+    expected_keys (built before write) nao written_keys, pra nao deletar
+    entries por causa de falhas transientes de write. skip_prune_prefixes
+    protege scopes onde a contagem falhou (nao conhecemos expected, nao
+    deletamos nada do scope).
+    """
+    print("--- Sitemaps: pre-gerando XML pra web_cache ---", flush=True)
+    t0 = time.time()
+
+    try:
+        from web import db as web_db
+        web_db.init_pool()
+    except Exception as exc:
+        print(f"  ERRO init pool DB: {exc}", flush=True)
+        return 0, 1, 0
+
+    # Origin canonico — sem Request object, ler de env ou hardcode.
+    # transparenciapb.org eh o unico host atual; futuras mudancas devem
+    # vir via SITE_ORIGIN env.
+    origin = os.environ.get(
+        "SITE_ORIGIN", "https://transparenciapb.org"
+    ).rstrip("/")
+
+    # Forca flags ON pra incluir TODOS os shards no index (mesmo que o
+    # processo cruza-web em prod tenha drop-in apenas pra empresas — aqui
+    # pre-geramos tudo, route decide quais expor).
+    prev_emp = os.environ.get("SITEMAP_INCLUDE_EMPRESAS")
+    prev_lic = os.environ.get("SITEMAP_INCLUDE_LICITACOES")
+    prev_res = os.environ.get("SITEMAP_INCLUDE_CIDADE_RESUMO")
+    os.environ["SITEMAP_INCLUDE_EMPRESAS"] = "1"
+    os.environ["SITEMAP_INCLUDE_LICITACOES"] = "1"
+    os.environ["SITEMAP_INCLUDE_CIDADE_RESUMO"] = "1"
+
+    ok = 0
+    fail = 0
+    expected_keys: set[str] = set()       # Keys que ESPERAMOS escrever (pra prune)
+    skip_prune_prefixes: set[str] = set()  # Scopes onde count falhou (no prune)
+
+    try:
+        from web.routes.seo import (
+            EMPRESA_SHARD_SIZE,
+            LICITACAO_SHARD_SIZE,
+            _build_cidade_resumo_sitemap,
+            _build_cidades_sitemap,
+            _build_empresas_municipios_shard_sitemap,
+            _build_empresas_shard_sitemap,
+            _build_licitacoes_shard_sitemap,
+            _build_sitemap_index,
+            _cidade_resumo_qualificados,
+            _empresas_municipios_qualificadas_count,
+            _empresas_qualificadas_count,
+            _licitacoes_qualificadas_count,
+            _sitemap_pg_write,
+        )
+
+        # 1. Index (root-index)
+        expected_keys.add("root-index")
+        try:
+            xml = _build_sitemap_index(origin)
+            if "/sitemap-empresas-" in xml:
+                if _sitemap_pg_write("root-index", xml):
+                    ok += 1
+                    print(f"  ok  root-index ({len(xml)} bytes)", flush=True)
+                else:
+                    fail += 1
+                    print("  fail  root-index (pg write retornou False)", flush=True)
+            else:
+                fail += 1
+                print("  fail  root-index (sem empresas shards — DB falhou?)", flush=True)
+        except Exception as exc:
+            fail += 1
+            print(f"  fail  root-index: {exc}", flush=True)
+
+        # 2. Cidades (cidades-urlset)
+        expected_keys.add("cidades-urlset")
+        try:
+            xml = _build_cidades_sitemap(origin)
+            cidades_n = xml.count("/cidade/")
+            if cidades_n >= 100:
+                if _sitemap_pg_write("cidades-urlset", xml):
+                    ok += 1
+                    print(f"  ok  cidades-urlset ({cidades_n} URLs)", flush=True)
+                else:
+                    fail += 1
+                    print("  fail  cidades-urlset (pg write retornou False)", flush=True)
+            else:
+                fail += 1
+                print(f"  fail  cidades-urlset ({cidades_n} URLs — < 100)", flush=True)
+        except Exception as exc:
+            fail += 1
+            print(f"  fail  cidades-urlset: {exc}", flush=True)
+
+        # 3. Empresas shards (empresas-shard:N)
+        try:
+            total_emp = _empresas_qualificadas_count()
+            num_shards_emp = math.ceil(total_emp / EMPRESA_SHARD_SIZE) if total_emp > 0 else 0
+            print(f"  Empresas: total={total_emp:,} shards={num_shards_emp}", flush=True)
+            for n in range(1, num_shards_emp + 1):
+                key = f"empresas-shard:{n}"
+                expected_keys.add(key)
+                try:
+                    xml = _build_empresas_shard_sitemap(origin, n)
+                    urls_n = xml.count("/empresa/")
+                    if urls_n > 0:
+                        if _sitemap_pg_write(key, xml):
+                            ok += 1
+                            print(f"  ok  {key} ({urls_n} URLs)", flush=True)
+                        else:
+                            fail += 1
+                            print(f"  fail  {key} (pg write retornou False)", flush=True)
+                    else:
+                        fail += 1
+                        print(f"  fail  {key} (vazio)", flush=True)
+                except Exception as exc:
+                    fail += 1
+                    print(f"  fail  {key}: {exc}", flush=True)
+        except Exception as exc:
+            fail += 1
+            skip_prune_prefixes.add("empresas-shard:")
+            print(f"  fail  contar empresas: {exc} (pruning de empresas-shard: pulado)", flush=True)
+
+        # 4. Empresas × Municipios shards (empresas-municipios-shard:N)
+        try:
+            total_mun = _empresas_municipios_qualificadas_count()
+            num_shards_mun = math.ceil(total_mun / EMPRESA_SHARD_SIZE) if total_mun > 0 else 0
+            print(f"  Empresas-Mun: total={total_mun:,} shards={num_shards_mun}", flush=True)
+            for n in range(1, num_shards_mun + 1):
+                key = f"empresas-municipios-shard:{n}"
+                expected_keys.add(key)
+                try:
+                    xml = _build_empresas_municipios_shard_sitemap(origin, n)
+                    urls_n = xml.count("/empresa/")
+                    if urls_n > 0:
+                        if _sitemap_pg_write(key, xml):
+                            ok += 1
+                            print(f"  ok  {key} ({urls_n} URLs)", flush=True)
+                        else:
+                            fail += 1
+                            print(f"  fail  {key} (pg write retornou False)", flush=True)
+                    else:
+                        fail += 1
+                        print(f"  fail  {key} (vazio)", flush=True)
+                except Exception as exc:
+                    fail += 1
+                    print(f"  fail  {key}: {exc}", flush=True)
+        except Exception as exc:
+            fail += 1
+            skip_prune_prefixes.add("empresas-municipios-shard:")
+            print(f"  fail  contar empresas-municipios: {exc} (pruning pulado)", flush=True)
+
+        # 5. Licitacoes shards (licitacoes-shard:N) — alinhado com main PR #108
+        try:
+            total_lic = _licitacoes_qualificadas_count()
+            num_shards_lic = math.ceil(total_lic / LICITACAO_SHARD_SIZE) if total_lic > 0 else 0
+            print(f"  Licitacoes: total={total_lic:,} shards={num_shards_lic}", flush=True)
+            for n in range(1, num_shards_lic + 1):
+                key = f"licitacoes-shard:{n}"
+                expected_keys.add(key)
+                try:
+                    xml = _build_licitacoes_shard_sitemap(origin, n)
+                    urls_n = xml.count("/licitacao/")
+                    if urls_n > 0:
+                        if _sitemap_pg_write(key, xml):
+                            ok += 1
+                            print(f"  ok  {key} ({urls_n} URLs)", flush=True)
+                        else:
+                            fail += 1
+                            print(f"  fail  {key} (pg write retornou False)", flush=True)
+                    else:
+                        fail += 1
+                        print(f"  fail  {key} (vazio)", flush=True)
+                except Exception as exc:
+                    fail += 1
+                    print(f"  fail  {key}: {exc}", flush=True)
+        except Exception as exc:
+            fail += 1
+            skip_prune_prefixes.add("licitacoes-shard:")
+            print(f"  fail  contar licitacoes: {exc} (pruning pulado)", flush=True)
+
+        # 6. Cidade resumo urlset (cidade-resumo-urlset)
+        expected_keys.add("cidade-resumo-urlset")
+        try:
+            qualificados = _cidade_resumo_qualificados()
+            total_res = len(qualificados)
+            print(f"  Cidade-resumo: total={total_res:,}", flush=True)
+            if total_res > 0:
+                xml = _build_cidade_resumo_sitemap(origin)
+                urls_n = xml.count("/cidade/")
+                if urls_n > 0:
+                    if _sitemap_pg_write("cidade-resumo-urlset", xml):
+                        ok += 1
+                        print(f"  ok  cidade-resumo-urlset ({urls_n} URLs)", flush=True)
+                    else:
+                        fail += 1
+                        print("  fail  cidade-resumo-urlset (pg write retornou False)", flush=True)
+                else:
+                    fail += 1
+                    print("  fail  cidade-resumo-urlset (vazio)", flush=True)
+        except Exception as exc:
+            fail += 1
+            print(f"  fail  cidade-resumo-urlset: {exc}", flush=True)
+
+        # ─── Prune ─── Remove entries cujo key nao esta em expected_keys
+        # (i.e., shards past-end ou tipo removido). USA expected_keys (built
+        # before write), nao written_keys: falhas transientes de write nao
+        # devem deletar entries previamente boas.
+        # skip_prune_prefixes protege scopes onde contagem falhou — sem
+        # expected_keys confiavel pra esse scope, nao deletamos nada dele.
+        # `if expected_keys` guarda contra prune destrutivo se todos os
+        # scopes falharem (warm catastrofico).
+        if expected_keys:
+            try:
+                with web_db.get_conn() as conn:
+                    conn.autocommit = True
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT municipio FROM web_cache WHERE query_id = %s",
+                            ("SITEMAP_XML",),
+                        )
+                        existing = {row[0] for row in cur.fetchall()}
+                        to_delete = []
+                        for k in existing:
+                            if k in expected_keys:
+                                continue
+                            # Skip se algum prefix esta protegido
+                            if any(k.startswith(p) for p in skip_prune_prefixes):
+                                continue
+                            to_delete.append(k)
+                        if to_delete:
+                            cur.execute(
+                                "DELETE FROM web_cache WHERE query_id = %s AND municipio = ANY(%s)",
+                                ("SITEMAP_XML", to_delete),
+                            )
+                            print(
+                                f"  prune  removidas {len(to_delete)} entries stale: "
+                                f"{', '.join(sorted(to_delete)[:5])}{'...' if len(to_delete) > 5 else ''}",
+                                flush=True,
+                            )
+            except Exception as exc:
+                print(f"  warn  prune falhou: {exc}", flush=True)
+
+    finally:
+        # Restaura env vars (preserva drop-ins reais do systemd se houver).
+        for var, prev in [
+            ("SITEMAP_INCLUDE_EMPRESAS", prev_emp),
+            ("SITEMAP_INCLUDE_LICITACOES", prev_lic),
+            ("SITEMAP_INCLUDE_CIDADE_RESUMO", prev_res),
+        ]:
+            if prev is not None:
+                os.environ[var] = prev
+            else:
+                os.environ.pop(var, None)
+        # Fecha pool DB pra evitar leak em daemon mode (Opus 4.7 P1 PR #85).
+        try:
+            web_db.close_pool()
+        except Exception:
+            pass
+
+    elapsed = time.time() - t0
+    print(
+        f"--- Sitemaps: {ok} ok, {fail} fail em {elapsed:.0f}s ---",
+        flush=True,
+    )
+    return ok, fail, 0
 
 
 if __name__ == "__main__":
