@@ -85,6 +85,8 @@ flowchart TD
 
 ## Atualizando UMA MV existente (atomic swap zero-downtime)
 
+> 🟢 **Default para qualquer mudança de definição de UMA MV.** Use `mv_swap` em vez de `etl_phase=sql`. A diferença prática é ~1s vs ~1-2h de downtime parcial, e `etl_phase=sql` é não-cancelável uma vez que o `DROP CASCADE` rodou (ver "Quando NÃO usar" abaixo).
+
 `etl/mv_swap.py` permite atualizar a definição de UMA MV (incluindo schema/colunas novas) com **downtime de ~1s**, sem dropar as outras MVs do `sql/12_views.sql`. Reutilizável pra qualquer MV.
 
 **Quando usar:**
@@ -94,7 +96,9 @@ flowchart TD
 
 **Quando NÃO usar:**
 - Refresh periódico de dados (use `REFRESH MATERIALIZED VIEW CONCURRENTLY`).
-- Mudanças em múltiplas MVs simultaneamente que se referenciam (use `etl_phase=sql`).
+- Mudanças em múltiplas MVs simultaneamente que se referenciam (use `etl_phase=sql` — único caso legítimo).
+
+> ⚠️ **`etl_phase=sql` é destrutivo e não-cancelável.** O `etl.21_views` executa `sql/12_views.sql`, cujos primeiros ~12 statements são `DROP MATERIALIZED VIEW ... CASCADE` pra **todas** as MVs. Durante ~1-2h, `pg_matviews` fica vazio; cancelar o deploy nesse intervalo deixa o banco sem MVs e o site quebra em paths que dependem delas. Sempre prefira `mv_swap` pra mudanças pontuais.
 
 **Mecânica** (detalhes em [`../etl/mv_swap.py`](../etl/mv_swap.py)):
 

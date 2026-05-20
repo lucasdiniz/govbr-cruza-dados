@@ -179,7 +179,7 @@ Auto-expansão: shadow de `PERFIL`/`TOP_FORN`/`TOP_SERV` propaga para `KPI_SUMMA
 
 ### MV atomic swap (zero-downtime)
 
-`etl/mv_swap.py` permite atualizar UMA `MATERIALIZED VIEW` (incluindo schema/colunas novas) com downtime de ~1s, sem dropar as outras. Comparado a `etl_phase=sql` que faz `DROP CASCADE` de todas as MVs em `sql/12_views.sql` (1-2h + VM resize), o swap usa a VM atual e mantém o tráfego servindo a MV antiga durante o build.
+`etl/mv_swap.py` permite atualizar UMA `MATERIALIZED VIEW` (incluindo schema/colunas novas) com downtime de ~1s, sem dropar as outras. **É o caminho default para qualquer mudança de definição de UMA MV.** Comparado a `etl_phase=sql` que faz `DROP CASCADE` de todas as MVs em `sql/12_views.sql` (1-2h + VM resize, e não-cancelável mid-flight), o swap usa a VM atual e mantém o tráfego servindo a MV antiga durante o build.
 
 Mecânica:
 

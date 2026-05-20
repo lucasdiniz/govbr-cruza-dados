@@ -110,6 +110,19 @@ add a `REFRESH MATERIALIZED VIEW CONCURRENTLY` line in the footer comment
 treat `sql/12_views.sql` as the source of truth. Detail:
 [`docs/mv-guide.md`](docs/mv-guide.md) and [ADR-0002](docs/adr/0002-mv-layered.md).
 
+**Updating ONE existing MV: use atomic swap, NOT `etl_phase=sql`.** For a
+single-MV change (new column, fix a CTE, change a join), the default deploy
+path is `mv_swap=<mv_name>` + `deploy/mv_updates/<mv_name>.sql` (framework
+in [`etl/mv_swap.py`](etl/mv_swap.py), ADR-0006). That swaps the MV in
+**~1s** while serving the old MV from live traffic during the parallel
+build. `etl_phase=sql` is destructive: `sql/12_views.sql` starts with
+`DROP MATERIALIZED VIEW ... CASCADE` for every MV, so `pg_matviews` is
+empty for the full ~1–2h recreate window, **and the deploy cannot be
+safely cancelled** once `etl.21_views` started. Reserve `etl_phase=sql`
+for cases where multiple inter-dependent MVs change at once. Always
+update both `sql/12_views.sql` (source of truth for next full rebuild)
+and `deploy/mv_updates/<mv>.sql` (the swap definition).
+
 **Web app** (`web/`): FastAPI + Jinja2, **no ORM** — raw SQL via `web/db.py`
 pool. Two query flavours per cidade query are registered in
 `web/queries/registry.py`: `sql_full` (all time) and optional `sql_full_dated`
@@ -236,6 +249,17 @@ before editing the relevant area.
   at the top, recreates L1 → L2 → views. Adding a new MV requires updating
   both blocks **and** the `REFRESH MATERIALIZED VIEW CONCURRENTLY` footer.
   `REFRESH CONCURRENTLY` needs a UNIQUE INDEX on the MV.
+- **`etl_phase=sql` is destructive and non-cancellable.** It runs
+  `etl.21_views`, which executes `sql/12_views.sql` whose first ~12 statements
+  are `DROP MATERIALIZED VIEW ... CASCADE` for every MV. From that point
+  on, `pg_matviews` is empty until the full L1→L2→views recreate finishes
+  (~1–2h). Cancelling the deploy mid-flight leaves the DB with no MVs and
+  the site partially broken. **For changes to a single MV, prefer
+  `mv_swap=<mv_name>` + `deploy/mv_updates/<mv>.sql`** (ADR-0006), which
+  has ~1s downtime and keeps the live MV serving until the swap. Reserve
+  `etl_phase=sql` for multi-MV refactors that must rebuild together.
+  See [`docs/mv-guide.md`](docs/mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime)
+  and the "MV atomic swap (zero-downtime)" cenário em [`docs/deploy.md`](docs/deploy.md).
 - **`_tmp_bf` rebuild via TRUNCATE+INSERT** (ADR-0010): `DROP TABLE _tmp_bf`
   falha porque `mv_servidor_pb_risco` mantém dependência por OID
   (sql/12_views.sql:645-651). SELECT body extraído para

@@ -140,12 +140,14 @@ skip_download: false
 
 ### Recriar índices/MVs sem reload
 
+> ⚠️ **Destrutivo e não-cancelável.** `etl_phase=sql` roda `etl.21_views`, que executa `sql/12_views.sql` cujo topo é `DROP MATERIALIZED VIEW ... CASCADE` pra **todas** as MVs. Durante ~1-2h do recreate, `pg_matviews` fica vazio e cancelar deixa o banco sem MVs. **Para mudar UMA MV, use [MV atomic swap](#mv-atomic-swap-zero-downtime) (~1s) em vez disso.**
+
 ```yaml
 etl_phase: sql
 warm_cache: true
 ```
 
-`sql` roda índices/normalização/views/MV sitemap, sem schema base destrutivo ([linhas 610-635](../.github/workflows/deploy.yml)).
+`sql` roda índices/normalização/views/MV sitemap, sem schema base destrutivo ([linhas 610-635](../.github/workflows/deploy.yml)). Use só quando múltiplas MVs inter-dependentes precisam ser recriadas juntas (ex: refactor de coluna em L1 que propaga pra várias L2).
 
 ### Retomar fase específica
 
@@ -179,7 +181,19 @@ Isso força B4/Premium, configura `WARM_REWARM_KEYS`, roda warm em shadow e mant
 
 ### Badge em `mv_servidor_pb_risco` + painel de servidores
 
-Quando a mudança altera a definição de `mv_servidor_pb_risco` e a shape de `TOP_SERVIDORES` (ex.: novo badge em servidores), use:
+> ⚠️ **Default recomendado: atomic swap.** Adicionar/remover coluna em UMA MV (`mv_servidor_pb_risco`) e atualizar shape do painel é o caso clássico do `mv_swap` (~1s downtime). Use `etl_phase=sql` **apenas** se a mudança altera múltiplas MVs inter-dependentes (ex: nova coluna em L1 que várias L2 consomem).
+
+**Caminho recomendado** (single MV change):
+
+```yaml
+etl_phase: web
+mv_swap: mv_servidor_pb_risco
+rewarm_cache_keys: TOP_SERVIDORES
+```
+
+Requer `deploy/mv_updates/mv_servidor_pb_risco.sql` com sufixo `_swap` em todos os identifiers (ver [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime)). O swap acontece após o code sync e antes do warm; `rewarm_cache_keys=TOP_SERVIDORES` faz shadow rewarm zero-downtime das variantes `TOP_SERVIDORES`/`ANO:TOP_SERVIDORES`/`12M:TOP_SERVIDORES` (e `KPI_SUMMARY` por auto-expansão).
+
+**Caminho fallback** (apenas se mudança envolve várias MVs):
 
 ```yaml
 etl_phase: sql
@@ -189,7 +203,7 @@ drop_cache: false
 invalidate_cache_keys: ""
 ```
 
-`etl_phase=sql` recria as MVs via `etl.21_views` sem recarregar dados brutos. `rewarm_cache_keys=TOP_SERVIDORES` faz shadow rewarm zero-downtime das variantes `TOP_SERVIDORES`, `ANO:TOP_SERVIDORES` e `12M:TOP_SERVIDORES`; pela auto-expansão do cache, `KPI_SUMMARY` entra no mesmo shadow. `warm_skip_hours=-1` é importante aqui: como `etl_phase=sql` normalmente força rebuild completo, esse opt-out mantém as demais keys live e recalcula apenas as keys em shadow.
+`etl_phase=sql` recria todas as MVs via `etl.21_views` (~1-2h, `pg_matviews` vazio nesse intervalo). `warm_skip_hours=-1` é importante: como `etl_phase=sql` normalmente força rebuild completo, esse opt-out mantém as demais keys live e recalcula apenas as keys em shadow rewarm.
 
 ### MV atomic swap (zero-downtime)
 
