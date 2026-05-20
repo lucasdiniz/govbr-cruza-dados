@@ -230,6 +230,8 @@ Mantém a base oficial de CNPJs (~58GB raw), cadastros de empresas, sócios, est
 Folha de pagamento do Executivo federal. Dados publicados no Portal da Transparência.
 
 - **Tabelas**: `siape_cadastro`, `siape_remuneracao`
+- **Onde aparece**: badge "vínculo municipal + federal (SIAPE)" em servidores; aba "Vínculos" do dialog de servidor
+- **Match key**: `cpf_digitos` (6 dígitos centrais) + nome normalizado; não usar nome aproximado
 
 ### CGU — Controladoria-Geral da União
 
@@ -434,6 +436,14 @@ Bens declarados pelo candidato no momento da candidatura. Evolução entre candi
 Situação em que interesse privado de servidor público entra em conflito com sua função. Pode ser legal (servidor público com empresa privada em outro setor) ou ilegal (servidor que decide compra contrata empresa onde é sócio).
 
 - **Caveat investigativo central** do projeto — atravessa servidor × empresa × empenho × Bolsa Família × CEAF
+
+### Acumulação de vínculos públicos
+
+Servidor que aparece em mais de um vínculo público ao mesmo tempo, por exemplo municipal (TCE-PB) + federal (SIAPE). Não é automaticamente irregular: a Constituição Federal, art. 37, XVI, admite acumulação em hipóteses específicas (magistério, saúde e alguns cargos técnicos/científicos), desde que haja compatibilidade de horários.
+
+- **Tabelas**: `tce_pb_servidor`, `siape_cadastro`, `siape_remuneracao`
+- **Onde aparece**: badge amarelo "Vínculo municipal + federal (SIAPE)" e aba "Vínculos" do dialog de servidor
+- **Caveat**: sinal de triagem; revisar cargo, jornada, datas de ingresso/afastamento e autorizações antes de concluir irregularidade
 
 ### Porta giratória
 

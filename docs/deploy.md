@@ -177,6 +177,20 @@ rewarm_cache_keys: Q65,PERFIL
 
 Isso força B4/Premium, configura `WARM_REWARM_KEYS`, roda warm em shadow e mantém live antigo até swap seguro ([linhas 972-1001](../.github/workflows/deploy.yml)).
 
+### Badge em `mv_servidor_pb_risco` + painel de servidores
+
+Quando a mudança altera a definição de `mv_servidor_pb_risco` e a shape de `TOP_SERVIDORES` (ex.: novo badge em servidores), use:
+
+```yaml
+etl_phase: sql
+rewarm_cache_keys: TOP_SERVIDORES
+warm_skip_hours: "-1"
+drop_cache: false
+invalidate_cache_keys: ""
+```
+
+`etl_phase=sql` recria as MVs via `etl.21_views` sem recarregar dados brutos. `rewarm_cache_keys=TOP_SERVIDORES` faz shadow rewarm zero-downtime das variantes `TOP_SERVIDORES`, `ANO:TOP_SERVIDORES` e `12M:TOP_SERVIDORES`; pela auto-expansão do cache, `KPI_SUMMARY` entra no mesmo shadow. `warm_skip_hours=-1` é importante aqui: como `etl_phase=sql` normalmente força rebuild completo, esse opt-out mantém as demais keys live e recalcula apenas as keys em shadow.
+
 ### MV atomic swap (zero-downtime)
 
 Pra atualizar UMA MV (ex: corrigir definição) sem mexer nas outras nem fazer resize de VM:

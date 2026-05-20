@@ -169,7 +169,7 @@ Use **após** `run_normalize_fix=true` + `refresh_mvs=mv_empresa_pb` (que remove
 A receita operacional canônica (mudou SQL de uma query → quero atualizar cache sem downtime):
 
 1. PR com a nova SQL.
-2. Após merge, dispare `deploy.yml` com `rewarm_cache_keys=Q65,PERFIL` (vírgula separa múltiplas).
+2. Após merge, dispare `deploy.yml` com `rewarm_cache_keys=Q65,PERFIL` (vírgula separa múltiplas). Para mudanças no painel de servidores, use `rewarm_cache_keys=TOP_SERVIDORES`; a auto-expansão inclui `KPI_SUMMARY`. Se o deploy também precisar de `etl_phase=sql` mas só uma key conhecida mudou, passe `warm_skip_hours=-1` para evitar rebuild live completo e deixar só o shadow rewarm recalcular a key.
 3. Workflow:
    - Sincroniza código.
    - Reseta shadow rows (`DELETE WHERE query_id LIKE '%__pending'`).

@@ -261,9 +261,24 @@ def _empty_top_servidores():
         "municipios", "maior_salario", "cargo",
         "qtd_empresas_socio", "cnpjs_socio",
         "flag_conflito_interesses", "flag_multi_empresa",
-        "flag_bolsa_familia", "flag_duplo_vinculo_estado",
+        "flag_bolsa_familia", "flag_duplo_vinculo_federal",
         "flag_alto_salario_socio", "risco_score",
     ], []
+
+
+def _sanitize_top_servidores_cache(cols: list, rows: list) -> tuple[list, list]:
+    """Remove colunas legadas que nao devem mais ser surfaciadas no painel."""
+    if not cols or "flag_duplo_vinculo_estado" not in cols:
+        return cols, rows
+    keep = [i for i, col in enumerate(cols) if col != "flag_duplo_vinculo_estado"]
+    clean_cols = [cols[i] for i in keep]
+    clean_rows = []
+    for row in rows:
+        if isinstance(row, dict):
+            clean_rows.append({k: v for k, v in row.items() if k != "flag_duplo_vinculo_estado"})
+        else:
+            clean_rows.append([row[i] for i in keep])
+    return clean_cols, clean_rows
 
 
 def _get_query_def(query_id: str):
@@ -591,7 +606,11 @@ def _servidor_severity_key(s: dict) -> tuple:
         or _num(s.get('total_pago_durante_vinculo')) > 0
         or s.get('flag_socio_inidoneidade')
     )
-    is_yellow = bool(s.get('flag_socio_sancionado') or s.get('flag_bolsa_familia'))
+    is_yellow = bool(
+        s.get('flag_socio_sancionado')
+        or s.get('flag_bolsa_familia')
+        or s.get('flag_duplo_vinculo_federal')
+    )
     severity = 0 if is_red else (1 if is_yellow else 2)
     salary = -_num(s.get('maior_salario'))
     return (severity, salary)
@@ -940,6 +959,7 @@ async def _render_cidade(request: Request, municipio: str):
                 serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
                 if serv_cached:
                     scols, srows = serv_cached
+                    scols, srows = _sanitize_top_servidores_cache(scols, srows)
                     servidores_dicts = [_row_to_dict(scols, r) for r in srows]
         except Exception:
             pass
@@ -1101,6 +1121,7 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
             cols, rows = cached
         else:
             cols, rows = _load_top_servidores(municipio)
+    cols, rows = _sanitize_top_servidores_cache(cols, rows)
     servidores = [_row_to_dict(cols, row) for row in rows]
     servidores.sort(key=_servidor_severity_key)
     response = _render_partial(
@@ -1133,9 +1154,16 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                 prefix = f"{periodo}:" if periodo else ""
                 for row in cur.fetchall():
                     qid, cols, rows_data, count = row
+                    response_cols = cols if isinstance(cols, list) else []
+                    response_rows = rows_data if isinstance(rows_data, list) else []
+                    base_qid_for_shape = qid.split(":", 1)[-1]
+                    if base_qid_for_shape == "TOP_SERVIDORES":
+                        response_cols, response_rows = _sanitize_top_servidores_cache(
+                            response_cols, response_rows,
+                        )
                     entry = {
-                        "columns": cols if isinstance(cols, list) else [],
-                        "rows": rows_data if isinstance(rows_data, list) else [],
+                        "columns": response_cols,
+                        "rows": response_rows,
                         "row_count": count or 0,
                     }
                     if periodo and qid.startswith(prefix):
@@ -1235,6 +1263,7 @@ def _load_servidores_for_kpis(municipio: str, payload: MunicipioPayload, periodo
                 cols, rows = _load_top_servidores(municipio)
             except Exception:
                 pass
+    cols, rows = _sanitize_top_servidores_cache(cols, rows)
     return [_row_to_json_dict(cols, r) for r in rows]
 
 
@@ -1708,6 +1737,54 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                                 r[k] = v.isoformat()
                         vinculos.append(r)
                     result["vinculos"] = vinculos
+
+                cur.execute("""
+                    SELECT sf.id_servidor_portal, sf.descricao_cargo, sf.funcao,
+                           sf.atividade, sf.org_lotacao, sf.org_exercicio, sf.orgsup_exercicio,
+                           sf.uorg_exercicio, sf.uf_exercicio, sf.tipo_vinculo,
+                           sf.situacao_vinculo, sf.regime_juridico,
+                           sf.jornada_trabalho, sf.dt_ingresso_orgao,
+                           sf.dt_ingresso_cargofuncao, sf.dt_inicio_afastamento,
+                           sf.dt_termino_afastamento,
+                           rem.ano AS remuneracao_ano,
+                           rem.mes AS remuneracao_mes,
+                           rem.remuneracao_basica_bruta,
+                           rem.remuneracao_apos_deducoes,
+                           rem.total_verbas_indenizatorias
+                    FROM siape_cadastro sf
+                    LEFT JOIN LATERAL (
+                        SELECT ano, mes, remuneracao_basica_bruta,
+                               remuneracao_apos_deducoes,
+                               total_verbas_indenizatorias
+                        FROM siape_remuneracao sr
+                        WHERE sr.id_servidor_portal = sf.id_servidor_portal
+                        ORDER BY ano DESC NULLS LAST, mes DESC NULLS LAST
+                        LIMIT 1
+                    ) rem ON TRUE
+                    WHERE sf.cpf_digitos = %s
+                      AND UPPER(TRIM(sf.nome)) = %s
+                      AND sf.cpf_digitos IS NOT NULL
+                      AND sf.cpf_digitos != ''
+                      AND sf.cpf_digitos != '000000'
+                    ORDER BY (sf.uf_exercicio = 'PB') DESC,
+                             sf.org_exercicio NULLS LAST,
+                             sf.descricao_cargo NULLS LAST,
+                             sf.id_servidor_portal
+                    LIMIT 20
+                """, (cpf6, nome))
+                sf_cols = [d[0] for d in cur.description]
+                sf_rows = cur.fetchall()
+                if sf_rows:
+                    vinculos_federais = []
+                    for row in sf_rows:
+                        r = _row_to_dict(sf_cols, row)
+                        for k, v in r.items():
+                            if hasattr(v, 'as_tuple'):
+                                r[k] = float(v)
+                            elif hasattr(v, 'isoformat'):
+                                r[k] = v.isoformat()
+                        vinculos_federais.append(r)
+                    result["vinculos_federais"] = vinculos_federais
 
                 # Bolsa Familia: historico COMPLETO de parcelas (todos os
                 # snapshots mensais cumulativos) + agregados estatisticos +

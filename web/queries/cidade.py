@@ -775,7 +775,7 @@ ceaf_expulsos AS (
     FROM ceaf_expulsao
     WHERE LENGTH(cpf_cnpj_norm) = 6
 ),
-empresa_pagamentos AS (
+empresa_pagamentos AS MATERIALIZED (
     SELECT d.cnpj_basico, SUM(d.valor_pago) AS total_pago
     FROM tce_pb_despesa d
     WHERE d.municipio = %(municipio)s AND d.valor_pago > 0
@@ -801,7 +801,7 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
        municipios, maior_salario, cargo,
        qtd_empresas_socio, cnpjs_socio,
        flag_conflito_interesses, flag_multi_empresa,
-       flag_bolsa_familia, flag_duplo_vinculo_estado,
+       flag_bolsa_familia, flag_duplo_vinculo_federal,
        flag_alto_salario_socio,
        risco_score,
        EXISTS(
@@ -837,10 +837,10 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
            JOIN vinculo_datas vd ON vd.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
                AND vd.nome_upper = mv_servidor_pb_risco.nome_upper
            WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim
-       ), 0) AS total_pago_durante_vinculo
-FROM mv_servidor_pb_risco
-WHERE %(municipio)s = ANY(municipios)
-ORDER BY flag_ceaf_expulso DESC, flag_socio_inidoneidade DESC, flag_socio_sancionado DESC, flag_bolsa_familia DESC, risco_score DESC
+        ), 0) AS total_pago_durante_vinculo
+  FROM mv_servidor_pb_risco
+ WHERE %(municipio)s = ANY(municipios)
+ ORDER BY flag_ceaf_expulso DESC, flag_socio_inidoneidade DESC, flag_socio_sancionado DESC, flag_duplo_vinculo_federal DESC, flag_bolsa_familia DESC, risco_score DESC
 LIMIT 200
 """
 
@@ -859,7 +859,7 @@ TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
     "       municipios, _periodo._maior_salario AS maior_salario, cargo,",
     1,
 ).replace(
-    "       flag_bolsa_familia, flag_duplo_vinculo_estado,",
+    "       flag_bolsa_familia, flag_duplo_vinculo_federal,",
     """       EXISTS (
            SELECT 1
            FROM bolsa_familia bf
@@ -867,7 +867,7 @@ TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
              AND UPPER(TRIM(bf.nm_favorecido)) = mv_servidor_pb_risco.nome_upper
              AND bf.mes_competencia >= REPLACE(%(ano_mes_inicio)s, '-', '')
              AND bf.mes_competencia <= REPLACE(%(ano_mes_fim)s, '-', '')
-       ) AS flag_bolsa_familia, flag_duplo_vinculo_estado,""",
+       ) AS flag_bolsa_familia, flag_duplo_vinculo_federal,""",
     1,
 ).replace(
     "WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim",

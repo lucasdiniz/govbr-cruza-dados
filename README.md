@@ -160,6 +160,8 @@ A fase 17 (`etl/15_normalizar.py`) cria colunas indexadas `cpf_digitos` e `cpf_c
 
 Match por **nome normalizado + 6 dígitos centrais** entre fontes distintas (sócio × servidor × Bolsa Família) reduz falsos positivos mesmo com CPFs mascarados. Quando uma fonte tem CPF completo (CEIS, dados.pb pagamento), o cruzamento usa os 11 dígitos diretamente.
 
+O frontend também sinaliza vínculos **municipal + federal** na lista de servidores ao cruzar `tce_pb_servidor` com SIAPE (`siape_cadastro`) por nome normalizado + 6 dígitos centrais do CPF. Esse badge é triagem: acumulação pode ser legal em hipóteses como saúde e magistério.
+
 ### Identificação de fornecedores
 
 Use `cpf_cnpj` completo (14 dígitos) — não `cnpj_basico` (8 dígitos), que sofre colisão com CPFs que coincidem no prefixo. Filtre com `EXISTS (SELECT 1 FROM estabelecimento WHERE cpf_cnpj = ...)` para excluir falsos positivos. Desde PR feat/etl-cnpj-basico-fix, o ETL aplica esse guard preventivamente em `tce_pb_despesa` + 9 tabelas `pb_*`, e a coluna nova `cpf_digitos` (11 dígitos extraídos via DV check matemático módulo 11) viabiliza queries de pessoa física (ex: `/empenho-pf/<cpf>`). Ver [ADR-0007](docs/adr/0007-etl-normalize-fix.md).
