@@ -2480,15 +2480,30 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
     if not numero or not municipio:
         return JSONResponse({})
 
-    # Despesa stores as '000282025' (9 digits), licitacao as '00028/2025'
-    numero_despesa = numero  # keep original for tce_pb_despesa
+    # numero_licitacao chega em 2 formatos dependendo da query de origem
+    # no /cidade/<slug> que produziu a row clicada:
+    #   - tce_pb_licitacao (Q68, Q69, etc): canonical '00028/2025'
+    #   - tce_pb_despesa  (HEATMAP_MES_EMPENHOS, etc): digit-only '000282025'
+    # Normaliza AMBOS sempre: `numero_despesa` digit-only pra queries em
+    # tce_pb_despesa (LICITACAO_EMPENHOS_PAGINATED/COUNT) e `numero`
+    # canonical pra queries em tce_pb_licitacao (metadata + proponentes).
+    # Antes, `numero_despesa = numero` deixava o formato canonical passar
+    # cru pra query de despesas (que compara com '000282025'), retornando
+    # 0 empenhos quando o user clicava em row vinda de Q68/Q69 (#188).
+    import re as _re
+    numero_despesa = _re.sub(r"\D", "", numero)  # always digit-only
+    if not ano and len(numero_despesa) == 9:
+        try:
+            yp = int(numero_despesa[5:])
+            if 2000 <= yp <= 2099:
+                ano = yp
+        except ValueError:
+            pass
     if len(numero) == 9 and numero.isdigit() and '/' not in numero:
         year_part = numero[5:]
         num_part = numero[:5]
         if 2000 <= int(year_part) <= 2099:
             numero = f"{num_part}/{year_part}"
-            if not ano:
-                ano = int(year_part)
     # Match canonico de modalidade — formatos divergem entre tce_pb_licitacao
     # ('Pregao (Lei No 14.133/2021)') e tce_pb_despesa ('Pregao (Lei 14.133/21)').
     # Normalizacao: strip " (...)" suffix + lower + unaccent.
