@@ -5,13 +5,22 @@
        empenhos_total: int. Count total. None/0 = pagina renderiza
            sem footer ate primeiro fetch live (fallback p/ payloads
            cacheados pre-PR de paginacao).
-       empenhos_endpoint: '/api/empresa/empenhos' (default) ou
-           '/api/fornecedor/empenhos'.
-       empenhos_scope: 'global' ou 'municipio' (afeta colunas
-           exibidas — global mostra coluna Municipio).
+       empenhos_endpoint: '/api/empresa/empenhos' (default),
+           '/api/fornecedor/empenhos' ou '/api/licitacao/empenhos'.
+       empenhos_scope: 'global', 'municipio' ou 'licitacao' (afeta
+           colunas exibidas — global mostra Municipio; licitacao
+           mostra Credor sem Modalidade/Licitacao).
        empenhos_cnpj: 14 digitos canonicos (passado pro endpoint
-           via JS no body).
+           via JS no body). Usado quando scope!='licitacao'.
        empenhos_municipio: nome canonico OU None (None = global).
+
+   Scope='licitacao' (pagina /licitacao/<...> + dialog de licitacao):
+       empenhos_lic_numero: numero_licitacao (qualquer formato).
+       empenhos_lic_ano: ano_licitacao (int).
+       empenhos_lic_modalidade: modalidade (formato livre — canonical-
+           match no SQL).
+       empenhos_lic_codigo_ug: codigo_ug (str, opcional).
+       empenhos_cnpj nao usado.
 
    Usa o macro `collapsible` (partials/_collapsible.html) via section_attrs
    pra colocar TODOS os data-attrs no <section> wrapper, que eh onde
@@ -40,6 +49,10 @@
     'data-empenhos-cnpj': empenhos_cnpj or cnpj or '',
     'data-empenhos-municipio': empenhos_municipio or none,
     'data-empenhos-cpf-cnpj': empenhos_cpf_cnpj or none,
+    'data-empenhos-lic-numero': empenhos_lic_numero or none,
+    'data-empenhos-lic-ano': (empenhos_lic_ano|string) if empenhos_lic_ano is defined and empenhos_lic_ano else none,
+    'data-empenhos-lic-modalidade': empenhos_lic_modalidade or none,
+    'data-empenhos-lic-codigo-ug': empenhos_lic_codigo_ug or none,
     'data-empenhos-total': _empenhos_total,
     'data-empenhos-total-known': '1' if _empenhos_total_known else '0',
     'data-empenhos-initial': '1' if empenhos else '0',
@@ -73,8 +86,9 @@
                         <th>Data</th>
                         <th>Numero</th>
                         {% if _show_municipio_col %}<th>Municipio</th>{% endif %}
+                        {% if _empenhos_scope == 'licitacao' %}<th>Credor</th>{% endif %}
                         <th>Elemento de despesa</th>
-                        <th>Modalidade / Licitacao</th>
+                        {% if _empenhos_scope != 'licitacao' %}<th>Modalidade / Licitacao</th>{% endif %}
                         <th class="text-right">Empenhado</th>
                         <th class="text-right">Pago</th>
                     </tr>
@@ -88,7 +102,18 @@
                         {% if _show_municipio_col %}
                         <td data-label="Municipio">{{ e.municipio|clean_text or '—' }}</td>
                         {% endif %}
+                        {% if _empenhos_scope == 'licitacao' %}
+                        {% set _cnpj_raw = (e.cnpj_clean or e.cpf_cnpj or '')|string %}
+                        {% set _cnpj_b = _cnpj_raw[:8] %}
+                        {% set _nome = (e.razao_social or e.nome_credor or '—')|clean_text %}
+                        <td data-label="Credor" class="stack-title">
+                            {% if _cnpj_b and _cnpj_b.isdigit() and _cnpj_raw|length >= 14 %}
+                            <a href="#" class="dialog-link" data-forn-cnpj="{{ _cnpj_b }}" data-forn-cpf-cnpj="{{ _cnpj_raw }}" data-forn-nome="{{ _nome }}" data-forn-nome-credor="{{ (e.nome_credor or '')|clean_text }}">{{ _nome }}</a>
+                            {% else %}{{ _nome }}{% endif %}
+                        </td>
+                        {% endif %}
                         <td data-label="Elemento">{{ e.elemento_despesa|clean_text or '—' }}</td>
+                        {% if _empenhos_scope != 'licitacao' %}
                         <td data-label="Modalidade">
                             {% if sem_lic %}
                                 <span class="badge badge-yellow" title="Empenho sem licitacao identificada">Sem licitacao</span>
@@ -99,6 +124,7 @@
                                 {% endif %}
                             {% endif %}
                         </td>
+                        {% endif %}
                         <td data-label="Empenhado" class="text-right num">{{ e.valor_empenhado|short_brl }}</td>
                         <td data-label="Pago" class="text-right num"><strong>{{ e.valor_pago|short_brl }}</strong></td>
                     </tr>

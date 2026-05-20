@@ -151,36 +151,107 @@ async function openLicitacaoDialog(numeroLicitacao, anoLicitacao, municipio, lab
         html += '</div>';
     }
 
-    // Despesas vinculadas
-    if (data.despesas && data.despesas.length) {
-        html += `<div class="dialog-section"><h4>${dualLabel('Pagamentos desta licitacao','Despesas vinculadas')}</h4>`;
-        const despRows = data.despesas.map(d => {
-            const cnpjRaw = String(d.cpf_cnpj || '').replace(/\D/g, '');
-            const cnpjB = cnpjRaw.slice(0, 8);
-            const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
-            const nome = _esc(d.nome_credor || '-');
-            const nomeCell = isClickable
-                ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${nome}">${nome}</a>`
-                : nome;
-            return `<tr class="clickable-row" data-empenho-id="${d.id}">
-                <td data-label="Credor" class="stack-title">${nomeCell}</td>
-                <td data-label="Data" class="stack-meta">${_fmtDate(d.data_empenho)}</td>
-                <td data-label="Tipo de gasto" class="stack-meta">${_esc(d.elemento_despesa || '-')}</td>
-                <td data-label="Reservado" class="text-right num">${_shortBrl(d.valor_empenhado)}</td>
-                <td data-label="Pago" class="text-right num">${_shortBrl(d.valor_pago)}</td>
-            </tr>`;
-        }).join('');
-        html += `<div class="tbl-wrap"><table class="dialog-table stack-mobile">
-            <thead><tr><th>${dualLabel('Empresa','Credor')}</th><th>Data</th><th>${dualLabel('Tipo de gasto','Elemento')}</th><th class="text-right">${dualLabel('Reservado','Empenhado')}</th><th class="text-right">Pago</th></tr></thead>
-            <tbody>${despRows}</tbody>
-        </table></div>`;
-        if (data.despesas.length >= 50) {
-            html += '<p class="text-sm text-muted">Mostrando as 50 despesas mais recentes.</p>';
+    // Despesas vinculadas. Renderiza como mount do empenhos-controller
+    // (paginado + filtravel — paridade exata com a pagina /licitacao/<...>).
+    // Initial table = data.despesas (top 50 do /api/licitacao/detalhes,
+    // ja PJ-filtered). Paginas 2+ / filtros fetcham /api/licitacao/empenhos.
+    const despTotal = parseInt(data.despesas_total || 0, 10) || 0;
+    if ((data.despesas && data.despesas.length) || despTotal > 0) {
+        html += `<div class="dialog-section" id="lic-empenhos" data-nav-label="Empenhos"><h4>${dualLabel('Pagamentos desta licitacao','Empenhos vinculados')}</h4>`;
+        // Container montado pelo empenhos-controller. Total conhecido
+        // (totalKnown=1) — controller nao faz fetch live ao mount.
+        const totalKnown = (typeof data.despesas_total === 'number') ? '1' : '0';
+        html += `<section
+            class="empenhos-section empenhos-section-dialog"
+            data-empenhos-mount
+            data-empenhos-endpoint="/api/licitacao/empenhos"
+            data-empenhos-scope="licitacao"
+            data-empenhos-lic-numero="${_esc(String(numeroLicitacao || ''))}"
+            data-empenhos-lic-ano="${_esc(String(anoLicitacao || ''))}"
+            data-empenhos-lic-modalidade="${_esc(String(modalidade || ''))}"
+            data-empenhos-lic-codigo-ug="${_esc(String(codigoUg || ''))}"
+            data-empenhos-total="${despTotal || (data.despesas ? data.despesas.length : 0)}"
+            data-empenhos-total-known="${totalKnown}"
+            data-empenhos-initial="${data.despesas && data.despesas.length ? '1' : '0'}">
+            <p class="text-sm text-muted" data-empenhos-summary>
+                ${despTotal > 0 ? despTotal.toLocaleString('pt-BR') + ' empenhos encontrados.' : 'Clique em uma linha para ver os detalhes.'}
+            </p>`;
+        // Filter bar (sub-template inline pra evitar dependencia de Jinja
+        // no dialog que eh montado client-side).
+        html += `<details class="date-filter-bar empenhos-filter-bar">
+            <summary class="date-filter-summary">
+                <span class="date-filter-current" data-empenhos-filter-summary>Periodo: todo o historico</span>
+                <span class="date-filter-action">Filtrar empenhos</span>
+            </summary>
+            <div class="date-filter-panel" role="group" aria-label="Filtros de empenhos">
+                <div class="empenhos-search-row">
+                    <label class="date-field empenhos-search-field"><span>Buscar</span>
+                        <input type="search" data-empenhos-q placeholder="Numero, elemento, historico, credor..." inputmode="search" maxlength="100" autocomplete="off">
+                    </label>
+                </div>
+                <div class="date-filter-inputs">
+                    <label class="date-field"><span>De</span>
+                        <input type="text" data-empenhos-date-inicio inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off">
+                    </label>
+                    <label class="date-field"><span>Ate</span>
+                        <input type="text" data-empenhos-date-fim inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="off">
+                    </label>
+                    <md-filled-button data-empenhos-apply class="date-filter-submit">Aplicar</md-filled-button>
+                    <p class="date-filter-status text-sm text-muted" data-empenhos-status aria-live="polite"></p>
+                </div>
+                <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
+                    <md-filter-chip label="Tudo" data-empenhos-preset="all" selected></md-filter-chip>
+                    <md-filter-chip label="Ano atual" data-empenhos-preset="current-year"></md-filter-chip>
+                    <md-filter-chip label="12 meses" data-empenhos-preset="last-12m"></md-filter-chip>
+                    <md-text-button data-empenhos-clear style="display:none">Limpar filtros</md-text-button>
+                </div>
+            </div>
+        </details>`;
+        // Tabela inicial: data.despesas do payload (se houver). Senao
+        // placeholder pro controller fetch live page 1.
+        if (data.despesas && data.despesas.length) {
+            const despRows = data.despesas.map(d => {
+                const cnpjRaw = String(d.cnpj_clean || d.cpf_cnpj || '').replace(/\D/g, '');
+                const cnpjB = cnpjRaw.slice(0, 8);
+                const isClickable = cnpjB.length === 8 && /^\d{8}$/.test(cnpjB) && cnpjRaw.length >= 14;
+                const nome = _esc(d.razao_social || d.nome_credor || '-');
+                const nomeCell = isClickable
+                    ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${_esc(d.nome_credor || '')}">${nome}</a>`
+                    : nome;
+                return `<tr class="clickable-row" data-empenho-id="${d.id}">
+                    <td data-label="Data">${_fmtDate(d.data_empenho)}</td>
+                    <td data-label="Numero"><code>${_esc(d.numero_empenho || '-')}</code></td>
+                    <td data-label="Credor" class="stack-title">${nomeCell}</td>
+                    <td data-label="Elemento">${_esc(d.elemento_despesa || '-')}</td>
+                    <td data-label="Empenhado" class="text-right num">${_shortBrl(d.valor_empenhado)}</td>
+                    <td data-label="Pago" class="text-right num"><strong>${_shortBrl(d.valor_pago)}</strong></td>
+                </tr>`;
+            }).join('');
+            html += `<div data-empenhos-table><div class="tbl-wrap"><table class="stack-mobile data-table empresa-empenhos-table">
+                <thead><tr><th>Data</th><th>Numero</th><th>Credor</th><th>Elemento de despesa</th><th class="text-right">Empenhado</th><th class="text-right">Pago</th></tr></thead>
+                <tbody>${despRows}</tbody>
+            </table></div></div>`;
+        } else {
+            html += '<div data-empenhos-table><p class="text-sm text-muted empenhos-loading-placeholder">Carregando empenhos...</p></div>';
         }
+        // Pagination footer
+        html += `<nav class="empenhos-pagination" data-empenhos-pagination aria-label="Paginacao de empenhos" hidden>
+            <md-text-button data-empenhos-prev disabled aria-label="Pagina anterior">
+                <md-icon slot="icon">chevron_left</md-icon>Anterior
+            </md-text-button>
+            <span class="empenhos-page-info" data-empenhos-page-info aria-live="polite">Pagina 1</span>
+            <md-text-button data-empenhos-next aria-label="Proxima pagina">
+                Proxima<md-icon slot="icon">chevron_right</md-icon>
+            </md-text-button>
+        </nav>`;
+        html += '</section>';
         html += '</div>';
     }
     body.innerHTML = html;
     _reattachDialogLinks(body);
     _decorateDialogBody(body);
+    if (typeof initEmpenhosControllers === 'function') {
+        initEmpenhosControllers(body);
+    }
 }
 

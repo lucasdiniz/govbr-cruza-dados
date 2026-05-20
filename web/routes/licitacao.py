@@ -37,6 +37,7 @@ from web.config import TIMEOUT_PROFILE, TIMEOUT_PROFILE_WARM
 from web.db import execute_query, get_conn, read_web_cache
 from web.queries.licitacao import (
     LICITACAO_DETAIL,
+    LICITACAO_EMPENHOS_COUNT,
     LICITACAO_EMPENHOS_VINCULADOS,
     LICITACAO_OUTRAS_MESMA_MODALIDADE,
     LICITACAO_OUTRAS_MESMO_ORGAO,
@@ -93,6 +94,13 @@ def _build_mod_num_slug(modalidade: str, numero_licitacao: str) -> str:
     mod = numero_slug(modalidade) or "lic"
     num = numero_slug(numero_licitacao) or "0"
     return f"{mod}-{num}"
+
+
+def _numero_to_despesa_format(numero_licitacao: str) -> str:
+    """Converte numero_licitacao do formato tce_pb_licitacao ('00028/2025')
+    pro formato digit-only de tce_pb_despesa ('000282025').
+    Reuso interno + exposto pra rota /api/licitacao/empenhos."""
+    return re.sub(r"\D", "", numero_licitacao or "")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -188,12 +196,31 @@ def compute_licitacao_dict(
                         f"Licitacao sem proponente PJ qualificado: {numero_licitacao}/{ano}"
                     )
 
-                # 3. Empenhos vinculados (top 50, PJ only)
+                # 3. Empenhos vinculados (top 50, PJ only). Mesma query
+                # paginada usada pelo endpoint /api/licitacao/empenhos com
+                # filtros default (sem q, sem data) — primeira pagina warmed
+                # bate com a page 1 que o controller fetches no mount.
                 cur.execute(LICITACAO_EMPENHOS_VINCULADOS, params)
                 emp_cols = [d[0] for d in cur.description]
                 empenhos = [
                     _convert_row(_row_to_dict(emp_cols, r)) for r in cur.fetchall()
                 ]
+
+                # 3b. Count total de empenhos (PJ-only) — propagado pro
+                # template como `empenhos_total` pra render imediato da
+                # paginacao sem fetch live ao mount (totalKnown=1).
+                # Parametros base + filtros default (sem q/data).
+                _cnt_params = {
+                    **params,
+                    "numero_despesa": _numero_to_despesa_format(numero_licitacao),
+                    "data_inicio": None,
+                    "data_fim": None,
+                    "q": None,
+                    "q_pat": None,
+                }
+                cur.execute(LICITACAO_EMPENHOS_COUNT, _cnt_params)
+                _cnt_row = cur.fetchone()
+                empenhos_total = int(_cnt_row[0]) if _cnt_row else 0
 
                 # 4. Outras licitacoes do mesmo orgao (sidebar)
                 cur.execute(LICITACAO_OUTRAS_MESMO_ORGAO, params)
@@ -258,6 +285,7 @@ def compute_licitacao_dict(
         "detail": detail,
         "proponentes": proponentes,
         "empenhos": empenhos,
+        "empenhos_total": empenhos_total,
         "outras_orgao": outras_orgao,
         "outras_modalidade": outras_modalidade,
         # KPIs derivados

@@ -141,8 +141,115 @@ LICITACAO_EMPENHOS_VINCULADOS = """
                   AND e.natureza_juridica NOT LIKE '1%%'
     JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
                             AND est.cnpj_ordem = '0001'
-    ORDER BY dp.valor_pago DESC NULLS LAST
+    ORDER BY dp.data_empenho DESC NULLS LAST, dp.id DESC
     LIMIT 50
+"""
+
+# ─────────────────────────────────────────────────────────────────────────
+# Empenhos paginados — versao filtravel + paginada da query acima. Mesmas
+# regras de PJ-only + canonical-mod-match + year window. Usada pelo endpoint
+# /api/licitacao/empenhos pra:
+#   - pagina /licitacao/<...> (paginas 2+ e filtros)
+#   - dialog de licitacao aberto via /cidade
+#
+# Parametros (todos via psycopg2 %(...)s):
+#   municipio (str), codigo_ug (str | ''), numero_despesa (str — formato
+#   digit-only do tce_pb_despesa, ex '000282025'), modalidade (str —
+#   formato livre, normalizado via canonical-match), ano (int),
+#   data_inicio (str ISO | None), data_fim (str ISO | None),
+#   q (str | None), q_pat (str ILIKE pattern | None), limit (int),
+#   offset (int).
+#
+# ORDER BY data_empenho DESC pra alinhar com a primeira pagina warmed
+# (compute_licitacao_dict tambem usa data_empenho DESC) — sem flicker
+# quando o controller faz fetch live ao mount.
+LICITACAO_EMPENHOS_PAGINATED = """
+    WITH despesas_pj AS MATERIALIZED (
+        SELECT
+            d.id, d.numero_empenho, d.data_empenho, d.elemento_despesa,
+            d.valor_empenhado, d.valor_pago, d.cpf_cnpj, d.nome_credor,
+            d.cnpj_basico::bpchar(8) AS cnpj_basico
+        FROM tce_pb_despesa d
+        WHERE d.municipio = %(municipio)s
+          AND (%(codigo_ug)s = '' OR d.codigo_ug = %(codigo_ug)s)
+          AND d.numero_licitacao = %(numero_despesa)s
+          AND (
+              %(modalidade)s = '' OR
+              LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                    d.modalidade_licitacao,
+                    '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+                = LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                    %(modalidade)s,
+                    '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+          )
+          AND (%(ano)s = 0 OR
+               EXTRACT(YEAR FROM d.data_empenho) BETWEEN %(ano)s - 1 AND %(ano)s + 5)
+          AND d.valor_pago > 0
+          AND d.cnpj_basico IS NOT NULL
+          AND (%(data_inicio)s IS NULL OR d.data_empenho >= %(data_inicio)s::date)
+          AND (%(data_fim)s IS NULL OR d.data_empenho <= %(data_fim)s::date)
+          AND (
+              %(q)s IS NULL OR (
+                  d.numero_empenho ILIKE %(q_pat)s
+                  OR d.elemento_despesa ILIKE %(q_pat)s
+                  OR COALESCE(d.historico, '') ILIKE %(q_pat)s
+                  OR COALESCE(d.nome_credor, '') ILIKE %(q_pat)s
+              )
+          )
+    )
+    SELECT
+        dp.id, dp.numero_empenho, dp.data_empenho, dp.elemento_despesa,
+        dp.valor_empenhado, dp.valor_pago,
+        dp.cpf_cnpj AS cnpj_clean,
+        COALESCE(NULLIF(e.razao_social, ''), dp.nome_credor) AS razao_social,
+        dp.nome_credor,
+        est.cnpj_completo
+    FROM despesas_pj dp
+    JOIN empresa e ON e.cnpj_basico = dp.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
+                            AND est.cnpj_ordem = '0001'
+    ORDER BY dp.data_empenho DESC NULLS LAST, dp.id DESC
+    LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+LICITACAO_EMPENHOS_COUNT = """
+    WITH despesas_pj AS MATERIALIZED (
+        SELECT d.id, d.cnpj_basico::bpchar(8) AS cnpj_basico
+        FROM tce_pb_despesa d
+        WHERE d.municipio = %(municipio)s
+          AND (%(codigo_ug)s = '' OR d.codigo_ug = %(codigo_ug)s)
+          AND d.numero_licitacao = %(numero_despesa)s
+          AND (
+              %(modalidade)s = '' OR
+              LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                    d.modalidade_licitacao,
+                    '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+                = LOWER(unaccent(BTRIM(REGEXP_REPLACE(
+                    %(modalidade)s,
+                    '\\s*-?\\s*\\([^)]*\\).*$', ''))))
+          )
+          AND (%(ano)s = 0 OR
+               EXTRACT(YEAR FROM d.data_empenho) BETWEEN %(ano)s - 1 AND %(ano)s + 5)
+          AND d.valor_pago > 0
+          AND d.cnpj_basico IS NOT NULL
+          AND (%(data_inicio)s IS NULL OR d.data_empenho >= %(data_inicio)s::date)
+          AND (%(data_fim)s IS NULL OR d.data_empenho <= %(data_fim)s::date)
+          AND (
+              %(q)s IS NULL OR (
+                  d.numero_empenho ILIKE %(q_pat)s
+                  OR d.elemento_despesa ILIKE %(q_pat)s
+                  OR COALESCE(d.historico, '') ILIKE %(q_pat)s
+                  OR COALESCE(d.nome_credor, '') ILIKE %(q_pat)s
+              )
+          )
+    )
+    SELECT COUNT(*)
+    FROM despesas_pj dp
+    JOIN empresa e ON e.cnpj_basico = dp.cnpj_basico
+                  AND e.natureza_juridica NOT LIKE '1%%'
+    JOIN estabelecimento est ON est.cnpj_basico = dp.cnpj_basico
+                            AND est.cnpj_ordem = '0001'
 """
 
 # Outras licitacoes do mesmo orgao no mesmo ano (sidebar/related).
