@@ -126,41 +126,21 @@
     </section>
     {% endif %}
 
-    {% if empenhos %}
-    <section class="empresa-section" id="empenhos">
-        <h2>Empenhos vinculados ({{ empenhos|length }})</h2>
-        <p class="text-sm text-muted">Pagamentos efetuados pelo orgao referentes a esta licitacao. Top 50 por valor pago.</p>
-        <div class="tbl-wrap">
-            <table class="dialog-table stack-mobile">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Empenho</th>
-                        <th>Credor</th>
-                        <th>Elemento</th>
-                        <th class="text-right">Pago</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for e in empenhos %}
-                    <tr{% if e.id %} class="clickable-row" data-empenho-id="{{ e.id }}"{% endif %}>
-                        <td data-label="Data" class="stack-meta">{% if e.data_empenho %}{{ e.data_empenho[8:10] }}/{{ e.data_empenho[5:7] }}/{{ e.data_empenho[0:4] }}{% else %}-{% endif %}</td>
-                        <td data-label="Empenho" class="stack-meta"><code>{{ e.numero_empenho|clean_text or "-" }}</code></td>
-                        <td data-label="Credor" class="stack-title">
-                            {% if e.cnpj_completo %}
-                                <a href="/empresa/{{ e.cnpj_completo }}">{{ e.razao_social|clean_text }}</a>
-                            {% else %}
-                                {{ e.razao_social|clean_text }}
-                            {% endif %}
-                        </td>
-                        <td data-label="Elemento" class="stack-meta">{{ e.elemento_despesa|clean_text or "-" }}</td>
-                        <td data-label="Pago" class="text-right num">{{ e.valor_pago | short_brl }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
+    {% if empenhos or empenhos_total %}
+    {# Empenhos vinculados com paginacao + filtros (data + busca).
+       Mesma infra de /empresa/<cnpj>/<municipio> via empenhos-controller.
+       Filtra por 4-tupla canonica (municipio + codigo_ug + canonical
+       modalidade + numero_licitacao). #}
+    {% with
+       empenhos_endpoint = '/api/licitacao/empenhos',
+       empenhos_scope = 'licitacao',
+       empenhos_lic_numero = numero_licitacao,
+       empenhos_lic_ano = ano,
+       empenhos_lic_modalidade = modalidade,
+       empenhos_lic_codigo_ug = codigo_ug
+    %}
+        {% include "partials/empresa/_empenhos.html" %}
+    {% endwith %}
     {% endif %}
 
     {% if outras_orgao %}

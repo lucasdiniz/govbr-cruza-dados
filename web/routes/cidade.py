@@ -55,6 +55,10 @@ from web.queries.empresa import (
     EMPRESA_SANCOES_CNEP_BY_CNPJ,
     EMPRESA_SOCIOS_BY_BASICO,
 )
+from web.queries.licitacao import (
+    LICITACAO_EMPENHOS_COUNT,
+    LICITACAO_EMPENHOS_PAGINATED,
+)
 from web.queries.registry import CIDADE_QUERIES, get_categories
 from web.kpis.cidade import compute_cidade_kpis
 
@@ -2553,33 +2557,186 @@ async def get_licitacao_detalhes(payload: dict = Body(...)):
                 rows = cur.fetchall()
                 result["proponentes"] = [_convert(_row_to_dict(cols, r)) for r in rows]
 
-                # Despesas vinculadas. Filtra por modalidade canonical + codigo_ug
-                # pra nao misturar empenhos de licitacoes diferentes que
-                # compartilham numero_licitacao no mesmo municipio (ex: Cruz
-                # do Espirito Santo tem 7 licitacoes distintas com '00003/2025',
-                # uma por modalidade x UG).
-                cur.execute(f"""
-                    SELECT id, nome_credor, cpf_cnpj, data_empenho,
-                           elemento_despesa, valor_empenhado, valor_pago
-                    FROM tce_pb_despesa
-                    WHERE numero_licitacao = %s AND municipio = %s
-                      AND valor_pago > 0
-                      AND (%s = '' OR codigo_ug = %s)
-                      AND (%s = '' OR {_CANON_MOD.format(col='modalidade_licitacao')}
-                                    = {_CANON_MOD.format(col='%s')})
-                    ORDER BY data_empenho DESC
-                    LIMIT 50
-                """, (numero_despesa, municipio,
-                      codigo_ug, codigo_ug,
-                      modalidade, modalidade))
+                # Despesas vinculadas. Usa LICITACAO_EMPENHOS_PAGINATED
+                # (mesma SQL do endpoint /api/licitacao/empenhos e da pagina
+                # /licitacao/<...>) — PJ-only via JOIN com empresa+
+                # estabelecimento. Garante paridade exata entre dialog e
+                # pagina (user-facing: mesmas linhas de empenho, mesmo total).
+                _lic_params = {
+                    "municipio": municipio,
+                    "codigo_ug": codigo_ug,
+                    "numero_despesa": numero_despesa,
+                    "modalidade": modalidade,
+                    "ano": int(ano or 0),
+                    "data_inicio": None,
+                    "data_fim": None,
+                    "q": None,
+                    "q_pat": None,
+                    "limit": 50,
+                    "offset": 0,
+                }
+                cur.execute(LICITACAO_EMPENHOS_PAGINATED, _lic_params)
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchall()
                 result["despesas"] = [_convert(_row_to_dict(cols, r)) for r in rows]
+
+                # Total pra render imediato da paginacao no dialog (controller
+                # com totalKnown=1 evita fetch live ao mount).
+                cur.execute(LICITACAO_EMPENHOS_COUNT, _lic_params)
+                _cnt_row = cur.fetchone()
+                result["despesas_total"] = int(_cnt_row[0]) if _cnt_row else 0
 
         return JSONResponse(result, headers={"Cache-Control": "public, max-age=3600"})
     except Exception:
         import logging; logging.exception("licitacao detalhes failed")
         return JSONResponse({})
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# /api/licitacao/empenhos — paginate + filtra empenhos de uma licitacao
+# especifica (4-tupla canonica: municipio + codigo_ug + modalidade + numero).
+# Espelha /api/fornecedor/empenhos: usado pela tabela paginada na pagina
+# /licitacao/<...> e no dialog de licitacao (aberto via /cidade).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+_EMP_LIC_PAGE_SIZE = 50
+_EMP_LIC_TIMEOUT_SEC = 10
+
+
+@router.post("/api/licitacao/empenhos")
+async def get_licitacao_empenhos(payload: dict = Body(...)):
+    """Lista paginada de empenhos vinculados a uma licitacao.
+
+    Body:
+        numero_licitacao (str): formato livre — tce_pb_licitacao
+            ('00028/2025') ou tce_pb_despesa ('000282025'). Normalizado
+            pra digit-only internamente.
+        municipio (str): nome canonico do municipio. Obrigatorio.
+        ano_licitacao (int | str, opcional): se 0/vazio, derivado do
+            numero quando este tem 9 digits.
+        modalidade (str, opcional): formato livre. Canonical-match
+            (lowercase + unaccent + strip suffix). Vazio = nao filtra.
+        codigo_ug (str, opcional): vazio = nao filtra UG.
+        q, data_inicio, data_fim, page: idem outros endpoints de empenhos.
+
+    Returns: {empenhos, total, page, total_pages, page_size}
+    """
+    numero = str(payload.get("numero_licitacao", "") or "").strip()
+    municipio = (payload.get("municipio") or "").strip()
+    if not numero or not municipio:
+        return JSONResponse(
+            {"error": "numero_licitacao e municipio obrigatorios"},
+            status_code=400,
+        )
+
+    # Normaliza numero pro formato de tce_pb_despesa (digit-only) e deriva
+    # ano se nao veio. Mesmo padrao de /api/licitacao/detalhes.
+    import re as _re
+    numero_despesa = _re.sub(r"\D", "", numero)
+    try:
+        ano = int(payload.get("ano_licitacao") or 0)
+    except (TypeError, ValueError):
+        ano = 0
+    if ano == 0 and len(numero_despesa) == 9 and numero_despesa.isdigit():
+        year_part = numero_despesa[5:]
+        try:
+            yp = int(year_part)
+            if 2000 <= yp <= 2099:
+                ano = yp
+        except ValueError:
+            pass
+
+    modalidade = str(payload.get("modalidade", "") or "")
+    codigo_ug = str(payload.get("codigo_ug", "") or "")
+
+    data_inicio = _empforn_parse_iso_date(payload.get("data_inicio"))
+    data_fim = _empforn_parse_iso_date(payload.get("data_fim"))
+    q_clean, q_pat = _empforn_parse_q(payload.get("q"))
+
+    try:
+        page = int(payload.get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    if page < 1:
+        page = 1
+    offset = (page - 1) * _EMP_LIC_PAGE_SIZE
+
+    params = {
+        "municipio": municipio,
+        "codigo_ug": codigo_ug,
+        "numero_despesa": numero_despesa,
+        "modalidade": modalidade,
+        "ano": ano,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "q": q_clean,
+        "q_pat": q_pat,
+        "limit": _EMP_LIC_PAGE_SIZE,
+        "offset": offset,
+    }
+
+    try:
+        from psycopg2.errors import QueryCanceled
+        from web.db import get_conn
+        with get_conn() as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SET statement_timeout = '{_EMP_LIC_TIMEOUT_SEC * 1000}'"
+                )
+                try:
+                    cur.execute(LICITACAO_EMPENHOS_PAGINATED, params)
+                    cols = [d[0] for d in cur.description]
+                    empenhos = []
+                    for row in cur.fetchall():
+                        d = _row_to_dict(cols, row)
+                        for k, v in d.items():
+                            if hasattr(v, "as_tuple"):
+                                d[k] = float(v)
+                            elif hasattr(v, "isoformat"):
+                                d[k] = v.isoformat()
+                        empenhos.append(d)
+
+                    count_params = {k: v for k, v in params.items()
+                                    if k not in ("limit", "offset")}
+                    cur.execute(LICITACAO_EMPENHOS_COUNT, count_params)
+                    cnt = cur.fetchone()
+                    total = int(cnt[0]) if cnt else 0
+                finally:
+                    try:
+                        cur.execute("RESET statement_timeout")
+                    except Exception:
+                        pass
+    except QueryCanceled:
+        return JSONResponse(
+            {
+                "error": "timeout",
+                "message": (
+                    "A busca demorou muito. Use filtros (data ou texto) "
+                    "para refinar."
+                ),
+            },
+            status_code=504,
+        )
+    except Exception:
+        import logging; logging.exception("licitacao empenhos failed")
+        return JSONResponse(
+            {"error": "internal", "message": "Erro ao buscar empenhos."},
+            status_code=500,
+        )
+
+    total_pages = (
+        (total + _EMP_LIC_PAGE_SIZE - 1) // _EMP_LIC_PAGE_SIZE
+        if total > 0 else 0
+    )
+    return {
+        "empenhos": empenhos,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "page_size": _EMP_LIC_PAGE_SIZE,
+    }
 
 
 @router.get("/api/export/{query_id}")

@@ -41,6 +41,14 @@ class EmpenhosController {
         this.cnpj = mount.dataset.empenhosCnpj || '';
         this.cpfCnpj = mount.dataset.empenhosCpfCnpj || '';
         this.municipio = mount.dataset.empenhosMunicipio || '';
+        // Licitacao-specific identifiers (scope='licitacao'). Quando
+        // setados, sao enviados no body junto com o filtro padrao
+        // pra que o endpoint /api/licitacao/empenhos resolva a 4-tupla
+        // canonica (municipio + codigo_ug + modalidade + numero).
+        this.licNumero = mount.dataset.empenhosLicNumero || '';
+        this.licAno = mount.dataset.empenhosLicAno || '';
+        this.licModalidade = mount.dataset.empenhosLicModalidade || '';
+        this.licCodigoUg = mount.dataset.empenhosLicCodigoUg || '';
         this.total = parseInt(mount.dataset.empenhosTotal || '0', 10) || 0;
         this.hasInitial = mount.dataset.empenhosInitial === '1';
         // Flag: total acima eh autoritativo (warmer novo) ou eh um proxy
@@ -325,6 +333,10 @@ class EmpenhosController {
         if (this.cnpj) body.cnpj = this.cnpj;
         if (this.cpfCnpj) body.cpf_cnpj = this.cpfCnpj;
         if (this.municipio) body.municipio = this.municipio;
+        if (this.licNumero) body.numero_licitacao = this.licNumero;
+        if (this.licAno) body.ano_licitacao = this.licAno;
+        if (this.licModalidade) body.modalidade = this.licModalidade;
+        if (this.licCodigoUg) body.codigo_ug = this.licCodigoUg;
         if (this.filters.q) body.q = this.filters.q;
         if (this.filters.dateInicio) body.data_inicio = this.filters.dateInicio;
         if (this.filters.dateFim) body.data_fim = this.filters.dateFim;
@@ -398,21 +410,36 @@ class EmpenhosController {
                 'Nenhum empenho encontrado.</p>';
             return;
         }
+        const isLicitacao = this.scope === 'licitacao';
         const showMun = this.scope === 'global';
-        const rows = empenhos.map((e) => _empRenderRow(e, showMun)).join('');
+        const rows = empenhos
+            .map((e) => isLicitacao
+                ? _empRenderRowLicitacao(e)
+                : _empRenderRow(e, showMun))
+            .join('');
         const munTh = showMun ? '<th>Municipio</th>' : '';
+        const headHtml = isLicitacao
+            ? '<thead><tr>' +
+              '<th>Data</th>' +
+              '<th>Numero</th>' +
+              '<th>Credor</th>' +
+              '<th>Elemento de despesa</th>' +
+              '<th class="text-right">Empenhado</th>' +
+              '<th class="text-right">Pago</th>' +
+              '</tr></thead>'
+            : '<thead><tr>' +
+              '<th>Data</th>' +
+              '<th>Numero</th>' +
+              munTh +
+              '<th>Elemento de despesa</th>' +
+              '<th>Modalidade / Licitacao</th>' +
+              '<th class="text-right">Empenhado</th>' +
+              '<th class="text-right">Pago</th>' +
+              '</tr></thead>';
         this.tableContainer.innerHTML =
             '<div class="tbl-wrap">' +
             '<table class="stack-mobile data-table empresa-empenhos-table">' +
-            '<thead><tr>' +
-            '<th>Data</th>' +
-            '<th>Numero</th>' +
-            munTh +
-            '<th>Elemento de despesa</th>' +
-            '<th>Modalidade / Licitacao</th>' +
-            '<th class="text-right">Empenhado</th>' +
-            '<th class="text-right">Pago</th>' +
-            '</tr></thead>' +
+            headHtml +
             `<tbody>${rows}</tbody>` +
             '</table></div>';
         if (typeof initClickableRows === 'function') {
@@ -453,6 +480,31 @@ function _empEsc(s) {
     return String(s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Renderiza row pra scope='licitacao': sem Municipio (todas mesma mun),
+// sem Modalidade/Licitacao (todas mesma licitacao), com Credor clicavel
+// (abre fornecedor-dialog via dialog-links.js — mesmo padrao do
+// proponentes table no licitacao-dialog).
+function _empRenderRowLicitacao(e) {
+    const cnpjRaw = String(e.cnpj_clean || e.cpf_cnpj || '').replace(/\D/g, '');
+    const cnpjB = cnpjRaw.slice(0, 8);
+    const isClickable = cnpjB.length === 8
+        && /^\d{8}$/.test(cnpjB)
+        && cnpjRaw.length >= 14;
+    const nome = _empEsc(e.razao_social || e.nome_credor || '—');
+    const credorCell = isClickable
+        ? `<a href="#" class="dialog-link" data-forn-cnpj="${cnpjB}" data-forn-cpf-cnpj="${cnpjRaw}" data-forn-nome="${nome}" data-forn-nome-credor="${_empEsc(e.nome_credor || '')}">${nome}</a>`
+        : nome;
+    const empenhoIdAttr = e.id ? ` data-empenho-id="${_empEsc(String(e.id))}"` : '';
+    return `<tr class="clickable-row"${empenhoIdAttr}>
+        <td data-label="Data">${_empFmtDate(e.data_empenho)}</td>
+        <td data-label="Numero"><code>${_empEsc(e.numero_empenho || '—')}</code></td>
+        <td data-label="Credor" class="stack-title">${credorCell}</td>
+        <td data-label="Elemento">${_empEsc(e.elemento_despesa || '—')}</td>
+        <td data-label="Empenhado" class="text-right num">${_empBrl(e.valor_empenhado)}</td>
+        <td data-label="Pago" class="text-right num"><strong>${_empBrl(e.valor_pago)}</strong></td>
+    </tr>`;
 }
 
 function _empFmtDate(iso) {
