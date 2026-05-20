@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS web_cache (
 - **Q##** literal (ex: `Q65`) — variante all-time.
 - **Prefixo temporal** (ex: `ANO:Q65`, `12M:Q65`) — variantes datadas.
 - **Sufixo `__pending`** durante shadow rewarm (ver abaixo).
-- **Keys especiais:** `PERFIL`, `TOP_FORNECEDORES`, `TOP_SERVIDORES`, `HEATMAP`, `KPI_SUMMARY`, `EMPRESA_PERFIL`.
+- **Keys especiais:** `PERFIL`, `TOP_FORNECEDORES`, `TOP_SERVIDORES`, `HEATMAP`, `KPI_SUMMARY`, `EMPRESA_PERFIL`, `MAPA_PB` (mapa coropletico da homepage, `municipio=""`).
 
 ## Warm cycle
 
