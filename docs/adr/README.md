@@ -31,6 +31,7 @@ veja [`docs/architecture.md`](../architecture.md).
 | ADR-0009 | [Cleanup de entries órfãs em `web_cache` pós-MV refresh](0009-orphan-empresa-cache-cleanup.md) | Accepted | 2026-05-17 |
 | ADR-0010 | [Bolsa Família incremental + histórico cumulativo](0010-bolsa-familia-incremental.md) | Accepted | 2026-05-17 |
 | ADR-0011 | [Remover LIMIT 200/500 dos top resultados de cidade](0011-remover-limit-top-tabelas.md) | Proposed | 2026-05-17 |
+| ADR-0013 | [Zero-downtime no web (deploys + VM resize)](0013-zero-downtime-web.md) | Proposed | 2026-05-19 |
 
 ## Convenções
 
