@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import logging
+
+import psycopg2
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from etl.config import DSN
 from web.db import cached_query
 from web.config import CACHE_TTL
 
 router = APIRouter()
+
+log = logging.getLogger(__name__)
 
 MAPA_SQL = """
 SELECT municipio, risco_score, pct_sem_licitacao, pct_irregulares,
@@ -17,6 +24,10 @@ FROM mv_municipio_pb_mapa
 WHERE municipio IS NOT NULL
 """
 
+# query_id usado em web_cache (warm_cache.py escreve, rota le como fallback
+# persistente). municipio = "" porque a query nao eh per-muni.
+MAPA_QID = "MAPA_PB"
+
 # TCE-PB usa nomes antigos; GeoJSON IBGE usa nomes oficiais atuais.
 # Mapa aplicado no endpoint para que o frontend case pelo nome atual.
 MUNICIPIO_ALIASES = {
@@ -24,6 +35,36 @@ MUNICIPIO_ALIASES = {
     "São Vicente do Seridó": "Seridó",
     "Tacima": "Campo de Santana",
 }
+
+
+def _read_mapa_from_web_cache() -> tuple[list[str], list[tuple]] | None:
+    """Le mapa:pb do web_cache (persistente, sobrevive restart do cruza-web).
+
+    Retorna (cols, rows) ou None em miss/erro. Erro nao propaga: rota cai
+    no fallback live SQL.
+    """
+    try:
+        conn = psycopg2.connect(DSN)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT columns, rows FROM web_cache WHERE query_id=%s AND municipio=%s",
+                    (MAPA_QID, ""),
+                )
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("mapa:pb web_cache read failed: %s", exc)
+        return None
+    if not row:
+        return None
+    cols, rows = row
+    if isinstance(cols, str):
+        cols = json.loads(cols)
+    if isinstance(rows, str):
+        rows = json.loads(rows)
+    return cols, rows
 
 
 def _municipio_total_pb() -> int:
@@ -56,12 +97,20 @@ async def mapa_pb_trailing(request: Request):
 
 @router.get("/api/mapa/pb")
 async def api_mapa_pb():
-    cols, rows = cached_query(
-        "mapa:pb",
-        MAPA_SQL,
-        timeout_sec=10,
-        ttl=CACHE_TTL,
-    )
+    # 1) Tenta web_cache persistente (warm_cache popula via warm_mapa_pb).
+    #    Sobrevive restart do cruza-web e blackout temporario da MV
+    #    (ex: durante etl_phase=sql que dropa+recria todas as MVs).
+    cached = _read_mapa_from_web_cache()
+    if cached is not None:
+        cols, rows = cached
+    else:
+        # 2) Miss → live SQL com cache in-memory por TTL (per-worker).
+        cols, rows = cached_query(
+            MAPA_QID,
+            MAPA_SQL,
+            timeout_sec=10,
+            ttl=CACHE_TTL,
+        )
     data = {}
     for r in rows:
         d = dict(zip(cols, r))
