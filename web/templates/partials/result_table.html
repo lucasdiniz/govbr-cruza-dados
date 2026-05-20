@@ -109,8 +109,10 @@
                                 <span class="badge badge-red">Sim</span>
                             {% elif value is sameas false %}
                                 <span class="badge badge-gray">Nao</span>
-                            {% elif value is number and (col.startswith("valor") or col.startswith("total") or col == "capital_social" or col == "maior_salario" or col == "salario") %}
+                            {% elif column_is_monetary(col) and value is not none and value != '' %}
                                 {{ value|short_brl }}
+                            {% elif column_is_date(col) and value is not none and value != '' %}
+                                {{ value|date_br }}
                             {% elif value is number and col.startswith("pct") %}
                                 <span class="{% if value >= 70 %}color-red{% elif value >= 30 %}color-yellow{% else %}color-green{% endif %}">
                                     {{ "{:,.1f}".format(value) }}%
