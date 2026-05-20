@@ -266,6 +266,21 @@ def _empty_top_servidores():
     ], []
 
 
+def _sanitize_top_servidores_cache(cols: list, rows: list) -> tuple[list, list]:
+    """Remove colunas legadas que nao devem mais ser surfaciadas no painel."""
+    if not cols or "flag_duplo_vinculo_estado" not in cols:
+        return cols, rows
+    keep = [i for i, col in enumerate(cols) if col != "flag_duplo_vinculo_estado"]
+    clean_cols = [cols[i] for i in keep]
+    clean_rows = []
+    for row in rows:
+        if isinstance(row, dict):
+            clean_rows.append({k: v for k, v in row.items() if k != "flag_duplo_vinculo_estado"})
+        else:
+            clean_rows.append([row[i] for i in keep])
+    return clean_cols, clean_rows
+
+
 def _get_query_def(query_id: str):
     query_def = CIDADE_QUERIES.get(query_id.upper())
     if query_def is None:
@@ -944,6 +959,7 @@ async def _render_cidade(request: Request, municipio: str):
                 serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
                 if serv_cached:
                     scols, srows = serv_cached
+                    scols, srows = _sanitize_top_servidores_cache(scols, srows)
                     servidores_dicts = [_row_to_dict(scols, r) for r in srows]
         except Exception:
             pass
@@ -1105,6 +1121,7 @@ async def top_servidores(request: Request, payload: MunicipioPayload):
             cols, rows = cached
         else:
             cols, rows = _load_top_servidores(municipio)
+    cols, rows = _sanitize_top_servidores_cache(cols, rows)
     servidores = [_row_to_dict(cols, row) for row in rows]
     servidores.sort(key=_servidor_severity_key)
     response = _render_partial(
@@ -1137,9 +1154,16 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                 prefix = f"{periodo}:" if periodo else ""
                 for row in cur.fetchall():
                     qid, cols, rows_data, count = row
+                    response_cols = cols if isinstance(cols, list) else []
+                    response_rows = rows_data if isinstance(rows_data, list) else []
+                    base_qid_for_shape = qid.split(":", 1)[-1]
+                    if base_qid_for_shape == "TOP_SERVIDORES":
+                        response_cols, response_rows = _sanitize_top_servidores_cache(
+                            response_cols, response_rows,
+                        )
                     entry = {
-                        "columns": cols if isinstance(cols, list) else [],
-                        "rows": rows_data if isinstance(rows_data, list) else [],
+                        "columns": response_cols,
+                        "rows": response_rows,
                         "row_count": count or 0,
                     }
                     if periodo and qid.startswith(prefix):
@@ -1239,6 +1263,7 @@ def _load_servidores_for_kpis(municipio: str, payload: MunicipioPayload, periodo
                 cols, rows = _load_top_servidores(municipio)
             except Exception:
                 pass
+    cols, rows = _sanitize_top_servidores_cache(cols, rows)
     return [_row_to_json_dict(cols, r) for r in rows]
 
 
