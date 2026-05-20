@@ -241,14 +241,22 @@ COLUMN_META: dict[str, dict[str, Any]] = {
     "capital_social":       {"citizen": "Capital social",      "auditor": "Capital Social"},
     "maior_salario":        {"citizen": "Maior salario",       "auditor": "Maior Salario"},
     "salario":              {"citizen": "Salario",             "auditor": "Salario"},
+    # Monetarios sem prefixo valor_/total_ — usados em queries Q67/Q69/Q77/Q61/Q86.
+    "divida_pgfn":          {"citizen": "Divida na PGFN",      "auditor": "Divida PGFN"},
+    "maior_valor":          {"citizen": "Maior valor",         "auditor": "Maior Valor"},
+    "maior_empenho":        {"citizen": "Maior empenho",       "auditor": "Maior Empenho"},
+    "diferenca":            {"citizen": "Diferenca",           "auditor": "Diferenca"},
+    "empenhado_dezembro":   {"citizen": "Reservado em dezembro", "auditor": "Empenhado Dezembro"},
 
     # Contadores e percentuais
     "qtd_empenhos":         {"citizen": "Qtd pagamentos",      "auditor": "Qtd Empenhos", "auditor_only": True},
     "qtd_contratos":        {"citizen": "Qtd contratos",       "auditor": "Qtd Contratos"},
     "qtd_empresas_socio":   {"citizen": "Empresas onde e socio", "auditor": "Qtd Empresas Socio"},
+    "qtd_vencedores":       {"citizen": "Qtd vencedores",      "auditor": "Qtd Vencedores"},
     "pct_sem_licitacao":    {"citizen": "% sem concorrencia",  "auditor": "Pct Sem Licitacao"},
     "pct_dezembro":         {"citizen": "% em dezembro",       "auditor": "Pct Dezembro"},
     "pct_proponente_unico": {"citizen": "% com um so proponente", "auditor": "Pct Proponente Unico"},
+    "pct_nao_pago":         {"citizen": "% nao pago",          "auditor": "Pct Nao Pago"},
 
     # Classificacoes / descritores
     "modalidade":           {"citizen": "Tipo de licitacao",   "auditor": "Modalidade"},
@@ -268,6 +276,9 @@ COLUMN_META: dict[str, dict[str, Any]] = {
     "dt_inicio_sancao":     {"citizen": "Inicio da punicao",   "auditor": "Dt Inicio Sancao"},
     "dt_final_sancao":      {"citizen": "Fim da punicao",      "auditor": "Dt Final Sancao"},
     "data_abertura":        {"citizen": "Abertura",            "auditor": "Data Abertura"},
+    "data_homologacao":     {"citizen": "Homologada em",       "auditor": "Data Homologacao"},
+    "primeiro_empenho_no_filtro": {"citizen": "1o pagamento",  "auditor": "Primeiro Empenho No Filtro"},
+    "ultimo_empenho_no_filtro":   {"citizen": "Ultimo pagamento", "auditor": "Ultimo Empenho No Filtro"},
     "ano":                  {"citizen": "Ano",                 "auditor": "Ano"},
     "mes":                  {"citizen": "Mes",                 "auditor": "Mes"},
 
@@ -296,9 +307,50 @@ def column_is_auditor_only(col: str) -> bool:
     return bool(COLUMN_META.get(col, {}).get("auditor_only"))
 
 
+# ── Heuristicas de tipo para formatacao em result_table.html ─────────
+# Colunas monetarias sem prefixo `valor_`/`total_` que precisam de
+# short_brl (Q67 PGFN, Q69 todas licitacoes, Q77 fracionamento, Q61
+# divergencia empenhado/pago, Q86 sazonalidade dezembro, cruzamento PNCP).
+# Detectado por nome ao inves do tipo Python: valores cacheados em
+# web_cache vem como string (json.dumps default=str serializa Decimal
+# como string), entao `value is number` em Jinja2 falha para entries
+# cacheadas. Os filters short_brl/date_br ja aceitam string OU
+# Decimal/date — usar checagem por nome torna a formatacao consistente
+# entre live e cached.
+_MONETARY_COLUMN_NAMES: frozenset[str] = frozenset({
+    "capital_social", "maior_salario", "salario",
+    "divida_pgfn", "maior_valor", "maior_empenho",
+    "diferenca", "empenhado_dezembro",
+})
+
+_DATE_COLUMN_NAMES: frozenset[str] = frozenset({
+    "primeiro_empenho_no_filtro", "ultimo_empenho_no_filtro",
+})
+
+
+def column_is_monetary(col: str) -> bool:
+    """True se a coluna deve ser formatada com short_brl."""
+    if not col:
+        return False
+    if col in _MONETARY_COLUMN_NAMES:
+        return True
+    return col.startswith("valor_") or col.startswith("total_") or col in {"valor", "total"}
+
+
+def column_is_date(col: str) -> bool:
+    """True se a coluna deve ser formatada com date_br (DD/MM/AAAA)."""
+    if not col:
+        return False
+    if col in _DATE_COLUMN_NAMES:
+        return True
+    return col.startswith("data_") or col.startswith("dt_")
+
+
 templates.env.globals["COLUMN_META"] = COLUMN_META
 templates.env.globals["column_label"] = column_label
 templates.env.globals["column_is_auditor_only"] = column_is_auditor_only
+templates.env.globals["column_is_monetary"] = column_is_monetary
+templates.env.globals["column_is_date"] = column_is_date
 
 # Data de refresh dos dados (Fase 8 - badge de credibilidade).
 # Lida de env DATA_REFRESH_DATE (formato YYYY-MM-DD); se ausente, usa mes/ano atuais.
