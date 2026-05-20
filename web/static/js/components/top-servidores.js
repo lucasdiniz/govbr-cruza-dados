@@ -6,8 +6,8 @@ function buildServidoresPanel(data) {
     const sortedRows = [...data.rows].sort((a, b) => {
         const aRed = _val(a, cols, 'flag_ceaf_expulso') || _val(a, cols, 'total_pago_durante_vinculo') > 0 || _val(a, cols, 'flag_socio_inidoneidade');
         const bRed = _val(b, cols, 'flag_ceaf_expulso') || _val(b, cols, 'total_pago_durante_vinculo') > 0 || _val(b, cols, 'flag_socio_inidoneidade');
-        const aYellow = !aRed && (_val(a, cols, 'flag_socio_sancionado') || _val(a, cols, 'flag_bolsa_familia'));
-        const bYellow = !bRed && (_val(b, cols, 'flag_socio_sancionado') || _val(b, cols, 'flag_bolsa_familia'));
+        const aYellow = !aRed && (_val(a, cols, 'flag_socio_sancionado') || _val(a, cols, 'flag_bolsa_familia') || _val(a, cols, 'flag_duplo_vinculo_federal'));
+        const bYellow = !bRed && (_val(b, cols, 'flag_socio_sancionado') || _val(b, cols, 'flag_bolsa_familia') || _val(b, cols, 'flag_duplo_vinculo_federal'));
         const aScore = aRed ? 0 : aYellow ? 1 : 2;
         const bScore = bRed ? 0 : bYellow ? 1 : 2;
         return aScore - bScore;
@@ -27,7 +27,7 @@ function buildServidoresPanel(data) {
         if (totalDuranteVinculo > 0) {
             badges += `<span class="badge badge-red">${dualLabel(`Empresa ligada a ele recebeu ${_shortBrl(totalDuranteVinculo)} enquanto era servidor`, `Empresa recebeu ${_shortBrl(totalDuranteVinculo)} durante vinculo`)}</span>`;
         }
-        if (_val(r, cols, 'flag_duplo_vinculo_estado')) badges += `<span class="badge badge-red">${dualLabel('Recebe salario em dois governos ao mesmo tempo','Tambem recebe pagamentos do governo estadual')}</span>`;
+        if (_val(r, cols, 'flag_duplo_vinculo_federal')) badges += `<span class="badge badge-yellow" title="${dualLabel('Sinal de revisao: a Constituicao permite acumulacao em alguns casos, como saude e magisterio.', 'Sinal de revisao: checar hipoteses permitidas pelo art. 37, XVI.')}">${dualLabel('Tambem aparece no cadastro federal','Vinculo municipal + federal (SIAPE)')}</span>`;
         if (_val(r, cols, 'flag_multi_empresa')) badges += `<span class="badge badge-yellow">${dualLabel(`Socio de ${qtdEmpresas || 'varias'} empresas`, `Socio de ${qtdEmpresas || 'varias'} empresas`)}</span>`;
         if (_val(r, cols, 'flag_bolsa_familia')) badges += `<span class="badge badge-yellow">${dualLabel('Recebe Bolsa Familia sendo servidor','Bolsa Familia durante vinculo')}</span>`;
         if (_val(r, cols, 'flag_alto_salario_socio')) badges += `<span class="badge badge-yellow">${dualLabel('Salario alto + socio de empresa','Salario alto + vinculo societario')}</span>`;
@@ -43,26 +43,27 @@ function buildServidoresPanel(data) {
         const detailAttrs = hasDetail ? ` data-cpf6="${cpf6}" data-nome-upper="${nomeUpper}" data-cnpjs='${JSON.stringify(cnpjs)}' data-nome="${nome}"` : '';
         const totalPagoRow = _val(r, cols, 'total_pago_durante_vinculo') > 0;
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
-        const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia) ? 'clickable-row row-sancao-leve' : 'clickable-row';
+        const vinculoFederal = _val(r, cols, 'flag_duplo_vinculo_federal');
+        const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia || vinculoFederal) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
         return `<tr data-cargo="${_esc(String(cargoRaw).toLowerCase())}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_durante_vinculo') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
-    const hasYellowServ = data.rows.some(r => (_val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade')) || _val(r, data.columns, 'flag_bolsa_familia'));
+    const hasYellowServ = data.rows.some(r => (_val(r, data.columns, 'flag_socio_sancionado') && !_val(r, data.columns, 'flag_socio_inidoneidade')) || _val(r, data.columns, 'flag_bolsa_familia') || _val(r, data.columns, 'flag_duplo_vinculo_federal'));
     let servLegend = '';
     if (hasRedServ || hasYellowServ) {
         let items = [];
         if (hasRedServ) items.push(`<span class="color-legend-item">${_ldot('#ef4444')} Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span>`);
-        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#f59e0b')} Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span>`);
+        if (hasYellowServ) items.push(`<span class="color-legend-item">${_ldot('#f59e0b')} Socio de empresa com Impedimento/CNEP, Bolsa Familia durante vinculo ou vinculo federal SIAPE</span>`);
         servLegend = `<div class="color-legend">${items.join('')}</div>`;
     }
 
     return `<section class="result-block">
         <div class="result-toolbar"><div>
             <h3 class="card-title title-with-action"><span class="title-text">${dualLabel('Servidores com sinais de atencao', 'Servidores com sinais de atencao')}</span> ${mobileDescToggleHtml()}</h3>
-            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, salario em mais de um governo, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos para profissionais de saude.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, duplo vinculo com o estado, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite acumulacao para profissionais de saude.</span></p>
+            <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, cadastro federal, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos em alguns casos, como saude e magisterio.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, vinculo municipal + federal, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite algumas acumulacoes.</span></p>
             ${servLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">

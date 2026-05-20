@@ -59,6 +59,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
 
     // Stats grid
     const vinculos = data.vinculos || [];
+    const vinculosFederais = data.vinculos_federais || [];
     const empresas = data.empresas || [];
     // BF agora pode ser array (formato antigo) ou {parcelas, stats} (novo
     // — apos commit feat(web): /api/servidor/detalhes historico completo).
@@ -87,6 +88,7 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     if (totalPago > 0 && totalPago !== totalDuranteVinc) html += `<div class="stat-cell"><span class="stat-value">${_shortBrl(totalPago)}</span><span class="stat-label">Pago as empresas (total)</span></div>`;
     if (qtdSancionadas > 0) html += `<div class="stat-cell stat-cell--red"><span class="stat-value">${qtdSancionadas}</span><span class="stat-label">${dualLabel('Empresas punidas','Empresas sancionadas')}</span></div>`;
     if (qtdPgfn > 0) html += `<div class="stat-cell stat-cell--orange"><span class="stat-value">${qtdPgfn}</span><span class="stat-label">${dualLabel('Empresas devendo impostos','Empresas c/ divida PGFN')}</span></div>`;
+    if (vinculosFederais.length) html += `<div class="stat-cell stat-cell--yellow"><span class="stat-value">${vinculosFederais.length}</span><span class="stat-label">${dualLabel('Cadastro federal','Vinculos SIAPE')}</span></div>`;
     // Stat BF no overview:
     //   - qtd_meses = quantos meses distintos tem registro de pagamento
     //   - maior_valor = maior parcela individual recebida
@@ -104,26 +106,58 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
     html += '</div>';
 
     // Vinculos como servidor (first)
-    if (vinculos.length) {
+    if (vinculos.length || vinculosFederais.length) {
         html += `<div class="dialog-section"><h4>${dualLabel('Empregos publicos','Vinculos como servidor')}</h4>`;
-        html += vinculos.map(v => {
-            const admissao = _fmtDate(v.data_admissao);
-            const ultimo = _fmtDate(v.ultimo_registro);
-            const salario = v.maior_salario ? _shortBrl(v.maior_salario) : '-';
-            const cargoRaw = v.descricao_cargo || '';
-            const cargoStripped = _stripCodePrefix(cargoRaw) || '-';
-            return `<div class="empresa-card">
-                <div class="empresa-header">
-                    <strong>${_esc(v.municipio)}</strong>
-                    <span class="text-sm text-muted"><span class="citizen-only">${_esc(cargoStripped)}</span><span class="auditor-only">${_esc(cargoRaw || '-')}</span></span>
-                </div>
-                <div class="empresa-details">
-                    <span>${dualLabel('Entrada:','Admissao:')} ${admissao}</span>
-                    <span>${dualLabel('Ultimo registro:','Ultimo registro:')} ${ultimo}</span>
-                    <span>${dualLabel('Maior salario:','Maior salario:')} ${salario}</span>
-                </div>
-            </div>`;
-        }).join('');
+        if (vinculos.length) {
+            html += `<p class="text-xs text-muted" style="margin:.2rem 0 .5rem">${dualLabel('Vinculos municipais informados ao TCE-PB.','Vinculos municipais — TCE-PB')}</p>`;
+            html += vinculos.map(v => {
+                const admissao = _fmtDate(v.data_admissao);
+                const ultimo = _fmtDate(v.ultimo_registro);
+                const salario = v.maior_salario ? _shortBrl(v.maior_salario) : '-';
+                const cargoRaw = v.descricao_cargo || '';
+                const cargoStripped = _stripCodePrefix(cargoRaw) || '-';
+                return `<div class="empresa-card">
+                    <div class="empresa-header">
+                        <strong>${_esc(v.municipio)}</strong>
+                        <span class="text-sm text-muted"><span class="citizen-only">${_esc(cargoStripped)}</span><span class="auditor-only">${_esc(cargoRaw || '-')}</span></span>
+                    </div>
+                    <div class="empresa-details">
+                        <span>${dualLabel('Entrada:','Admissao:')} ${admissao}</span>
+                        <span>${dualLabel('Ultimo registro:','Ultimo registro:')} ${ultimo}</span>
+                        <span>${dualLabel('Maior salario:','Maior salario:')} ${salario}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        if (vinculosFederais.length) {
+            html += `<p class="text-xs text-muted" style="margin:.75rem 0 .5rem">${dualLabel('Tambem aparece no cadastro federal SIAPE. Acumulacao pode ser permitida em alguns casos.','Vinculos federais — SIAPE/Portal da Transparencia')}</p>`;
+            html += vinculosFederais.map(v => {
+                const cargoRaw = v.descricao_cargo || v.funcao || v.atividade || '';
+                const cargoStripped = _stripCodePrefix(cargoRaw) || '-';
+                const org = v.org_exercicio || v.org_lotacao || v.orgsup_exercicio || 'SIAPE';
+                const remun = v.remuneracao_apos_deducoes || v.remuneracao_basica_bruta || 0;
+                const competencia = (v.remuneracao_ano && v.remuneracao_mes)
+                    ? `${String(v.remuneracao_mes).padStart(2, '0')}/${v.remuneracao_ano}`
+                    : '';
+                return `<div class="empresa-card severity-yellow">
+                    <div class="empresa-header">
+                        <strong>${_esc(org)}</strong>
+                        <span class="badge badge-yellow">SIAPE</span>
+                    </div>
+                    <div class="empresa-details">
+                        <span><span class="citizen-only">${_esc(cargoStripped)}</span><span class="auditor-only">${_esc(cargoRaw || '-')}</span></span>
+                        ${v.uorg_exercicio ? `<span>${dualLabel('Unidade:','UORG exercicio:')} ${_esc(v.uorg_exercicio)}</span>` : ''}
+                        ${v.uf_exercicio ? `<span>UF exercicio: ${_esc(v.uf_exercicio)}</span>` : ''}
+                        ${v.tipo_vinculo ? `<span>${dualLabel('Tipo de vinculo:','Tipo vinculo:')} ${_esc(v.tipo_vinculo)}</span>` : ''}
+                        ${v.situacao_vinculo ? `<span>${dualLabel('Situacao:','Situacao vinculo:')} ${_esc(v.situacao_vinculo)}</span>` : ''}
+                        ${v.regime_juridico ? `<span class="auditor-only">Regime: ${_esc(v.regime_juridico)}</span>` : ''}
+                        ${v.jornada_trabalho ? `<span class="auditor-only">Jornada: ${_esc(v.jornada_trabalho)}</span>` : ''}
+                        ${v.dt_ingresso_orgao ? `<span>${dualLabel('Entrada no orgao:','Ingresso orgao:')} ${_fmtDate(v.dt_ingresso_orgao)}</span>` : ''}
+                        ${remun ? `<span>${dualLabel('Remuneracao federal:','Remuneracao SIAPE:')} ${_shortBrl(remun)}${competencia ? ` (${competencia})` : ''}</span>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
         html += '</div>';
     } else {
         const cargoFallback = servidorFallback.cargo ? _stripCodePrefix(servidorFallback.cargo) : '';

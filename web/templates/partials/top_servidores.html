@@ -2,11 +2,11 @@
 <section class="result-block">
     <div class="table-shell js-data-table" data-page-size="10">
         {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_durante_vinculo')|list %}
-        {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list %}
+        {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list or servidores|selectattr('flag_duplo_vinculo_federal')|list %}
         {% if has_red_serv or has_yellow_serv %}
         <div class="table-shell-legend">
             {% if has_red_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Expulso do servi&ccedil;o federal, s&oacute;cio de empresa proibida de contratar, ou empresa recebeu pagamentos durante o v&iacute;nculo</span><span class="auditor-only">Expulso da adm. federal, empresa recebeu empenhos durante vinculo ou socio de empresa com Inidoneidade</span></span>{% endif %}
-            {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa sancionada, ou recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP ou Bolsa Familia durante vinculo</span></span>{% endif %}
+            {% if has_yellow_serv %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">S&oacute;cio de empresa sancionada, recebendo Bolsa Fam&iacute;lia durante v&iacute;nculo, ou tamb&eacute;m no cadastro federal</span><span class="auditor-only">Socio de empresa com Impedimento/CNEP, Bolsa Familia durante vinculo ou vinculo federal SIAPE</span></span>{% endif %}
         </div>
         {% endif %}
         <div class="table-actions">
@@ -42,7 +42,7 @@
                     {% set nome_up = s.nome_upper|default('')|string %}
                     {% set cnpjs_json = s.cnpjs_socio|default([])|tojson %}
                     {% if cpf6 and nome_up %}
-                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_durante_vinculo|default(0)|float > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
+                    <tr class="clickable-row{% if s.flag_ceaf_expulso or (s.total_pago_durante_vinculo|default(0)|float > 0) or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia or s.flag_duplo_vinculo_federal %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'>
                     {% else %}
                     <tr data-cargo="{{ cargo|lower }}">
                     {% endif %}
@@ -55,7 +55,7 @@
                             {% if s.total_pago_durante_vinculo|default(0)|float > 0 %}
                                 <span class="badge badge-red"><span class="citizen-only">Empresa ligada a ele recebeu {{ s.total_pago_durante_vinculo|short_brl }} enquanto era servidor</span><span class="auditor-only">Empresa recebeu {{ s.total_pago_durante_vinculo|short_brl }} durante vinculo</span></span>
                             {% endif %}
-                            {% if s.flag_duplo_vinculo_estado %}<span class="badge badge-red"><span class="citizen-only">Recebe sal&aacute;rio em dois governos ao mesmo tempo</span><span class="auditor-only">Tambem recebe pagamentos do governo estadual</span></span>{% endif %}
+                            {% if s.flag_duplo_vinculo_federal %}<span class="badge badge-yellow" title="Sinal de revis&atilde;o: a Constitui&ccedil;&atilde;o admite acumula&ccedil;&atilde;o em alguns casos, como sa&uacute;de e magist&eacute;rio."><span class="citizen-only">Tamb&eacute;m aparece no cadastro federal</span><span class="auditor-only">Vinculo municipal + federal (SIAPE)</span></span>{% endif %}
                             {% if s.flag_multi_empresa %}
                                 <span class="badge badge-yellow"><span class="citizen-only">S&oacute;cio de {{ s.qtd_empresas_socio|default('v&aacute;rias') }} empresas</span><span class="auditor-only">Socio de {{ s.qtd_empresas_socio|default('varias') }} empresas</span></span>
                             {% endif %}
@@ -63,7 +63,7 @@
                             {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow"><span class="citizen-only">Sal&aacute;rio alto + s&oacute;cio de empresa</span><span class="auditor-only">Salario alto + vinculo societario</span></span>{% endif %}
                             {% if s.flag_socio_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">S&oacute;cio de empresa proibida de contratar com o governo</span><span class="auditor-only">Socio de empresa com Inidoneidade (CEIS)</span></span>
                             {% elif s.flag_socio_sancionado %}<span class="badge badge-orange"><span class="citizen-only">S&oacute;cio de empresa sancionada pelo governo</span><span class="auditor-only">Socio de empresa sancionada (CEIS/CNEP)</span></span>{% endif %}
-                            {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_estado and not s.flag_alto_salario_socio and not s.flag_socio_sancionado and not s.flag_socio_inidoneidade and not (s.total_pago_durante_vinculo|default(0)|float > 0) %}
+                            {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_federal and not s.flag_alto_salario_socio and not s.flag_socio_sancionado and not s.flag_socio_inidoneidade and not (s.total_pago_durante_vinculo|default(0)|float > 0) %}
                                 <span class="text-sm text-muted"><span class="citizen-only">Sem sinais espec&iacute;ficos detectados</span><span class="auditor-only">Sem sinal automatico</span></span>
                             {% endif %}
                         </td>

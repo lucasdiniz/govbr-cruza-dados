@@ -65,7 +65,8 @@
       problemas (san&ccedil;&otilde;es, d&iacute;vidas, situa&ccedil;&atilde;o
       cadastral irregular), conflitos de interesse (servidores que s&atilde;o
       s&oacute;cios de quem recebe da prefeitura), compras sem licita&ccedil;&atilde;o,
-      concentra&ccedil;&atilde;o de gastos em poucos fornecedores e mais.
+      concentra&ccedil;&atilde;o de gastos em poucos fornecedores e v&iacute;nculos
+      municipais + federais no SIAPE.
     </p>
   </section>
 
@@ -77,6 +78,8 @@
       mascarado, CNPJ b&aacute;sico ou completo &mdash; normalizamos antes de
       qualquer compara&ccedil;&atilde;o. Joins s&atilde;o sempre por <em>igualdade</em>
       sobre os d&iacute;gitos normalizados (n&atilde;o por nome aproximado).
+      No badge municipal + federal, cruzamos servidores municipais do TCE-PB
+      com o SIAPE por nome normalizado e 6 d&iacute;gitos centrais do CPF.
     </p>
     <h3>Score de aten&ccedil;&atilde;o (0-100)</h3>
     <p>
@@ -114,6 +117,13 @@
         mascara 6 d&iacute;gitos do meio e o dados.pb.gov.br mascara o
         in&iacute;cio e o fim. Quando cruzamos masked com aberto, indicamos
         explicitamente.
+      </li>
+      <li>
+        <strong>Duplo v&iacute;nculo n&atilde;o &eacute; automaticamente irregular.</strong>
+        A Constitui&ccedil;&atilde;o permite acumula&ccedil;&atilde;o em alguns casos
+        (por exemplo sa&uacute;de e magist&eacute;rio). O badge municipal + federal
+        &eacute; um sinal de triagem para verificar compatibilidade de cargos,
+        jornada e autoriza&ccedil;&otilde;es.
       </li>
       <li>
         <strong>Dados podem ter erro de origem.</strong> Erros de digita&ccedil;&atilde;o

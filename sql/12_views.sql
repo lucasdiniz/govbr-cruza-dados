@@ -610,6 +610,26 @@ JOIN pb_pagamento pp ON pp.cpf_digitos_6 = srv.cpf_digitos_6
     AND LENGTH(pp.cpfcnpj_credor) = 11
 GROUP BY srv.cpf_digitos_6, srv.nome_upper;
 
+-- Step 5b: Duplo vínculo federal (servidor municipal + SIAPE)
+-- Materializar aqui evita calcular o join contra SIAPE em cada request/warm de
+-- TOP_SERVIDORES. Medido localmente: ~0,65s para criar 2.024 matches sobre
+-- 353k servidores base, contra ~105s se calculado inline em Joao Pessoa.
+DROP TABLE IF EXISTS _tmp_siape_federal;
+CREATE TABLE _tmp_siape_federal AS
+SELECT DISTINCT srv.cpf_digitos_6, srv.nome_upper
+FROM mv_servidor_pb_base srv
+JOIN siape_cadastro sf ON sf.cpf_digitos = srv.cpf_digitos_6
+    AND UPPER(TRIM(sf.nome)) = srv.nome_upper
+WHERE srv.cpf_digitos_6 IS NOT NULL
+  AND srv.cpf_digitos_6 != ''
+  AND srv.cpf_digitos_6 != '000000'
+  AND sf.cpf_digitos IS NOT NULL
+  AND sf.cpf_digitos != ''
+  AND sf.cpf_digitos != '000000';
+
+CREATE UNIQUE INDEX idx_tmp_siape_federal_cpf_nome
+    ON _tmp_siape_federal(cpf_digitos_6, nome_upper);
+
 -- Step 6: Montar MV final a partir das tabelas intermediárias
 CREATE MATERIALIZED VIEW mv_servidor_pb_risco AS
 SELECT
@@ -637,6 +657,7 @@ SELECT
     (se.qtd_empresas >= 3) AS flag_multi_empresa,
     (bf.cpf_digitos_6 IS NOT NULL) AS flag_bolsa_familia,
     (de.cpf_digitos_6 IS NOT NULL) AS flag_duplo_vinculo_estado,
+    (sf.cpf_digitos_6 IS NOT NULL) AS flag_duplo_vinculo_federal,
     (srv.maior_salario > 20000 AND se.qtd_empresas > 0) AS flag_alto_salario_socio,
     -- Score (0-100)
     (
@@ -651,13 +672,14 @@ LEFT JOIN _tmp_socio_empresas se ON se.cpf_digitos_6 = srv.cpf_digitos_6 AND se.
 LEFT JOIN _tmp_fornecedor_gov fg ON fg.cpf_digitos_6 = srv.cpf_digitos_6 AND fg.nome_upper = srv.nome_upper
 LEFT JOIN _tmp_conflito conf ON conf.cpf_digitos_6 = srv.cpf_digitos_6 AND conf.nome_upper = srv.nome_upper
 LEFT JOIN _tmp_bf bf ON bf.cpf_digitos_6 = srv.cpf_digitos_6 AND bf.nome_upper = srv.nome_upper
-LEFT JOIN _tmp_duplo de ON de.cpf_digitos_6 = srv.cpf_digitos_6 AND de.nome_upper = srv.nome_upper;
+LEFT JOIN _tmp_duplo de ON de.cpf_digitos_6 = srv.cpf_digitos_6 AND de.nome_upper = srv.nome_upper
+LEFT JOIN _tmp_siape_federal sf ON sf.cpf_digitos_6 = srv.cpf_digitos_6 AND sf.nome_upper = srv.nome_upper;
 
 CREATE UNIQUE INDEX idx_mv_srv_cpf_nome ON mv_servidor_pb_risco(cpf_digitos_6, nome_upper);
 CREATE INDEX idx_mv_srv_conflito ON mv_servidor_pb_risco(cpf_digitos_6) WHERE flag_conflito_interesses;
 CREATE INDEX idx_mv_srv_risco ON mv_servidor_pb_risco(risco_score DESC) WHERE risco_score > 0;
 
--- Nota: _tmp_socio_empresas, _tmp_fornecedor_gov, _tmp_conflito, _tmp_bf, _tmp_duplo
+-- Nota: _tmp_socio_empresas, _tmp_fornecedor_gov, _tmp_conflito, _tmp_bf, _tmp_duplo, _tmp_siape_federal
 -- não podem ser dropadas aqui. O PostgreSQL registra dependência de metadata entre
 -- mv_servidor_pb_risco e essas tabelas (porque a MV foi criada via SELECT sobre elas),
 -- e recusa o DROP com "cannot drop table X because other objects depend on it".
