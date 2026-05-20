@@ -86,9 +86,10 @@ def test_top_servidores_dated_filtra_pagamentos_bf_e_salario_pelo_periodo():
     assert TOP_SERVIDORES_RISCO_DATED.count("d.data_empenho >= %(data_inicio)s") >= 2
     assert TOP_SERVIDORES_RISCO_DATED.count("d.data_empenho <= %(data_fim)s") >= 2
     assert "_periodo._maior_salario AS maior_salario" in TOP_SERVIDORES_RISCO_DATED
-    assert "bf_periodo" in TOP_SERVIDORES_RISCO_DATED
+    assert "FROM bolsa_familia bf" in TOP_SERVIDORES_RISCO_DATED
     assert (
-        "COALESCE(bf_periodo.cpf_digitos_6 IS NOT NULL, FALSE) AS flag_bolsa_familia"
+        "EXISTS (\n           SELECT 1\n           FROM bolsa_familia bf"
         in TOP_SERVIDORES_RISCO_DATED
     )
+    assert "bf_periodo" not in TOP_SERVIDORES_RISCO_DATED
     assert "%(data_inicio)s" not in TOP_SERVIDORES_RISCO

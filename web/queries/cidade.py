@@ -851,21 +851,6 @@ TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
       AND d.data_empenho <= %(data_fim)s""",
     1,
 ).replace(
-    "    GROUP BY cpf_digitos_6, nome_upper\n)\nSELECT",
-    """    GROUP BY cpf_digitos_6, nome_upper
-),
-bf_periodo AS (
-    SELECT DISTINCT cpf_digitos AS cpf_digitos_6,
-           UPPER(TRIM(nm_favorecido)) AS nome_upper
-    FROM bolsa_familia
-    WHERE cpf_digitos IS NOT NULL
-      AND nm_favorecido IS NOT NULL
-      AND mes_competencia >= REPLACE(%(ano_mes_inicio)s, '-', '')
-      AND mes_competencia <= REPLACE(%(ano_mes_fim)s, '-', '')
-)
-SELECT""",
-    1,
-).replace(
     "SELECT cpf_digitos_6, nome_upper, nome_servidor,",
     "SELECT mv_servidor_pb_risco.cpf_digitos_6, mv_servidor_pb_risco.nome_upper, nome_servidor,",
     1,
@@ -875,7 +860,14 @@ SELECT""",
     1,
 ).replace(
     "       flag_bolsa_familia, flag_duplo_vinculo_estado,",
-    "       COALESCE(bf_periodo.cpf_digitos_6 IS NOT NULL, FALSE) AS flag_bolsa_familia, flag_duplo_vinculo_estado,",
+    """       EXISTS (
+           SELECT 1
+           FROM bolsa_familia bf
+           WHERE bf.cpf_digitos = mv_servidor_pb_risco.cpf_digitos_6
+             AND UPPER(TRIM(bf.nm_favorecido)) = mv_servidor_pb_risco.nome_upper
+             AND bf.mes_competencia >= REPLACE(%(ano_mes_inicio)s, '-', '')
+             AND bf.mes_competencia <= REPLACE(%(ano_mes_fim)s, '-', '')
+       ) AS flag_bolsa_familia, flag_duplo_vinculo_estado,""",
     1,
 ).replace(
     "WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim",
@@ -885,9 +877,7 @@ SELECT""",
     1,
 ).replace(
     "WHERE %(municipio)s = ANY(municipios)",
-    """LEFT JOIN bf_periodo ON bf_periodo.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
-            AND bf_periodo.nome_upper = mv_servidor_pb_risco.nome_upper
-JOIN (
+    """JOIN (
       SELECT s.cpf_digitos_6 AS _cpf6,
              s.nome_upper AS _nome,
              MAX(s.valor_vantagem) AS _maior_salario
