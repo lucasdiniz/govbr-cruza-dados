@@ -664,7 +664,7 @@ SELECT
         CASE WHEN conf.cpf_digitos_6 IS NOT NULL THEN 40 ELSE 0 END
       + CASE WHEN srv.maior_salario > 20000 AND se.qtd_empresas > 0 THEN 20 ELSE 0 END
       + CASE WHEN bf.cpf_digitos_6 IS NOT NULL THEN 15 ELSE 0 END
-      + CASE WHEN de.cpf_digitos_6 IS NOT NULL THEN 15 ELSE 0 END
+      + CASE WHEN sf.cpf_digitos_6 IS NOT NULL THEN 15 ELSE 0 END
       + CASE WHEN se.qtd_empresas >= 3 THEN 10 ELSE 0 END
     )::SMALLINT AS risco_score
 FROM mv_servidor_pb_base srv
@@ -1413,7 +1413,7 @@ SELECT
         CASE WHEN srv.flag_conflito_interesses THEN 'CONFLITO_INTERESSES' END,
         CASE WHEN srv.flag_multi_empresa THEN 'MULTI_EMPRESA' END,
         CASE WHEN srv.flag_bolsa_familia THEN 'BOLSA_FAMILIA' END,
-        CASE WHEN srv.flag_duplo_vinculo_estado THEN 'DUPLO_VINCULO' END,
+        CASE WHEN srv.flag_duplo_vinculo_federal THEN 'VINCULO_FEDERAL' END,
         CASE WHEN srv.flag_alto_salario_socio THEN 'ALTO_SALARIO_SOCIO' END
     ], NULL) AS flags,
     srv.maior_salario
