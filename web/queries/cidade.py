@@ -1,9 +1,38 @@
 """SQL parametrizado para modo cidade."""
 
-# Fragmento reusavel: flags que verificam se o empenho DESTE municipio ocorreu
-# dentro do periodo de uma sancao que afeta contratos com este municipio.
-# Usado em TOP_FORNECEDORES* (PB) onde tf.cnpj_basico esta disponivel.
-_FLAGS_SANCAO_DURANTE_PB = """,
+def _flags_sancao_durante_pb(filtro_periodo: str = "") -> str:
+    """Flags de sancao baseadas em pagamento ocorrido durante a sancao.
+
+    `filtro_periodo` deve acrescentar condicoes sobre d2.data_empenho para as
+    variantes datadas, mantendo TOP_FORNECEDORES all-time sem parametros extras.
+    """
+    return f""",
+       EXISTS (
+           SELECT 1
+           FROM tce_pb_despesa d2
+           JOIN (
+               SELECT LEFT(cpf_cnpj_sancionado, 8) AS cb,
+                      dt_inicio_sancao, dt_final_sancao
+               FROM ceis_sancao WHERE LENGTH(cpf_cnpj_sancionado) = 14
+               UNION ALL
+               SELECT LEFT(cpf_cnpj_sancionado, 8),
+                      dt_inicio_sancao, dt_final_sancao
+               FROM cnep_sancao WHERE LENGTH(cpf_cnpj_sancionado) = 14
+           ) san ON san.cb = d2.cnpj_basico
+           WHERE d2.municipio = %(municipio)s
+             AND d2.cnpj_basico = tf.cnpj_basico
+             AND d2.valor_pago > 0
+             AND d2.data_empenho IS NOT NULL
+             AND d2.data_empenho >= san.dt_inicio_sancao
+             AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+{filtro_periodo}
+             -- Guard contra CPF padded (PR #151): so contar empenhos onde
+             -- cpf_cnpj existe como CNPJ legitimo no RFB.
+             AND EXISTS (
+                 SELECT 1 FROM estabelecimento est
+                 WHERE est.cnpj_completo = d2.cpf_cnpj
+             )
+       ) AS flag_recebeu_durante_sancao_qualquer,
        EXISTS (
            SELECT 1
            FROM tce_pb_despesa d2
@@ -11,11 +40,12 @@ _FLAGS_SANCAO_DURANTE_PB = """,
                               AND LENGTH(cs.cpf_cnpj_sancionado) = 14
            WHERE d2.municipio = %(municipio)s
              AND d2.cnpj_basico = tf.cnpj_basico
-             AND d2.valor_empenhado > 0
+             AND d2.valor_pago > 0
              AND d2.data_empenho IS NOT NULL
              AND d2.data_empenho >= cs.dt_inicio_sancao
              AND (cs.dt_final_sancao IS NULL OR d2.data_empenho <= cs.dt_final_sancao)
              AND cs.categoria_sancao ILIKE '%%inidone%%'
+{filtro_periodo}
              -- Guard contra CPF padded (PR #151): so contar empenhos onde
              -- cpf_cnpj existe como CNPJ legitimo no RFB.
              AND EXISTS (
@@ -41,12 +71,14 @@ _FLAGS_SANCAO_DURANTE_PB = """,
            ) san ON san.cb = d2.cnpj_basico
            WHERE d2.municipio = %(municipio)s
              AND d2.cnpj_basico = tf.cnpj_basico
-             AND d2.valor_empenhado > 0
+             AND d2.valor_pago > 0
              AND d2.data_empenho IS NOT NULL
              AND d2.data_empenho >= san.dt_inicio_sancao
              AND (san.dt_final_sancao IS NULL OR d2.data_empenho <= san.dt_final_sancao)
+{filtro_periodo}
              AND (
                  san.categoria_sancao ILIKE '%%inidone%%'
+                 OR san.categoria_sancao ILIKE '%%leni%%'
                  OR san.abrangencia_sancao = 'Todas as Esferas em todos os Poderes'
                  OR (san.esfera_orgao_sancionador = 'MUNICIPAL'
                      AND UPPER(san.orgao_sancionador) LIKE '%%' || UPPER(%(municipio)s) || '%%')
@@ -58,6 +90,13 @@ _FLAGS_SANCAO_DURANTE_PB = """,
                  WHERE est.cnpj_completo = d2.cpf_cnpj
              )
        ) AS flag_recebeu_durante_sancao_aplicavel"""
+
+
+_FLAGS_SANCAO_DURANTE_PB = _flags_sancao_durante_pb()
+_FLAGS_SANCAO_DURANTE_PB_DATED = _flags_sancao_durante_pb(
+    "             AND d2.data_empenho >= %(data_inicio)s\n"
+    "             AND d2.data_empenho <= %(data_fim)s"
+)
 
 PERFIL_MUNICIPIO = """
 SELECT r.municipio,
@@ -806,15 +845,59 @@ LIMIT 200
 """
 
 TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
+    "WHERE d.municipio = %(municipio)s AND d.valor_pago > 0",
+    """WHERE d.municipio = %(municipio)s AND d.valor_pago > 0
+      AND d.data_empenho >= %(data_inicio)s
+      AND d.data_empenho <= %(data_fim)s""",
+    1,
+).replace(
+    "    GROUP BY cpf_digitos_6, nome_upper\n)\nSELECT",
+    """    GROUP BY cpf_digitos_6, nome_upper
+),
+bf_periodo AS (
+    SELECT DISTINCT cpf_digitos AS cpf_digitos_6,
+           UPPER(TRIM(nm_favorecido)) AS nome_upper
+    FROM bolsa_familia
+    WHERE cpf_digitos IS NOT NULL
+      AND nm_favorecido IS NOT NULL
+      AND mes_competencia >= REPLACE(%(ano_mes_inicio)s, '-', '')
+      AND mes_competencia <= REPLACE(%(ano_mes_fim)s, '-', '')
+)
+SELECT""",
+    1,
+).replace(
+    "SELECT cpf_digitos_6, nome_upper, nome_servidor,",
+    "SELECT mv_servidor_pb_risco.cpf_digitos_6, mv_servidor_pb_risco.nome_upper, nome_servidor,",
+    1,
+).replace(
+    "       municipios, maior_salario, cargo,",
+    "       municipios, _periodo._maior_salario AS maior_salario, cargo,",
+    1,
+).replace(
+    "       flag_bolsa_familia, flag_duplo_vinculo_estado,",
+    "       COALESCE(bf_periodo.cpf_digitos_6 IS NOT NULL, FALSE) AS flag_bolsa_familia, flag_duplo_vinculo_estado,",
+    1,
+).replace(
+    "WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim",
+    """WHERE d.data_empenho >= vd.dt_ini AND d.data_empenho <= vd.dt_fim
+              AND d.data_empenho >= %(data_inicio)s
+              AND d.data_empenho <= %(data_fim)s""",
+    1,
+).replace(
     "WHERE %(municipio)s = ANY(municipios)",
-    """JOIN (
-      SELECT DISTINCT s.cpf_digitos_6 AS _cpf6, s.nome_upper AS _nome
+    """LEFT JOIN bf_periodo ON bf_periodo.cpf_digitos_6 = mv_servidor_pb_risco.cpf_digitos_6
+            AND bf_periodo.nome_upper = mv_servidor_pb_risco.nome_upper
+JOIN (
+      SELECT s.cpf_digitos_6 AS _cpf6,
+             s.nome_upper AS _nome,
+             MAX(s.valor_vantagem) AS _maior_salario
       FROM tce_pb_servidor s
       WHERE s.municipio = %(municipio)s
         AND s.ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
         AND s.ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')
+      GROUP BY s.cpf_digitos_6, s.nome_upper
   ) _periodo ON _periodo._cpf6 = mv_servidor_pb_risco.cpf_digitos_6
-            AND _periodo._nome = mv_servidor_pb_risco.nome_upper
+             AND _periodo._nome = mv_servidor_pb_risco.nome_upper
 WHERE %(municipio)s = ANY(municipios)"""
 )
 
@@ -836,6 +919,9 @@ _PB_ANCHOR = ') AS flag_inidoneidade'
 _PB_REPLACEMENT = ') AS flag_inidoneidade' + _FLAGS_SANCAO_DURANTE_PB
 TOP_FORNECEDORES = TOP_FORNECEDORES.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
 TOP_FORNECEDORES_FALLBACK = TOP_FORNECEDORES_FALLBACK.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
-TOP_FORNECEDORES_DATED = TOP_FORNECEDORES_DATED.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
-TOP_FORNECEDORES_FALLBACK_DATED = TOP_FORNECEDORES_FALLBACK_DATED.replace(_PB_ANCHOR, _PB_REPLACEMENT, 1)
-
+TOP_FORNECEDORES_DATED = TOP_FORNECEDORES_DATED.replace(
+    _PB_ANCHOR, ') AS flag_inidoneidade' + _FLAGS_SANCAO_DURANTE_PB_DATED, 1
+)
+TOP_FORNECEDORES_FALLBACK_DATED = TOP_FORNECEDORES_FALLBACK_DATED.replace(
+    _PB_ANCHOR, ') AS flag_inidoneidade' + _FLAGS_SANCAO_DURANTE_PB_DATED, 1
+)
