@@ -1153,32 +1153,49 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
 
 
 def _warm_mapa_pb(verbose: bool = True) -> tuple[int, int]:
-    """Computa /api/mapa/pb e armazena em web_cache (qid=mapa:pb, municipio='').
+    """Computa /api/mapa/pb e armazena em web_cache (qid=MAPA_PB, municipio='').
 
-    Retorna (ok, fail). Falha nao quebra o ciclo — proxima execucao tenta de novo.
+    Honra shadow rewarm: se REWARM_KEYS casa MAPA_PB, escreve em
+    MAPA_PB__pending e _swap_all_pending_shadows() promove para live no fim
+    do ciclo. Caso contrario, escreve direto em live.
+
+    Retorna (ok, fail). Conexao aberta DENTRO do try pra que falha transiente
+    de connect retorne (0, 1) ao inves de propagar e abortar o ciclo inteiro
+    (impedindo o swap das outras shadow keys).
     """
     from web.routes.mapa import MAPA_QID, MAPA_SQL
-    conn = psycopg2.connect(DSN)
-    conn.autocommit = False
+    conn = None
     try:
+        conn = psycopg2.connect(DSN)
+        conn.autocommit = False
         with conn.cursor() as cur:
-            cur.execute(f"SET statement_timeout = '30s'")
+            cur.execute("SET statement_timeout = '30s'")
             cur.execute(f"SET work_mem = '{WARM_WORK_MEM}'")
             cur.execute(MAPA_SQL)
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
-            _upsert(cur, MAPA_QID, "", cols, rows)
+            _upsert(cur, _effective_qid(MAPA_QID), "", cols, rows)
         conn.commit()
+        _record_shadow_result(MAPA_QID, 1, 0)
         if verbose:
-            print(f"[warm] mapa:pb OK ({len(rows)} rows)")
+            print(f"[warm] {_effective_qid(MAPA_QID)} OK ({len(rows)} rows)")
         return 1, 0
     except Exception as exc:
-        conn.rollback()
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        _record_shadow_result(MAPA_QID, 0, 1)
         if verbose:
-            print(f"[warm] mapa:pb FAIL: {exc}")
+            print(f"[warm] {MAPA_QID} FAIL: {exc}")
         return 0, 1
     finally:
-        conn.close()
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────
