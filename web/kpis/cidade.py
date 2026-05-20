@@ -105,9 +105,31 @@ def _build_context(
         has_cnep = bool(f.get("flag_cnep"))
         has_idn = bool(f.get("flag_inidoneidade"))
         has_acordo = bool(f.get("flag_acordo_leniencia"))
-        if has_ceis or has_cnep or has_idn or has_acordo:
+
+        # Para KPIs temporais, conte sancoes apenas quando houve pagamento
+        # durante a vigencia da sancao dentro do periodo filtrado. Caches antigos
+        # nao tinham flag_recebeu_durante_sancao_qualquer; nesse caso mantemos
+        # fallback historico ate o proximo warm_cache recalcular TOP_FORNECEDORES.
+        has_periodo_aplicavel = (
+            "flag_recebeu_durante_sancao_aplicavel" in f
+            or "flag_recebeu_durante_inidoneidade" in f
+        )
+        recebeu_sancao_aplicavel = (
+            bool(f.get("flag_recebeu_durante_sancao_aplicavel"))
+            or bool(f.get("flag_recebeu_durante_inidoneidade"))
+            if has_periodo_aplicavel
+            else (is_municipio or has_idn or has_acordo)
+        )
+        has_periodo_qualquer = "flag_recebeu_durante_sancao_qualquer" in f
+        recebeu_sancao_qualquer = (
+            bool(f.get("flag_recebeu_durante_sancao_qualquer"))
+            if has_periodo_qualquer
+            else ((has_ceis or has_cnep or has_idn or has_acordo) or recebeu_sancao_aplicavel)
+        )
+
+        if recebeu_sancao_qualquer:
             sancao_qualquer += 1
-        if is_municipio or has_idn or has_acordo:
+        if recebeu_sancao_aplicavel:
             sancao_municipio += 1
         # Conta apenas empresas inativas que efetivamente RECEBERAM pagamento
         # APOS a data de mudanca de situacao cadastral (alinhado com Q70).
