@@ -1007,29 +1007,15 @@ jobs:
           sudo bash deploy/setup-umami.sh \
             || echo "WARNING: setup-umami.sh falhou (non-fatal — analytics admin)."
 
-          # Build frontend assets RIGHT BEFORE cruza-web restart pra evitar
-          # a janela onde nginx serve novo dist/ enquanto workers velhos
-          # geram HTML com URLs antigas (404 nos hashed assets).
-          # build-assets.mjs eh atomic (dist.new -> mv -T dist), entao se
-          # falhar, dist/ fica como esta. ASSETS_STRICT=1 (cruza-web.service)
-          # garante que cruza-web crashe loud se manifest sumir.
-          if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-          fi
-          node --version
-          npm --version
-          LOCK_HASH_FILE=".node_modules.lockhash"
-          NEW_HASH=$(sha256sum package-lock.json | awk '{print $1}')
-          OLD_HASH=$(cat "$LOCK_HASH_FILE" 2>/dev/null || echo "")
-          if [ ! -d "node_modules" ] || [ "$NEW_HASH" != "$OLD_HASH" ]; then
-            echo "[build-assets] reinstalando node_modules..."
-            npm ci --no-audit --no-fund
-            echo "$NEW_HASH" > "$LOCK_HASH_FILE"
-          fi
-          node scripts/build-assets.mjs
-          echo "=== Asset build OK ==="
-          ls -la web/static/dist/
+          # NOTA: build de assets (node scripts/build-assets.mjs) acontece no
+          # step "Restart cruza-web (after warm)" abaixo, IMEDIATAMENTE antes
+          # do restart. Motivo: build-assets.mjs faz `mv -T dist.new dist` e
+          # deleta `dist.old`, entao se buildarmos aqui (horas antes do
+          # restart), workers velhos continuam servindo HTML com hashes do
+          # manifest ANTIGO (carregado em memoria em web/main.py:574), mas
+          # nginx ja serve `dist/` NOVO -> 404 nos assets hashed durante toda
+          # a janela do warm cache (pode ser 12-18h). Solucao: build + restart
+          # no mesmo step, sem janela vulneravel.
 
           # Install systemd services. cruza-warm-cache eh oneshot (sem [Install]):
           # apenas o arquivo eh copiado, sem enable/start. Disparado pelo step
@@ -1046,19 +1032,23 @@ jobs:
           # processo OLD continua servindo OLD cache; quando o warm termina o
           # restart faz cruza-web pegar codigo NOVO + cache JA QUENTE.
           #
-          # Mas no PRIMEIRO deploy (cruza-web ainda nao rodando), precisamos
-          # subir alguma coisa pra o resto da pipeline (SEO IndexNow, smoke
-          # tests) ter cruza-web up. `systemctl start` eh no-op se ja ativo.
-          if ! systemctl is-active --quiet cruza-web; then
-            echo "cruza-web nao estava ativo — starting (primeiro deploy?)"
-            sudo systemctl start cruza-web
+          # PRIMEIRO deploy (cruza-web nao existe): tambem fica adiado pro step
+          # de restart, que faz build de assets + systemctl restart no mesmo
+          # passo. Steps intermediarios (ANALYZE, warm cache) so usam Postgres,
+          # nao precisam de cruza-web HTTP up.
+          if systemctl is-active --quiet cruza-web; then
+            echo "cruza-web ja ativo — restart adiado pra apos o warm (codigo OLD + cache OLD ate la)"
           else
-            echo "cruza-web ja ativo — restart adiado pra apos o warm"
+            echo "cruza-web NAO ativo — start tambem adiado pro step pre-restart (build de assets + start no mesmo step)"
           fi
 
           echo "=== Web services deployed (cruza-web restart adiado pra apos warm) ==="
           systemctl is-active nginx && echo "nginx: RUNNING" || echo "nginx: FAILED"
-          systemctl is-active cruza-web && echo "cruza-web: RUNNING (codigo OLD ate restart pos-warm)" || echo "cruza-web: FAILED"
+          if systemctl is-active --quiet cruza-web; then
+            echo "cruza-web: RUNNING (codigo OLD ate restart pos-warm)"
+          else
+            echo "cruza-web: NOT ACTIVE (primeiro deploy — start no step pre-restart)"
+          fi
           systemctl is-active cruza-umami >/dev/null 2>&1 && echo "cruza-umami: RUNNING" || echo "cruza-umami: not active (admin-only, OK)"
           echo "cruza-warm-cache: oneshot instalado (executado sob demanda)"
 
@@ -1435,7 +1425,36 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
-          echo "=== Restart cruza-web (codigo NOVO + cache QUENTE) ==="
+          cd ${{ env.PROJECT_DIR }}
+          echo "=== Build de assets + Restart cruza-web (codigo NOVO + cache QUENTE) ==="
+
+          # Build de assets IMEDIATAMENTE antes do restart pra eliminar a janela
+          # onde nginx serve `dist/` NOVO mas workers velhos geram HTML com
+          # hashes do manifest ANTIGO (carregado em memoria em web/main.py:574,
+          # nao re-lido por request). build-assets.mjs deleta `dist.old` apos
+          # promote (scripts/build-assets.mjs:362-369), entao manter o build
+          # aqui garante que o promote acontece <1s antes do restart -- workers
+          # NOVOS ja sobem com o manifest correspondente ao `dist/` no disco.
+          # ASSETS_STRICT=1 (cruza-web.service) faz crashe loud se manifest
+          # sumir, blindando contra build parcial.
+          if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+          fi
+          node --version
+          npm --version
+          LOCK_HASH_FILE=".node_modules.lockhash"
+          NEW_HASH=$(sha256sum package-lock.json | awk '{print $1}')
+          OLD_HASH=$(cat "$LOCK_HASH_FILE" 2>/dev/null || echo "")
+          if [ ! -d "node_modules" ] || [ "$NEW_HASH" != "$OLD_HASH" ]; then
+            echo "[build-assets] reinstalando node_modules..."
+            npm ci --no-audit --no-fund
+            echo "$NEW_HASH" > "$LOCK_HASH_FILE"
+          fi
+          node scripts/build-assets.mjs
+          echo "=== Asset build OK ==="
+          ls -la web/static/dist/
+
           # restart funciona em servico ativo OU inativo (alias de stop+start).
           sudo systemctl restart cruza-web
           # Aguarda port 8000 responder (workers spawnam em ~3-5s).
