@@ -13,7 +13,12 @@ function initTermTooltips() {
             // Em touch devices, tap alterna
             if (matchMedia('(hover: none)').matches) {
                 e.preventDefault();
+                const willOpen = !term.classList.contains('tip-open');
                 term.classList.toggle('tip-open');
+                if (willOpen && typeof trackEvent === 'function') {
+                    const termo = (term.textContent || '').trim().slice(0, 60);
+                    trackEvent('termo-tooltip-aberto', { termo });
+                }
             }
         }
     });

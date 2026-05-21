@@ -112,7 +112,7 @@ function buildServidoresPanel(data) {
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, cadastro federal, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos em alguns casos, como saude e magisterio.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, vinculo municipal + federal, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite algumas acumulacoes.</span></p>
             ${servLegend}
         </div></div>
-        <div class="table-shell js-data-table" data-page-size="10">
+        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-servidores">
             ${chipsBlock}
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">

@@ -21,6 +21,9 @@ function initExplainers() {
             panel.hidden = !willOpen;
             btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
             btn.classList.toggle('is-open', willOpen);
+            if (willOpen && typeof trackEvent === 'function') {
+                trackEvent('explainer-aberto', { target: targetId });
+            }
         });
     });
 }

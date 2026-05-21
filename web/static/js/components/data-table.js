@@ -122,17 +122,40 @@ function initDataTables(root = document) {
         });
 
         prevBtn?.addEventListener('click', () => {
+            const from = page;
             page = Math.max(1, page - 1);
             renderPage();
+            _trackPageChange(tableShell, from, page, filteredRows.length, pageSize, 'prev');
         });
 
         nextBtn?.addEventListener('click', () => {
             const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+            const from = page;
             page = Math.min(totalPages, page + 1);
             renderPage();
+            _trackPageChange(tableShell, from, page, filteredRows.length, pageSize, 'next');
         });
 
         renderPage();
+    });
+}
+
+// Emite tabela-pagina-mudou no painel Umami. Identifica a tabela via
+// data-table-id (opt-in nos templates principais); cai em 'unknown' pra
+// nao spammar evento sem identificacao util. No-op se page nao mudou
+// (clique em prev na pag 1 ou next na ultima).
+function _trackPageChange(tableShell, from, to, totalRows, pageSize, via) {
+    if (from === to) return;
+    if (typeof trackEvent !== 'function') return;
+    const tabela = tableShell.dataset.tableId || 'unknown';
+    if (tabela === 'unknown') return;
+    const totalPaginas = Math.max(1, Math.ceil(totalRows / pageSize));
+    trackEvent('tabela-pagina-mudou', {
+        tabela,
+        de: from,
+        para: to,
+        total_paginas: totalPaginas,
+        via,
     });
 }
 

@@ -2,6 +2,8 @@
 // Wrapper safe pra window.umami.track. Sem trabalho quando o tracker nao
 // esta carregado (UMAMI_SCRIPT_URL/UMAMI_WEBSITE_ID nao setados ou DNT).
 //
+// >>> CATALOGO COMPLETO: ../../../docs/analytics.md <<<
+//
 // O snippet do Umami injeta `window.umami` quando o script eh carregado e
 // data-website-id eh valido. Em dev/preview sem essas vars, `window.umami`
 // nao existe — o wrapper engole silenciosamente em vez de quebrar a UI
@@ -11,6 +13,11 @@
 //   * Vai aparecer no painel Umami -> Events. Use nomes curtos e estaveis.
 //   * Props extras viram colunas filtraveis. Mantenha valores simples
 //     (strings curtas, numbers); evite payloads grandes.
+//   * Sem prefixo de pagina (ex: 'secao-toggle', nao 'cidade-secao-toggle').
+//
+// IMPORTANTE: ao adicionar/renomear evento, atualizar OS DOIS:
+//   1. Bloco de comentario abaixo (fonte autoritativa pra agentes/devs).
+//   2. docs/analytics.md (formato consultavel + contexto de UX).
 //
 // Eventos atuais (ver tambem README dos componentes):
 //   cidade-buscar         - {via: 'autocomplete'}
@@ -80,6 +87,42 @@
 //                           flushar a sessao do nivel atual marcando
 //                           drilled_to='back-<tipo>' e comecar nova
 //                           sessao com o tipo restaurado.
+//   servidores-filtro-toggle - {flag, action: 'on'|'off', ativos,
+//                            qtd_ativos, visiveis, total}
+//                           Toggle de chip de filtro na tabela de
+//                           servidores (PR #195 / ADR-0011). `ativos`
+//                           eh CSV ordenado de flags ativos pos-toggle.
+//   servidores-filtro-limpar - {ativos_anteriores, qtd_ativos_anteriores,
+//                            visiveis}
+//                           Botao "Limpar" dos chips de filtro.
+//   secao-toggle          - {section, action: 'open'|'close'}
+//                           Toggle generico de <details> colapsavel.
+//                           `section` identifica a secao (ex:
+//                           'bolsa-familia-regras',
+//                           'duplo-vinculo-regras' do servidor-dialog).
+//   tabela-pagina-mudou   - {tabela, de, para, total_paginas, via:
+//                            'prev'|'next'}
+//                           Click em Anterior/Proxima das tabelas
+//                           paginadas. `tabela` vem de data-table-id no
+//                           shell (opt-in por template; tabelas sem
+//                           data-table-id NAO emitem o evento). Permite
+//                           medir profundidade de exploracao por tipo
+//                           de tabela (top-servidores, top-fornecedores,
+//                           result-query).
+//   termo-tooltip-aberto  - {termo} Tap em palavra do glossario inline
+//                           (`.term[data-tip]`) em touch device. Mede
+//                           quais termos confundem leitores.
+//   explainer-aberto      - {target} Click no botao "?" inline
+//                           (`.explainer-btn[data-explainer-target]`).
+//                           `target` eh o id do panel expandido.
+//   back-to-top-clicado   - {scroll_pct} Click no botao flutuante de
+//                           voltar ao topo. `scroll_pct` (0-100) mede
+//                           profundidade real antes do reset.
+//   concentracao-bar-clicado - {rank} Click numa barra do card
+//                           "Concentracao de fornecedores" da pagina
+//                           cidade. `rank` eh 1..N (posicao do top).
+//                           Casa com `dialog-aberto` que dispara em
+//                           seguida.
 window.trackEvent = function trackEvent(name, props) {
     try {
         if (typeof window.umami !== 'undefined' && typeof window.umami.track === 'function') {
