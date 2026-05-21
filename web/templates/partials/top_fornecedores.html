@@ -1,6 +1,6 @@
 {% if fornecedores %}
 <section class="result-block">
-    <div class="table-shell js-data-table" data-page-size="10">
+    <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
         {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
         {% set has_rec_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list %}
         {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}

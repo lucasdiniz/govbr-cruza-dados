@@ -9,7 +9,7 @@
 {% set _alto = servidores|selectattr('flag_alto_salario_socio')|list|length %}
 {% set _federal = servidores|selectattr('flag_duplo_vinculo_federal')|list|length %}
 <section class="result-block">
-    <div class="table-shell js-data-table" data-page-size="10">
+    <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-servidores">
         {% set has_red_serv = servidores|selectattr('flag_ceaf_expulso')|list or servidores|selectattr('flag_socio_inidoneidade')|list or servidores|selectattr('total_pago_durante_vinculo')|list %}
         {% set has_yellow_serv = servidores|selectattr('flag_socio_sancionado')|list or servidores|selectattr('flag_bolsa_familia')|list or servidores|selectattr('flag_duplo_vinculo_federal')|list %}
         {% if has_red_serv or has_yellow_serv %}

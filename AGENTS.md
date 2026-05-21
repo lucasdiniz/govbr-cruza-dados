@@ -40,7 +40,21 @@ the repo should be PT-BR.
    - [`docs/cache.md`](docs/cache.md) — `web_cache` + shadow rewarm
    - [`docs/deploy.md`](docs/deploy.md) — `deploy.yml` inputs and scenarios
    - [`docs/ops.md`](docs/ops.md) — runbooks (rollback, restore, backup)
+   - [`docs/analytics.md`](docs/analytics.md) — Umami event catalog (naming
+     conventions, payloads, where to consult data)
+   - [`docs/privacidade.md`](docs/privacidade.md) — LGPD, cookies, dados
+     coletados (when touching contato form, Umami, or user-facing copy)
+   - [`docs/dicionario_dados_pb.md`](docs/dicionario_dados_pb.md) — PB
+     open data column dictionary (TCE-PB, dados.pb)
+   - [`docs/plano_novas_fontes.md`](docs/plano_novas_fontes.md) — roadmap
+     for new data sources (state of integration per source)
 7. [`docs/adr/`](docs/adr/) — Architecture Decision Records (the institutional memory).
+
+**Documentation discovery rule**: every `docs/*.md` file should be listed
+above. When adding a new doc, also add it here so future agents can find it
+without `glob`/`grep` exploration. The same applies to top-level guides:
+`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`, `AGENTS.md` should be cross-
+referenced from each other.
 
 ## Setup & commands
 

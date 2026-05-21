@@ -25,6 +25,13 @@ function initBackToTop() {
 
     window.addEventListener('scroll', update, { passive: true });
     btn.addEventListener('click', () => {
+        if (typeof trackEvent === 'function') {
+            const doc = document.documentElement;
+            const y = window.scrollY || doc.scrollTop;
+            const total = Math.max(doc.scrollHeight - window.innerHeight, 1);
+            const scroll_pct = Math.max(0, Math.min(100, Math.round((y / total) * 100)));
+            trackEvent('back-to-top-clicado', { scroll_pct });
+        }
         const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         window.scrollTo({ top: 0, behavior: prefersReduced ? 'auto' : 'smooth' });
     });

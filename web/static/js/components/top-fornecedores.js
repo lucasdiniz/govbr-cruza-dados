@@ -60,7 +60,7 @@ function buildFornecedoresPanel(data) {
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
-        <div class="table-shell js-data-table" data-page-size="10">
+        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar fornecedores">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>

@@ -75,6 +75,11 @@ function _wireConcentracaoClicks(scope) {
         const cnpjCompleto = String(row.dataset.cnpjCompleto || '').replace(/\D/g, '');
         const nome = row.dataset.nome || '';
         if (!cnpjBasico || cnpjCompleto.length !== 14) return;
+        if (typeof trackEvent === 'function') {
+            const rows = Array.from(root.querySelectorAll('.chart-bar-row'));
+            const rank = rows.indexOf(row) + 1;
+            trackEvent('concentracao-bar-clicado', { rank });
+        }
         if (typeof openFornecedorDialog === 'function') {
             openFornecedorDialog(cnpjBasico, nome, null, false, nome, cnpjCompleto);
         }

@@ -157,7 +157,7 @@ function buildResultTable(queryId, columns, rows, municipio) {
             <div>${legendHtml}</div>
             <md-outlined-button href="${exportHref}" data-export-link class="data-table-export"><span class="citizen-only">Baixar planilha</span><span class="auditor-only">Exportar CSV</span></md-outlined-button>
         </div>
-        <div class="table-shell js-data-table" data-page-size="10">
+        <div class="table-shell js-data-table" data-page-size="10" data-table-id="result-query">
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar resultados" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="search" enterkeyhint="search">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
