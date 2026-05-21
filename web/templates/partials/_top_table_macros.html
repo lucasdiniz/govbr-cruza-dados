@@ -1,0 +1,92 @@
+{# Macros compartilhados entre top_servidores.html e top_fornecedores.html.
+
+   Extraidos para suportar progressive loading: o template loopa a primeira
+   leva (initial batch) dentro do <tbody> real e o restante dentro de um
+   <script type="text/html" data-rest-rows> (texto inerte, sem custo de DOM).
+   data-table.js hidrata o tail via innerHTML em requestIdleCallback.
+
+   Mantenha a saida do macro IDENTICA ao que existia inline antes do PR de
+   progressive loading — qualquer drift quebra:
+     - filtros (data-flag-* attrs)
+     - clickable rows (data-cpf6, data-fornecedor-cnpj, etc)
+     - chip counts (calculados server-side a partir da lista completa)
+#}
+
+{% macro render_servidor_row(s) %}
+  {%- set cargo = (s.cargo or "-")|clean_text -%}
+  {%- set cpf6 = s.cpf_digitos_6|default('')|string -%}
+  {%- set nome_up = s.nome_upper|default('')|string -%}
+  {%- set cnpjs_json = s.cnpjs_socio|default([])|tojson -%}
+  {%- set _flag_durante = (s.total_pago_durante_vinculo|default(0)|float > 0) -%}
+  {%- set _flag_attrs %}{% if s.flag_ceaf_expulso %} data-flag-ceaf-expulso="1"{% endif %}{% if s.flag_socio_inidoneidade %} data-flag-socio-inidoneidade="1"{% endif %}{% if _flag_durante %} data-flag-durante-vinculo="1"{% endif %}{% if s.flag_bolsa_familia %} data-flag-bolsa-familia="1"{% endif %}{% if s.flag_socio_sancionado %} data-flag-socio-sancionado="1"{% endif %}{% if s.flag_multi_empresa %} data-flag-multi-empresa="1"{% endif %}{% if s.flag_alto_salario_socio %} data-flag-alto-salario-socio="1"{% endif %}{% if s.flag_duplo_vinculo_federal %} data-flag-duplo-vinculo-federal="1"{% endif %}{% endset -%}
+  {% if cpf6 and nome_up %}
+  <tr class="clickable-row{% if s.flag_ceaf_expulso or _flag_durante or s.flag_socio_inidoneidade %} row-sancao{% elif s.flag_socio_sancionado or s.flag_bolsa_familia or s.flag_duplo_vinculo_federal %} row-sancao-leve{% endif %}" data-cargo="{{ cargo|lower }}" data-cpf6="{{ cpf6 }}" data-nome-upper="{{ nome_up }}" data-nome="{{ s.nome_servidor|default(nome_up)|clean_text }}" data-cnpjs='{{ cnpjs_json }}'{{ _flag_attrs }}>
+  {% else %}
+  <tr data-cargo="{{ cargo|lower }}"{{ _flag_attrs }}>
+  {% endif %}
+      <td data-label="Servidor" class="stack-title">{{ s.nome_servidor|clean_text }}</td>
+      <td data-label="CPF" class="auditor-only"><code class="text-sm">***.{{ cpf6[:3] }}.{{ cpf6[3:] }}-**</code></td>
+      <td data-label="Cargo">{{ cargo }}</td>
+      <td data-label="Maior salario" class="text-right num">{{ s.maior_salario|default(0)|short_brl }}</td>
+      <td data-label="Sinais" class="stack-badges">
+          {% if s.flag_ceaf_expulso %}<span class="badge badge-red"><span class="citizen-only">Expulso do servi&ccedil;o p&uacute;blico federal</span><span class="auditor-only">Expulso da Adm. Federal (CEAF)</span></span>{% endif %}
+          {% if s.total_pago_durante_vinculo|default(0)|float > 0 %}
+              <span class="badge badge-red"><span class="citizen-only">Empresa ligada a ele recebeu {{ s.total_pago_durante_vinculo|short_brl }} enquanto era servidor</span><span class="auditor-only">Empresa recebeu {{ s.total_pago_durante_vinculo|short_brl }} durante vinculo</span></span>
+          {% endif %}
+          {% if s.flag_duplo_vinculo_federal %}<span class="badge badge-yellow" title="Sinal de revis&atilde;o: a Constitui&ccedil;&atilde;o admite acumula&ccedil;&atilde;o em alguns casos, como sa&uacute;de e magist&eacute;rio."><span class="citizen-only">Tamb&eacute;m aparece no cadastro federal</span><span class="auditor-only">Vinculo municipal + federal (SIAPE)</span></span>{% endif %}
+          {% if s.flag_multi_empresa %}
+              <span class="badge badge-yellow"><span class="citizen-only">S&oacute;cio de {{ s.qtd_empresas_socio|default('v&aacute;rias') }} empresas</span><span class="auditor-only">Socio de {{ s.qtd_empresas_socio|default('varias') }} empresas</span></span>
+          {% endif %}
+          {% if s.flag_bolsa_familia %}<span class="badge badge-yellow"><span class="citizen-only">Recebe Bolsa Fam&iacute;lia sendo servidor</span><span class="auditor-only">Bolsa Familia durante vinculo</span></span>{% endif %}
+          {% if s.flag_alto_salario_socio %}<span class="badge badge-yellow"><span class="citizen-only">Sal&aacute;rio alto + s&oacute;cio de empresa</span><span class="auditor-only">Salario alto + vinculo societario</span></span>{% endif %}
+          {% if s.flag_socio_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">S&oacute;cio de empresa proibida de contratar com o governo</span><span class="auditor-only">Socio de empresa com Inidoneidade (CEIS)</span></span>
+          {% elif s.flag_socio_sancionado %}<span class="badge badge-orange"><span class="citizen-only">S&oacute;cio de empresa sancionada pelo governo</span><span class="auditor-only">Socio de empresa sancionada (CEIS/CNEP)</span></span>{% endif %}
+          {% if not s.flag_ceaf_expulso and not s.flag_conflito_interesses and not s.flag_multi_empresa and not s.flag_bolsa_familia and not s.flag_duplo_vinculo_federal and not s.flag_alto_salario_socio and not s.flag_socio_sancionado and not s.flag_socio_inidoneidade and not (s.total_pago_durante_vinculo|default(0)|float > 0) %}
+              <span class="text-sm text-muted"><span class="citizen-only">Sem sinais espec&iacute;ficos detectados</span><span class="auditor-only">Sem sinal automatico</span></span>
+          {% endif %}
+      </td>
+  </tr>
+{% endmacro %}
+
+{% macro render_fornecedor_row(f) %}
+  {%- if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
+  {%- elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
+  {%- else %}{% set row_extra = '' %}{% endif -%}
+  {%- set _flag_attrs %}{% if f.flag_inidoneidade %} data-flag-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_inidoneidade %} data-flag-recebeu-durante-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_sancao_aplicavel %} data-flag-recebeu-durante-sancao-aplicavel="1"{% endif %}{% if f.flag_ceis %} data-flag-ceis="1"{% endif %}{% if f.flag_cnep %} data-flag-cnep="1"{% endif %}{% if f.flag_acordo_leniencia %} data-flag-acordo-leniencia="1"{% endif %}{% if f.flag_inativa_irregular %} data-flag-inativa-irregular="1"{% endif %}{% if f.flag_pgfn %} data-flag-pgfn="1"{% endif %}{% if f.flag_inativa %} data-flag-inativa="1"{% endif %}{% endset -%}
+  {%- set cnpj_completo_digits = f.cnpj_completo|default('', true)|string|replace('.', '')|replace('/', '')|replace('-', '') -%}
+  {% if cnpj_completo_digits|length == 14 %}
+  <tr class="clickable-row{{ row_extra }}"
+      data-fornecedor-cnpj="{{ f.cnpj_basico }}"
+      data-fornecedor-cpf-cnpj="{{ cnpj_completo_digits }}"
+      data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
+      data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}"
+      data-empresa-url="/empresa/{{ cnpj_completo_digits }}"{{ _flag_attrs }}>
+  {% else %}
+  <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true"{{ _flag_attrs }}>
+  {% endif %}
+      <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}{% if cnpj_completo_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}</td>
+      <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
+      <td data-label="Recebido" class="text-right num">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
+      <td data-label="Empenhos" class="text-right auditor-only num">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
+      <td data-label="Sinais" class="stack-badges">
+          {% set scope_suffix = '' %}
+          {% if f.abrangencia_sancao_info %}
+              {% set info_clean = f.abrangencia_sancao_info|replace('!', '') %}
+              {% if 'Nacional' in info_clean %}
+                  {% set scope_suffix = ' (Nacional)' %}
+              {% elif '(' in info_clean %}
+                  {% set scope_suffix = ' ' + info_clean[info_clean.index('('):] %}
+              {% endif %}
+          {% endif %}
+          {% if f.flag_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">Proibida de contratar (nacional)</span><span class="auditor-only">Inidoneidade - CEIS (Nacional)</span></span>
+          {% elif f.flag_ceis %}<span class="badge badge-orange" title="CEIS - Cadastro de Empresas Inidoneas e Suspensas. Motivos variam: fraude em licitacao, descumprimento contratual, documentacao irregular, etc."><span class="citizen-only">Impedida de contratar (CEIS){{ scope_suffix|truncate(55, True) }}</span><span class="auditor-only">Impedimento - CEIS{{ scope_suffix|truncate(55, True) }}</span></span>{% endif %}
+          {% if f.flag_cnep %}<span class="badge badge-orange" title="CNEP - Cadastro Nacional de Empresas Punidas pela Lei Anticorrupcao (Lei 12.846/2013)."><span class="citizen-only">Punida (Lei Anticorrup&ccedil;&atilde;o){{ scope_suffix|truncate(55, True) }}</span><span class="auditor-only">CNEP{{ scope_suffix|truncate(55, True) }}</span></span>{% endif %}
+          {% if f.flag_acordo_leniencia %}<span class="badge badge-blue"><span class="citizen-only">Acordo de leni&ecirc;ncia</span><span class="auditor-only">Acordo de Leniencia</span></span>{% endif %}
+          {% if f.flag_pgfn %}<span class="badge badge-yellow"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida ativa</span></span>{% endif %}
+          {% if f.flag_inativa %}<span class="badge badge-gray"><span class="citizen-only">Empresa inativa na Receita</span><span class="auditor-only">Cadastro inativo</span></span>{% endif %}
+          {% if not f.flag_inidoneidade and not f.flag_ceis and not f.flag_cnep and not f.flag_acordo_leniencia and not f.flag_pgfn and not f.flag_inativa %}
+              <span class="text-sm text-muted"><span class="citizen-only">Sem problemas detectados</span><span class="auditor-only">Sem sinal automatico</span></span>
+          {% endif %}
+      </td>
+  </tr>
+{% endmacro %}

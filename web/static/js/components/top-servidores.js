@@ -13,7 +13,7 @@ function buildServidoresPanel(data) {
         return aScore - bScore;
     });
 
-    const bodyRows = sortedRows.map(r => {
+    const rowHtmlList = sortedRows.map(r => {
         const nome = _esc(_val(r, cols, 'nome_servidor'));
         const cargoRaw = _val(r, cols, 'cargo') || '-';
         const cargo = _esc(cargoRaw);
@@ -59,7 +59,22 @@ function buildServidoresPanel(data) {
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia || vinculoFederal) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
         return `<tr data-cargo="${_esc(String(cargoRaw).toLowerCase())}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs} ${flagAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
-    }).join('');
+    });
+    const _PROGRESSIVE_THRESHOLD = 100;
+    const _INITIAL_N = 50;
+    const _hasProgressive = rowHtmlList.length > _PROGRESSIVE_THRESHOLD;
+    const _initialN = _hasProgressive ? _INITIAL_N : rowHtmlList.length;
+    // Split: initial vai pro <tbody> real; tail entra em <script type="text/html">
+    // data-rest-rows. data-table.js hidrata via requestIdleCallback (mesmo
+    // padrao do SSR — ver web/templates/partials/top_servidores.html).
+    const initialRowsHtml = rowHtmlList.slice(0, _initialN).join('');
+    const tailRowsHtml = _hasProgressive ? rowHtmlList.slice(_initialN).join('') : '';
+    const tailScript = _hasProgressive
+        ? `<script type="text/html" data-rest-rows>${tailRowsHtml}</script>`
+        : '';
+    const _shellAttrs = _hasProgressive
+        ? ` data-progressive-total="${rowHtmlList.length}" data-progressive-initial="${_initialN}"`
+        : '';
 
     // Contagens por flag para os chips
     const _count = (flag, pred) => data.rows.filter(r => pred(r)).length;
@@ -112,7 +127,7 @@ function buildServidoresPanel(data) {
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Servidores com pelo menos um sinal incomum nos cruzamentos automatizados: socio de empresa, cadastro federal, beneficio social irregular, ou acumulacao atipica. A Constituicao permite dois vinculos em alguns casos, como saude e magisterio.</span><span class="auditor-only">Servidores que apresentam ao menos um sinal de risco nos cruzamentos automaticos: vinculo societario com fornecedores, vinculo municipal + federal, recebimento de beneficio social ou acumulacao atipica. A Constituicao (art. 37, XVI) admite algumas acumulacoes.</span></p>
             ${servLegend}
         </div></div>
-        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-servidores">
+        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-servidores"${_shellAttrs}>
             ${chipsBlock}
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">
@@ -120,8 +135,9 @@ function buildServidoresPanel(data) {
             </div>
             <div class="tbl-wrap"><table class="stack-mobile">
                 <thead><tr><th>Servidor</th><th class="auditor-only">CPF</th><th>Cargo</th><th class="text-right">${dualLabel('Maior salario','Maior Salario')}</th><th>${dualLabel('Sinais','Sinais de Atencao')}</th></tr></thead>
-                <tbody>${bodyRows}</tbody>
+                <tbody>${initialRowsHtml}</tbody>
             </table></div>
+            ${tailScript}
             <div class="table-pagination">
                 <md-text-button data-page-prev>Anterior</md-text-button>
                 <p class="text-sm text-muted" data-page-label></p>

@@ -1,7 +1,7 @@
 // === components/top-fornecedores.js ===
 function buildFornecedoresPanel(data) {
     const cols = data.columns;
-    const bodyRows = data.rows.map(r => {
+    const rowHtmlList = data.rows.map(r => {
         const cnpjBasico = _esc(_val(r, cols, 'cnpj_basico') || '');
         const cnpjCompleto = _val(r, cols, 'cnpj_completo') || '';
         const cnpjFmt = _formatCnpj(cnpjBasico, cnpjCompleto);
@@ -50,7 +50,22 @@ function buildFornecedoresPanel(data) {
             return `<tr class="row-detail-unavailable ${rowSeverityClass}" aria-disabled="true" ${flagAttrs}><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
         }
         return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}" ${flagAttrs}><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
-    }).join('');
+    });
+    const _PROGRESSIVE_THRESHOLD = 100;
+    const _INITIAL_N = 50;
+    const _hasProgressive = rowHtmlList.length > _PROGRESSIVE_THRESHOLD;
+    const _initialN = _hasProgressive ? _INITIAL_N : rowHtmlList.length;
+    // Split: initial vai pro <tbody>; tail vai pra <script type="text/html"> data-rest-rows
+    // (data-table.js hidrata via requestIdleCallback). Mesmo padrao do SSR
+    // — ver web/templates/partials/top_fornecedores.html.
+    const initialRowsHtml = rowHtmlList.slice(0, _initialN).join('');
+    const tailRowsHtml = _hasProgressive ? rowHtmlList.slice(_initialN).join('') : '';
+    const tailScript = _hasProgressive
+        ? `<script type="text/html" data-rest-rows>${tailRowsHtml}</script>`
+        : '';
+    const _shellAttrs = _hasProgressive
+        ? ` data-progressive-total="${rowHtmlList.length}" data-progressive-initial="${_initialN}"`
+        : '';
 
     // Contagens por flag para chips
     const _count = (pred) => data.rows.filter(r => pred(r)).length;
@@ -107,7 +122,7 @@ function buildFornecedoresPanel(data) {
             <p class="text-muted text-sm mobile-collapsible-desc"><span class="citizen-only">Concentracao dos pagamentos e sinais de atencao de cada empresa. Toque em uma empresa para detalhes.</span><span class="auditor-only">Concentracao de pagamentos e sinais automaticos de cada fornecedor. Clique em um fornecedor para ver detalhes.</span></p>
             ${fornLegend}
         </div></div>
-        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
+        <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores"${_shellAttrs}>
             ${chipsBlock}
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar fornecedores">
@@ -121,8 +136,9 @@ function buildFornecedoresPanel(data) {
                     <th class="text-right auditor-only">Empenhos</th>
                     <th><span class="citizen-only">Sinais</span><span class="auditor-only">Sinais de Atencao</span></th>
                 </tr></thead>
-                <tbody>${bodyRows}</tbody>
+                <tbody>${initialRowsHtml}</tbody>
             </table></div>
+            ${tailScript}
             <div class="table-pagination">
                 <md-text-button data-page-prev>Anterior</md-text-button>
                 <p class="text-sm text-muted" data-page-label></p>

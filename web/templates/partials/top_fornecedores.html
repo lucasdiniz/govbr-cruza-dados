@@ -1,4 +1,11 @@
 {% if fornecedores %}
+{% import 'partials/_top_table_macros.html' as _tt %}
+{# Threshold de progressive loading: abaixo de 100 rows, full SSR.
+   Acima, primeiras 50 rows em <tbody> + resto em <script type="text/html">
+   hidratado pelo data-table.js apos o initial paint. #}
+{% set _total_forn = fornecedores|length %}
+{% set _progressive_forn = _total_forn > 100 %}
+{% set _initial_n = 50 if _progressive_forn else _total_forn %}
 {# Contagens por flag para os chips de filtro (server-side, uma vez por render). #}
 {% set _inid = fornecedores|selectattr('flag_inidoneidade')|list|length %}
 {% set _rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list|length %}
@@ -10,7 +17,7 @@
 {% set _pgfn = fornecedores|selectattr('flag_pgfn')|list|length %}
 {% set _inativa = fornecedores|selectattr('flag_inativa')|list|length %}
 <section class="result-block">
-    <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
+    <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores"{% if _progressive_forn %} data-progressive-total="{{ _total_forn }}" data-progressive-initial="{{ _initial_n }}"{% endif %}>
         {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
         {% set has_rec_sancao = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list %}
         {% set has_acordo = fornecedores|selectattr('flag_acordo_leniencia')|list %}
@@ -63,51 +70,14 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for f in fornecedores %}
-                     {% if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
-                     {% elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
-                     {% else %}{% set row_extra = '' %}{% endif %}
-                    {% set _flag_attrs %}{% if f.flag_inidoneidade %} data-flag-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_inidoneidade %} data-flag-recebeu-durante-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_sancao_aplicavel %} data-flag-recebeu-durante-sancao-aplicavel="1"{% endif %}{% if f.flag_ceis %} data-flag-ceis="1"{% endif %}{% if f.flag_cnep %} data-flag-cnep="1"{% endif %}{% if f.flag_acordo_leniencia %} data-flag-acordo-leniencia="1"{% endif %}{% if f.flag_inativa_irregular %} data-flag-inativa-irregular="1"{% endif %}{% if f.flag_pgfn %} data-flag-pgfn="1"{% endif %}{% if f.flag_inativa %} data-flag-inativa="1"{% endif %}{% endset %}
-                    {% set cnpj_completo_digits = f.cnpj_completo|default('', true)|string|replace('.', '')|replace('/', '')|replace('-', '') %}
-                    {% if cnpj_completo_digits|length == 14 %}
-                    <tr class="clickable-row{{ row_extra }}"
-                        data-fornecedor-cnpj="{{ f.cnpj_basico }}"
-                        data-fornecedor-cpf-cnpj="{{ cnpj_completo_digits }}"
-                        data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
-                        data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}"
-                        data-empresa-url="/empresa/{{ cnpj_completo_digits }}"{{ _flag_attrs }}>
-                    {% else %}
-                    <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true"{{ _flag_attrs }}>
-                    {% endif %}
-                        <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}{% if cnpj_completo_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}</td>
-                        <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>
-                        <td data-label="Recebido" class="text-right num">{{ (f.total_pago or f.total_contratado)|default(0)|short_brl }}</td>
-                        <td data-label="Empenhos" class="text-right auditor-only num">{{ (f.qtd_empenhos or f.qtd_contratos)|default(0)|short_number }}</td>
-                        <td data-label="Sinais" class="stack-badges">
-                            {% set scope_suffix = '' %}
-                            {% if f.abrangencia_sancao_info %}
-                                {% set info_clean = f.abrangencia_sancao_info|replace('!', '') %}
-                                {% if 'Nacional' in info_clean %}
-                                    {% set scope_suffix = ' (Nacional)' %}
-                                {% elif '(' in info_clean %}
-                                    {% set scope_suffix = ' ' + info_clean[info_clean.index('('):] %}
-                                {% endif %}
-                            {% endif %}
-                            {% if f.flag_inidoneidade %}<span class="badge badge-red"><span class="citizen-only">Proibida de contratar (nacional)</span><span class="auditor-only">Inidoneidade - CEIS (Nacional)</span></span>
-                            {% elif f.flag_ceis %}<span class="badge badge-orange" title="CEIS - Cadastro de Empresas Inidoneas e Suspensas. Motivos variam: fraude em licitacao, descumprimento contratual, documentacao irregular, etc."><span class="citizen-only">Impedida de contratar (CEIS){{ scope_suffix|truncate(55, True) }}</span><span class="auditor-only">Impedimento - CEIS{{ scope_suffix|truncate(55, True) }}</span></span>{% endif %}
-                            {% if f.flag_cnep %}<span class="badge badge-orange" title="CNEP - Cadastro Nacional de Empresas Punidas pela Lei Anticorrupcao (Lei 12.846/2013)."><span class="citizen-only">Punida (Lei Anticorrup&ccedil;&atilde;o){{ scope_suffix|truncate(55, True) }}</span><span class="auditor-only">CNEP{{ scope_suffix|truncate(55, True) }}</span></span>{% endif %}
-                            {% if f.flag_acordo_leniencia %}<span class="badge badge-blue"><span class="citizen-only">Acordo de leni&ecirc;ncia</span><span class="auditor-only">Acordo de Leniencia</span></span>{% endif %}
-                            {% if f.flag_pgfn %}<span class="badge badge-yellow"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida ativa</span></span>{% endif %}
-                            {% if f.flag_inativa %}<span class="badge badge-gray"><span class="citizen-only">Empresa inativa na Receita</span><span class="auditor-only">Cadastro inativo</span></span>{% endif %}
-                            {% if not f.flag_inidoneidade and not f.flag_ceis and not f.flag_cnep and not f.flag_acordo_leniencia and not f.flag_pgfn and not f.flag_inativa %}
-                                <span class="text-sm text-muted"><span class="citizen-only">Sem problemas detectados</span><span class="auditor-only">Sem sinal automatico</span></span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
+                    {% for f in fornecedores[:_initial_n] %}{{ _tt.render_fornecedor_row(f) }}{% endfor %}
                 </tbody>
             </table>
         </div>
+        {% if _progressive_forn %}
+        {# Tail rows como texto inerte. innerHTML hidratado por data-table.js. #}
+        <script type="text/html" data-rest-rows>{% for f in fornecedores[_initial_n:] %}{{ _tt.render_fornecedor_row(f) }}{% endfor %}</script>
+        {% endif %}
         <div class="table-pagination">
             <md-text-button data-page-prev>Anterior</md-text-button>
             <p class="text-sm text-muted" data-page-label></p>

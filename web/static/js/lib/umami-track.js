@@ -121,6 +121,18 @@
 //                           medir profundidade de exploracao por tipo
 //                           de tabela (top-servidores, top-fornecedores,
 //                           result-query).
+//   tabela-hidratada      - {tabela, total, initial, ms_to_hydrate,
+//                            forced: true|false}
+//                           Tabelas top-servidores/top-fornecedores com
+//                           > 100 rows usam progressive loading (PR #199):
+//                           SSR emite as primeiras `initial` rows em
+//                           <tbody> + o resto em
+//                           <script type="text/html" data-rest-rows>.
+//                           Evento dispara no momento em que o tail e
+//                           hidratado (via requestIdleCallback ou ao
+//                           primeiro user input). `forced=true` quando
+//                           usuario interagiu antes do RIC disparar.
+//                           Permite monitorar TTI real em mid-tier mobile.
 //   termo-tooltip-aberto  - {termo} Tap em palavra do glossario inline
 //                           (`.term[data-tip]`) em touch device. Mede
 //                           quais termos confundem leitores.
