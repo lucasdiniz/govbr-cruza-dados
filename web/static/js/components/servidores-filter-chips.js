@@ -24,22 +24,19 @@ function initServidoresFilterChips(root = document) {
 
         const apply = () => {
             if (!active.size) {
-                tableShell._refilter(null);
+                const total = tableShell._refilter(null);
                 if (clearBtn) clearBtn.hidden = true;
-                return;
+                return total;
             }
             const attrs = Array.from(active).map(flagToAttr);
-            tableShell._refilter((row) => attrs.some((a) => row.hasAttribute(a)));
+            const matched = tableShell._refilter((row) => attrs.some((a) => row.hasAttribute(a)));
             if (clearBtn) clearBtn.hidden = false;
+            return matched;
         };
 
-        const trackToggle = (flag, on) => {
+        const trackToggle = (flag, on, visiveis) => {
             if (typeof trackEvent !== 'function') return;
             const ativos = Array.from(active).sort().join(',');
-            // qtd_visiveis: aproximado pelas rows nao-display:none apos apply().
-            const visiveis = Array.from(tableShell.querySelectorAll('tbody tr')).filter(
-                (r) => r.style.display !== 'none'
-            ).length;
             const total = tableShell.querySelectorAll('tbody tr').length;
             trackEvent('servidores-filtro-toggle', {
                 flag,
@@ -59,8 +56,8 @@ function initServidoresFilterChips(root = document) {
                 else active.delete(flag);
                 chip.classList.toggle('filter-chip--active', willActivate);
                 chip.setAttribute('aria-pressed', String(willActivate));
-                apply();
-                trackToggle(flag, willActivate);
+                const matched = apply();
+                trackToggle(flag, willActivate, matched);
             });
         });
 
@@ -73,11 +70,12 @@ function initServidoresFilterChips(root = document) {
                     c.classList.remove('filter-chip--active');
                     c.setAttribute('aria-pressed', 'false');
                 });
-                apply();
+                const matched = apply();
                 if (typeof trackEvent === 'function') {
                     trackEvent('servidores-filtro-limpar', {
                         ativos_anteriores: ativosPrev,
                         qtd_ativos_anteriores: qtdPrev,
+                        visiveis: matched,
                     });
                 }
             });

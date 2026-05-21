@@ -42,12 +42,16 @@ function initDataTables(root = document) {
             if (pager) pager.hidden = totalPages <= 1;
         };
 
-        // Expose refilter for external toggles
+        // Expose refilter for external toggles. Retorna o numero de rows que
+        // passaram pelos filtros (NAO o numero de rows visiveis na pagina —
+        // renderPage so mostra pageSize por vez). Usado por componentes como
+        // servidores-filter-chips.js pra reportar metrica de filtro correta.
         tableShell._refilter = (filterFn) => {
             externalFilter = filterFn;
             applyFilters();
             page = 1;
             renderPage();
+            return filteredRows.length;
         };
 
         // Column sorting
