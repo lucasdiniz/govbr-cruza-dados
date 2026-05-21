@@ -35,11 +35,58 @@ function buildFornecedoresPanel(data) {
             if (recSan) return 'row-sancao-leve';
             return '';
         })();
+        const flagAttrs = [
+            _val(r, cols, 'flag_inidoneidade') && 'data-flag-inidoneidade="1"',
+            _val(r, cols, 'flag_recebeu_durante_inidoneidade') && 'data-flag-recebeu-durante-inidoneidade="1"',
+            _val(r, cols, 'flag_recebeu_durante_sancao_aplicavel') && 'data-flag-recebeu-durante-sancao-aplicavel="1"',
+            _val(r, cols, 'flag_ceis') && 'data-flag-ceis="1"',
+            _val(r, cols, 'flag_cnep') && 'data-flag-cnep="1"',
+            _val(r, cols, 'flag_acordo_leniencia') && 'data-flag-acordo-leniencia="1"',
+            _val(r, cols, 'flag_inativa_irregular') && 'data-flag-inativa-irregular="1"',
+            _val(r, cols, 'flag_pgfn') && 'data-flag-pgfn="1"',
+            _val(r, cols, 'flag_inativa') && 'data-flag-inativa="1"',
+        ].filter(Boolean).join(' ');
         if (cnpjCompletoDigits.length !== 14) {
-            return `<tr class="row-detail-unavailable ${rowSeverityClass}" aria-disabled="true"><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+            return `<tr class="row-detail-unavailable ${rowSeverityClass}" aria-disabled="true" ${flagAttrs}><td data-label="Empresa" class="stack-title">${nome} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span></td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
         }
-        return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}"><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+        return `<tr class="clickable-row ${rowSeverityClass}" data-fornecedor-cnpj="${cnpjBasico}" data-fornecedor-cpf-cnpj="${_esc(cnpjCompletoDigits)}" data-fornecedor-nome="${razao || nome}" data-fornecedor-nome-credor="${nome}" ${flagAttrs}><td data-label="Empresa" class="stack-title">${nome}</td><td data-label="CNPJ" class="auditor-only stack-meta"><code class="text-sm">${cnpjFmt}</code></td><td data-label="Recebido" class="text-right num">${total}</td><td data-label="Empenhos" class="text-right auditor-only num">${qtd}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
+
+    // Contagens por flag para chips
+    const _count = (pred) => data.rows.filter(r => pred(r)).length;
+    const cnt = {
+        inidoneidade: _count(r => _val(r, cols, 'flag_inidoneidade')),
+        recebeu_durante_inidoneidade: _count(r => _val(r, cols, 'flag_recebeu_durante_inidoneidade')),
+        recebeu_durante_sancao_aplicavel: _count(r => _val(r, cols, 'flag_recebeu_durante_sancao_aplicavel')),
+        ceis: _count(r => _val(r, cols, 'flag_ceis')),
+        cnep: _count(r => _val(r, cols, 'flag_cnep')),
+        acordo_leniencia: _count(r => _val(r, cols, 'flag_acordo_leniencia')),
+        inativa_irregular: _count(r => _val(r, cols, 'flag_inativa_irregular')),
+        pgfn: _count(r => _val(r, cols, 'flag_pgfn')),
+        inativa: _count(r => _val(r, cols, 'flag_inativa')),
+    };
+    const chipHtml = (flag, severity, citizenLabel, auditorLabel) => {
+        if (!cnt[flag]) return '';
+        return `<button type="button" class="filter-chip filter-chip--${severity}" data-flag="${flag}" aria-pressed="false"><span class="citizen-only">${citizenLabel}</span><span class="auditor-only">${auditorLabel}</span> <span class="filter-chip__count">${cnt[flag]}</span></button>`;
+    };
+    const chips = [
+        chipHtml('inidoneidade', 'red', 'Proibida (nacional)', 'Inidoneidade'),
+        chipHtml('recebeu_durante_inidoneidade', 'red', 'Recebeu enquanto proibida', 'Pago durante Inidoneidade'),
+        chipHtml('recebeu_durante_sancao_aplicavel', 'orange', 'Recebeu durante punicao', 'Pago durante sancao'),
+        chipHtml('ceis', 'orange', 'Sancionada (CEIS)', 'CEIS'),
+        chipHtml('cnep', 'orange', 'Lei Anticorrupcao (CNEP)', 'CNEP'),
+        chipHtml('acordo_leniencia', 'yellow', 'Acordo de leniencia', 'Leniencia'),
+        chipHtml('inativa_irregular', 'red', 'Recebeu apos baixa', 'Inativa irregular (Q70)'),
+        chipHtml('pgfn', 'yellow', 'Devendo impostos federais', 'Divida PGFN'),
+        chipHtml('inativa', 'gray', 'Empresa inativa', 'Cadastro inativo'),
+    ].join('');
+    const chipsBlock = chips
+        ? `<div class="table-filter-chips" data-fornecedores-filter-chips role="group" aria-label="Filtrar fornecedores por sinal">
+            <span class="table-filter-chips__label text-sm text-muted">${dualLabel('Filtrar por sinal:','Filtros por flag:')}</span>
+            ${chips}
+            <button type="button" class="filter-chip filter-chip--clear" data-clear hidden>${dualLabel('Limpar filtros','Limpar')}</button>
+        </div>`
+        : '';
 
     const hasRecInid = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_inidoneidade'));
     const hasRecSancao = data.rows.some(r => _val(r, data.columns, 'flag_recebeu_durante_sancao_aplicavel'));
@@ -61,6 +108,7 @@ function buildFornecedoresPanel(data) {
             ${fornLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
+            ${chipsBlock}
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar fornecedores">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>
@@ -83,4 +131,5 @@ function buildFornecedoresPanel(data) {
         </div>
     </section>`;
 }
+
 

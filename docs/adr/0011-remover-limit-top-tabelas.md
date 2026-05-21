@@ -2,17 +2,21 @@
 
 ## Status
 
-Accepted (parcial) — implementado **apenas para `TOP_SERVIDORES_RISCO` /
-`TOP_SERVIDORES_RISCO_DATED`** em 2026-05-20 ([PR #195][pr195]). Demais
-LIMITs (queries Q## em `registry.py` e outras top-tabelas em `cidade.py`)
-continuam **Proposed** e serão tratados em PRs subsequentes, caso-a-caso.
+Accepted (parcial) — implementado para `TOP_SERVIDORES_RISCO` /
+`TOP_SERVIDORES_RISCO_DATED` em 2026-05-20 ([PR #195][pr195]) e para
+`TOP_FORNECEDORES` / `TOP_FORNECEDORES_DATED` (+ variantes FALLBACK) em
+2026-05-21 ([PR #198][pr198]). Demais LIMITs (queries Q## em
+`registry.py` e outras top-tabelas) continuam **Proposed** e serão
+tratados em PRs subsequentes, caso-a-caso.
 
 [pr195]: https://github.com/lucasdiniz/govbr-cruza-dados/pull/195
+[pr198]: https://github.com/lucasdiniz/govbr-cruza-dados/pull/198
 
 ## Date
 
 2026-05-17 (proposta original)
 2026-05-20 (aceitação parcial — servidores)
+2026-05-21 (aceitação parcial — fornecedores)
 
 ## Context
 
@@ -193,15 +197,29 @@ Entregue em [PR #195 — feat(web): servidores sem LIMIT + filtros][pr195]:
   prod ainda — follow-up se warm cycle aumentar significativamente.
   Não muda CACHE_DEPENDENCY_GRAPH.
 
-### Próximos passos (continuam Proposed — não entregues no PR #195)
+### Próximos passos (continuam Proposed)
 
-Nada abaixo foi implementado ainda. PRs futuras devem revisitar este ADR:
+PRs futuras devem revisitar este ADR:
 
 - LIMITs em `cidade.py:289`, `:393`, `:512`, `:614` (outras agregações de
-  top-tabelas, ainda com `LIMIT 200` hardcoded).
+  top-tabelas além de servidores e fornecedores).
 - LIMIT 500 nas ~30 queries Q## em `web/queries/registry.py`
   (linhas 169-849).
-- Aplicar o mesmo padrão de chips de filtro + ordenação por sinais reais
-  em top-fornecedores e demais top-tables.
-- Considerar virtual scroll se mobile Lighthouse regredir > 10% após PR
-  #195 estar em produção.
+- Considerar virtual scroll se mobile Lighthouse regredir > 10% após PRs
+  #195 / #198 estarem em produção.
+
+### Entregue em PR #198 — fornecedores
+
+Mesmo padrão do PR #195 aplicado a `TOP_FORNECEDORES`:
+
+- Removidos 4× `LIMIT 200` nas variantes TOP_FORNECEDORES /
+  TOP_FORNECEDORES_DATED / TOP_FORNECEDORES_FALLBACK /
+  TOP_FORNECEDORES_FALLBACK_DATED.
+- Reescrita do `ORDER BY` final para **signals-first** (inidoneidade →
+  recebeu_durante_inidoneidade → recebeu_durante_sancao_aplicavel →
+  CEIS/CNEP → leniência → inativa_irregular → PGFN → inativa →
+  `total_pago` como tiebreaker).
+- Chips de filtro (9 flags) com semântica OR e contadores SSR.
+- Eventos Umami `fornecedores-filtro-toggle` e
+  `fornecedores-filtro-limpar` (mesmas props do par servidores).
+- Issue #197 abriu cleanup do `TOP_FORNECEDORES_FALLBACK` (dead code).

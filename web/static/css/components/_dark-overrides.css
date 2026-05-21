@@ -195,6 +195,11 @@ body.dark-page .filter-chip--yellow.filter-chip--active {
     border-color: #f59e0b;
     color: #fde68a;
 }
+body.dark-page .filter-chip--gray.filter-chip--active {
+    background: rgba(107, 114, 128, 0.32);
+    border-color: #9ca3af;
+    color: #e5e7eb;
+}
 body.dark-page .filter-chip--active .filter-chip__count {
     background: rgba(0, 0, 0, 0.35);
     color: #fff;

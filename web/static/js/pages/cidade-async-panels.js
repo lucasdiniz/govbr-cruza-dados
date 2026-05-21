@@ -27,6 +27,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.setAttribute('aria-busy', 'false');
         initDataTables(panel);
         initServidoresFilterChips(panel);
+        initFornecedoresFilterChips(panel);
         initInteractiveToggles(panel);
         initMobileDescriptions(panel);
         initClickableRows(panel);
