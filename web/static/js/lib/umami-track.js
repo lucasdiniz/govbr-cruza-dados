@@ -95,6 +95,18 @@
 //   servidores-filtro-limpar - {ativos_anteriores, qtd_ativos_anteriores,
 //                            visiveis}
 //                           Botao "Limpar" dos chips de filtro.
+//   fornecedores-filtro-toggle - {flag, action: 'on'|'off', ativos,
+//                            qtd_ativos, visiveis, total}
+//                           Toggle de chip de filtro na tabela de
+//                           fornecedores. Flags: inidoneidade,
+//                           recebeu_durante_inidoneidade,
+//                           recebeu_durante_sancao_aplicavel, ceis, cnep,
+//                           acordo_leniencia, inativa_irregular, pgfn,
+//                           inativa.
+//   fornecedores-filtro-limpar - {ativos_anteriores, qtd_ativos_anteriores,
+//                            visiveis}
+//                           Botao "Limpar" dos chips de filtro de
+//                           fornecedores.
 //   secao-toggle          - {section, action: 'open'|'close'}
 //                           Toggle generico de <details> colapsavel.
 //                           `section` identifica a secao (ex:

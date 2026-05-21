@@ -104,12 +104,19 @@ Respeita whitelist de páginas (cidade, empresa, caso, etc.).
 Tabelas sem `data-table-id` no shell **não emitem** o evento — opt-in
 explícito para evitar ruído de tabelas auxiliares.
 
+⁷ Flags possíveis no chip de fornecedores: `inidoneidade`,
+`recebeu_durante_inidoneidade`, `recebeu_durante_sancao_aplicavel`,
+`ceis`, `cnep`, `acordo_leniencia`, `inativa_irregular`, `pgfn`, `inativa`.
+Semântica OR (union dos filtros ativos).
+
 ### Filtros & ordenação de tabelas
 
 | Evento | Props | Onde dispara |
 |---|---|---|
 | `servidores-filtro-toggle` | `{flag, action: 'on'\|'off', ativos, qtd_ativos, visiveis, total}` | toggle de chip de filtro na tabela de servidores |
 | `servidores-filtro-limpar` | `{ativos_anteriores, qtd_ativos_anteriores, visiveis}` | botão "Limpar" dos chips de filtro |
+| `fornecedores-filtro-toggle` | `{flag, action: 'on'\|'off', ativos, qtd_ativos, visiveis, total}` | toggle de chip de filtro na tabela de fornecedores ⁷ |
+| `fornecedores-filtro-limpar` | `{ativos_anteriores, qtd_ativos_anteriores, visiveis}` | botão "Limpar" dos chips de filtro de fornecedores |
 | `tabela-pagina-mudou` | `{tabela, de, para, total_paginas, via: 'prev'\|'next'}` ⁶ | clique em Anterior/Próxima das tabelas paginadas |
 | `empenho-table-sort` | `{coluna, direcao: 'asc'\|'desc'}` | clique em header de tabela para ordenar (dialog de empenho) |
 

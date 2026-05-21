@@ -1,4 +1,14 @@
 {% if fornecedores %}
+{# Contagens por flag para os chips de filtro (server-side, uma vez por render). #}
+{% set _inid = fornecedores|selectattr('flag_inidoneidade')|list|length %}
+{% set _rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list|length %}
+{% set _rec_san = fornecedores|selectattr('flag_recebeu_durante_sancao_aplicavel')|list|length %}
+{% set _ceis = fornecedores|selectattr('flag_ceis')|list|length %}
+{% set _cnep = fornecedores|selectattr('flag_cnep')|list|length %}
+{% set _len = fornecedores|selectattr('flag_acordo_leniencia')|list|length %}
+{% set _inativa_irr = fornecedores|selectattr('flag_inativa_irregular')|list|length %}
+{% set _pgfn = fornecedores|selectattr('flag_pgfn')|list|length %}
+{% set _inativa = fornecedores|selectattr('flag_inativa')|list|length %}
 <section class="result-block">
     <div class="table-shell js-data-table" data-page-size="10" data-table-id="top-fornecedores">
         {% set has_rec_inid = fornecedores|selectattr('flag_recebeu_durante_inidoneidade')|list %}
@@ -9,6 +19,21 @@
             {% if has_rec_inid %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#ef4444"></span> <span class="citizen-only">Recebeu enquanto proibida de contratar</span><span class="auditor-only">Recebeu durante Inidoneidade</span></span>{% endif %}
             {% if has_rec_sancao %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#f59e0b"></span> <span class="citizen-only">Recebeu durante puni&ccedil;&atilde;o aplic&aacute;vel</span><span class="auditor-only">Recebeu durante sancao aplicavel</span></span>{% endif %}
             {% if has_acordo %}<span class="color-legend-item"><span class="color-legend-dot" style="background:#3b82f6"></span> <span class="citizen-only">Acordo de leni&ecirc;ncia vigente (CGU)</span><span class="auditor-only">Acordo de leniencia vigente</span></span>{% endif %}
+        </div>
+        {% endif %}
+        {% if _inid or _rec_inid or _rec_san or _ceis or _cnep or _len or _inativa_irr or _pgfn or _inativa %}
+        <div class="table-filter-chips" data-fornecedores-filter-chips role="group" aria-label="Filtrar fornecedores por sinal de aten&ccedil;&atilde;o">
+            <span class="table-filter-chips__label text-sm text-muted"><span class="citizen-only">Filtrar por sinal:</span><span class="auditor-only">Filtros por flag:</span></span>
+            {% if _inid %}<button type="button" class="filter-chip filter-chip--red" data-flag="inidoneidade" aria-pressed="false"><span class="citizen-only">Proibida (nacional)</span><span class="auditor-only">Inidoneidade</span> <span class="filter-chip__count">{{ _inid }}</span></button>{% endif %}
+            {% if _rec_inid %}<button type="button" class="filter-chip filter-chip--red" data-flag="recebeu_durante_inidoneidade" aria-pressed="false"><span class="citizen-only">Recebeu enquanto proibida</span><span class="auditor-only">Pago durante Inidoneidade</span> <span class="filter-chip__count">{{ _rec_inid }}</span></button>{% endif %}
+            {% if _rec_san %}<button type="button" class="filter-chip filter-chip--orange" data-flag="recebeu_durante_sancao_aplicavel" aria-pressed="false"><span class="citizen-only">Recebeu durante puni&ccedil;&atilde;o</span><span class="auditor-only">Pago durante sancao</span> <span class="filter-chip__count">{{ _rec_san }}</span></button>{% endif %}
+            {% if _ceis %}<button type="button" class="filter-chip filter-chip--orange" data-flag="ceis" aria-pressed="false"><span class="citizen-only">Sancionada (CEIS)</span><span class="auditor-only">CEIS</span> <span class="filter-chip__count">{{ _ceis }}</span></button>{% endif %}
+            {% if _cnep %}<button type="button" class="filter-chip filter-chip--orange" data-flag="cnep" aria-pressed="false"><span class="citizen-only">Lei Anticorrup&ccedil;&atilde;o (CNEP)</span><span class="auditor-only">CNEP</span> <span class="filter-chip__count">{{ _cnep }}</span></button>{% endif %}
+            {% if _len %}<button type="button" class="filter-chip filter-chip--yellow" data-flag="acordo_leniencia" aria-pressed="false"><span class="citizen-only">Acordo de leni&ecirc;ncia</span><span class="auditor-only">Leniencia</span> <span class="filter-chip__count">{{ _len }}</span></button>{% endif %}
+            {% if _inativa_irr %}<button type="button" class="filter-chip filter-chip--red" data-flag="inativa_irregular" aria-pressed="false"><span class="citizen-only">Recebeu ap&oacute;s baixa</span><span class="auditor-only">Inativa irregular (Q70)</span> <span class="filter-chip__count">{{ _inativa_irr }}</span></button>{% endif %}
+            {% if _pgfn %}<button type="button" class="filter-chip filter-chip--yellow" data-flag="pgfn" aria-pressed="false"><span class="citizen-only">Devendo impostos federais</span><span class="auditor-only">Divida PGFN</span> <span class="filter-chip__count">{{ _pgfn }}</span></button>{% endif %}
+            {% if _inativa %}<button type="button" class="filter-chip filter-chip--gray" data-flag="inativa" aria-pressed="false"><span class="citizen-only">Empresa inativa</span><span class="auditor-only">Cadastro inativo</span> <span class="filter-chip__count">{{ _inativa }}</span></button>{% endif %}
+            <button type="button" class="filter-chip filter-chip--clear" data-clear hidden><span class="citizen-only">Limpar filtros</span><span class="auditor-only">Limpar</span></button>
         </div>
         {% endif %}
         <div class="table-actions">
@@ -42,6 +67,7 @@
                      {% if f.flag_recebeu_durante_inidoneidade %}{% set row_extra = ' row-sancao' %}
                      {% elif f.flag_recebeu_durante_sancao_aplicavel %}{% set row_extra = ' row-sancao-leve' %}
                      {% else %}{% set row_extra = '' %}{% endif %}
+                    {% set _flag_attrs %}{% if f.flag_inidoneidade %} data-flag-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_inidoneidade %} data-flag-recebeu-durante-inidoneidade="1"{% endif %}{% if f.flag_recebeu_durante_sancao_aplicavel %} data-flag-recebeu-durante-sancao-aplicavel="1"{% endif %}{% if f.flag_ceis %} data-flag-ceis="1"{% endif %}{% if f.flag_cnep %} data-flag-cnep="1"{% endif %}{% if f.flag_acordo_leniencia %} data-flag-acordo-leniencia="1"{% endif %}{% if f.flag_inativa_irregular %} data-flag-inativa-irregular="1"{% endif %}{% if f.flag_pgfn %} data-flag-pgfn="1"{% endif %}{% if f.flag_inativa %} data-flag-inativa="1"{% endif %}{% endset %}
                     {% set cnpj_completo_digits = f.cnpj_completo|default('', true)|string|replace('.', '')|replace('/', '')|replace('-', '') %}
                     {% if cnpj_completo_digits|length == 14 %}
                     <tr class="clickable-row{{ row_extra }}"
@@ -49,9 +75,9 @@
                         data-fornecedor-cpf-cnpj="{{ cnpj_completo_digits }}"
                         data-fornecedor-nome="{{ (f.razao_social or f.nome_credor)|clean_text }}"
                         data-fornecedor-nome-credor="{{ f.nome_credor|clean_text }}"
-                        data-empresa-url="/empresa/{{ cnpj_completo_digits }}">
+                        data-empresa-url="/empresa/{{ cnpj_completo_digits }}"{{ _flag_attrs }}>
                     {% else %}
-                    <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true">
+                    <tr class="row-detail-unavailable{{ row_extra }}" aria-disabled="true"{{ _flag_attrs }}>
                     {% endif %}
                         <td data-label="Empresa" class="stack-title">{{ f.nome_credor|clean_text }}{% if cnpj_completo_digits|length != 14 %} <span class="detail-unavailable-hint">Detalhes indisponiveis sem CNPJ completo</span>{% endif %}</td>
                         <td data-label="CNPJ" class="auditor-only"><code class="text-sm">{{ f.cnpj_basico[:2] }}.{{ f.cnpj_basico[2:5] }}.{{ f.cnpj_basico[5:8] }}/****-**</code></td>

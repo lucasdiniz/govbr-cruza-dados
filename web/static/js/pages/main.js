@@ -2,6 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
     initServidoresFilterChips(document);
+    initFornecedoresFilterChips(document);
     initCidadeAutocomplete();
     initInteractiveToggles(document);
     initClickableRows(document);

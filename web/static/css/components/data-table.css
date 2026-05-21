@@ -198,6 +198,11 @@ tr:hover {
     border-color: #f59e0b;
     color: #78350f;
 }
+.filter-chip--gray.filter-chip--active {
+    background: #e5e7eb;
+    border-color: #6b7280;
+    color: #1f2937;
+}
 .filter-chip--clear {
     margin-left: auto;
     color: var(--md-sys-color-primary);

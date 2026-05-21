@@ -60,6 +60,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             fornPanel.innerHTML = buildFornecedoresPanel(batchData.TOP_FORNECEDORES);
             fornPanel.setAttribute('aria-busy', 'false');
             initDataTables(fornPanel);
+            initFornecedoresFilterChips(fornPanel);
             initMobileDescriptions(fornPanel);
             initClickableRows(fornPanel);
         }

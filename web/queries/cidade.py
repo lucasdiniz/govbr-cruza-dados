@@ -324,8 +324,6 @@ WITH top_forn AS (
       AND d.cnpj_basico IS NOT NULL
       AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
-    ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 200
 ),
 cnpjs_pagos_apos_inativa AS MATERIALIZED (
     -- CNPJs do municipio que receberam pagamento APOS o estabelecimento ficar
@@ -411,7 +409,19 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
-ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
+ORDER BY
+  -- Sinais reais primeiro (ADR-0011): empresas com inidoneidade/sancoes nao
+  -- ficam enterradas atras de orgaos publicos top de receita.
+  q.flag_inidoneidade DESC,
+  q.flag_recebeu_durante_inidoneidade DESC,
+  q.flag_recebeu_durante_sancao_aplicavel DESC,
+  (q.flag_ceis OR q.flag_cnep) DESC,
+  q.flag_acordo_leniencia DESC,
+  q.flag_inativa_irregular DESC,
+  (q.abrangencia_sancao_info IS NOT NULL) DESC,
+  q.flag_pgfn DESC,
+  q.flag_inativa DESC,
+  q.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK = """
@@ -428,8 +438,6 @@ WITH top_forn AS (
       AND d.cnpj_basico IS NOT NULL
       AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
-    ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 200
 ),
 cnpjs_pagos_apos_inativa AS MATERIALIZED (
     SELECT DISTINCT d2.cpf_cnpj
@@ -527,7 +535,19 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
-ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
+ORDER BY
+  -- Sinais reais primeiro (ADR-0011): empresas com inidoneidade/sancoes nao
+  -- ficam enterradas atras de orgaos publicos top de receita.
+  q.flag_inidoneidade DESC,
+  q.flag_recebeu_durante_inidoneidade DESC,
+  q.flag_recebeu_durante_sancao_aplicavel DESC,
+  (q.flag_ceis OR q.flag_cnep) DESC,
+  q.flag_acordo_leniencia DESC,
+  q.flag_inativa_irregular DESC,
+  (q.abrangencia_sancao_info IS NOT NULL) DESC,
+  q.flag_pgfn DESC,
+  q.flag_inativa DESC,
+  q.total_pago DESC
 """
 
 # ── Variantes com filtro temporal (dated) ───────────────────────
@@ -547,8 +567,6 @@ WITH top_forn AS (
       AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
       AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
-    ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 200
 ),
 cnpjs_pagos_apos_inativa AS MATERIALIZED (
     SELECT DISTINCT d2.cpf_cnpj
@@ -631,7 +649,19 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
-ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
+ORDER BY
+  -- Sinais reais primeiro (ADR-0011): empresas com inidoneidade/sancoes nao
+  -- ficam enterradas atras de orgaos publicos top de receita.
+  q.flag_inidoneidade DESC,
+  q.flag_recebeu_durante_inidoneidade DESC,
+  q.flag_recebeu_durante_sancao_aplicavel DESC,
+  (q.flag_ceis OR q.flag_cnep) DESC,
+  q.flag_acordo_leniencia DESC,
+  q.flag_inativa_irregular DESC,
+  (q.abrangencia_sancao_info IS NOT NULL) DESC,
+  q.flag_pgfn DESC,
+  q.flag_inativa DESC,
+  q.total_pago DESC
 """
 
 TOP_FORNECEDORES_FALLBACK_DATED = """
@@ -649,8 +679,6 @@ WITH top_forn AS (
       AND d.data_empenho >= %(data_inicio)s AND d.data_empenho <= %(data_fim)s
       AND EXISTS (SELECT 1 FROM estabelecimento est WHERE est.cnpj_completo = d.cpf_cnpj)
     GROUP BY d.cnpj_basico, d.nome_credor
-    ORDER BY SUM(d.valor_pago) DESC
-    LIMIT 200
 ),
 cnpjs_pagos_apos_inativa AS MATERIALIZED (
     SELECT DISTINCT d2.cpf_cnpj
@@ -746,7 +774,19 @@ LEFT JOIN empresa e ON e.cnpj_basico = tf.cnpj_basico
 LEFT JOIN estabelecimento est ON est.cnpj_completo = tf.cpf_cnpj
 LEFT JOIN cnpjs_pagos_apos_inativa ci ON ci.cpf_cnpj = tf.cpf_cnpj
 ) q
-ORDER BY q.abrangencia_sancao_info IS NOT NULL DESC, q.total_pago DESC
+ORDER BY
+  -- Sinais reais primeiro (ADR-0011): empresas com inidoneidade/sancoes nao
+  -- ficam enterradas atras de orgaos publicos top de receita.
+  q.flag_inidoneidade DESC,
+  q.flag_recebeu_durante_inidoneidade DESC,
+  q.flag_recebeu_durante_sancao_aplicavel DESC,
+  (q.flag_ceis OR q.flag_cnep) DESC,
+  q.flag_acordo_leniencia DESC,
+  q.flag_inativa_irregular DESC,
+  (q.abrangencia_sancao_info IS NOT NULL) DESC,
+  q.flag_pgfn DESC,
+  q.flag_inativa DESC,
+  q.total_pago DESC
 """
 
 TOP_FORNECEDORES_PNCP = None  # deprecated: non-PB removed from frontend
