@@ -228,6 +228,10 @@ before editing the relevant area.
   [`web/templates/partials/_collapsible.html`](web/templates/partials/_collapsible.html):
   `{% call collapsible(id, title, count=N, section_attrs={...}) %}…{% endcall %}`.
   Default is `open=True`. Reuse this — do not roll your own `<details>`.
+- **Build de assets é sempre disparado** no step "Restart cruza-web (after warm)"
+  do `deploy.yml` (linha ~1424) imediatamente antes do `systemctl restart`.
+  Não existe input `build_assets` no workflow_dispatch. Detalhes e racional:
+  [`docs/deploy.md`](docs/deploy.md) seção "Build de assets (sempre roda)".
 - **Service Worker cache version** in
   [`web/static/sw.js`](web/static/sw.js):
   bump `FALLBACK_CACHE_VERSION` whenever you rename assets or change the SW

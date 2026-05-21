@@ -87,6 +87,7 @@ Ordem crítica:
 7. Instala/configura Nginx, Let's Encrypt, fail2ban, GoAccess, traffic digest, Umami e systemd services ([linhas 695-827](../.github/workflows/deploy.yml)).
 8. Atualiza estatísticas hot e trata cache (`drop_cache`, skip mode, shadow reset, invalidate, warm) ([linhas 828-1164](../.github/workflows/deploy.yml)).
 9. Reinicia `cruza-web` **após** warm para evitar janela longa de cache miss ([linhas 1166-1203](../.github/workflows/deploy.yml)).
+   - **Build de assets (sempre)**: imediatamente antes do `systemctl restart cruza-web`, o step "Restart cruza-web (after warm)" roda `node scripts/build-assets.mjs` (ver detalhes na seção [Build de assets](#build-de-assets-sempre-roda)).
 10. Executa IndexNow/sitemaps/smokes e `etl.verify` ([linhas 1205-1850](../.github/workflows/deploy.yml)).
 
 ### 3. `postflight`  GitHub-hosted + OIDC
@@ -118,6 +119,29 @@ Definidos em [`../.github/workflows/deploy.yml`](../.github/workflows/deploy.yml
 | `refresh_mvs` | csv/string | vazio | Lista CSV de MVs para `REFRESH MATERIALIZED VIEW CONCURRENTLY` (zero-downtime, requer UNIQUE INDEX). Caso típico: propagar fix de dados (`run_normalize_fix=true`) nas MVs sem dropar/recriar. Ordem importa: L1 antes de L2. Sanitizado `[A-Za-z0-9_,]`. |
 
 ## Cenários típicos
+
+### Build de assets (sempre roda)
+
+Não existe input `build_assets`. O step **"Restart cruza-web (after warm)"** (`deploy.yml:1424`) roda **sempre que o job `deploy` chega no estágio de restart com sucesso**, independente de `etl_phase`. A sequência fixa é:
+
+1. `npm ci --no-audit --no-fund` se `package-lock.json` mudou (cacheado por hash).
+2. `node scripts/build-assets.mjs` — gera `web/static/dist/` (bundle hashed + `manifest.json`) via promote atômico (`dist.new` → `dist`, `dist.old` deletado).
+3. `sudo systemctl restart cruza-web`.
+
+**Por que é fixo (sem toggle):**
+
+- O manifest `web/static/dist/manifest.json` é lido **na startup do worker** e mantido em memória (`web/main.py:~574`), não relido por request.
+- Se buildássemos horas antes do restart, workers velhos serviriam HTML com hashes do manifest antigo enquanto nginx já serve `dist/` novo → 404 em assets durante a janela.
+- Manter build <1s antes do `systemctl restart` garante que workers novos sobem com o manifest correspondente ao `dist/` no disco.
+- `ASSETS_STRICT=1` (no `cruza-web.service`) faz crash loud se manifest sumir, blindando contra build parcial.
+
+**Quando o restart pula (`if: success()`):**
+
+- Qualquer step anterior do job `deploy` em failure → restart e build pulam, `cruza-web` continua no estado anterior (correto: melhor que promover código inconsistente).
+
+**Não confundir com `ASSET_VERSION` em `web/main.py`:** essa constante (`120` no momento) é o cache buster para devs/fallback quando o manifest hash falha. Bumpar manualmente quando muda o JS pipeline, mas **não substitui o build** — em prod o cache buster vem do hash do manifest.
+
+**Não confundir com `clean`:** `clean=true` é cleanup de estado ETL falho (apaga marcadores), nada a ver com build de assets.
 
 ### Deploy apenas frontend
 
