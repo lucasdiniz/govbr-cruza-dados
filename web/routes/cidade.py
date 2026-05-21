@@ -51,8 +51,8 @@ from web.queries.empresa import (
     EMPRESA_LENIENCIA_EFEITOS_BY_ID,
     EMPRESA_MATRIZ_BY_BASICO,
     EMPRESA_PGFN_BY_CNPJ,
-    EMPRESA_SANCOES_CEIS_BY_CNPJ,
-    EMPRESA_SANCOES_CNEP_BY_CNPJ,
+    EMPRESA_SANCOES_CEIS_BY_BASICO,
+    EMPRESA_SANCOES_CNEP_BY_BASICO,
     EMPRESA_SOCIOS_BY_BASICO,
 )
 from web.queries.licitacao import (
@@ -2133,8 +2133,13 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                     top_elementos.append(r)
                 result["top_elementos"] = top_elementos
 
-                # Sancoes CEIS
-                cur.execute(EMPRESA_SANCOES_CEIS_BY_CNPJ, (cpf_cnpj,))
+                # Sancoes CEIS/CNEP — filtra por CNPJ raiz (8 dig) pra
+                # coincidir com mv_empresa_pb.cnep_agg / ceis_agg (que
+                # tambem agregam por LEFT(cpf_cnpj_norm, 8)) e com a pagina
+                # /empresa/{cnpj}. Sem isso, sancoes registradas num
+                # estabelecimento irmao (mesma raiz, ordem != 0001) ficavam
+                # invisiveis no dialog mesmo com a row flag CNEP/CEIS ligada.
+                cur.execute(EMPRESA_SANCOES_CEIS_BY_BASICO, (cnpj_basico,))
                 san_cols = [d[0] for d in cur.description]
                 san_rows = cur.fetchall()
                 sancoes = []
@@ -2146,8 +2151,8 @@ async def get_fornecedor_detalhes(payload: dict = Body(...)):
                             r[k] = v.isoformat()
                     sancoes.append(r)
 
-                # Sancoes CNEP
-                cur.execute(EMPRESA_SANCOES_CNEP_BY_CNPJ, (cpf_cnpj,))
+                # Sancoes CNEP (mesma logica BY_BASICO da CEIS acima)
+                cur.execute(EMPRESA_SANCOES_CNEP_BY_BASICO, (cnpj_basico,))
                 cnep_cols = [d[0] for d in cur.description]
                 cnep_rows = cur.fetchall()
                 for row in cnep_rows:

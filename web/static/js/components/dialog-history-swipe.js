@@ -18,6 +18,13 @@
 //      _dialogUrlClear() em vez de tentar history.back() (que sairia
 //      da pagina).
 let _dialogHistoryState = false;
+// Flag: history.back() chamado por nos mesmos em _dialogOnClose. O
+// popstate resultante eh apenas "consume the pushState" e nao deve ser
+// re-interpretado como user-back (que dispararia bumpSeq + close). Sem
+// essa flag, um popstate atrasado que chega depois do user reabrir o
+// dialog invalida o seq da nova abertura e o body fica preso em
+// "Carregando..." (continuacao do await falha o _dialogSeqValid).
+let _popstateFromSelfBack = false;
 
 function _dialogOnOpen() {
     const dialog = document.getElementById('empresa-dialog');
@@ -44,13 +51,29 @@ function _dialogOnOpen() {
 }
 
 function _dialogOnClose() {
+    const dialog = document.getElementById('empresa-dialog');
+    // Reabertura durante animacao de close: o user clicou no botao close
+    // (dialog.open=false imediatamente, anim em curso) e em seguida abriu
+    // outro card antes do 'closed' event disparar. Quando o 'closed'
+    // finalmente roda, dialog.open ja eh true de novo. Pular este ciclo
+    // — caso contrario _dialogBumpSeq invalidaria a continuacao do fetch
+    // da nova abertura e o body ficaria preso em "Carregando..." sem
+    // chamar /detalhes (cache hit + seq guard => early return).
+    if (dialog && dialog.open) return;
     _dialogReset();
     if (typeof _dialogBumpSeq === 'function') _dialogBumpSeq();
     if (_dialogHistoryState) {
         _dialogHistoryState = false;
         if (history.state && history.state.tpbDialog) {
-            // Removemos nosso state do historico sem disparar navegacao
-            try { history.back(); } catch { /* ignore */ }
+            // Removemos nosso state do historico sem disparar navegacao.
+            // O popstate resultante eh nosso — marca pra que o listener
+            // global nao re-trate como back do user.
+            _popstateFromSelfBack = true;
+            // Fallback de seguranca: se por algum motivo o popstate nao
+            // disparar (edge: browser bloqueou back), limpa a flag depois
+            // de 1s pra nao engolir um back legitimo subsequente.
+            setTimeout(() => { _popstateFromSelfBack = false; }, 1000);
+            try { history.back(); } catch { _popstateFromSelfBack = false; }
         }
     } else if (typeof _dialogUrlClear === 'function') {
         // Edge case: dialog foi restaurado via URL (sem pushState próprio).
@@ -60,6 +83,17 @@ function _dialogOnClose() {
 }
 
 window.addEventListener('popstate', () => {
+    // Popstate disparado pela nossa propria chamada history.back() em
+    // _dialogOnClose — apenas consome o state, nao fecha nada (dialog ja
+    // estava fechando/fechado). Sem essa guarda, se o user reabrir o
+    // dialog antes do popstate task processar, o handler abaixo enxerga
+    // dialog.open=true e bumpa seq + dispara close, deixando a nova
+    // abertura em "Carregando..." e fechando logo em seguida.
+    if (_popstateFromSelfBack) {
+        _popstateFromSelfBack = false;
+        _dialogHistoryState = false;
+        return;
+    }
     const dialog = document.getElementById('empresa-dialog');
     if (!dialog || !dialog.open) {
         _dialogHistoryState = false;
