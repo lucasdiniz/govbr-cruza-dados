@@ -39,6 +39,14 @@ tr:hover {
 
 .compact-table table { font-size: var(--md-sys-typescale-body-small-size); }
 
+/* Filter feedback: enquanto _refilter roda em datasets grandes (51k rows
+   em municipios grandes apos ADR-0011), tbody recebe .is-filtering pra
+   dar feedback visual e usuario nao crer que o tap foi perdido. */
+.js-data-table[aria-busy="true"] tbody {
+    opacity: 0.6;
+    transition: opacity .12s ease;
+}
+
 /* Table shell: chassi unificado que agrupa legenda + filtro + tabela +
    paginacao em um unico bloco MD3 (surface-container-low + 12dp shape). */
 .table-shell {
@@ -123,6 +131,7 @@ tr:hover {
     align-items: center;
     gap: 0.3rem;
     padding: 0.3rem 0.7rem;
+    min-height: 32px;
     border: 1px solid var(--md-sys-color-outline);
     border-radius: 999px;
     background: var(--md-sys-color-surface);
@@ -132,6 +141,23 @@ tr:hover {
     cursor: pointer;
     line-height: 1.2;
     transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+/* Mobile touch targets: ≥44px (Apple HIG) / 48dp (Material).
+   Tambem aumenta gap entre chips pra reduzir mis-tap. */
+@media (max-width: 480px), (pointer: coarse) {
+    .filter-chip {
+        min-height: 44px;
+        padding: 0.55rem 0.9rem;
+    }
+    .table-filter-chips {
+        gap: 0.5rem;
+    }
+    /* Em mobile, mantemos o Clear inline (sem margin-left:auto) — com
+       wrap, margin-left:auto empurra Clear pra ultima linha do flex,
+       isolado, na zona de pegada do polegar (mis-tap ao rolar). */
+    .filter-chip--clear {
+        margin-left: 0;
+    }
 }
 .filter-chip:hover {
     background: var(--md-sys-color-surface-container-high);

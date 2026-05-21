@@ -24,14 +24,22 @@ function initDataTables(root = document) {
             });
         };
 
+        // Optimizacao: em datasets grandes (ate 51k rows apos ADR-0011),
+        // iterar todas as rows e setar style.display gera N style recalc.
+        // Em vez disso, marcamos qualquer row visivel com data-page-row=""
+        // (na hora) e usamos CSS pra esconder o resto. Mas pra simplicidade
+        // e zero-mudanca em outras tabelas pequenas, mantemos o forEach
+        // mas dentro de requestAnimationFrame agrupado.
+        let renderRaf = 0;
         const renderPage = () => {
             const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
             if (page > totalPages) page = totalPages;
             const start = (page - 1) * pageSize;
             const pageRows = filteredRows.slice(start, start + pageSize);
+            const visible = new Set(pageRows);
 
             rows.forEach((row) => {
-                row.style.display = pageRows.includes(row) ? '' : 'none';
+                row.style.display = visible.has(row) ? '' : 'none';
             });
 
             if (meta) meta.textContent = `${filteredRows.length} registro(s) encontrados`;
@@ -46,11 +54,30 @@ function initDataTables(root = document) {
         // passaram pelos filtros (NAO o numero de rows visiveis na pagina —
         // renderPage so mostra pageSize por vez). Usado por componentes como
         // servidores-filter-chips.js pra reportar metrica de filtro correta.
+        //
+        // Em datasets grandes (ate 51k rows apos ADR-0011), aplicamos
+        // aria-busy + defer via requestAnimationFrame pra browser repintar
+        // o estado pressed do chip antes do reflow pesado. Sem isso, o
+        // usuario toca o chip e UI freeza ~500-1500ms em mid-tier mobile
+        // sem feedback — leva a toggle duplicado por re-tap.
         tableShell._refilter = (filterFn) => {
             externalFilter = filterFn;
             applyFilters();
             page = 1;
-            renderPage();
+
+            // Defer apenas pra datasets grandes (>1k); pequenos seguem sync
+            // pra evitar flicker desnecessario.
+            if (rows.length > 1000) {
+                tableShell.setAttribute('aria-busy', 'true');
+                if (renderRaf) cancelAnimationFrame(renderRaf);
+                renderRaf = requestAnimationFrame(() => {
+                    renderPage();
+                    tableShell.removeAttribute('aria-busy');
+                    renderRaf = 0;
+                });
+            } else {
+                renderPage();
+            }
             return filteredRows.length;
         };
 
