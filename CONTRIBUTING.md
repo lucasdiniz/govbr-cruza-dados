@@ -260,6 +260,29 @@ documentação acompanhada:
   para mudanças one-off, `python -m compileall etl -q` é o baseline mínimo.
 - [ ] **Audit scripts** — mexeu em `relatorios/` ou identificadores? Rode
   `python scripts/audit_report_identifiers.py --strict` (offline) antes do PR.
+- [ ] **Review UI/UX mobile-first** — mexeu em `web/static/` ou `web/templates/`?
+  **O site é mobile-first.** Revise no viewport 360-414px (touch):
+  - Touch targets ≥44×44px (Apple HIG) / 48dp (Material).
+  - Sem scroll horizontal acidental; chips/labels longos não estouram.
+  - Contraste WCAG AA em light **e** dark mode (cego pra cor / OLED).
+  - Sem travas de main thread em CPUs fracas (filtros sobre datasets grandes,
+    render de muitas rows).
+  - `aria-pressed` / `aria-expanded` corretos para toggles e expandables;
+    `TalkBack`/`VoiceOver` anunciam estado.
+  - Sempre peça review paralelo focado em mobile UX — validação desktop
+    não transfere automaticamente.
+- [ ] **Estratégia de deploy** — todo PR que vai pra produção precisa de uma
+  seção **Deploy** no body do PR descrevendo:
+  - `etl_phase` (`web` / `sql` / `incremental` / `all` / `N`).
+  - `mv_swap` — use atomic swap (`deploy/mv_updates/MV.sql` + input `mv_swap`)
+    sempre que **uma única MV** mudou. Nunca deixe `etl_phase=sql` dropar
+    todas as MVs CASCADE se um swap pontual resolve (~1s downtime vs horas).
+  - `rewarm_cache_keys` — qids específicos afetados pela mudança. Base match
+    em `warm_cache.py` já cobre prefixos (`TOP_SERVIDORES` cobre
+    `TOP_SERVIDORES`, `ANO:TOP_SERVIDORES`, `12M:TOP_SERVIDORES`). **Nunca
+    dropar o cache inteiro** quando shadow rewarm seletivo resolve.
+  - Garantia de zero-downtime: shadow rewarm preserva cache antigo até swap
+    atômico — descreva o caminho do usuário ativo durante a janela.
 - [ ] **Trailer Copilot** em todo commit:
   `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
 

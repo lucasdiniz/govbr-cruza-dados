@@ -39,6 +39,14 @@ tr:hover {
 
 .compact-table table { font-size: var(--md-sys-typescale-body-small-size); }
 
+/* Filter feedback: enquanto _refilter roda em datasets grandes (51k rows
+   em municipios grandes apos ADR-0011), tbody recebe .is-filtering pra
+   dar feedback visual e usuario nao crer que o tap foi perdido. */
+.js-data-table[aria-busy="true"] tbody {
+    opacity: 0.6;
+    transition: opacity .12s ease;
+}
+
 /* Table shell: chassi unificado que agrupa legenda + filtro + tabela +
    paginacao em um unico bloco MD3 (surface-container-low + 12dp shape). */
 .table-shell {
@@ -101,6 +109,103 @@ tr:hover {
     outline: 2px solid var(--md-sys-color-primary);
     outline-offset: 1px;
     border-color: var(--md-sys-color-primary);
+}
+
+/* Chips de filtro por flag (top servidores).
+   Bloco renderizado acima de .table-actions; cada chip toggle-able dispara
+   evento Umami 'servidores-filtro-toggle' e re-filtra via _refilter. */
+.table-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.7rem 0.95rem;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    align-items: center;
+}
+.table-filter-chips__label {
+    margin-right: 0.25rem;
+    align-self: center;
+}
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    min-height: 32px;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 999px;
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-label-medium-size, 0.85rem);
+    font-family: inherit;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+/* Mobile touch targets: ≥44px (Apple HIG) / 48dp (Material).
+   Tambem aumenta gap entre chips pra reduzir mis-tap. */
+@media (max-width: 480px), (pointer: coarse) {
+    .filter-chip {
+        min-height: 44px;
+        padding: 0.55rem 0.9rem;
+    }
+    .table-filter-chips {
+        gap: 0.5rem;
+    }
+    /* Em mobile, mantemos o Clear inline (sem margin-left:auto) — com
+       wrap, margin-left:auto empurra Clear pra ultima linha do flex,
+       isolado, na zona de pegada do polegar (mis-tap ao rolar). */
+    .filter-chip--clear {
+        margin-left: 0;
+    }
+}
+.filter-chip:hover {
+    background: var(--md-sys-color-surface-container-high);
+}
+.filter-chip:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+.filter-chip__count {
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface-variant);
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.78em;
+    font-weight: 600;
+}
+.filter-chip--active {
+    background: var(--md-sys-color-secondary-container);
+    border-color: var(--md-sys-color-secondary);
+    color: var(--md-sys-color-on-secondary-container);
+}
+.filter-chip--active .filter-chip__count {
+    background: var(--md-sys-color-secondary);
+    color: var(--md-sys-color-on-secondary);
+}
+.filter-chip--red.filter-chip--active {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #7f1d1d;
+}
+.filter-chip--orange.filter-chip--active {
+    background: #ffedd5;
+    border-color: #f97316;
+    color: #7c2d12;
+}
+.filter-chip--yellow.filter-chip--active {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #78350f;
+}
+.filter-chip--clear {
+    margin-left: auto;
+    color: var(--md-sys-color-primary);
+    border-color: transparent;
+    background: transparent;
+}
+.filter-chip--clear:hover {
+    background: var(--md-sys-color-surface-container);
 }
 
 /* Clickable rows.

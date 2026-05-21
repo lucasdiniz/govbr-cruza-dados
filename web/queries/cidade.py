@@ -840,9 +840,27 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
         ), 0) AS total_pago_durante_vinculo
   FROM mv_servidor_pb_risco
  WHERE %(municipio)s = ANY(municipios)
- ORDER BY flag_ceaf_expulso DESC, flag_socio_inidoneidade DESC, flag_socio_sancionado DESC, flag_duplo_vinculo_federal DESC, flag_bolsa_familia DESC, risco_score DESC
-LIMIT 200
 """
+
+# Wrap em outer SELECT pra poder usar o alias total_pago_durante_vinculo dentro
+# de uma expressao no ORDER BY. PG nao resolve aliases dentro de expressoes em
+# ORDER BY do mesmo SELECT (ex.: "ORDER BY (alias > 0)" falha com "column does
+# not exist") — so resolve quando o alias eh o ORDER BY inteiro. Validado na
+# VM em 2026-05-20 (PG 16).
+_TOP_SERVIDORES_RISCO_ORDER_BY = """
+ ORDER BY flag_ceaf_expulso DESC,
+          flag_socio_inidoneidade DESC,
+          (total_pago_durante_vinculo > 0) DESC,
+          flag_bolsa_familia DESC,
+          flag_socio_sancionado DESC,
+          flag_multi_empresa DESC,
+          risco_score DESC,
+          flag_duplo_vinculo_federal DESC
+"""
+TOP_SERVIDORES_RISCO = (
+    "SELECT * FROM (\n" + TOP_SERVIDORES_RISCO + "\n) _ranked"
+    + _TOP_SERVIDORES_RISCO_ORDER_BY
+)
 
 TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(
     "WHERE d.municipio = %(municipio)s AND d.valor_pago > 0",

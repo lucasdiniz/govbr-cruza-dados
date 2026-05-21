@@ -73,6 +73,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             servPanel.innerHTML = buildServidoresPanel(servData);
             servPanel.setAttribute('aria-busy', 'false');
             initDataTables(servPanel);
+            initServidoresFilterChips(servPanel);
             initMobileDescriptions(servPanel);
             initClickableRows(servPanel);
         } else {

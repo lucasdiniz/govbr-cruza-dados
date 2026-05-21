@@ -388,6 +388,23 @@ Before opening or merging a PR, verify:
   changes, `python -m compileall etl -q` is the minimum baseline.
 - [ ] **Audit scripts** — touched `relatorios/` or report identifiers? Run
   `python scripts/audit_report_identifiers.py --strict`.
+- [ ] **Mobile-first UI/UX review** — touched anything in `web/static/` or
+  `web/templates/`? **The site is mobile-first.** Review at viewport
+  360-414px (touch): touch targets ≥44×44px (Apple HIG) / 48dp (Material),
+  no horizontal scroll, contrast WCAG AA in both light + dark mode, no main-
+  thread freezes on weak CPUs, `aria-pressed`/`aria-expanded` correct for
+  toggles. Always have a parallel reviewer assess mobile UX explicitly — do
+  not assume desktop validation transfers.
+- [ ] **Deploy strategy** — every PR that ships to production must include a
+  **Deploy** section in the PR body specifying:
+  - `etl_phase` (`web` / `sql` / `incremental` / `all` / `N`)
+  - `mv_swap` value (use atomic swap whenever a single MV changed — never
+    let `etl_phase=sql` drop all MVs CASCADE if a targeted swap works)
+  - `rewarm_cache_keys` (specific qids affected — base match like
+    `TOP_SERVIDORES` already covers `ANO:` and `12M:` variants; never drop
+    the whole cache when shadow rewarm of known-affected keys works)
+  - Zero-downtime guarantee statement (shadow rewarm vs blue-green vs
+    rolling) and how active users are served during the deploy window.
 - [ ] **Commit trailer** — every commit has
   `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
 
