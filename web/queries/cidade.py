@@ -840,8 +840,14 @@ SELECT cpf_digitos_6, nome_upper, nome_servidor,
         ), 0) AS total_pago_durante_vinculo
   FROM mv_servidor_pb_risco
  WHERE %(municipio)s = ANY(municipios)
- ORDER BY flag_ceaf_expulso DESC, flag_socio_inidoneidade DESC, flag_socio_sancionado DESC, flag_duplo_vinculo_federal DESC, flag_bolsa_familia DESC, risco_score DESC
-LIMIT 200
+ ORDER BY flag_ceaf_expulso DESC,
+          flag_socio_inidoneidade DESC,
+          (total_pago_durante_vinculo > 0) DESC,
+          flag_bolsa_familia DESC,
+          flag_socio_sancionado DESC,
+          flag_multi_empresa DESC,
+          risco_score DESC,
+          flag_duplo_vinculo_federal DESC
 """
 
 TOP_SERVIDORES_RISCO_DATED = TOP_SERVIDORES_RISCO.replace(

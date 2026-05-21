@@ -1,6 +1,7 @@
 // === pages/main.js ===
 document.addEventListener('DOMContentLoaded', () => {
     initDataTables(document);
+    initServidoresFilterChips(document);
     initCidadeAutocomplete();
     initInteractiveToggles(document);
     initClickableRows(document);

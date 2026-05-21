@@ -44,10 +44,56 @@ function buildServidoresPanel(data) {
         const totalPagoRow = _val(r, cols, 'total_pago_durante_vinculo') > 0;
         const bolsaFamilia = _val(r, cols, 'flag_bolsa_familia');
         const vinculoFederal = _val(r, cols, 'flag_duplo_vinculo_federal');
+        const multiEmpresa = _val(r, cols, 'flag_multi_empresa');
+        const altoSalario = _val(r, cols, 'flag_alto_salario_socio');
+        const flagAttrs = [
+            ceafExpulso && 'data-flag-ceaf-expulso="1"',
+            socioInidoneidade && 'data-flag-socio-inidoneidade="1"',
+            totalPagoRow && 'data-flag-durante-vinculo="1"',
+            bolsaFamilia && 'data-flag-bolsa-familia="1"',
+            socioSancionado && 'data-flag-socio-sancionado="1"',
+            multiEmpresa && 'data-flag-multi-empresa="1"',
+            altoSalario && 'data-flag-alto-salario-socio="1"',
+            vinculoFederal && 'data-flag-duplo-vinculo-federal="1"',
+        ].filter(Boolean).join(' ');
         const rowClass = (ceafExpulso || totalPagoRow || socioInidoneidade) ? 'clickable-row row-sancao' : (socioSancionado || bolsaFamilia || vinculoFederal) ? 'clickable-row row-sancao-leve' : 'clickable-row';
         const cpfFmt = cpf6.length === 6 ? `***.${cpf6.slice(0,3)}.${cpf6.slice(3,6)}-**` : '';
-        return `<tr data-cargo="${_esc(String(cargoRaw).toLowerCase())}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
+        return `<tr data-cargo="${_esc(String(cargoRaw).toLowerCase())}" ${hasDetail ? `class="${rowClass}"` : ''}${detailAttrs} ${flagAttrs}><td data-label="Servidor" class="stack-title">${nome}</td><td data-label="CPF" class="auditor-only stack-meta"><code class="text-sm">${cpfFmt}</code></td><td data-label="Cargo" class="stack-meta">${cargo}</td><td data-label="Maior salario" class="text-right num">${salario}</td><td data-label="Sinais" class="stack-badges">${badges}</td></tr>`;
     }).join('');
+
+    // Contagens por flag para os chips
+    const _count = (flag, pred) => data.rows.filter(r => pred(r)).length;
+    const cnt = {
+        ceaf_expulso: _count('ceaf', r => _val(r, cols, 'flag_ceaf_expulso')),
+        socio_inidoneidade: _count('inid', r => _val(r, cols, 'flag_socio_inidoneidade')),
+        durante_vinculo: _count('durante', r => _val(r, cols, 'total_pago_durante_vinculo') > 0),
+        bolsa_familia: _count('bf', r => _val(r, cols, 'flag_bolsa_familia')),
+        socio_sancionado: _count('sanc', r => _val(r, cols, 'flag_socio_sancionado')),
+        multi_empresa: _count('multi', r => _val(r, cols, 'flag_multi_empresa')),
+        alto_salario_socio: _count('alto', r => _val(r, cols, 'flag_alto_salario_socio')),
+        duplo_vinculo_federal: _count('fed', r => _val(r, cols, 'flag_duplo_vinculo_federal')),
+    };
+    const chipHtml = (flag, severity, citizenLabel, auditorLabel) => {
+        if (!cnt[flag]) return '';
+        return `<button type="button" class="filter-chip filter-chip--${severity}" data-flag="${flag}" aria-pressed="false"><span class="citizen-only">${citizenLabel}</span><span class="auditor-only">${auditorLabel}</span> <span class="filter-chip__count">${cnt[flag]}</span></button>`;
+    };
+    const chips = [
+        chipHtml('ceaf_expulso', 'red', 'Expulso federal', 'CEAF'),
+        chipHtml('socio_inidoneidade', 'red', 'Socio inidoneo', 'CEIS inidoneidade'),
+        chipHtml('durante_vinculo', 'red', 'Empresa recebeu durante vinculo', 'Pago durante vinculo'),
+        chipHtml('bolsa_familia', 'yellow', 'Recebe Bolsa Familia', 'Bolsa Familia'),
+        chipHtml('socio_sancionado', 'orange', 'Socio de sancionada', 'CEIS/CNEP'),
+        chipHtml('multi_empresa', 'yellow', 'Socio de varias empresas', 'Multi-empresa'),
+        chipHtml('alto_salario_socio', 'yellow', 'Salario alto + socio', 'Salario alto + socio'),
+        chipHtml('duplo_vinculo_federal', 'yellow', 'Tambem no cadastro federal', 'Vinculo SIAPE'),
+    ].join('');
+    const chipsBlock = chips
+        ? `<div class="table-filter-chips" data-servidores-filter-chips role="group" aria-label="Filtrar servidores por sinal">
+            <span class="table-filter-chips__label text-sm text-muted">${dualLabel('Filtrar por sinal:','Filtros por flag:')}</span>
+            ${chips}
+            <button type="button" class="filter-chip filter-chip--clear" data-clear hidden>${dualLabel('Limpar filtros','Limpar')}</button>
+        </div>`
+        : '';
 
     const _ldot = (bg) => `<span class="color-legend-dot" style="background:${bg}"></span>`;
     const hasRedServ = data.rows.some(r => _val(r, data.columns, 'flag_ceaf_expulso') || _val(r, data.columns, 'total_pago_durante_vinculo') > 0 || _val(r, data.columns, 'flag_socio_inidoneidade'));
@@ -67,6 +113,7 @@ function buildServidoresPanel(data) {
             ${servLegend}
         </div></div>
         <div class="table-shell js-data-table" data-page-size="10">
+            ${chipsBlock}
             <div class="table-actions">
                 <input type="search" class="table-filter" placeholder="Filtrar nesta tabela" aria-label="Filtrar servidores">
                 <p class="table-meta text-sm text-muted" data-table-meta></p>

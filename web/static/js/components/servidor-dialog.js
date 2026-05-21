@@ -158,6 +158,44 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 </div>`;
             }).join('');
         }
+        // Expandable com regras de acumulacao de cargos publicos. So renderiza
+        // quando ha duplo vinculo de fato (municipal + federal SIAPE). Reutiliza
+        // o estilo .bf-regras-info (generico apesar do prefixo) e dispara o
+        // mesmo evento Umami 'secao-toggle' com section='duplo-vinculo-regras'.
+        if (vinculos.length && vinculosFederais.length) {
+            html += `<details class="bf-regras-info" data-duplo-vinculo-regras>
+                <summary class="bf-regras-info__summary">
+                    <span class="bf-regras-info__title">${dualLabel('Pode acumular dois cargos publicos?','Regras de acumulacao de cargos publicos')}</span>
+                    <span class="bf-regras-info__chevron" aria-hidden="true">›</span>
+                </summary>
+                <div class="bf-regras-info__body">
+                    <div class="citizen-only">
+                        <p>A regra geral da Constituicao e que <strong>nao pode acumular dois empregos publicos</strong> — municipal, estadual, federal, autarquia, empresa publica ou estatal. Quem entra em dois cargos sem se enquadrar em uma das excecoes pode ser <strong>demitido por improbidade</strong> e tem que devolver o que recebeu a mais.</p>
+                        <p><strong>Excecoes permitidas</strong> (somente nestes casos, com horarios comprovadamente compativeis e <strong>respeitando o teto do STF</strong>: R$ 46.366,19 em 2024):</p>
+                        <ul class="bf-regras-info__lista">
+                            <li><strong>Dois cargos de professor</strong>.</li>
+                            <li><strong>Um cargo de professor + um cargo tecnico ou cientifico</strong>.</li>
+                            <li><strong>Dois cargos privativos da area da saude</strong> com profissoes regulamentadas (medico, enfermeiro, dentista, farmaceutico, psicologo etc).</li>
+                        </ul>
+                        <p>Mesmo nas excecoes, a soma das remuneracoes <strong>nao pode ultrapassar o teto do STF</strong>. Quem ja recebe acima do teto so pode acumular se devolver o que excede. Acumular fora das excecoes da <strong>demissao + ressarcimento + acao por improbidade</strong>.</p>
+                        <p class="bf-regras-info__fonte">Constituicao Federal, Art. 37, incisos XI e XVI.</p>
+                    </div>
+                    <div class="auditor-only">
+                        <p><strong>Regra geral (CF/88 Art. 37, XVI):</strong> vedada a acumulacao remunerada de cargos publicos. Aplica-se a empregos e funcoes publicas, abrangendo autarquias, fundacoes, empresas publicas, sociedades de economia mista e subsidiarias da Uniao, Estados, DF e Municipios.</p>
+                        <p><strong>Excecoes (havendo compatibilidade de horarios):</strong></p>
+                        <ul class="bf-regras-info__lista">
+                            <li>Dois cargos de <strong>professor</strong> (alinea a).</li>
+                            <li>Um cargo de <strong>professor + um tecnico ou cientifico</strong> (alinea b).</li>
+                            <li>Dois cargos privativos de <strong>profissionais de saude</strong> com profissoes regulamentadas (alinea c, EC 34/2001).</li>
+                        </ul>
+                        <p><strong>Teto remuneratorio (CF/88 Art. 37, XI):</strong> subsidio mensal dos Ministros do STF (R$ 46.366,19 desde fev/2024, MP 1.230/2024). Aplica-se a soma de todas as remuneracoes acumulaveis, incluindo proventos de inatividade.</p>
+                        <p><strong>Compatibilidade de horarios:</strong> jornadas semanais devem permitir o exercicio efetivo dos dois cargos. STF (RE 1.176.440, Tema 1.072) afastou limite generico de 60h/sem — analise caso a caso, mas jornadas que comprovadamente impossibilitem o exercicio sao causa de demissao.</p>
+                        <p><strong>Sancao em caso de acumulacao ilicita:</strong> demissao por improbidade administrativa (Lei 8.112/90, Art. 132, XII; Lei 8.429/92, Art. 11). Servidor notificado pode optar por um dos cargos em ate 10 dias; opcao pos-prazo implica demissao do mais recente + ressarcimento ao erario.</p>
+                        <p class="bf-regras-info__fonte">CF/88 Art. 37, XI e XVI; Lei 8.112/90 Art. 118-120 e 132; Sumula 246/TCU; EC 19/98 e EC 34/2001.</p>
+                    </div>
+                </div>
+            </details>`;
+        }
         html += '</div>';
     } else {
         const cargoFallback = servidorFallback.cargo ? _stripCodePrefix(servidorFallback.cargo) : '';
@@ -565,6 +603,18 @@ async function openServidorDialog(cpf6, nome, cnpjs, servidorNome, servidorFallb
                 trackEvent('secao-toggle', {
                     section: 'bf-regras',
                     action: regrasDetails.open ? 'open' : 'close',
+                });
+            }
+        });
+    }
+
+    const duploRegrasDetails = body.querySelector('details.bf-regras-info[data-duplo-vinculo-regras]');
+    if (duploRegrasDetails) {
+        duploRegrasDetails.addEventListener('toggle', () => {
+            if (typeof trackEvent === 'function') {
+                trackEvent('secao-toggle', {
+                    section: 'duplo-vinculo-regras',
+                    action: duploRegrasDetails.open ? 'open' : 'close',
                 });
             }
         });

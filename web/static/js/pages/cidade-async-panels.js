@@ -26,6 +26,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         panel.innerHTML = await response.text();
         panel.setAttribute('aria-busy', 'false');
         initDataTables(panel);
+        initServidoresFilterChips(panel);
         initInteractiveToggles(panel);
         initMobileDescriptions(panel);
         initClickableRows(panel);
