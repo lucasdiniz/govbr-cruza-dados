@@ -2,10 +2,12 @@
 
 ## Status
 
-Accepted (parcial) — implementado para `TOP_SERVIDORES_RISCO`/`_DATED` em
-2026-05-20 (PR feat/servidores-sem-limit-filtros). Demais LIMITs (queries
-Q##, outras top-tabelas) continuam Proposed e serão tratados em PRs
-subsequentes.
+Accepted (parcial) — implementado **apenas para `TOP_SERVIDORES_RISCO` /
+`TOP_SERVIDORES_RISCO_DATED`** em 2026-05-20 ([PR #195][pr195]). Demais
+LIMITs (queries Q## em `registry.py` e outras top-tabelas em `cidade.py`)
+continuam **Proposed** e serão tratados em PRs subsequentes, caso-a-caso.
+
+[pr195]: https://github.com/lucasdiniz/govbr-cruza-dados/pull/195
 
 ## Date
 
@@ -90,9 +92,9 @@ Remover progressivamente os LIMITs hardcoded, começando por
 
 ## Status
 
-`Proposed` — depende de decisão arquitetural sobre warm cache strategy
-e implementação de paginação real no frontend. Não bloqueia o ETL
-incremental BF (ADR-0010).
+`Proposed` (para os escopos não implementados — Q## em `registry.py` e
+outras top-tabelas em `cidade.py`). Ver "Implementação parcial" abaixo
+para o que já foi aceito em [PR #195][pr195].
 
 ## Quando implementar
 
@@ -131,7 +133,12 @@ Quando alguma das condições se materializar:
 
 ## Implementação parcial (2026-05-20) — TOP_SERVIDORES_RISCO
 
-PR `feat(web): servidores sem LIMIT + filtros por flag`:
+**Escopo aceito**: apenas `TOP_SERVIDORES_RISCO` e `TOP_SERVIDORES_RISCO_DATED`
+em `web/queries/cidade.py:805`. Os demais LIMITs listados na tabela acima
+**continuam em vigor** e serão tratados em PRs separadas, caso-a-caso,
+quando houver demanda concreta de produto.
+
+Entregue em [PR #195 — feat(web): servidores sem LIMIT + filtros][pr195]:
 
 - **LIMIT removido** de `TOP_SERVIDORES_RISCO` em `web/queries/cidade.py`.
   Variante `_DATED` herda automaticamente via `.replace()`.
@@ -186,9 +193,15 @@ PR `feat(web): servidores sem LIMIT + filtros por flag`:
   prod ainda — follow-up se warm cycle aumentar significativamente.
   Não muda CACHE_DEPENDENCY_GRAPH.
 
-### Próximos passos (continuam Proposed)
+### Próximos passos (continuam Proposed — não entregues no PR #195)
 
-- LIMITs em `cidade.py:289`, `:393`, `:512`, `:614` (outras agregações).
-- LIMIT 500 nas ~30 queries Q## de `registry.py`.
-- Aplicar mesmo padrão de chips em top-fornecedores e demais top-tables.
-- Considerar virtual scroll se mobile Lighthouse regredir > 10%.
+Nada abaixo foi implementado ainda. PRs futuras devem revisitar este ADR:
+
+- LIMITs em `cidade.py:289`, `:393`, `:512`, `:614` (outras agregações de
+  top-tabelas, ainda com `LIMIT 200` hardcoded).
+- LIMIT 500 nas ~30 queries Q## em `web/queries/registry.py`
+  (linhas 169-849).
+- Aplicar o mesmo padrão de chips de filtro + ordenação por sinais reais
+  em top-fornecedores e demais top-tables.
+- Considerar virtual scroll se mobile Lighthouse regredir > 10% após PR
+  #195 estar em produção.
