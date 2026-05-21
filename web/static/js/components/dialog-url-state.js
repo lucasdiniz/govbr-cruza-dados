@@ -32,9 +32,22 @@ function _dialogNextSeq() {
     return ++_dialogReqSeq;
 }
 function _dialogSeqValid(seq) {
-    if (seq !== _dialogReqSeq) return false;
-    const dialog = document.getElementById('empresa-dialog');
-    return !!(dialog && dialog.open);
+    // Match-seq-only. Anteriormente exigíamos dialog.open=true como
+    // defesa extra, mas isso quebrava o caminho de cache-hit no reabrir
+    // do mesmo dialog: a continuação do await rodava antes do md-dialog
+    // propagar open=true via Lit reactive update (microtask race).
+    // Sintoma: body preso em "Carregando..." sem chamada /detalhes.
+    // O bump-on-close em _dialogOnClose já invalida fetches inflight
+    // quando o usuário fecha; abrir outro dialog faz _dialogNextSeq que
+    // muda _dialogReqSeq — esse check basta. Render para body fechado
+    // é inofensivo (não exibe).
+    if (seq !== _dialogReqSeq) {
+        if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[dialog-seq] mismatch', { captured: seq, current: _dialogReqSeq });
+        }
+        return false;
+    }
+    return true;
 }
 function _dialogBumpSeq() {
     _dialogReqSeq++;
