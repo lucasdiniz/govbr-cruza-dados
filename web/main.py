@@ -500,7 +500,7 @@ JS_FILES: list[str] = [
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "120"
+templates.env.globals["ASSET_VERSION"] = "121"
 
 
 # ─────────────────────────────────────────────────────────────────────────

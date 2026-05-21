@@ -118,6 +118,7 @@ Semântica OR (union dos filtros ativos).
 | `fornecedores-filtro-toggle` | `{flag, action: 'on'\|'off', ativos, qtd_ativos, visiveis, total}` | toggle de chip de filtro na tabela de fornecedores ⁷ |
 | `fornecedores-filtro-limpar` | `{ativos_anteriores, qtd_ativos_anteriores, visiveis}` | botão "Limpar" dos chips de filtro de fornecedores |
 | `tabela-pagina-mudou` | `{tabela, de, para, total_paginas, via: 'prev'\|'next'}` ⁶ | clique em Anterior/Próxima das tabelas paginadas |
+| `tabela-hidratada` | `{tabela, total, initial, ms_to_hydrate, forced}` ⁶ | tabelas top-servidores/top-fornecedores com > 100 rows usam progressive loading: SSR emite `initial` rows em `<tbody>` + resto em `<script type="text/html" data-rest-rows>`. Evento dispara no momento em que o tail é hidratado (via `requestIdleCallback` ou ao primeiro user input). `forced=true` quando usuário interagiu antes do RIC disparar. Permite monitorar TTI real em mid-tier mobile. |
 | `empenho-table-sort` | `{coluna, direcao: 'asc'\|'desc'}` | clique em header de tabela para ordenar (dialog de empenho) |
 
 ### Diversos

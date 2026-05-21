@@ -9,11 +9,73 @@ function initDataTables(root = document) {
         const pageLabel = tableShell.querySelector('[data-page-label]');
         const prevBtn = tableShell.querySelector('[data-page-prev]');
         const nextBtn = tableShell.querySelector('[data-page-next]');
-        const rows = Array.from(tableShell.querySelectorAll('tbody tr'));
+        let rows = Array.from(tableShell.querySelectorAll('tbody tr'));
         const pageSize = Number(tableShell.dataset.pageSize || 12);
         let filteredRows = rows;
         let page = 1;
         let externalFilter = null; // set by toggles (e.g. ocultar medicos)
+
+        // === Progressive loading (PR #199) ===
+        // Tabelas grandes (top-servidores/top-fornecedores em JP tem 51k/13k rows)
+        // viraram TTI lento por SSR sincrono de DOM massivo. Template emite
+        // primeira leva (50 rows) em <tbody> real + tail em
+        // <script type="text/html" data-rest-rows> (inert text, sem custo de DOM).
+        // Hidratamos o tail apos paint inicial via requestIdleCallback.
+        //
+        // Hidratacao = idempotente:
+        //   1. lookup do <script data-rest-rows>; se nao existe, no-op
+        //   2. parse innerHTML em <table><tbody> auxiliar
+        //   3. append novos <tr> no tbody real
+        //   4. recolect rows, re-init clickable, applyFilters + renderPage
+        //   5. emit umami `tabela-hidratada`
+        //
+        // Force-flush: capture-phase listener no tableShell para click/input/keydown.
+        // Qualquer interacao do usuario ANTES do RIC disparar forca hidratacao
+        // sincrona imediata. Evita race onde chip click filtra apenas as 50 iniciais.
+        const tbody = tableShell.querySelector('tbody');
+        const restScript = tableShell.querySelector('script[type="text/html"][data-rest-rows]');
+        const hasProgressive = !!(restScript && tbody);
+        let hydrated = !hasProgressive;
+        let hydrateScheduled = 0;
+        let hydrationStartTs = 0;
+
+        const _hydrateRest = (forced = false) => {
+            if (hydrated) return;
+            hydrated = true;
+            if (hydrateScheduled && typeof cancelIdleCallback === 'function') {
+                cancelIdleCallback(hydrateScheduled);
+            }
+            hydrateScheduled = 0;
+            const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const html = restScript.textContent || '';
+            const tmp = document.createElement('table');
+            tmp.innerHTML = '<tbody>' + html + '</tbody>';
+            const tmpBody = tmp.querySelector('tbody');
+            const frag = document.createDocumentFragment();
+            while (tmpBody && tmpBody.firstChild) frag.appendChild(tmpBody.firstChild);
+            tbody.appendChild(frag);
+            restScript.remove();
+            rows = Array.from(tbody.querySelectorAll('tr'));
+            if (typeof initClickableRows === 'function') {
+                try { initClickableRows(tbody); } catch (e) { /* no-op */ }
+            }
+            applyFilters();
+            renderPage();
+            const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const ms = Math.round(t1 - (hydrationStartTs || t0));
+            if (typeof trackEvent === 'function') {
+                const tabela = tableShell.dataset.tableId || 'unknown';
+                if (tabela !== 'unknown') {
+                    trackEvent('tabela-hidratada', {
+                        tabela,
+                        total: Number(tableShell.dataset.progressiveTotal || rows.length),
+                        initial: Number(tableShell.dataset.progressiveInitial || 0),
+                        ms_to_hydrate: ms,
+                        forced,
+                    });
+                }
+            }
+        };
 
         const applyFilters = () => {
             const term = filterInput ? filterInput.value.trim().toLowerCase() : '';
@@ -137,6 +199,21 @@ function initDataTables(root = document) {
         });
 
         renderPage();
+
+        if (hasProgressive) {
+            hydrationStartTs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const flushOnInteraction = () => _hydrateRest(true);
+            // Capture-phase: roda ANTES dos handlers de filtro/chip/sort/paginacao,
+            // garantindo que applyFilters() veja a lista completa de rows.
+            tableShell.addEventListener('click', flushOnInteraction, { capture: true, once: true });
+            tableShell.addEventListener('input', flushOnInteraction, { capture: true, once: true });
+            tableShell.addEventListener('keydown', flushOnInteraction, { capture: true, once: true });
+            if (typeof requestIdleCallback === 'function') {
+                hydrateScheduled = requestIdleCallback(() => _hydrateRest(false), { timeout: 1500 });
+            } else {
+                setTimeout(() => _hydrateRest(false), 0);
+            }
+        }
     });
 }
 
