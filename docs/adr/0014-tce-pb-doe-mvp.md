@@ -34,8 +34,9 @@ Implementacao em **PR unico** abrangendo:
 
 2. **ETL classico** (`etl/23_tce_pb_doe.py`): download (4 workers + retry
    exponencial calibrado em 9.935 PDFs) + parse pdfminer.six + UPSERT
-   idempotente com gating por `parser_version`. Registrado como **Fase 20**
-   em `etl/run_all.py`.
+   idempotente com gating por `parser_version`. Registrado como **Fase 18**
+   em `etl/run_all.py` (antes da Fase 19 Views, para que `mv_empresa_tce_pb`
+   ja tenha dados quando criada).
 
 3. **MV L1** `mv_empresa_tce_pb` (em `sql/12_views.sql` +
    `deploy/mv_updates/mv_empresa_tce_pb.sql` para swap atomico):
