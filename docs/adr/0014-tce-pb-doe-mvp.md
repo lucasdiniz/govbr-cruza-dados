@@ -152,13 +152,13 @@ TODAS as MVs no topo de `sql/12_views.sql` — anula a estrategia e causa 1-2h
 de downtime. PR #202 adicionou modo `--only N` em `run_all.py` e formato
 `only:N` em `deploy.yml` para o caso cirurgico.
 
-**Importante — N e o INDICE 1-based na lista `phases` de `etl/run_all.py`, NAO o label "Fase X"
+**Importante — N e o INDICE 1-based na lista `PHASES` de `etl/run_all.py`, NAO o label "Fase X"
 do tuple.** O label "Fase 18: TCE-PB DOE" e historico (preservado pra nao
 renumerar labels antigos); o indice real do tuple `etl.23_tce_pb_doe` na
 lista e **23** (item 23 contando a partir de 1). Para confirmar antes de
 qualquer deploy `only:`:
 ```bash
-python -c "from etl.run_all import phases; [print(i+1, m) for i,(_,m) in enumerate(phases)]"
+python -c "from etl.run_all import PHASES; [print(i+1, m) for i,(_,m) in enumerate(PHASES)]"
 ```
 
 **Por que NAO swap conjunto da L1 + L2 (correcao do "swap conjunto" v1/v2):**

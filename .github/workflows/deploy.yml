@@ -770,9 +770,9 @@ jobs:
           #   "N"        -> roda da Fase N (1-based index) ate o fim (compat)
           #   "only:N"   -> roda APENAS a Fase N (cirurgico, nao dispara fases
           #                 seguintes que podem fazer DROP CASCADE de MVs)
-          # IMPORTANTE: N e o INDICE 1-based na lista `phases` de run_all.py,
+          # IMPORTANTE: N e o INDICE 1-based na lista `PHASES` de run_all.py,
           # NAO o label "Fase X" do tuple. Use:
-          #   python -c "from etl.run_all import phases; [print(i+1, m) for i,(_,m) in enumerate(phases)]"
+          #   python -c "from etl.run_all import PHASES; [print(i+1, m) for i,(_,m) in enumerate(PHASES)]"
           # para descobrir o indice de uma fase especifica.
           if [[ "$PHASE_INPUT" =~ ^only:[0-9]+$ ]]; then
             PHASE_NUM="${PHASE_INPUT#only:}"
