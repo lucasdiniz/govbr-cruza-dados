@@ -259,8 +259,16 @@ def download_decisoes(hashes: list[str], dest_dir: Path) -> dict:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def _parse_filename(name: str) -> dict:
-    """Best-effort: extrai campos do filename (que vem truncado em 73 chars do HTML)."""
+def _parse_filename(name: str, default_year: int | None = None) -> dict:
+    """Best-effort: extrai campos do filename (que vem truncado em 73 chars do HTML).
+
+    Quando `default_year` e fornecido e o YYYY no filename veio truncado
+    para 3 chars (caso comum: nomes truncados em 73 chars de largura no
+    HTML do indice), tenta completar usando `default_year` ou
+    `default_year - 1` (decisoes do ano anterior aparecem no indice do ano
+    corrente). Adicionado em PR #202 apos descobrir que `--only-recent`
+    descartava 100% das decisoes do indice 2026 (todos truncados a 3 chars).
+    """
     m = _PAT_FILENAME.match(name or "")
     if not m:
         return {}
@@ -268,6 +276,20 @@ def _parse_filename(name: str) -> dict:
     yyyy = g[9]
     if len(yyyy) == 2:
         yyyy = "20" + yyyy
+    elif len(yyyy) == 3 and default_year is not None:
+        # YYYY truncado a 3 chars: tenta default_year e default_year-1.
+        # Aceita o que comeca com os 3 chars e produz data <= hoje.
+        from datetime import date as _date
+        for candidate in (default_year, default_year - 1):
+            cand_str = str(candidate)
+            if cand_str.startswith(yyyy):
+                try:
+                    d = _date(candidate, int(g[8]), int(g[7]))
+                    if d <= _date.today():
+                        yyyy = cand_str
+                        break
+                except ValueError:
+                    continue
     return {
         "num_processo": g[0].lstrip("0") or "0",
         "ano_processo": int("20" + g[1]),
@@ -607,12 +629,17 @@ def _list_local_pdfs(dest_dir: Path,
     return pairs
 
 
-def _filter_recent(items: list[tuple[str, str]], days: int) -> list[tuple[str, str]]:
-    """Filtra items do index para os ultimos N dias (usando data_sessao do filename)."""
+def _filter_recent(items: list[tuple[str, str]], days: int,
+                   default_year: int | None = None) -> list[tuple[str, str]]:
+    """Filtra items do index para os ultimos N dias (usando data_sessao do filename).
+
+    `default_year` resolve filenames truncados a 3 chars no YYYY (caso comum
+    no indice do TCE-PB que tronca nomes a 73 chars no HTML).
+    """
     cutoff = date.today() - timedelta(days=days)
     out: list[tuple[str, str]] = []
     for h, name in items:
-        fn = _parse_filename(name)
+        fn = _parse_filename(name, default_year=default_year)
         ds = fn.get("data_sessao")
         if not ds:
             continue
@@ -653,6 +680,9 @@ def run(argv: list[str] | None = None) -> None:
           f"parser_version={PARSER_VERSION}", flush=True)
 
     # ── 1. Fetch index para todos os anos ───────────────────────────────
+    # Filtra --only-recent POR ANO (nao no concat final) para podermos passar
+    # `default_year` ao _parse_filename e resolver YYYY truncados a 3 chars
+    # (caso comum no indice do TCE-PB).
     all_items: list[tuple[str, str]] = []
     for ano in anos:
         print(f"    Fetching index ano={ano}...", flush=True)
@@ -662,13 +692,12 @@ def run(argv: list[str] | None = None) -> None:
             print(f"    ERRO index ano={ano}: {e}", flush=True)
             continue
         print(f"      {len(items)} decisoes listadas.", flush=True)
+        if args.only_recent:
+            before = len(items)
+            items = _filter_recent(items, args.only_recent, default_year=ano)
+            print(f"      Filtrado para ultimos {args.only_recent} dias: "
+                  f"{len(items)}/{before}", flush=True)
         all_items.extend(items)
-
-    if args.only_recent:
-        before = len(all_items)
-        all_items = _filter_recent(all_items, args.only_recent)
-        print(f"    Filtrado para ultimos {args.only_recent} dias: "
-              f"{len(all_items)}/{before}", flush=True)
 
     if not all_items:
         print("    Nenhuma decisao a processar.", flush=True)
