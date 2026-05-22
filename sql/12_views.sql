@@ -472,6 +472,11 @@ CREATE UNIQUE INDEX idx_mv_srvb_cpf_nome ON mv_servidor_pb_base(cpf_digitos_6, n
 --     Granularidade: 1 row por cnpj_basico (8 digitos) — mesma chave de mv_empresa_pb.
 --     L1: nao depende de outras MVs. Pode existir sem decisoes carregadas (MV vazia).
 --     Ver ADR-0014.
+--
+--     ATENCAO DRIFT: este SELECT esta DUPLICADO em sql/42_tce_pb_decisao.sql
+--     (bootstrap idempotente, CREATE MATERIALIZED VIEW IF NOT EXISTS) para
+--     permitir mv_swap apos primeiro deploy sem rodar etl_phase=sql. Ao alterar
+--     a SELECT aqui, alterar tambem em sql/42_tce_pb_decisao.sql.
 -- -----------------------------------------------------------------------------
 CREATE MATERIALIZED VIEW mv_empresa_tce_pb AS
 WITH base AS (

@@ -707,7 +707,30 @@ def run(argv: list[str] | None = None) -> None:
     finally:
         conn.close()
 
-    # ── 4. Cleanup (PDFs sao streaming) ─────────────────────────────────
+    # ── 4. Refresh da MV L1 (zero-downtime, dados frescos disponiveis) ──
+    # REFRESH CONCURRENTLY requer UNIQUE INDEX (idx_mv_empresa_tce_pb_cnpj). Sem
+    # CONCURRENTLY, REFRESH bloqueia leitores; com, nao. Se a MV ainda nao existe
+    # (deploy quebrado, sem schema), log e segue — mv_swap posterior cobre.
+    refresh_conn = get_conn()
+    refresh_conn.autocommit = True
+    try:
+        with refresh_conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM pg_matviews WHERE matviewname='mv_empresa_tce_pb'"
+            )
+            if cur.fetchone():
+                print("    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_tce_pb...",
+                      flush=True)
+                t_ref = time.time()
+                cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_tce_pb")
+                print(f"    Refresh OK em {time.time() - t_ref:.1f}s.", flush=True)
+            else:
+                print("    mv_empresa_tce_pb nao existe (rode mv_swap ou etl_phase=sql).",
+                      flush=True)
+    finally:
+        refresh_conn.close()
+
+    # ── 5. Cleanup (PDFs sao streaming) ─────────────────────────────────
     # Apaga SO os PDFs efetivamente persistidos neste run. Erros de parse e
     # PDFs deixados por runs anteriores ficam preservados para retry.
     if not args.no_cleanup:

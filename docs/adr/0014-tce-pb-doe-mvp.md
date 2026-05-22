@@ -132,36 +132,49 @@ existente se `EXCLUDED.parser_version > current OR text_sha256 IS
 DISTINCT`. Bumpar `PARSER_VERSION` em `etl/23_tce_pb_doe.py` + rodar
 `--reprocess-all` reaplica heuristicas sem refazer download.
 
-## Estrategia de deploy (zero-downtime)
+## Estrategia de deploy
 
-| Etapa | Input deploy.yml | Tempo | Downtime |
+Esta secao reflete as **limitacoes reais** do framework `mv_swap.py` descobertas
+em reviews automaticos (Opus 4.7 + GPT 5.5) na evolucao deste PR. Nem todos os
+passos sao downtime ZERO estrito; documentamos a janela real de cada passo.
+
+| Etapa | Input deploy.yml | Tempo | Degradacao real |
 |---|---|---|---|
-| 1. Schema (CREATE TABLE IF NOT EXISTS) | `etl_phase=web` (aplica `sql/42_*.sql` via step "Apply web app schemas") | ~5s | 0 |
-| 2. Bootstrap ETL (download + parse + load) | `etl_phase=18` (Fase 18 TCE-PB DOE) | ~3-4h | 0 (background) |
-| 3. Provisionar cache dir na VM | automatico via deploy step "Restart cruza-web" | <1s | 0 |
-| 4. MV L1 nova + MV L2 atualizada (swap conjunto) | `mv_swap=mv_empresa_tce_pb,mv_empresa_pb` | ~1s bloqueio | ~1s |
-| 5. Frontend | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30min warm | 0 |
+| 1. Schema + web + bootstrap MV vazia | `etl_phase=web` (aplica `sql/42_*.sql`) | ~5 min | ~2s janela 502s no restart cruza-web (uvicorn single-process; limitacao conhecida) |
+| 2. Bootstrap ETL + REFRESH CONCURRENTLY da MV L1 | `etl_phase=18` (Fase 18 TCE-PB DOE) | ~3-4h | 0 (ETL em background; REFRESH CONCURRENTLY nao bloqueia leitores) |
+| 3. mv_swap da L2 (`mv_empresa_pb` ganha 4 colunas) | `etl_phase=web` + `mv_swap=mv_empresa_pb` | ~10-30 min | janela de minutos com **L2 dependentes** (`mv_municipio_pb_kpi_score`, `mv_municipio_pb_mapa`, `v_risk_score_pb`, `mv_q67_dated_pb`) servindo `0 rows` durante REFRESH pos-swap (sem CONCURRENTLY). Cache `web_cache` cobre 99% do trafego, entao impacto real e marginal |
+| 4. Shadow rewarm | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30-60 min | 0 (shadow pattern; live rows servem trafego ate swap atomico) |
 
-**Importante — swap conjunto obrigatorio (MED-1 review Opus):** apos este
-PR, `mv_empresa_pb` tem dependencia DDL real em `mv_empresa_tce_pb` (LEFT
-JOIN). `etl/mv_swap.py` faz `DROP ... CASCADE` na transacao atomica, entao
-swapar `mv_empresa_tce_pb` sozinho derruba `mv_empresa_pb` por CASCADE,
-deixando a L2 vazia ate o REFRESH terminar (minutos para 4M+ rows). **Todo
-swap futuro deve incluir as duas MVs juntas:** `mv_swap=mv_empresa_tce_pb,mv_empresa_pb`.
-O rewarm seletivo so deve disparar apos o swap das duas.
+**Por que NAO swap conjunto da L1 + L2 (correcao do "swap conjunto" v1/v2):**
+`etl/mv_swap.py` itera CSV uma MV por vez, com COMMIT entre swaps — nao e
+transacional multi-MV. Mais grave: swap de `mv_empresa_tce_pb` (L1) faria
+`DROP CASCADE` que derrubaria `mv_empresa_pb` (L2) entre os dois swaps. Por isso
+a estrategia evita swapar L1: usa `REFRESH CONCURRENTLY` (zero-downtime) para a
+L1 e reserva `mv_swap` apenas para a L2 que **muda de schema** neste PR.
 
-**O que NAO fazer:** `etl_phase=sql` neste PR. Esse comando dispara
-`etl.21_views` que executa `DROP MATERIALIZED VIEW ... CASCADE` de TODAS
-as MVs no topo de `sql/12_views.sql` e recria do zero — 1-2h de downtime
-com paginas `/empresa/*`, `/cidade/*`, `/servidor/*` quebradas. Use o
-caminho mv_swap acima.
+**Bootstrap da L1 (BLOCKER-1 dos reviews):** `mv_swap` aborta se a MV nao
+existir. `sql/42_tce_pb_decisao.sql` cria `mv_empresa_tce_pb` como vazia via
+`CREATE MATERIALIZED VIEW IF NOT EXISTS` no passo 1, garantindo que o
+REFRESH CONCURRENTLY do passo 2 e qualquer mv_swap futuro funcionem.
+
+**Rollback honesto (BLOCKER-3 corrigido):** `mv_swap.py:283` faz
+`DROP CASCADE`, NAO mantem `<mv>_old` — rollback exige re-swap com SQL
+pre-mudanca (`deploy/mv_updates/mv_empresa_pb.sql` da branch anterior) +
+REFRESH em cadeia. Plano: tagear commit pre-deploy + ter `mv_empresa_pb.sql`
+"pre" pronto antes de iniciar.
+
+**Rollback do ETL apos passo 3:** `TRUNCATE tce_pb_decisao*` por si so deixa
+MVs apontando para decisoes inexistentes (MV e snapshot, nao segue TRUNCATE).
+Apos rollback de dados, requer `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_tce_pb`
++ `REFRESH MATERIALIZED VIEW mv_empresa_pb` + cadeia L2.
+
+**O que NAO fazer:** `etl_phase=sql` neste PR. Dispara `etl.21_views` que
+executa `DROP MATERIALIZED VIEW ... CASCADE` de TODAS as MVs no topo de
+`sql/12_views.sql` — 1-2h de downtime com paginas quebradas.
 
 Cache keys afetadas: prefixos `EMPRESA_PERFIL:<cnpj>` e
-`EMPRESA_PERFIL_MUN:<cnpj>:<slug>` — populadas pelo `web/warm_cache.py`.
-Shadow rewarm seletivo via `rewarm_cache_keys` (memoria zero-downtime).
-
-Rollback: `mv_swap` mantem versao anterior renomeada com sufixo
-(`<mv>_old`), instantaneo (~1s).
+`EMPRESA_PERFIL_MUN:<cnpj>:<slug>`. Match exato (NAO substring) em
+`rewarm_cache_keys` — usar ambos literais.
 
 ## Provisionamento do diretorio de cache
 
