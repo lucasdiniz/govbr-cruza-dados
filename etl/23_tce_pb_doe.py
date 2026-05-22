@@ -531,7 +531,13 @@ def parse_and_load(conn, pdf_pairs: list[tuple[Path, str]],
     t0 = time.time()
     parsed = errors = 0
     batch: list[dict] = []
+    persisted_hashes: set[str] = set()
     args_list = [(str(p), n) for (p, n) in pdf_pairs]
+
+    def _flush(b: list[dict]) -> None:
+        _persist_batch(conn, b)
+        for item in b:
+            persisted_hashes.add(item["hash_publicacao"])
 
     error_samples: list[str] = []
     with Pool(processes=_PARSE_WORKERS) as pool:
@@ -546,7 +552,7 @@ def parse_and_load(conn, pdf_pairs: list[tuple[Path, str]],
             else:
                 batch.append(result)
                 if len(batch) >= 200:
-                    _persist_batch(conn, batch)
+                    _flush(batch)
                     parsed += len(batch)
                     batch = []
             if i % 200 == 0 or i == len(args_list):
@@ -560,7 +566,7 @@ def parse_and_load(conn, pdf_pairs: list[tuple[Path, str]],
                 )
 
     if batch:
-        _persist_batch(conn, batch)
+        _flush(batch)
         parsed += len(batch)
 
     if error_samples:
@@ -568,7 +574,12 @@ def parse_and_load(conn, pdf_pairs: list[tuple[Path, str]],
         for e in error_samples:
             print(f"      {e}", flush=True)
 
-    return {"parsed": parsed, "errors": errors, "skipped": skipped}
+    return {
+        "parsed": parsed,
+        "errors": errors,
+        "skipped": skipped,
+        "persisted_hashes": persisted_hashes,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -675,6 +686,7 @@ def run(argv: list[str] | None = None) -> None:
               f"err={stats['err']} ({stats['bytes']/1024/1024:.0f}MB)", flush=True)
 
     # ── 3. Parse + carga ────────────────────────────────────────────────
+    persisted_hashes: set[str] = set()
     conn = get_conn()
     try:
         _ensure_schema(conn)
@@ -686,6 +698,7 @@ def run(argv: list[str] | None = None) -> None:
         stats = parse_and_load(conn, pdf_pairs, reprocess_all=args.reprocess_all)
         print(f"    Parse: parsed={stats['parsed']} errors={stats['errors']} "
               f"skipped={stats['skipped']}", flush=True)
+        persisted_hashes = stats.get("persisted_hashes", set())
 
         # Contagens finais
         print(f"    tce_pb_decisao: {table_count(conn, 'tce_pb_decisao'):,}", flush=True)
@@ -695,12 +708,18 @@ def run(argv: list[str] | None = None) -> None:
         conn.close()
 
     # ── 4. Cleanup (PDFs sao streaming) ─────────────────────────────────
+    # Apaga SO os PDFs efetivamente persistidos neste run. Erros de parse e
+    # PDFs deixados por runs anteriores ficam preservados para retry.
     if not args.no_cleanup:
         n = 0
-        for f in DOE_DIR.glob("*.pdf"):
-            f.unlink()
-            n += 1
-        print(f"    Cleanup: {n} PDFs removidos (streaming - nao armazenamos).",
+        for h in persisted_hashes:
+            f = DOE_DIR / f"{h}.pdf"
+            try:
+                f.unlink()
+                n += 1
+            except FileNotFoundError:
+                pass
+        print(f"    Cleanup: {n} PDFs removidos (de {len(persisted_hashes)} persistidos).",
               flush=True)
 
 

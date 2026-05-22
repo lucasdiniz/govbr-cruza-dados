@@ -135,12 +135,25 @@ DISTINCT`. Bumpar `PARSER_VERSION` em `etl/23_tce_pb_doe.py` + rodar
 
 | Etapa | Input deploy.yml | Tempo | Downtime |
 |---|---|---|---|
-| 1. Schema (CREATE TABLE IF NOT EXISTS) | `etl_phase=sql` | ~30s | 0 |
-| 2. Bootstrap ETL (download + parse + load) | `etl_phase=20` ou via `etl_phase=incremental` futura | ~3-4h | 0 (background) |
-| 3. Provisionar cache dir na VM | manual ou via deploy step | <1s | 0 |
-| 4. MV L1 nova | `mv_swap=mv_empresa_tce_pb` | ~1s bloqueio | ~1s |
-| 5. MV L2 atualizada | `mv_swap=mv_empresa_pb` | ~1s bloqueio | ~1s |
-| 6. Frontend | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30min warm | 0 |
+| 1. Schema (CREATE TABLE IF NOT EXISTS) | `etl_phase=web` (aplica `sql/42_*.sql` via step "Apply web app schemas") | ~5s | 0 |
+| 2. Bootstrap ETL (download + parse + load) | `etl_phase=18` (Fase 18 TCE-PB DOE) | ~3-4h | 0 (background) |
+| 3. Provisionar cache dir na VM | automatico via deploy step "Restart cruza-web" | <1s | 0 |
+| 4. MV L1 nova + MV L2 atualizada (swap conjunto) | `mv_swap=mv_empresa_tce_pb,mv_empresa_pb` | ~1s bloqueio | ~1s |
+| 5. Frontend | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30min warm | 0 |
+
+**Importante — swap conjunto obrigatorio (MED-1 review Opus):** apos este
+PR, `mv_empresa_pb` tem dependencia DDL real em `mv_empresa_tce_pb` (LEFT
+JOIN). `etl/mv_swap.py` faz `DROP ... CASCADE` na transacao atomica, entao
+swapar `mv_empresa_tce_pb` sozinho derruba `mv_empresa_pb` por CASCADE,
+deixando a L2 vazia ate o REFRESH terminar (minutos para 4M+ rows). **Todo
+swap futuro deve incluir as duas MVs juntas:** `mv_swap=mv_empresa_tce_pb,mv_empresa_pb`.
+O rewarm seletivo so deve disparar apos o swap das duas.
+
+**O que NAO fazer:** `etl_phase=sql` neste PR. Esse comando dispara
+`etl.21_views` que executa `DROP MATERIALIZED VIEW ... CASCADE` de TODAS
+as MVs no topo de `sql/12_views.sql` e recria do zero — 1-2h de downtime
+com paginas `/empresa/*`, `/cidade/*`, `/servidor/*` quebradas. Use o
+caminho mv_swap acima.
 
 Cache keys afetadas: prefixos `EMPRESA_PERFIL:<cnpj>` e
 `EMPRESA_PERFIL_MUN:<cnpj>:<slug>` — populadas pelo `web/warm_cache.py`.

@@ -26,6 +26,7 @@ import asyncio
 import logging
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Optional
 from urllib.request import Request as _UrlRequest, urlopen
@@ -89,11 +90,30 @@ async def _fetch_and_cache(h: str) -> Optional[Path]:
     data = await asyncio.to_thread(_fetch_sync)
     if data is None or len(data) < 1000:
         return None
+    # Valida magic number antes de cachear: TCE-PB ocasionalmente serve HTML
+    # de manutencao / Cloudflare challenge com HTTP 200. Sem este check, o
+    # HTML seria cacheado como PDF por 30 dias (Cache-Control: immutable).
+    if not data[:4].startswith(b"%PDF"):
+        _log.warning("TCE-PB %s retornou non-PDF (%dB)", h[:8], len(data))
+        return None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".pdf.tmp")
-        tmp.write_bytes(data)
-        tmp.replace(path)
+        # tmp unico por requisicao para evitar corrida entre workers concorrentes
+        # baixando o mesmo hash (cada um escreveria no mesmo tmp e poderia
+        # expor PDF parcial via replace).
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{h}-", suffix=".pdf.tmp", dir=str(path.parent)
+        )
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(tmp_fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            tmp.replace(path)
+        finally:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
         return path
     except Exception:
         _log.exception("falha ao gravar cache PDF TCE-PB %s", h[:8])

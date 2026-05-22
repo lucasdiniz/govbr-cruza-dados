@@ -524,7 +524,7 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
-          for sql_file in sql/40_contato_messages.sql; do
+          for sql_file in sql/40_contato_messages.sql sql/42_tce_pb_decisao.sql; do
             if [ -f "$sql_file" ]; then
               echo "=== Applying $sql_file ==="
               PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f "$sql_file"

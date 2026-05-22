@@ -99,9 +99,12 @@ def main():
         ("Fase 15: Dados PB (Pagamento, Empenho, Contratos, Saude, Convenios)", "etl.20_dados_pb"),
         ("Fase 16: PNCP Itens", "etl.04b_pncp_itens"),
         ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
-        ("Fase 18: Views materializadas", "etl.21_views"),
-        ("Fase 19: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
-        ("Fase 20: TCE-PB DOE (decisoes - download, parse, load)", "etl.23_tce_pb_doe"),
+        # TCE-PB DOE roda ANTES das MVs: mv_empresa_tce_pb (em sql/12_views.sql)
+        # le tce_pb_decisao/tce_pb_decisao_cnpj. Se rodasse depois, MVs ficariam vazias
+        # ate o proximo refresh manual.
+        ("Fase 18: TCE-PB DOE (decisoes - download, parse, load)", "etl.23_tce_pb_doe"),
+        ("Fase 19: Views materializadas", "etl.21_views"),
+        ("Fase 20: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
     ]
 
     errors = []
