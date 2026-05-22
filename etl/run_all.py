@@ -110,13 +110,35 @@ def main():
     errors = []
     succeeded: set[str] = set()
 
-    # Permite rodar fase específica: python -m etl.run_all 3
+    # Permite rodar fase específica:
+    #   python -m etl.run_all 3        -> roda da Fase 3 ate o fim
+    #   python -m etl.run_all --only 18 -> roda APENAS a Fase 18
+    # Modo --only e necessario para deploys cirurgicos que NAO querem disparar
+    # fases subsequentes (ex.: rodar so a Fase 18 sem disparar Fase 19=Views
+    # que faz DROP CASCADE de todas as MVs). Adicionado em PR #202 (ADR-0014).
     start_phase = 0
-    if len(sys.argv) > 1:
+    only_phase: int | None = None
+    args = sys.argv[1:]
+    if args and args[0] == "--only":
+        if len(args) < 2:
+            print("Uso: python -m etl.run_all --only <fase>", flush=True)
+            sys.exit(1)
         try:
-            start_phase = int(sys.argv[1]) - 1
+            only_phase = int(args[1]) - 1
+        except ValueError:
+            print(f"Uso: python -m etl.run_all --only <fase>", flush=True)
+            print(f"  Fases: 1-{len(phases)}", flush=True)
+            sys.exit(1)
+        if only_phase < 0 or only_phase >= len(phases):
+            print(f"Fase fora do intervalo: 1-{len(phases)}", flush=True)
+            sys.exit(1)
+        start_phase = only_phase
+    elif args:
+        try:
+            start_phase = int(args[0]) - 1
         except ValueError:
             print(f"Uso: python -m etl.run_all [fase_inicial]", flush=True)
+            print(f"     python -m etl.run_all --only <fase>", flush=True)
             print(f"  Fases: 1-{len(phases)}", flush=True)
             sys.exit(1)
 
@@ -127,6 +149,8 @@ def main():
     for i, (name, module_name) in enumerate(phases):
         if i < start_phase:
             continue
+        if only_phase is not None and i > only_phase:
+            break
 
         phase_start = time.time()
         print(f"\n{'='*60}", flush=True)

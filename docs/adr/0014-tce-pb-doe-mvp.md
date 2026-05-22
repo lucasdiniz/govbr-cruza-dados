@@ -141,9 +141,16 @@ passos sao downtime ZERO estrito; documentamos a janela real de cada passo.
 | Etapa | Input deploy.yml | Tempo | Degradacao real |
 |---|---|---|---|
 | 1. Schema + web + bootstrap MV vazia | `etl_phase=web` (aplica `sql/42_*.sql`) | ~5 min | ~2s janela 502s no restart cruza-web (uvicorn single-process; limitacao conhecida) |
-| 2. Bootstrap ETL + REFRESH CONCURRENTLY da MV L1 | `etl_phase=18` (Fase 18 TCE-PB DOE) | ~3-4h | 0 (ETL em background; REFRESH CONCURRENTLY nao bloqueia leitores) |
-| 3. mv_swap da L2 (`mv_empresa_pb` ganha 4 colunas) | `etl_phase=web` + `mv_swap=mv_empresa_pb` | ~10-30 min | janela de minutos com **L2 dependentes** (`mv_municipio_pb_kpi_score`, `mv_municipio_pb_mapa`, `v_risk_score_pb`, `mv_q67_dated_pb`) servindo `0 rows` durante REFRESH pos-swap (sem CONCURRENTLY). Cache `web_cache` cobre 99% do trafego, entao impacto real e marginal |
-| 4. Shadow rewarm | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30-60 min | 0 (shadow pattern; live rows servem trafego ate swap atomico) |
+| 2. Bootstrap ETL + REFRESH CONCURRENTLY da MV L1 | `etl_phase=only:18` (roda APENAS Fase 18) | ~3-4h | 0 (ETL em background; REFRESH CONCURRENTLY nao bloqueia leitores) |
+| 3. mv_swap da L2 (`mv_empresa_pb` ganha 4 colunas) | `etl_phase=web` + `mv_swap=mv_empresa_pb` | ~10-30 min | janela curta com **apenas `v_risk_score_pb`** (view normal, recriada via DDL instantaneamente). `mv_municipio_pb_kpi_score`, `mv_municipio_pb_mapa`, `mv_q67_dated_pb`, `v_risk_score_empresa` **nao** dependem de `mv_empresa_pb` (verificado em `sql/12_views.sql` apos review v3). Impacto trafego real: marginal |
+| 4. Shadow rewarm | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30-60 min | 0 (shadow pattern; live rows servem trafego ate swap atomico). Custo extra do warm devido a lookup `EMPRESA_TCE_PB_DOE_BY_BASICO` em 143k empresas: **~5-7 min** (lookup PK em MV indexada) |
+
+**CRITICO — passo 2 usa `only:18`, nao `18`:** `etl/run_all.py` interpreta
+arg numerico como **start_phase** (roda da Fase N ate o fim). `etl_phase=18`
+rodaria Fase 18 + Fase 19 (`etl.21_views`), que faz `DROP ... CASCADE` de
+TODAS as MVs no topo de `sql/12_views.sql` — anula a estrategia e causa 1-2h
+de downtime. PR #202 adicionou modo `--only N` em `run_all.py` e formato
+`only:N` em `deploy.yml` para o caso cirurgico.
 
 **Por que NAO swap conjunto da L1 + L2 (correcao do "swap conjunto" v1/v2):**
 `etl/mv_swap.py` itera CSV uma MV por vez, com COMMIT entre swaps — nao e
@@ -160,8 +167,10 @@ REFRESH CONCURRENTLY do passo 2 e qualquer mv_swap futuro funcionem.
 **Rollback honesto (BLOCKER-3 corrigido):** `mv_swap.py:283` faz
 `DROP CASCADE`, NAO mantem `<mv>_old` — rollback exige re-swap com SQL
 pre-mudanca (`deploy/mv_updates/mv_empresa_pb.sql` da branch anterior) +
-REFRESH em cadeia. Plano: tagear commit pre-deploy + ter `mv_empresa_pb.sql`
-"pre" pronto antes de iniciar.
+REFRESH em cadeia. Plano: **antes do merge**, tagear o commit pre-PR (HEAD
+de `main` no momento) como `pre-tce-pb-doe`; usar `git checkout pre-tce-pb-doe
+-- deploy/mv_updates/mv_empresa_pb.sql sql/12_views.sql` para extrair o SQL
+de rollback se necessario.
 
 **Rollback do ETL apos passo 3:** `TRUNCATE tce_pb_decisao*` por si so deixa
 MVs apontando para decisoes inexistentes (MV e snapshot, nao segue TRUNCATE).
