@@ -1,0 +1,111 @@
+{# TCE-PB DOE: empresa citada em processos/decisoes (ADR-0014).
+   Source: mv_empresa_tce_pb (jsonb processos_json). #}
+{% set tce = tce_pb_doe %}
+{% if tce and (tce.qtd_processos or 0) > 0 %}
+{% from "partials/_collapsible.html" import collapsible %}
+{% set qtd_proc = tce.qtd_processos | int %}
+{% set qtd_dec  = tce.qtd_decisoes | int %}
+{% set qtd_irr  = tce.qtd_processos_irregular | int %}
+{% set qtd_mul  = tce.qtd_processos_multa | int %}
+{% set qtd_deb  = tce.qtd_processos_debito | int %}
+{% call collapsible('tce-pb-doe', 'TCE-PB — processos publicados no DOE', count=qtd_proc) %}
+<p class="text-sm text-muted">
+    Esta empresa foi citada em <strong>{{ qtd_proc }}</strong> processo{{ 's' if qtd_proc > 1 else '' }}
+    do Tribunal de Contas do Estado da Paraiba, totalizando <strong>{{ qtd_dec }}</strong>
+    decis{{ 'oes' if qtd_dec > 1 else 'ao' }} publicada{{ 's' if qtd_dec > 1 else '' }} no
+    <a href="https://publicacao.tce.pb.gov.br/" target="_blank" rel="noopener nofollow">DOE-TCE-PB</a>.
+    Ultima decisao em <strong>{{ tce.ultima_decisao_em | date_br }}</strong>.
+</p>
+
+<div class="tce-doe-summary">
+    {% if qtd_irr > 0 %}<span class="chip-attention">🟠 {{ qtd_irr }} c/ irregularidade</span>{% endif %}
+    {% if qtd_mul > 0 %}<span class="chip-risk">🔴 {{ qtd_mul }} c/ multa aplicada</span>{% endif %}
+    {% if qtd_deb > 0 %}<span class="chip-risk">🔴 {{ qtd_deb }} c/ debito imputado</span>{% endif %}
+    {% if qtd_irr == 0 and qtd_mul == 0 and qtd_deb == 0 %}
+        <span class="chip-ok">🟢 Sem condenacoes detectadas no corpus indexado</span>
+    {% endif %}
+</div>
+
+<div class="tbl-wrap">
+    <table class="stack-mobile tce-doe-processos">
+        <thead>
+            <tr>
+                <th>Processo</th>
+                <th>Tipo</th>
+                <th>Orgao</th>
+                <th>Municipio</th>
+                <th>Ultima sessao</th>
+                <th>Decisoes</th>
+                <th>Resultado</th>
+                <th>Acoes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in (tce.processos_json or []) %}
+            <tr>
+                <td data-label="Processo">
+                    <code class="text-sm">{{ p.num_processo }}/{{ '%02d' % ((p.ano_processo|int) % 100) }}</code>
+                </td>
+                <td data-label="Tipo">{{ p.tipo_materia | tipo_materia_label }}</td>
+                <td data-label="Orgao">{{ p.orgao | orgao_label }}</td>
+                <td data-label="Municipio">{{ p.municipio | clean_text or '—' }}</td>
+                <td data-label="Ultima sessao">{{ p.ultima_sessao | date_br }}</td>
+                <td data-label="Decisoes" class="num">{{ p.qtd_decisoes }}</td>
+                <td data-label="Resultado">
+                    {{ p | resultado_chip | safe }}
+                    {% if p.tem_multa %}<span class="chip-risk-mini" title="Multa aplicada">⚠️</span>{% endif %}
+                    {% if p.tem_debito %}<span class="chip-risk-mini" title="Debito imputado">💰</span>{% endif %}
+                </td>
+                <td data-label="Acoes" class="tce-doe-actions">
+                    {% for d in (p.decisoes or []) %}
+                    <md-text-button
+                        class="tce-view-btn"
+                        data-tce-hash="{{ d.hash }}"
+                        data-tce-label="Processo {{ p.num_processo }}/{{ p.ano_processo }} — {{ d.fase | fase_label }} ({{ d.data | date_br }})"
+                        title="Visualizar PDF da decisao">
+                        <span class="material-symbols-outlined" slot="icon">picture_as_pdf</span>
+                        {{ d.data | date_br_short }}
+                    </md-text-button>
+                    {% endfor %}
+                    <a class="tce-cse-link"
+                       href="https://cse.google.com/cse?cx=005536785968125846686&q={{ p.num_processo }}/{{ p.ano_processo }}"
+                       target="_blank" rel="noopener nofollow"
+                       title="Buscar este processo no portal TCE-PB">🔍</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p class="text-sm disclaimer-tce">
+    Dados extraidos automaticamente das publicacoes em
+    <a href="https://publicacao.tce.pb.gov.br/" target="_blank" rel="noopener nofollow">publicacao.tce.pb.gov.br</a>.
+    A presenca de uma empresa em processo do TCE-PB <strong>nao</strong> implica
+    condenacao ou irregularidade — consulte sempre a integra do acordao no portal oficial.
+</p>
+
+{# Dialog reutilizavel para visualizacao do PDF. Uma instancia por pagina. #}
+<md-dialog id="tce-pdf-dialog" class="pdf-dialog-fullscreen">
+    <div slot="headline" id="tce-pdf-title">Decisao TCE-PB</div>
+    <div slot="content" class="pdf-dialog-body">
+        <iframe id="tce-pdf-frame" title="Visualizador de PDF da decisao" loading="lazy"></iframe>
+    </div>
+    <div slot="actions">
+        <md-text-button id="tce-pdf-download">
+            <span class="material-symbols-outlined" slot="icon">download</span>
+            Baixar
+        </md-text-button>
+        <a id="tce-pdf-open-tce"
+           href="https://publicacao.tce.pb.gov.br/" target="_blank" rel="noopener nofollow"
+           class="md3-link-button">
+            <md-text-button>
+                <span class="material-symbols-outlined" slot="icon">open_in_new</span>
+                Abrir no TCE-PB
+            </md-text-button>
+        </a>
+        <md-text-button id="tce-pdf-close" form="" value="close">Fechar</md-text-button>
+    </div>
+</md-dialog>
+{% endcall %}
+{% endif %}

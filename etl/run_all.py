@@ -44,6 +44,7 @@ _CSV_DIRS: dict[str, list[str]] = {
     "etl.18_tse_prestacao": ["tse"],          # mesma pasta que 16_tse
     "etl.19_tce_pb":        ["tce_pb"],
     "etl.20_dados_pb":      ["dados_pb"],
+    # 23_tce_pb_doe nao registra dir aqui: faz cleanup proprio (streaming).
 }
 
 # Diretórios que são compartilhados entre fases — só limpamos depois que
@@ -100,6 +101,7 @@ def main():
         ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
         ("Fase 18: Views materializadas", "etl.21_views"),
         ("Fase 19: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
+        ("Fase 20: TCE-PB DOE (decisoes - download, parse, load)", "etl.23_tce_pb_doe"),
     ]
 
     errors = []

@@ -64,6 +64,7 @@
 @import url("./components/skeleton.css");
 @import url("./components/snackbar.css");
 @import url("./components/tooltip.css");
+@import url("./components/tce-pdf-viewer.css");
 @import url("./components/topnav.css");
 @import url("./components/tour.css");
 /* _mobile.css MUST come last within the components layer: it contains the

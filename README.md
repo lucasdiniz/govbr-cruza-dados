@@ -19,7 +19,7 @@ Carrega ~350M registros (~210GB raw) de 18+ fontes públicas brasileiras em um P
 - **Observabilidade self-hosted** — Umami + GoAccess + traffic-digest
 - **Auto-resize VM Azure** (B2 → B4 + Standard SSD → Premium SSD) por etl_phase, custos prorrateados por hora
 
-Fontes integradas: Receita Federal, PNCP, TCE-PB, dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Família, CPGF, BNDES, ComprasNet, emendas parlamentares, sanções (CEIS/CNEP/CEAF), renúncias fiscais, viagens a serviço e acordos de leniência.
+Fontes integradas: Receita Federal, PNCP, TCE-PB (despesas + DOE/acórdãos), dados.pb.gov.br, TSE, PGFN, SIAPE, Bolsa Família, CPGF, BNDES, ComprasNet, emendas parlamentares, sanções (CEIS/CNEP/CEAF), renúncias fiscais, viagens a serviço e acordos de leniência.
 
 ## Quickstart
 

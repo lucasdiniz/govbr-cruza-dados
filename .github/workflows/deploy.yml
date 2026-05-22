@@ -1455,6 +1455,13 @@ jobs:
           echo "=== Asset build OK ==="
           ls -la web/static/dist/
 
+          # ADR-0014: garante cache dir do proxy TCE-PB DOE (PDFs imutaveis
+          # por hash). Idempotente. Permissoes: cruza-web user owns it.
+          # Tamanho esperado: ~5GB max (10k PDFs * 500KB).
+          sudo mkdir -p /var/cache/cruza-web/tce-pb
+          sudo chown -R cruza-web:cruza-web /var/cache/cruza-web/tce-pb || true
+          sudo chmod 0755 /var/cache/cruza-web/tce-pb
+
           # restart funciona em servico ativo OU inativo (alias de stop+start).
           sudo systemctl restart cruza-web
           # Aguarda port 8000 responder (workers spawnam em ~3-5s).

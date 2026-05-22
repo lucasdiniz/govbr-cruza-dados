@@ -9,6 +9,7 @@ DROP VIEW IF EXISTS v_risk_score_pb CASCADE;
 DROP VIEW IF EXISTS v_risk_score_empresa CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_rede_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_empresa_pb CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_empresa_tce_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_risco CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_base CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_q67_dated_pb CASCADE;
@@ -466,6 +467,123 @@ GROUP BY cpf_digitos_6, nome_upper;
 CREATE UNIQUE INDEX idx_mv_srvb_cpf_nome ON mv_servidor_pb_base(cpf_digitos_6, nome_upper);
 
 -- -----------------------------------------------------------------------------
+-- 4c. mv_empresa_tce_pb: Agregado de processos/decisoes do TCE-PB por empresa.
+--     Source: tce_pb_decisao + tce_pb_decisao_cnpj (populadas por etl/23_tce_pb_doe.py).
+--     Granularidade: 1 row por cnpj_basico (8 digitos) — mesma chave de mv_empresa_pb.
+--     L1: nao depende de outras MVs. Pode existir sem decisoes carregadas (MV vazia).
+--     Ver ADR-0014.
+-- -----------------------------------------------------------------------------
+CREATE MATERIALIZED VIEW mv_empresa_tce_pb AS
+WITH base AS (
+    SELECT
+        LEFT(dc.cnpj, 8)              AS cnpj_basico,
+        d._nk_md5,
+        d.hash_publicacao,
+        d.num_processo,
+        d.ano_processo,
+        d.tipo_decisao,
+        d.orgao_julgador,
+        d.fase,
+        d.data_sessao,
+        d.tipo_materia,
+        d.resultado,
+        d.aplicou_multa,
+        d.imputou_debito,
+        COALESCE(d.valor_multa_rs, 0)  AS valor_multa_rs,
+        COALESCE(d.valor_debito_rs, 0) AS valor_debito_rs,
+        d.municipio_inferido
+    FROM tce_pb_decisao d
+    JOIN tce_pb_decisao_cnpj dc ON dc.decisao_md5 = d._nk_md5
+    WHERE d.tipo_materia <> 'atos_pessoal'   -- ruido (58% do corpus, 0,1% irregular)
+      AND EXISTS (
+          SELECT 1 FROM estabelecimento e
+          WHERE e.cnpj_basico = LEFT(dc.cnpj, 8)
+      )
+),
+processos AS (
+    -- 1 row por (cnpj_basico, processo). Pior resultado e flags agregados das decisoes.
+    SELECT
+        cnpj_basico,
+        num_processo,
+        ano_processo,
+        MAX(tipo_materia)               AS tipo_materia,
+        MAX(orgao_julgador)             AS orgao,
+        MAX(municipio_inferido)         AS municipio,
+        MAX(data_sessao)                AS ultima_sessao,
+        COUNT(*)                        AS qtd_decisoes,
+        -- Pior resultado: irregular(1) < regular_ressalva(2) < regular(3) < indef(4)
+        MIN(CASE resultado
+              WHEN 'irregular'        THEN 1
+              WHEN 'regular_ressalva' THEN 2
+              WHEN 'regular'          THEN 3
+              ELSE 4
+            END)                        AS pior_resultado_rank,
+        bool_or(aplicou_multa)          AS tem_multa,
+        bool_or(imputou_debito)         AS tem_debito,
+        SUM(valor_multa_rs)             AS multa_total_rs,
+        SUM(valor_debito_rs)            AS debito_total_rs,
+        jsonb_agg(
+            jsonb_build_object(
+                'hash',   hash_publicacao,
+                'fase',   fase,
+                'data',   data_sessao,
+                'result', resultado
+            )
+            ORDER BY data_sessao DESC NULLS LAST
+        )                               AS decisoes_json
+    FROM base
+    GROUP BY cnpj_basico, num_processo, ano_processo
+)
+SELECT
+    p.cnpj_basico,
+    COUNT(*)::int                                                  AS qtd_processos,
+    SUM(p.qtd_decisoes)::int                                       AS qtd_decisoes,
+    COUNT(*) FILTER (WHERE p.pior_resultado_rank = 1)::int         AS qtd_processos_irregular,
+    COUNT(*) FILTER (WHERE p.tem_multa)::int                       AS qtd_processos_multa,
+    COUNT(*) FILTER (WHERE p.tem_debito)::int                      AS qtd_processos_debito,
+    COALESCE(SUM(p.multa_total_rs), 0)::numeric(14,2)              AS multa_total_rs,
+    COALESCE(SUM(p.debito_total_rs), 0)::numeric(14,2)             AS debito_total_rs,
+    MAX(p.ultima_sessao)                                           AS ultima_decisao_em,
+    -- Top 20 processos por data desc, embarcados como jsonb para o frontend.
+    (
+        SELECT jsonb_agg(row_to_json(top20)::jsonb)
+        FROM (
+            SELECT
+                p2.num_processo,
+                p2.ano_processo,
+                p2.tipo_materia,
+                p2.orgao,
+                p2.municipio,
+                p2.ultima_sessao,
+                p2.qtd_decisoes,
+                CASE p2.pior_resultado_rank
+                    WHEN 1 THEN 'irregular'
+                    WHEN 2 THEN 'regular_ressalva'
+                    WHEN 3 THEN 'regular'
+                    ELSE        'indef'
+                END                        AS pior_resultado,
+                p2.tem_multa,
+                p2.tem_debito,
+                p2.decisoes_json           AS decisoes
+            FROM processos p2
+            WHERE p2.cnpj_basico = p.cnpj_basico
+            ORDER BY p2.ultima_sessao DESC NULLS LAST,
+                     p2.ano_processo DESC,
+                     p2.num_processo DESC
+            LIMIT 20
+        ) top20
+    )                                                              AS processos_json
+FROM processos p
+GROUP BY p.cnpj_basico;
+
+CREATE UNIQUE INDEX idx_mv_empresa_tce_pb_cnpj ON mv_empresa_tce_pb(cnpj_basico);
+CREATE INDEX idx_mv_empresa_tce_pb_irregular  ON mv_empresa_tce_pb(cnpj_basico)
+    WHERE qtd_processos_irregular > 0;
+CREATE INDEX idx_mv_empresa_tce_pb_multa      ON mv_empresa_tce_pb(cnpj_basico)
+    WHERE qtd_processos_multa > 0 OR qtd_processos_debito > 0;
+
+
+-- -----------------------------------------------------------------------------
 -- 4b. mv_servidor_pb_risco: Enriquece base com cross-refs e flags
 --     IMPORTANTE: Abordagem stepwise com tabelas regulares.
 --     A versão CTE-única causa timeout porque:
@@ -836,6 +954,11 @@ SELECT
     -- Dívida e sanções
     COALESCE(div.total_divida, 0) AS total_divida_pgfn,
     COALESCE(ceis.vigente, FALSE) AS flag_ceis_vigente,
+    -- TCE-PB DOE (ADR-0014): apenas o count (jsonb fica em mv_empresa_tce_pb)
+    COALESCE(tcedoe.qtd_processos, 0)::int AS qtd_processos_tce_pb,
+    COALESCE(tcedoe.qtd_processos_irregular, 0)::int AS qtd_processos_tce_pb_irregular,
+    COALESCE(tcedoe.qtd_processos_multa, 0)::int AS qtd_processos_tce_pb_multa,
+    COALESCE(tcedoe.qtd_processos_debito, 0)::int AS qtd_processos_tce_pb_debito,
     -- Flags
     (est.situacao_cadastral IS NULL OR est.situacao_cadastral <> 2) AS flag_inativa,
     (e.capital_social < 10000 AND COALESCE(tce.total_pago, 0) + COALESCE(pbe.total_empenho, 0) > 500000) AS flag_capital_desproporcional,
@@ -855,7 +978,8 @@ LEFT JOIN pb_sau_agg pbs ON pbs.cnpj_basico = pc.cnpj_basico
 LEFT JOIN pb_conv_agg pbv ON pbv.cnpj_basico = pc.cnpj_basico
 LEFT JOIN lic_agg lic ON lic.cnpj_basico = pc.cnpj_basico
 LEFT JOIN divida_agg div ON div.cnpj_basico = pc.cnpj_basico
-LEFT JOIN ceis_agg ceis ON ceis.cnpj_basico = pc.cnpj_basico;
+LEFT JOIN ceis_agg ceis ON ceis.cnpj_basico = pc.cnpj_basico
+LEFT JOIN mv_empresa_tce_pb tcedoe ON tcedoe.cnpj_basico = pc.cnpj_basico;
 
 CREATE UNIQUE INDEX idx_mv_epb_cnpj ON mv_empresa_pb(cnpj_basico);
 CREATE INDEX idx_mv_epb_inativa ON mv_empresa_pb(cnpj_basico) WHERE flag_inativa;
@@ -863,6 +987,7 @@ CREATE INDEX idx_mv_epb_ceis ON mv_empresa_pb(cnpj_basico) WHERE flag_ceis_vigen
 CREATE INDEX idx_mv_epb_capital ON mv_empresa_pb(cnpj_basico) WHERE flag_capital_desproporcional;
 CREATE INDEX idx_mv_epb_multi ON mv_empresa_pb(cnpj_basico) WHERE flag_multi_municipal;
 CREATE INDEX idx_mv_epb_endereco ON mv_empresa_pb(logradouro, numero) WHERE logradouro IS NOT NULL;
+CREATE INDEX idx_mv_epb_tce_pb ON mv_empresa_pb(cnpj_basico) WHERE qtd_processos_tce_pb > 0;
 
 
 -- -----------------------------------------------------------------------------
@@ -1535,6 +1660,7 @@ GRANT SELECT ON pncp_municipio TO govbr;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pessoa_pb;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_risco;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_servidor_pb_base;
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_tce_pb;
 --   Para mv_servidor_pb_risco: DROP + re-executar steps 1-6 (não suporta REFRESH
 --   porque depende de tabelas _tmp_ intermediárias — abordagem stepwise necessária)
 --

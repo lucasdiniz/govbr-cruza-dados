@@ -148,6 +148,11 @@ SELECT
     -- Divida e sancoes
     COALESCE(div.total_divida, 0) AS total_divida_pgfn,
     COALESCE(ceis.vigente, FALSE) AS flag_ceis_vigente,
+    -- TCE-PB DOE (ADR-0014)
+    COALESCE(tcedoe.qtd_processos, 0)::int AS qtd_processos_tce_pb,
+    COALESCE(tcedoe.qtd_processos_irregular, 0)::int AS qtd_processos_tce_pb_irregular,
+    COALESCE(tcedoe.qtd_processos_multa, 0)::int AS qtd_processos_tce_pb_multa,
+    COALESCE(tcedoe.qtd_processos_debito, 0)::int AS qtd_processos_tce_pb_debito,
     -- Flags
     (est.situacao_cadastral IS NULL OR est.situacao_cadastral <> 2) AS flag_inativa,
     (e.capital_social < 10000 AND COALESCE(tce.total_pago, 0) + COALESCE(pbe.total_empenho, 0) > 500000) AS flag_capital_desproporcional,
@@ -167,7 +172,8 @@ LEFT JOIN pb_sau_agg pbs ON pbs.cnpj_basico = pc.cnpj_basico
 LEFT JOIN pb_conv_agg pbv ON pbv.cnpj_basico = pc.cnpj_basico
 LEFT JOIN lic_agg lic ON lic.cnpj_basico = pc.cnpj_basico
 LEFT JOIN divida_agg div ON div.cnpj_basico = pc.cnpj_basico
-LEFT JOIN ceis_agg ceis ON ceis.cnpj_basico = pc.cnpj_basico;
+LEFT JOIN ceis_agg ceis ON ceis.cnpj_basico = pc.cnpj_basico
+LEFT JOIN mv_empresa_tce_pb tcedoe ON tcedoe.cnpj_basico = pc.cnpj_basico;
 
 CREATE UNIQUE INDEX idx_mv_epb_cnpj_swap ON mv_empresa_pb_swap(cnpj_basico);
 CREATE INDEX idx_mv_epb_inativa_swap ON mv_empresa_pb_swap(cnpj_basico) WHERE flag_inativa;
@@ -175,3 +181,4 @@ CREATE INDEX idx_mv_epb_ceis_swap ON mv_empresa_pb_swap(cnpj_basico) WHERE flag_
 CREATE INDEX idx_mv_epb_capital_swap ON mv_empresa_pb_swap(cnpj_basico) WHERE flag_capital_desproporcional;
 CREATE INDEX idx_mv_epb_multi_swap ON mv_empresa_pb_swap(cnpj_basico) WHERE flag_multi_municipal;
 CREATE INDEX idx_mv_epb_endereco_swap ON mv_empresa_pb_swap(logradouro, numero) WHERE logradouro IS NOT NULL;
+CREATE INDEX idx_mv_epb_tce_pb_swap ON mv_empresa_pb_swap(cnpj_basico) WHERE qtd_processos_tce_pb > 0;
