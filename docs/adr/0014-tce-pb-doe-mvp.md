@@ -141,16 +141,25 @@ passos sao downtime ZERO estrito; documentamos a janela real de cada passo.
 | Etapa | Input deploy.yml | Tempo | Degradacao real |
 |---|---|---|---|
 | 1. Schema + web + bootstrap MV vazia | `etl_phase=web` (aplica `sql/42_*.sql`) | ~5 min | ~2s janela 502s no restart cruza-web (uvicorn single-process; limitacao conhecida) |
-| 2. Bootstrap ETL + REFRESH CONCURRENTLY da MV L1 | `etl_phase=only:18` (roda APENAS Fase 18) | ~3-4h | 0 (ETL em background; REFRESH CONCURRENTLY nao bloqueia leitores) |
+| 2. Bootstrap ETL + REFRESH CONCURRENTLY da MV L1 | `etl_phase=only:23` (roda APENAS a Fase TCE-PB DOE) | ~3-4h | 0 (ETL em background; REFRESH CONCURRENTLY nao bloqueia leitores) |
 | 3. mv_swap da L2 (`mv_empresa_pb` ganha 4 colunas) | `etl_phase=web` + `mv_swap=mv_empresa_pb` | ~10-30 min | janela curta com **apenas `v_risk_score_pb`** (view normal, recriada via DDL instantaneamente). `mv_municipio_pb_kpi_score`, `mv_municipio_pb_mapa`, `mv_q67_dated_pb`, `v_risk_score_empresa` **nao** dependem de `mv_empresa_pb` (verificado em `sql/12_views.sql` apos review v3). Impacto trafego real: marginal |
 | 4. Shadow rewarm | `etl_phase=web` + `rewarm_cache_keys=EMPRESA_PERFIL,EMPRESA_PERFIL_MUN` | ~30-60 min | 0 (shadow pattern; live rows servem trafego ate swap atomico). Custo extra do warm devido a lookup `EMPRESA_TCE_PB_DOE_BY_BASICO` em 143k empresas: **~5-7 min** (lookup PK em MV indexada) |
 
-**CRITICO — passo 2 usa `only:18`, nao `18`:** `etl/run_all.py` interpreta
-arg numerico como **start_phase** (roda da Fase N ate o fim). `etl_phase=18`
-rodaria Fase 18 + Fase 19 (`etl.21_views`), que faz `DROP ... CASCADE` de
+**CRITICO — passo 2 usa `only:23`, nao `23` nem `only:18`:** `etl/run_all.py` interpreta
+arg numerico como **start_phase** (roda da Fase N ate o fim). `etl_phase=23`
+rodaria Fase TCE-PB DOE + Fase Views (`etl.21_views`), que faz `DROP ... CASCADE` de
 TODAS as MVs no topo de `sql/12_views.sql` — anula a estrategia e causa 1-2h
 de downtime. PR #202 adicionou modo `--only N` em `run_all.py` e formato
 `only:N` em `deploy.yml` para o caso cirurgico.
+
+**Importante — N e o INDICE 1-based na lista `phases` de `etl/run_all.py`, NAO o label "Fase X"
+do tuple.** O label "Fase 18: TCE-PB DOE" e historico (preservado pra nao
+renumerar labels antigos); o indice real do tuple `etl.23_tce_pb_doe` na
+lista e **23** (item 23 contando a partir de 1). Para confirmar antes de
+qualquer deploy `only:`:
+```bash
+python -c "from etl.run_all import phases; [print(i+1, m) for i,(_,m) in enumerate(phases)]"
+```
 
 **Por que NAO swap conjunto da L1 + L2 (correcao do "swap conjunto" v1/v2):**
 `etl/mv_swap.py` itera CSV uma MV por vez, com COMMIT entre swaps — nao e

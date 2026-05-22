@@ -753,23 +753,36 @@ jobs:
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
         if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all' && inputs.etl_phase != 'web' && inputs.etl_phase != 'incremental'
+        # Passa o input via env: ao inves de interpolar direto no bash.
+        # Interpolacao direta com ${{ inputs.etl_phase }} dentro de heredoc
+        # bash permitiria shell injection via workflow_dispatch (input string
+        # livre fechando aspa e injetando comando). Com env:, $PHASE_INPUT
+        # vira variavel de ambiente nao expandida pelo shell.
+        env:
+          PHASE_INPUT: ${{ inputs.etl_phase }}
         run: |
           set -e
           sudo systemctl restart tor 2>/dev/null || true
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
-          echo "=== ETL from phase ${{ inputs.etl_phase }} ==="
+          echo "=== ETL from phase $PHASE_INPUT ==="
           # Suporta dois formatos:
-          #   "N"        -> roda da Fase N ate o fim (compat)
+          #   "N"        -> roda da Fase N (1-based index) ate o fim (compat)
           #   "only:N"   -> roda APENAS a Fase N (cirurgico, nao dispara fases
           #                 seguintes que podem fazer DROP CASCADE de MVs)
-          PHASE_INPUT="${{ inputs.etl_phase }}"
-          if [[ "$PHASE_INPUT" == only:* ]]; then
+          # IMPORTANTE: N e o INDICE 1-based na lista `phases` de run_all.py,
+          # NAO o label "Fase X" do tuple. Use:
+          #   python -c "from etl.run_all import phases; [print(i+1, m) for i,(_,m) in enumerate(phases)]"
+          # para descobrir o indice de uma fase especifica.
+          if [[ "$PHASE_INPUT" =~ ^only:[0-9]+$ ]]; then
             PHASE_NUM="${PHASE_INPUT#only:}"
             echo "=== Running ONLY phase $PHASE_NUM ==="
             python -m etl.run_all --only "$PHASE_NUM" 2>&1
-          else
+          elif [[ "$PHASE_INPUT" =~ ^[0-9]+$ ]]; then
             python -m etl.run_all "$PHASE_INPUT" 2>&1
+          else
+            echo "::error::etl_phase invalido: '$PHASE_INPUT'. Esperado: numero, 'only:N', 'all', 'sql', 'web', 'incremental'."
+            exit 1
           fi
 
       # ── Run fraud queries (opt-in, demora ~30min) ──
