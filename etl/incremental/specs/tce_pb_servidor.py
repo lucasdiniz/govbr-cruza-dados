@@ -90,6 +90,13 @@ SPEC = LoaderSpec(
     ],
     cursor_strategy=CursorStrategy.YEAR_WINDOW,
     dedupe_strategy=DedupeStrategy.UPSERT_DO_NOTHING,
+    # natural_key abaixo e DECLARATIVO. nk_synthetic_md5=True -> build_upsert_sql
+    # usa ON CONFLICT (_nk_md5). Por que md5 e nao NK natural (ADR-0014):
+    # municipio (90.047 rows) e nome_servidor (201) tem NULL e fazem parte da
+    # NK natural; UNIQUE INDEX trata NULL como distinto -> ON CONFLICT nao
+    # dispara -> re-run do bucket DUPLICARIA essas rows. md5 (coalesce->'')
+    # trata NULL uniformemente. Requer sql/42 (col+trigger) + sql/42z (index).
+    nk_synthetic_md5=True,
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,

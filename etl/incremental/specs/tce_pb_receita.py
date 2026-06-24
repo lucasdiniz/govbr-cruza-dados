@@ -65,6 +65,9 @@ SPEC = LoaderSpec(
     ],
     cursor_strategy=CursorStrategy.YEAR_WINDOW,
     dedupe_strategy=DedupeStrategy.UPSERT_DO_NOTHING,
+    # nk_synthetic_md5=True -> ON CONFLICT (_nk_md5). md5 por uniformidade com
+    # despesa/servidor (ADR-0014). Requer sql/42 + sql/42z.
+    nk_synthetic_md5=True,
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,

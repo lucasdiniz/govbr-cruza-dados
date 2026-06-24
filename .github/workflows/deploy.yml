@@ -689,6 +689,15 @@ jobs:
             BF_IN_SCOPE=true
           fi
 
+          # Determinar se TCE-PB esta no escopo (qualquer spec tce_pb.*).
+          # Vazio = todas as specs -> TCE-PB incluso. (ADR-0014)
+          TCE_PB_IN_SCOPE=false
+          if [ -z "${{ inputs.incremental_only }}" ]; then
+            TCE_PB_IN_SCOPE=true
+          elif echo "${{ inputs.incremental_only }}" | grep -qE "(^|,)tce_pb\."; then
+            TCE_PB_IN_SCOPE=true
+          fi
+
           # Migration idempotente sql/41 antes do runner (apenas se BF in scope).
           # Aplica defs (cols, COMMENTs, trigger, procedure). ON_ERROR_STOP=1 +
           # SEM --single-transaction. As DDL aqui sao seguras em transacao;
@@ -711,6 +720,28 @@ jobs:
               -f sql/41z_bolsa_familia_finalize.sql
           fi
 
+          # Migration TCE-PB synthetic md5 NK (ADR-0014), antes do runner para
+          # que o UNIQUE INDEX _nk_md5 exista quando o ON CONFLICT rodar.
+          # Idempotente: sql/42 e CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS;
+          # populate e WHERE _nk_md5 IS NULL (0 rows apos a 1a vez); sql/42z
+          # pula dedupe se index existe e usa CREATE INDEX IF NOT EXISTS.
+          # 1a execucao popula ~40M rows (~60-75 min); execucoes seguintes sao
+          # rapidas. Mesmo design do bloco bolsa_familia acima.
+          if [ "$TCE_PB_IN_SCOPE" = "true" ]; then
+            echo "=== sql/42 (tce_pb: _nk_md5 cols + triggers + hash fns) ==="
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -f sql/42_tce_pb_synthetic_nk.sql
+
+            # Populate _nk_md5 (4 tabelas) via psycopg2 autocommit (CALL via
+            # psql wrappa em transacao -> COMMIT-em-PROCEDURE falha no PG 16).
+            echo "=== Populate _nk_md5 tce_pb (BATCHED via psycopg2 autocommit) ==="
+            python -m etl.refresh_post_incremental --source tce_pb --populate-only
+
+            echo "=== sql/42z (tce_pb: dedupe + UNIQUE INDEX CONCURRENTLY) ==="
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -f sql/42z_tce_pb_finalize.sql
+          fi
+
           # Framework incremental runner
           if [ -n "${{ inputs.incremental_only }}" ]; then
             python -m etl.incremental.runner \
@@ -725,6 +756,15 @@ jobs:
           if [ "$BF_IN_SCOPE" = "true" ]; then
             echo "=== Refresh MVs apos bolsa_familia ==="
             python -m etl.refresh_post_incremental --source bolsa_familia 2>&1
+          fi
+
+          # Refresh das MVs PB que dependem das tabelas tce_pb_* (L1 -> L2).
+          # Sem isso, o shadow rewarm/warm subsequente leria MVs stale e o swap
+          # atomico promoveria cache velho (ADR-0014). Hard-fail se algum
+          # REFRESH lancar.
+          if [ "$TCE_PB_IN_SCOPE" = "true" ]; then
+            echo "=== Refresh MVs PB apos tce_pb (L1 -> L2) ==="
+            python -m etl.refresh_post_incremental --source tce_pb 2>&1
           fi
 
           # Refresh da MV de sitemap apos incremental: mv_empresa_municipio_pagantes

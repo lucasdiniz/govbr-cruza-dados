@@ -4,19 +4,13 @@
 --              tipo_cargo, valor_vantagem, descricao_cargo, nome_servidor,
 --              data_admissao)
 -- Pos cleanup de 23 grupos full-row identical, NK eh unique.
+--
+-- DEPRECATED (ADR-0014): a NK natural inclui colunas NULLABLE nao-coalescidas
+-- (municipio: 90.047 NULL; nome_servidor: 201 NULL em prod 2026-06). UNIQUE
+-- INDEX trata NULL como DISTINTO -> ON CONFLICT nao dispara -> re-run do bucket
+-- DUPLICARIA. Substituida por synthetic md5 (_nk_md5):
+--   * sql/42_tce_pb_synthetic_nk.sql  (coluna + trigger + funcao de hash)
+--   * sql/42z_tce_pb_finalize.sql     (dedupe por _nk_md5 + UNIQUE INDEX)
+-- No-op intencional (dedupe + index vivem em sql/42z).
 
--- Step 1: remover full-row dup groups (mantem 1 ocorrencia por NK)
-DELETE FROM tce_pb_servidor
-WHERE id IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY municipio, codigo_ug, cpf_cnpj, matricula, ano_mes,
-                   tipo_cargo, valor_vantagem, descricao_cargo,
-                   nome_servidor, data_admissao
-      ORDER BY id
-    ) AS rn
-    FROM tce_pb_servidor
-    WHERE municipio IS NOT NULL AND codigo_ug IS NOT NULL
-      AND cpf_cnpj IS NOT NULL AND matricula IS NOT NULL AND ano_mes IS NOT NULL
-  ) ranked WHERE rn > 1
-);
+-- (sem statements — ver sql/42z_tce_pb_finalize.sql)

@@ -124,6 +124,26 @@ for c in COLUMNS_OLD:
 SPEC = LoaderSpec(
     source="tce_pb",
     table="tce_pb_despesa",
+    # natural_key abaixo e DECLARATIVO (semantico). Quando nk_synthetic_md5=True
+    # (abaixo), build_upsert_sql usa ON CONFLICT (_nk_md5) — NAO estas colunas.
+    #
+    # Por que synthetic md5 e nao NK natural (ADR-0014):
+    #   Analise empirica em prod (2026-06) revelou que esta combinacao de
+    #   colunas NAO e unica: 1037 grupos (2530 rows, 2019-2026) compartilham
+    #   a NK mas tem valor_empenhado/valor_liquidado/valor_pago/cpf_cnpj/
+    #   nome_credor/historico DISTINTOS — sao empenhos/parcelas legitimamente
+    #   diferentes, nao duplicatas. Adicionar `mes` NAO resolve (0 grupos
+    #   colapsam). Um UNIQUE INDEX nesta NK seria semanticamente errado e
+    #   UPSERT_DO_NOTHING PULARIA silenciosamente novos registros distintos
+    #   que colidem na NK -> perda continua de dados a cada incremental.
+    #
+    #   Synthetic md5 (hash de TODAS as 41 cols de negocio) so colapsa rows
+    #   byte-a-byte identicas (true duplicates do ETL classico legacy). Cobre
+    #   100% sem perda. Padrao das 7 tabelas pb_extras (sql/35a-d) e de
+    #   bolsa_familia (sql/41). Requer:
+    #     * coluna _nk_md5 (sql/42 step 1)
+    #     * trigger BEFORE INSERT compute_nk_md5_tce_pb_despesa (sql/42 step 2)
+    #     * UNIQUE INDEX ix_tce_pb_despesa_nk_md5 (sql/42z)
     natural_key=[
         "municipio", "codigo_unidade_gestora", "numero_empenho", "data_empenho",
         "codigo_subelemento", "codigo_fonte_recurso",
@@ -132,6 +152,7 @@ SPEC = LoaderSpec(
     ],
     cursor_strategy=CursorStrategy.YEAR_WINDOW,
     dedupe_strategy=DedupeStrategy.UPSERT_DO_NOTHING,
+    nk_synthetic_md5=True,
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,

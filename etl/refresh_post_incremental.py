@@ -142,6 +142,85 @@ def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# TCE-PB: synthetic md5 NK (ADR-0014)
+# ──────────────────────────────────────────────────────────────────────────
+# Tabelas TCE-PB que usam _nk_md5 (sql/42 + sql/42z). A funcao de hash
+# etl_admin.nk_md5_<tabela>_row e single source of truth (trigger E populate
+# chamam a mesma), evitando drift.
+TCE_PB_MD5_TABLES: tuple[str, ...] = (
+    "tce_pb_despesa",
+    "tce_pb_servidor",
+    "tce_pb_licitacao",
+    "tce_pb_receita",
+)
+
+
+def _populate_nk_md5_table(conn, table: str, batch_size: int = 100_000) -> None:
+    """Popula _nk_md5 em batches numa tabela TCE-PB via row-function SQL.
+
+    Reusa etl_admin.nk_md5_<table>_row (mesma funcao do trigger) — zero drift
+    entre rows novas (trigger) e legacy (populate).
+
+    Padrao identico ao populate de bolsa_familia (ADR-0010):
+      * psycopg2 autocommit=True (COMMIT entre batches; psql -c/-f wrappa em
+        transacao implicita e o COMMIT-em-PROCEDURE falha no PG 16).
+      * partial index temporario WHERE _nk_md5 IS NULL para o WHERE IS NULL
+        nao virar seq scan O(n) por batch (trabalho quadratico).
+      * idempotente/resumivel: WHERE _nk_md5 IS NULL.
+    """
+    if table not in TCE_PB_MD5_TABLES:
+        raise ValueError(f"tabela TCE-PB desconhecida: {table!r}")
+    hash_fn = f"etl_admin.nk_md5_{table}_row"
+    idx = f"_tmp_idx_{table}_nk_md5_null"
+    logger.info("populate _nk_md5 %s: BATCH_SIZE=%d", table, batch_size)
+    prev_autocommit = conn.autocommit
+    conn.autocommit = True
+    t0 = time.time()
+    total = 0
+    try:
+        with conn.cursor() as cur:
+            logger.info("creating temporary partial index %s ...", idx)
+            cur.execute(
+                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx} "
+                f"ON {table} (id) WHERE _nk_md5 IS NULL"
+            )
+            cur.execute(f"ANALYZE {table}")
+
+            while True:
+                cur.execute(
+                    f"UPDATE {table} t SET _nk_md5 = {hash_fn}(t) "
+                    f"WHERE t.id IN ("
+                    f"  SELECT id FROM {table} WHERE _nk_md5 IS NULL "
+                    f"  ORDER BY id LIMIT %s)",
+                    (batch_size,),
+                )
+                n = cur.rowcount
+                if n == 0:
+                    break
+                total += n
+                logger.info(
+                    "populate _nk_md5 %s: total %s rows (%.0fs)",
+                    table, f"{total:,}", time.time() - t0,
+                )
+
+            logger.info("dropping temporary partial index %s ...", idx)
+            cur.execute(f"DROP INDEX IF EXISTS {idx}")
+    finally:
+        conn.autocommit = prev_autocommit
+    logger.info(
+        "populate _nk_md5 %s: DONE — %d rows em %.0fs",
+        table, total, time.time() - t0,
+    )
+
+
+def populate_nk_md5_tce_pb(conn, batch_size: int = 100_000) -> None:
+    """Popula _nk_md5 em todas as 4 tabelas TCE-PB (despesa/servidor/licitacao/
+    receita). Chamado pelo deploy entre sql/42 e sql/42z."""
+    for table in TCE_PB_MD5_TABLES:
+        _populate_nk_md5_table(conn, table, batch_size=batch_size)
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Refresh por source
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -234,12 +313,63 @@ def refresh_for_bolsa_familia(conn) -> None:
     logger.info("refresh_for_bolsa_familia: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
 
 
+# MVs PB que dependem das tabelas tce_pb_*, em ordem L1 -> L2 (sql/12_views.sql).
+# REFRESH CONCURRENTLY (cada MV tem UNIQUE INDEX). _tmp_bf NAO e reconstruido
+# aqui: reflete o estado atual de bolsa_familia, que nao muda num run TCE-PB.
+_TCE_PB_MVS_L1 = (
+    "mv_empresa_governo",
+    "mv_servidor_pb_base",
+    "mv_municipio_pb_risco",
+    "mv_pessoa_pb",
+)
+_TCE_PB_MVS_L2 = (
+    "mv_servidor_pb_risco",
+    "mv_empresa_pb",
+    "mv_rede_pb",
+    "mv_municipio_pb_kpi_score",
+    "mv_municipio_pb_mapa",
+    "mv_q67_dated_pb",
+)
+
+
+def refresh_for_tce_pb(conn) -> None:
+    """Refresh das MVs que dependem das tabelas TCE-PB (despesa/servidor/
+    licitacao/receita), em ordem L1 -> L2.
+
+    Hard-fail: qualquer REFRESH que lance aborta o script (exit 1) — preferimos
+    falhar o deploy a deixar o warm/shadow rewarm subsequente ler MV stale.
+
+    NOTA: mv_empresa_municipio_pagantes (sitemap) e refrescada a parte por
+    etl.22_mv_sitemap no proprio step do deploy.
+    """
+    logger.info("=" * 60)
+    logger.info("refresh_for_tce_pb: iniciando (L1 -> L2)")
+    logger.info("=" * 60)
+    total_t0 = time.time()
+
+    # ANALYZE das tabelas base antes das queries pesadas das MVs.
+    for table in TCE_PB_MD5_TABLES:
+        _run_sql(conn, f"ANALYZE {table}", f"ANALYZE {table}")
+
+    for mv in _TCE_PB_MVS_L1 + _TCE_PB_MVS_L2:
+        _run_sql(
+            conn,
+            f"REFRESH {mv}",
+            f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}",
+            autocommit=True,
+        )
+
+    total_dt = time.time() - total_t0
+    logger.info("refresh_for_tce_pb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Registry — fontes que tem refresh hooks
 # ──────────────────────────────────────────────────────────────────────────
 
 SOURCE_REFRESH_FNS: dict[str, Callable] = {
     "bolsa_familia": refresh_for_bolsa_familia,
+    "tce_pb": refresh_for_tce_pb,
 }
 
 
@@ -261,7 +391,7 @@ def main():
         "--populate-only",
         action="store_true",
         help="So roda populate_nk_md5 (sem MV refresh). Usado entre sql/41 e "
-             "sql/41z no deploy step. Apenas para source=bolsa_familia.",
+             "sql/41z (bolsa_familia) ou sql/42 e sql/42z (tce_pb) no deploy.",
     )
     parser.add_argument(
         "--dsn",
@@ -277,10 +407,15 @@ def main():
     conn = psycopg2.connect(args.dsn)
     try:
         if args.populate_only:
-            if args.source != "bolsa_familia":
-                logger.error("--populate-only so suporta source=bolsa_familia")
+            if args.source == "bolsa_familia":
+                populate_nk_md5_bolsa_familia(conn)
+            elif args.source == "tce_pb":
+                populate_nk_md5_tce_pb(conn)
+            else:
+                logger.error(
+                    "--populate-only so suporta source=bolsa_familia|tce_pb"
+                )
                 return 2
-            populate_nk_md5_bolsa_familia(conn)
         else:
             fn = SOURCE_REFRESH_FNS[args.source]
             fn(conn)
