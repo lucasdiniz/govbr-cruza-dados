@@ -360,10 +360,14 @@ de **por que a NK natural pode ser insegura mesmo quando "parece" única**:
    (`etl/refresh_post_incremental.py:_populate_nk_md5_table`). Evita o drift de
    duplicar 41 colunas entre trigger e populate.
 
-4. **Excluir cols de normalização do hash**: `cnpj_basico`, `ano`,
-   `cpf_digitos`, `cpf_digitos_6`, `nome_upper`, `*_proponente` ficam NULL em
+4. **Excluir cols de normalização do hash**: `cnpj_basico`/`cpf_digitos`
+   (despesa), `cpf_digitos_6`/`nome_upper` (servidor), `*_proponente`
+   (licitação), e `ano` **só em despesa** (dup de `ano_arquivo`) ficam NULL em
    rows recém-inseridas (populadas por fase posterior) e preenchidas em legacy
-   → incluí-las quebraria a idempotência no republish.
+   → incluí-las quebraria a idempotência. (`receita.ano` é business col e ENTRA
+   no hash.) O hash ainda **normaliza** valores para casar classic↔incremental
+   via `etl_admin.nk_norm_text`/`nk_norm_num` (limpa `\t\r\n`/sentinelas;
+   `coalesce(valor,0.00)` porque o parser nulifica o token cru `'0'`).
 
 Defs em [`sql/42_tce_pb_synthetic_nk.sql`](../sql/42_tce_pb_synthetic_nk.sql),
 finalize em [`sql/42z_tce_pb_finalize.sql`](../sql/42z_tce_pb_finalize.sql).

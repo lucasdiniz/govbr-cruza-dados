@@ -179,6 +179,13 @@ def _populate_nk_md5_table(conn, table: str, batch_size: int = 100_000) -> None:
     total = 0
     try:
         with conn.cursor() as cur:
+            # Pre-drop defensivo: se um run anterior crashou no meio, pode ter
+            # deixado o index INVALID (CONCURRENTLY interrompido). CREATE ...
+            # IF NOT EXISTS NAO recria um index INVALID existente, e o planner
+            # o ignora -> batches viram seq scan O(n) catastrofico. DROP antes
+            # garante estado limpo a cada run (Gemini review).
+            logger.info("dropping any stale partial index %s ...", idx)
+            cur.execute(f"DROP INDEX IF EXISTS {idx}")
             logger.info("creating temporary partial index %s ...", idx)
             cur.execute(
                 f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx} "
@@ -313,9 +320,14 @@ def refresh_for_bolsa_familia(conn) -> None:
     logger.info("refresh_for_bolsa_familia: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
 
 
-# MVs PB que dependem das tabelas tce_pb_*, em ordem L1 -> L2 (sql/12_views.sql).
-# REFRESH CONCURRENTLY (cada MV tem UNIQUE INDEX). _tmp_bf NAO e reconstruido
-# aqui: reflete o estado atual de bolsa_familia, que nao muda num run TCE-PB.
+# MVs PB que dependem DIRETAMENTE das tabelas tce_pb_*, em ordem L1 -> L2
+# (sql/12_views.sql). _tmp_bf NAO e reconstruido aqui: reflete o estado atual
+# de bolsa_familia, que nao muda num run TCE-PB.
+#
+# mv_rede_pb foi DELIBERADAMENTE excluida: e montada a partir das tabelas
+# _tmp_rede_* (socio/fornecedor/servidor/credor/doador-campanha) que NAO sao
+# reconstruidas aqui — um REFRESH apenas re-le _tmp_rede_* stale (no-op util) e,
+# alem disso, mv_rede_pb nao tem UNIQUE INDEX (REFRESH CONCURRENTLY falharia).
 _TCE_PB_MVS_L1 = (
     "mv_empresa_governo",
     "mv_servidor_pb_base",
@@ -325,19 +337,57 @@ _TCE_PB_MVS_L1 = (
 _TCE_PB_MVS_L2 = (
     "mv_servidor_pb_risco",
     "mv_empresa_pb",
-    "mv_rede_pb",
     "mv_municipio_pb_kpi_score",
     "mv_municipio_pb_mapa",
     "mv_q67_dated_pb",
 )
 
 
+def _refresh_mv_adaptive(conn, mv: str) -> None:
+    """REFRESH de uma MV escolhendo o modo certo:
+      - CONCURRENTLY se a MV tem UNIQUE INDEX (zero-downtime);
+      - REFRESH simples (lock ACCESS EXCLUSIVE breve) se NAO tem (ex.:
+        mv_q67_dated_pb em prod) — CONCURRENTLY exigiria UNIQUE INDEX e
+        falharia;
+      - skip + warning se a MV nao existe (drift entre ambientes).
+
+    Erros reais de REFRESH propagam (hard-fail) — so o caso "sem unique index"
+    e tratado, nao mascaramos falhas de dados.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM pg_class WHERE relname = %s AND relkind = 'm'", (mv,)
+        )
+        if cur.fetchone() is None:
+            logger.warning("MV %s nao existe — skip refresh (drift?)", mv)
+            return
+        cur.execute(
+            "SELECT bool_or(coalesce(i.indisunique, false)) "
+            "FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid "
+            "WHERE c.relname = %s",
+            (mv,),
+        )
+        has_unique = bool(cur.fetchone()[0])
+
+    if has_unique:
+        _run_sql(conn, f"REFRESH {mv} (CONCURRENTLY)",
+                 f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}", autocommit=True)
+    else:
+        logger.warning(
+            "MV %s sem UNIQUE INDEX — REFRESH simples (lock breve, nao-concurrent)",
+            mv,
+        )
+        _run_sql(conn, f"REFRESH {mv} (plain)",
+                 f"REFRESH MATERIALIZED VIEW {mv}", autocommit=True)
+
+
 def refresh_for_tce_pb(conn) -> None:
     """Refresh das MVs que dependem das tabelas TCE-PB (despesa/servidor/
     licitacao/receita), em ordem L1 -> L2.
 
-    Hard-fail: qualquer REFRESH que lance aborta o script (exit 1) — preferimos
-    falhar o deploy a deixar o warm/shadow rewarm subsequente ler MV stale.
+    Hard-fail: qualquer REFRESH que lance (erro real) aborta o script (exit 1) —
+    preferimos falhar o deploy a deixar o warm/shadow rewarm subsequente ler MV
+    stale. MVs sem UNIQUE INDEX usam REFRESH simples (ver _refresh_mv_adaptive).
 
     NOTA: mv_empresa_municipio_pagantes (sitemap) e refrescada a parte por
     etl.22_mv_sitemap no proprio step do deploy.
@@ -352,12 +402,7 @@ def refresh_for_tce_pb(conn) -> None:
         _run_sql(conn, f"ANALYZE {table}", f"ANALYZE {table}")
 
     for mv in _TCE_PB_MVS_L1 + _TCE_PB_MVS_L2:
-        _run_sql(
-            conn,
-            f"REFRESH {mv}",
-            f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}",
-            autocommit=True,
-        )
+        _refresh_mv_adaptive(conn, mv)
 
     total_dt = time.time() - total_t0
     logger.info("refresh_for_tce_pb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)

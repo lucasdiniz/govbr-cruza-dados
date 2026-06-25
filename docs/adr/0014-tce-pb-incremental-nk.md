@@ -84,30 +84,47 @@ Migrar **as quatro tabelas TCE-PB para NK sintética md5**, exatamente como
    `ON CONFLICT (_nk_md5)`.
 
 2. **Single source of truth do hash**: cada tabela tem
-   `etl_admin.nk_md5_<tabela>_row(<tabela>)` (LANGUAGE sql STABLE) que é
+   `etl_admin.nk_md5_<tabela>_row(<tabela>)` (LANGUAGE sql STABLE, **sem
+   `SET search_path`** para permitir inlining — senão cada chamada de helper
+   por coluna vira function-call e o populate de 16M+ rows leva horas) que é
    chamada **tanto pelo trigger** (rows novas) **quanto pelo populate** (rows
    legacy). Evita o drift de manter o hash duplicado (a despesa tem 41 cols).
 
 3. **Hash de TODAS as colunas de negócio**, excluindo `id` e as colunas de
-   **normalização** (`cnpj_basico`, `ano`, `cpf_digitos`, `cpf_digitos_6`,
-   `nome_upper`, `cnpj_basico_proponente`, `cpf_digitos_proponente`) — que
-   ficam NULL em rows recém-inseridas e preenchidas em rows legacy; incluí-las
-   quebraria a idempotência.
+   **normalização** (`cnpj_basico`/`cpf_digitos` em despesa; `cpf_digitos_6`/
+   `nome_upper` em servidor; `*_proponente` em licitação; e `ano` **só em
+   despesa**, onde é dup de `ano_arquivo` — `receita.ano` é business col e
+   ENTRA no hash) — que ficam NULL em rows recém-inseridas e preenchidas em
+   rows legacy; incluí-las quebraria a idempotência.
+
+3b. **Normalizadores de hash** (`etl_admin.nk_norm_text` / `nk_norm_num`,
+   IMMUTABLE, inlináveis) replicam o parser incremental para casar
+   classic↔incremental (ver "Idempotência" abaixo): texto colapsa `\t\r\n`→
+   espaço + sentinelas→`''`; numérico colapsa NULL e 0 para `'0.00'`.
+
+3c. **Drop de UNIQUE INDEX da NK natural** (`sql/42` step 0c): qualquer índice
+   natural remanescente (de POCs ou `sql/30`/`sql/31` antigos) QUEBRA o upsert
+   synthetic — re-inserir uma row legacy viola o índice natural e o
+   `ON CONFLICT (_nk_md5)` não trata esse conflito. Detectado em teste local.
 
 4. **Populate batched** via `python -m etl.refresh_post_incremental
    --source tce_pb --populate-only` (psycopg2 `autocommit=True` + partial
-   index temporário; o quirk PG16 de COMMIT-em-PROCEDURE via `psql -c/-f`
-   também se aplica aqui — ver ADR-0010).
+   index temporário, **dropado antes de recriar** para auto-heal de runs
+   crashados; o quirk PG16 de COMMIT-em-PROCEDURE via `psql -c/-f` também se
+   aplica aqui — ver ADR-0010).
 
 5. **`sql/42z_tce_pb_finalize.sql`**: preflight (`_nk_md5` populado) → dedupe
    por `_nk_md5` (keep `min(id)`, statement único em DO-block, sem
    CALL/COMMIT) → `UNIQUE INDEX CONCURRENTLY ix_tce_pb_<tabela>_nk_md5` →
-   validação. Dedupe esperado: despesa 0, servidor ~23, licitação ~93,
-   receita 0.
+   validação.
 
 6. **Refresh das MVs PB** dependentes (L1→L2) em
    `etl/refresh_post_incremental.py:refresh_for_tce_pb` — sem isso o
    shadow rewarm/warm leria MVs stale e o swap atômico promoveria cache velho.
+   Refresh **adaptativo** (`_refresh_mv_adaptive`): `CONCURRENTLY` se a MV tem
+   UNIQUE INDEX, `REFRESH` simples senão (ex.: `mv_q67_dated_pb` em prod não
+   tem), skip+warning se a MV não existe. `mv_rede_pb` é **excluída** (montada
+   de `_tmp_rede_*` não reconstruídas aqui + sem UNIQUE INDEX).
 
 7. **`deploy.yml`**: detecta `TCE_PB_IN_SCOPE` e aplica `sql/42` → populate →
    `sql/42z` antes do runner, e `refresh_for_tce_pb` depois (espelha o bloco
@@ -117,19 +134,44 @@ Migrar **as quatro tabelas TCE-PB para NK sintética md5**, exatamente como
 
 Para que re-inserir um bucket já carregado pelo ETL clássico **não duplique**,
 o `_nk_md5` da row re-inserida (trigger) deve igualar o da row legacy
-(populate). Garantido porque:
+(populate). Garantido porque ambos usam a **mesma** `nk_md5_<tabela>_row`, que
+**normaliza** cada coluna do jeito que o parser incremental normaliza:
 
-- Ambos usam a **mesma** `nk_md5_<tabela>_row`.
-- TEXT: clássico (`TRIM`) e framework (`build_typed_select` → `trim`) ambos
-  aparam espaços.
-- `DECIMAL(15,2)`: escala fixa pela coluna → `::text` canônico (`'N.NN'`) nos
-  dois caminhos (validado: `10.50` armazenado → `'10.50'`).
+- TEXT (`nk_norm_text`): `\t`→espaço, `\r` removido, `\n`→espaço (==
+  `parser.py:_clean_for_tab`), depois `btrim` e sentinelas
+  (`''`/`00/00/0000`/`0000-00-00`/`NULL`)→`''`.
+- NUMÉRICO (`nk_norm_num`): `coalesce(v,0.00)::text` — o parser nulifica o
+  token cru `'0'` (`parser.py:329`) que o clássico gravou como `0.00`
+  (`DECIMAL(15,2)`); sem isso a MESMA row hashearia `'0.00'` vs `''`. Empírico
+  em prod: servidor 954 / receita 1843 rows com `valor=0` (despesa grava `'0'`
+  como NULL, então já casava).
 - `DATE`: `to_char(col,'YYYY-MM-DD')`.
 - `SMALLINT`: `::text`.
 
 Resíduo de risco: cols TEXT com sentinelas raras (`'NULL'`, `'00/00/0000'`)
 que o framework converte para NULL e o clássico manteve literais. Esperado
 ~zero em despesa; mitigado pelo **pré-flight de produção** (abaixo).
+
+### Validação local (end-to-end, 2026-06)
+
+Testado contra a base local (mesmo schema/dados que prod, 16M despesa / 22M
+servidor / 311k licitação / 1,2M receita):
+
+- Helpers unit-tested: `nk_norm_num(0.00) == nk_norm_num(NULL)`,
+  `nk_norm_text(\n) == nk_norm_text(' ')`, sentinela→`''`, código `'0'`
+  preservado.
+- Hash **determinístico**: 0 grupos de rows idênticas com hash divergente.
+- `_populate_nk_md5_table` + `UNIQUE INDEX` em licitação: OK (0 dedupe local).
+- **Loader end-to-end** (`runner --only tce_pb.tce_pb_licitacao
+  --only-buckets 2026`): 1ª run inseriu só rows novas; **2ª run inseriu 0
+  (idempotente)**.
+- **Zero double-load**: as 30 group/60 rows que compartilham a NK natural mas
+  têm `_nk_md5` divergente foram **todas** verificadas como registros
+  genuinamente distintos (objeto/descrição/data diferentes — ex.: "bolo e pão
+  francês" vs "frutas e verduras" no mesmo nº de licitação/proponente/valor) —
+  exatamente o que a NK natural colapsaria e o md5 preserva.
+- Caught+fixed: índices UNIQUE da NK natural remanescentes em local
+  bloqueavam o upsert (step 0c do `sql/42`).
 
 ## Consequences
 
@@ -143,8 +185,9 @@ que o framework converte para NULL e o clássico manteve literais. Esperado
 ### Negativas / custos
 
 - **Populate inicial** de ~40M rows (despesa 16M + servidor 22M + licitação
-  318k + receita 1,2M): ~60-75 min, uma única vez. Execuções seguintes:
-  `WHERE _nk_md5 IS NULL` → 0 rows, rápido.
+  318k + receita 1,2M): ~60-90 min, uma única vez (despesa ~99µs/row com hash
+  normalizado inlinável). Execuções seguintes: `WHERE _nk_md5 IS NULL` → 0
+  rows, rápido.
 - `+1` coluna `_nk_md5` + `UNIQUE INDEX` por tabela (overhead de espaço/escrita
   aceitável).
 

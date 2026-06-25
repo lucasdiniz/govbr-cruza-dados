@@ -378,12 +378,17 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   [`etl/refresh_post_incremental.py`](etl/refresh_post_incremental.py)
   (`--source tce_pb`). 1º populate de ~40M rows leva ~60-75 min (uma vez).
 - **Idempotência cross-boundary TCE-PB** (ADR-0014): o hash `_nk_md5` exclui
-  cols de normalização (`cnpj_basico`, `ano`, `cpf_digitos`, `cpf_digitos_6`,
-  `nome_upper`, `*_proponente`) — elas ficam NULL em rows novas e preenchidas
-  em rows legacy; incluí-las quebraria a deduplicação no republish. Antes do
-  **1º incremental real**, conferir que `rows_inserted` do bucket corrente é
+  cols de normalização (`cnpj_basico`, `cpf_digitos` em despesa; `cpf_digitos_6`,
+  `nome_upper` em servidor; `*_proponente` em licitação; e `ano` SÓ em despesa,
+  onde é dup de `ano_arquivo` — `receita.ano` é business col e ENTRA no hash).
+  Elas ficam NULL em rows novas e preenchidas em rows legacy; incluí-las
+  quebraria a deduplicação no republish. O hash também **normaliza** valores
+  para casar classic↔incremental: `coalesce(valor,0.00)` (o parser nulifica o
+  token cru `'0'` que o ETL clássico gravou como `0.00`) e limpeza de
+  `\t\r\n`/sentinelas no texto (`etl_admin.nk_norm_text`/`nk_norm_num`). Antes
+  do **1º incremental real**, conferir que `rows_inserted` do bucket corrente é
   ≈ (upstream − já carregado), **não** ≈ bucket inteiro (sinal de divergência
-  de parsing clássico↔incremental → abortar).
+  de parsing → abortar).
 
 ### Git / Workflow / Deploy
 

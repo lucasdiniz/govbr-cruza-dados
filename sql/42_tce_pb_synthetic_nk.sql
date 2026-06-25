@@ -44,11 +44,16 @@
 --   * DECIMAL(15,2): escala fixa pela coluna -> ::text canonico ('N.NN') em
 --     ambos os caminhos (validado: 10.50 armazenado -> '10.50').
 --   * DATE: to_char(col,'YYYY-MM-DD').
---   * SMALLINT (ano/ano_arquivo/ano_licitacao): ::text.
--- Cols de NORMALIZACAO (cnpj_basico, ano, cpf_digitos, cpf_digitos_6,
--- nome_upper, cnpj_basico_proponente, cpf_digitos_proponente) sao EXCLUIDAS:
--- ficam NULL em rows recem-inseridas (populadas por fase posterior) e
--- preenchidas em rows legacy -> inclui-las quebraria a idempotencia.
+--   * SMALLINT (ano_arquivo/ano_licitacao/receita.ano): ::text.
+-- Cols de NORMALIZACAO sao EXCLUIDAS do hash (ficam NULL em rows recem-
+-- inseridas, populadas por fase posterior, e preenchidas em rows legacy ->
+-- inclui-las quebraria a idempotencia):
+--   * despesa:   cnpj_basico, cpf_digitos, e `ano` (SMALLINT dup de
+--                ano_arquivo criada pela normalizacao — o hash usa ano_arquivo).
+--   * servidor:  cpf_digitos_6, nome_upper.
+--   * licitacao: cnpj_basico_proponente, cpf_digitos_proponente.
+-- ATENCAO: `receita.ano` NAO e coluna de normalizacao — e business col do CSV
+-- e ESTA incluida no hash de receita.
 --
 -- Ver ADR-0014 e docs/etl-incremental-guide.md.
 
@@ -73,6 +78,56 @@ END $$;
 
 
 -- ============================================================================
+-- 0c. Remover UNIQUE INDEX da NK natural (se existir) — ADR-0014
+-- ============================================================================
+-- A NK natural foi abandonada (despesa tem 1037 colisoes reais; servidor tem
+-- 90k NULLs na NK). Um UNIQUE INDEX natural remanescente (de POCs antigos ou
+-- sql/30/sql/31) QUEBRA o upsert synthetic: re-inserir uma row legacy viola o
+-- index natural, e o ON CONFLICT (_nk_md5) NAO trata esse conflito ->
+-- UniqueViolation aborta o bucket. (Detectado em teste local: o loader falhava
+-- com "viola a restricao de unicidade ix_tce_pb_licitacao_nk".) Idempotente.
+DROP INDEX IF EXISTS ix_tce_pb_despesa_nk;
+DROP INDEX IF EXISTS ix_tce_pb_servidor_nk;
+DROP INDEX IF EXISTS ix_tce_pb_licitacao_nk;
+DROP INDEX IF EXISTS ix_tce_pb_receita_nk;
+
+
+-- ============================================================================
+-- 0b. Normalizadores de hash (REPLICAM o parser incremental) — ADR-0014
+-- ============================================================================
+-- O ETL classico (etl/19_tce_pb.py) e o framework incremental armazenam o
+-- MESMO valor de CSV de formas diferentes. Para que rows legacy (populate) e
+-- re-inseridas (trigger) gerem o MESMO _nk_md5, o hash normaliza cada coluna
+-- da forma que o parser incremental normaliza. Aplicado nos DOIS caminhos.
+--
+-- TEXTO (replica etl/incremental/parser.py:_clean_for_tab + staging trim +
+-- sentinelas):
+--   \t -> espaco, \r removido, \n -> espaco; depois trim; e
+--   '' / 00/00/0000 / 0000-00-00 / NULL  ->  '' (sentinelas viram vazio).
+-- Sem caracteres especiais e o no-op de trim — nao muda o hash de dados ja
+-- limpos (validado: prod tem 0 rows com \n/\t nas cols de texto).
+CREATE OR REPLACE FUNCTION etl_admin.nk_norm_text(v text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT coalesce(
+    nullif(nullif(nullif(nullif(
+      btrim(translate(replace(v, E'\r', ''), E'\t\n', '  ')),
+    ''), '00/00/0000'), '0000-00-00'), 'NULL'),
+  '')
+$$;
+
+-- NUMERO: o parser incremental nulifica o token cru '0' (parser.py:329
+-- `IN ('', '0', 'NULL') -> NULL`), enquanto o ETL classico armazena '0' como
+-- 0.00 (DECIMAL(15,2)). Sem normalizacao, a MESMA row hashearia '0.00' (legacy)
+-- vs '' (incremental) e duplicaria (91k+ rows com valor_pago='0' so em
+-- despesas-2026). coalesce(v,0.00) colapsa NULL e 0.00 para '0.00'; valores
+-- nao-nulos ficam identicos ao ::text canonico do DECIMAL(15,2).
+CREATE OR REPLACE FUNCTION etl_admin.nk_norm_num(v numeric)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT coalesce(v, 0.00)::text
+$$;
+
+
+-- ============================================================================
 -- tce_pb_despesa
 -- ============================================================================
 ALTER TABLE tce_pb_despesa ADD COLUMN IF NOT EXISTS _nk_md5 TEXT;
@@ -85,29 +140,29 @@ COMMENT ON COLUMN tce_pb_despesa._nk_md5 IS
 CREATE OR REPLACE FUNCTION etl_admin.nk_md5_tce_pb_despesa_row(r tce_pb_despesa)
 RETURNS text AS $func$
   SELECT etl_admin.row_hash_md5(
-    coalesce(r.municipio, ''), coalesce(r.codigo_ug, ''),
-    coalesce(r.descricao_ug, ''), coalesce(r.numero_empenho, ''),
-    to_char(r.data_empenho, 'YYYY-MM-DD'), coalesce(r.mes, ''),
-    coalesce(r.cpf_cnpj, ''), coalesce(r.nome_credor, ''),
-    coalesce(r.valor_empenhado::text, ''), coalesce(r.valor_liquidado::text, ''),
-    coalesce(r.valor_pago::text, ''), coalesce(r.codigo_unidade_orcamentaria, ''),
-    coalesce(r.descricao_unidade_orcamentaria, ''), coalesce(r.codigo_funcao, ''),
-    coalesce(r.funcao, ''), coalesce(r.codigo_subfuncao, ''),
-    coalesce(r.subfuncao, ''), coalesce(r.codigo_programa, ''),
-    coalesce(r.programa, ''), coalesce(r.codigo_acao, ''),
-    coalesce(r.acao, ''), coalesce(r.codigo_categoria_economica, ''),
-    coalesce(r.categoria_economica, ''), coalesce(r.codigo_natureza, ''),
-    coalesce(r.grupo_natureza_despesa, ''), coalesce(r.codigo_modalidade_aplicacao, ''),
-    coalesce(r.modalidade_aplicacao, ''), coalesce(r.codigo_elemento_despesa, ''),
-    coalesce(r.elemento_despesa, ''), coalesce(r.codigo_subelemento, ''),
-    coalesce(r.codigo_subelemento_exibicao, ''), coalesce(r.numero_licitacao, ''),
-    coalesce(r.modalidade_licitacao, ''), coalesce(r.numero_obra, ''),
-    coalesce(r.historico, ''), coalesce(r.codigo_fonte_recurso, ''),
-    coalesce(r.descricao_fonte_recurso, ''), coalesce(r.ano_fonte, ''),
-    coalesce(r.co, ''), coalesce(r.descricao_co, ''),
+    etl_admin.nk_norm_text(r.municipio), etl_admin.nk_norm_text(r.codigo_ug),
+    etl_admin.nk_norm_text(r.descricao_ug), etl_admin.nk_norm_text(r.numero_empenho),
+    to_char(r.data_empenho, 'YYYY-MM-DD'), etl_admin.nk_norm_text(r.mes),
+    etl_admin.nk_norm_text(r.cpf_cnpj), etl_admin.nk_norm_text(r.nome_credor),
+    etl_admin.nk_norm_num(r.valor_empenhado), etl_admin.nk_norm_num(r.valor_liquidado),
+    etl_admin.nk_norm_num(r.valor_pago), etl_admin.nk_norm_text(r.codigo_unidade_orcamentaria),
+    etl_admin.nk_norm_text(r.descricao_unidade_orcamentaria), etl_admin.nk_norm_text(r.codigo_funcao),
+    etl_admin.nk_norm_text(r.funcao), etl_admin.nk_norm_text(r.codigo_subfuncao),
+    etl_admin.nk_norm_text(r.subfuncao), etl_admin.nk_norm_text(r.codigo_programa),
+    etl_admin.nk_norm_text(r.programa), etl_admin.nk_norm_text(r.codigo_acao),
+    etl_admin.nk_norm_text(r.acao), etl_admin.nk_norm_text(r.codigo_categoria_economica),
+    etl_admin.nk_norm_text(r.categoria_economica), etl_admin.nk_norm_text(r.codigo_natureza),
+    etl_admin.nk_norm_text(r.grupo_natureza_despesa), etl_admin.nk_norm_text(r.codigo_modalidade_aplicacao),
+    etl_admin.nk_norm_text(r.modalidade_aplicacao), etl_admin.nk_norm_text(r.codigo_elemento_despesa),
+    etl_admin.nk_norm_text(r.elemento_despesa), etl_admin.nk_norm_text(r.codigo_subelemento),
+    etl_admin.nk_norm_text(r.codigo_subelemento_exibicao), etl_admin.nk_norm_text(r.numero_licitacao),
+    etl_admin.nk_norm_text(r.modalidade_licitacao), etl_admin.nk_norm_text(r.numero_obra),
+    etl_admin.nk_norm_text(r.historico), etl_admin.nk_norm_text(r.codigo_fonte_recurso),
+    etl_admin.nk_norm_text(r.descricao_fonte_recurso), etl_admin.nk_norm_text(r.ano_fonte),
+    etl_admin.nk_norm_text(r.co), etl_admin.nk_norm_text(r.descricao_co),
     coalesce(r.ano_arquivo::text, '')
   )
-$func$ LANGUAGE sql STABLE SET search_path = pg_catalog, public;
+$func$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION etl_admin.compute_nk_md5_tce_pb_despesa()
 RETURNS trigger AS $func$
@@ -136,14 +191,14 @@ COMMENT ON COLUMN tce_pb_servidor._nk_md5 IS
 CREATE OR REPLACE FUNCTION etl_admin.nk_md5_tce_pb_servidor_row(r tce_pb_servidor)
 RETURNS text AS $func$
   SELECT etl_admin.row_hash_md5(
-    coalesce(r.municipio, ''), coalesce(r.codigo_ug, ''),
-    coalesce(r.descricao_ug, ''), coalesce(r.cpf_cnpj, ''),
-    coalesce(r.nome_servidor, ''), coalesce(r.tipo_cargo, ''),
-    coalesce(r.descricao_cargo, ''), coalesce(r.valor_vantagem::text, ''),
-    to_char(r.data_admissao, 'YYYY-MM-DD'), coalesce(r.matricula, ''),
-    coalesce(r.ano_mes, '')
+    etl_admin.nk_norm_text(r.municipio), etl_admin.nk_norm_text(r.codigo_ug),
+    etl_admin.nk_norm_text(r.descricao_ug), etl_admin.nk_norm_text(r.cpf_cnpj),
+    etl_admin.nk_norm_text(r.nome_servidor), etl_admin.nk_norm_text(r.tipo_cargo),
+    etl_admin.nk_norm_text(r.descricao_cargo), etl_admin.nk_norm_num(r.valor_vantagem),
+    to_char(r.data_admissao, 'YYYY-MM-DD'), etl_admin.nk_norm_text(r.matricula),
+    etl_admin.nk_norm_text(r.ano_mes)
   )
-$func$ LANGUAGE sql STABLE SET search_path = pg_catalog, public;
+$func$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION etl_admin.compute_nk_md5_tce_pb_servidor()
 RETURNS trigger AS $func$
@@ -171,15 +226,15 @@ COMMENT ON COLUMN tce_pb_licitacao._nk_md5 IS
 CREATE OR REPLACE FUNCTION etl_admin.nk_md5_tce_pb_licitacao_row(r tce_pb_licitacao)
 RETURNS text AS $func$
   SELECT etl_admin.row_hash_md5(
-    coalesce(r.municipio, ''), coalesce(r.codigo_ug, ''),
-    coalesce(r.descricao_ug, ''), coalesce(r.numero_licitacao, ''),
-    coalesce(r.numero_protocolo_tce, ''), coalesce(r.ano_licitacao::text, ''),
-    coalesce(r.modalidade, ''), coalesce(r.objeto_licitacao, ''),
-    to_char(r.data_homologacao, 'YYYY-MM-DD'), coalesce(r.nome_proponente, ''),
-    coalesce(r.cpf_cnpj_proponente, ''), coalesce(r.valor_ofertado::text, ''),
-    coalesce(r.situacao_proposta, '')
+    etl_admin.nk_norm_text(r.municipio), etl_admin.nk_norm_text(r.codigo_ug),
+    etl_admin.nk_norm_text(r.descricao_ug), etl_admin.nk_norm_text(r.numero_licitacao),
+    etl_admin.nk_norm_text(r.numero_protocolo_tce), coalesce(r.ano_licitacao::text, ''),
+    etl_admin.nk_norm_text(r.modalidade), etl_admin.nk_norm_text(r.objeto_licitacao),
+    to_char(r.data_homologacao, 'YYYY-MM-DD'), etl_admin.nk_norm_text(r.nome_proponente),
+    etl_admin.nk_norm_text(r.cpf_cnpj_proponente), etl_admin.nk_norm_num(r.valor_ofertado),
+    etl_admin.nk_norm_text(r.situacao_proposta)
   )
-$func$ LANGUAGE sql STABLE SET search_path = pg_catalog, public;
+$func$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION etl_admin.compute_nk_md5_tce_pb_licitacao()
 RETURNS trigger AS $func$
@@ -207,15 +262,15 @@ COMMENT ON COLUMN tce_pb_receita._nk_md5 IS
 CREATE OR REPLACE FUNCTION etl_admin.nk_md5_tce_pb_receita_row(r tce_pb_receita)
 RETURNS text AS $func$
   SELECT etl_admin.row_hash_md5(
-    coalesce(r.municipio, ''), coalesce(r.codigo_ug, ''),
-    coalesce(r.descricao_ug, ''), coalesce(r.mes_ano, ''),
-    coalesce(r.ano::text, ''), coalesce(r.codigo_receita, ''),
-    coalesce(r.descricao_receita, ''), coalesce(r.tipo_atualizacao_receita, ''),
-    coalesce(r.valor::text, ''), coalesce(r.codigo_fonte_recurso, ''),
-    coalesce(r.descricao_fonte_recurso, ''), coalesce(r.co, ''),
-    coalesce(r.descricao_co, '')
+    etl_admin.nk_norm_text(r.municipio), etl_admin.nk_norm_text(r.codigo_ug),
+    etl_admin.nk_norm_text(r.descricao_ug), etl_admin.nk_norm_text(r.mes_ano),
+    coalesce(r.ano::text, ''), etl_admin.nk_norm_text(r.codigo_receita),
+    etl_admin.nk_norm_text(r.descricao_receita), etl_admin.nk_norm_text(r.tipo_atualizacao_receita),
+    etl_admin.nk_norm_num(r.valor), etl_admin.nk_norm_text(r.codigo_fonte_recurso),
+    etl_admin.nk_norm_text(r.descricao_fonte_recurso), etl_admin.nk_norm_text(r.co),
+    etl_admin.nk_norm_text(r.descricao_co)
   )
-$func$ LANGUAGE sql STABLE SET search_path = pg_catalog, public;
+$func$ LANGUAGE sql STABLE;
 
 CREATE OR REPLACE FUNCTION etl_admin.compute_nk_md5_tce_pb_receita()
 RETURNS trigger AS $func$
