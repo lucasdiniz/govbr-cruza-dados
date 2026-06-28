@@ -155,63 +155,61 @@ TCE_PB_MD5_TABLES: tuple[str, ...] = (
 )
 
 
-def _populate_nk_md5_table(conn, table: str, batch_size: int = 100_000) -> None:
+def _populate_nk_md5_table(conn, table: str, batch_size: int = 200_000) -> None:
     """Popula _nk_md5 em batches numa tabela TCE-PB via row-function SQL.
 
     Reusa etl_admin.nk_md5_<table>_row (mesma funcao do trigger) — zero drift
     entre rows novas (trigger) e legacy (populate).
 
-    Padrao identico ao populate de bolsa_familia (ADR-0010):
-      * psycopg2 autocommit=True (COMMIT entre batches; psql -c/-f wrappa em
-        transacao implicita e o COMMIT-em-PROCEDURE falha no PG 16).
-      * partial index temporario WHERE _nk_md5 IS NULL para o WHERE IS NULL
-        nao virar seq scan O(n) por batch (trabalho quadratico).
-      * idempotente/resumivel: WHERE _nk_md5 IS NULL.
+    Batching por FAIXA DE id (PK) — cada batch faz UPDATE de um range
+    [lo, lo+batch) filtrando _nk_md5 IS NULL. Cada faixa e escaneada UMA vez via
+    o indice da PK, sem depender de um indice parcial que encolhe.
+
+    Por que NAO usar `WHERE _nk_md5 IS NULL ORDER BY id LIMIT N` (padrao BF):
+    em tabelas grandes (despesa 16M) cada UPDATE deixa dead tuples no indice
+    parcial `WHERE _nk_md5 IS NULL`; como autovacuum nao acompanha o ritmo, o
+    Index-Only-Scan passa a pular milhoes de entradas mortas -> tempo por batch
+    cresce (degradacao quase-quadratica observada: 44s -> 109s/batch). A faixa
+    de id evita isso (escaneia cada range uma vez).
+
+    psycopg2 autocommit=True: COMMIT entre batches (psql -c/-f wrappa em
+    transacao implicita e o COMMIT-em-PROCEDURE falharia no PG 16).
+    Idempotente/resumivel: o filtro _nk_md5 IS NULL pula faixas ja populadas.
     """
     if table not in TCE_PB_MD5_TABLES:
         raise ValueError(f"tabela TCE-PB desconhecida: {table!r}")
     hash_fn = f"etl_admin.nk_md5_{table}_row"
-    idx = f"_tmp_idx_{table}_nk_md5_null"
-    logger.info("populate _nk_md5 %s: BATCH_SIZE=%d", table, batch_size)
+    logger.info("populate _nk_md5 %s: BATCH_SIZE=%d (id-range)", table, batch_size)
     prev_autocommit = conn.autocommit
     conn.autocommit = True
     t0 = time.time()
     total = 0
     try:
         with conn.cursor() as cur:
-            # Pre-drop defensivo: se um run anterior crashou no meio, pode ter
-            # deixado o index INVALID (CONCURRENTLY interrompido). CREATE ...
-            # IF NOT EXISTS NAO recria um index INVALID existente, e o planner
-            # o ignora -> batches viram seq scan O(n) catastrofico. DROP antes
-            # garante estado limpo a cada run (Gemini review).
-            logger.info("dropping any stale partial index %s ...", idx)
-            cur.execute(f"DROP INDEX IF EXISTS {idx}")
-            logger.info("creating temporary partial index %s ...", idx)
             cur.execute(
-                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx} "
-                f"ON {table} (id) WHERE _nk_md5 IS NULL"
+                f"SELECT min(id), max(id) FROM {table} WHERE _nk_md5 IS NULL"
             )
-            cur.execute(f"ANALYZE {table}")
+            lo, hi = cur.fetchone()
+            if lo is None:
+                logger.info("populate _nk_md5 %s: nada a fazer (ja populado)", table)
+                return
 
-            while True:
+            cur_id = lo
+            while cur_id <= hi:
                 cur.execute(
                     f"UPDATE {table} t SET _nk_md5 = {hash_fn}(t) "
-                    f"WHERE t.id IN ("
-                    f"  SELECT id FROM {table} WHERE _nk_md5 IS NULL "
-                    f"  ORDER BY id LIMIT %s)",
-                    (batch_size,),
+                    f"WHERE t.id >= %s AND t.id < %s AND t._nk_md5 IS NULL",
+                    (cur_id, cur_id + batch_size),
                 )
                 n = cur.rowcount
-                if n == 0:
-                    break
                 total += n
-                logger.info(
-                    "populate _nk_md5 %s: total %s rows (%.0fs)",
-                    table, f"{total:,}", time.time() - t0,
-                )
-
-            logger.info("dropping temporary partial index %s ...", idx)
-            cur.execute(f"DROP INDEX IF EXISTS {idx}")
+                cur_id += batch_size
+                if n:
+                    logger.info(
+                        "populate _nk_md5 %s: ~%s/%s ids, %s rows (%.0fs)",
+                        table, f"{min(cur_id, hi + 1):,}", f"{hi:,}",
+                        f"{total:,}", time.time() - t0,
+                    )
     finally:
         conn.autocommit = prev_autocommit
     logger.info(

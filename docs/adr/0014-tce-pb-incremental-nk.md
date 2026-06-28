@@ -108,10 +108,14 @@ Migrar **as quatro tabelas TCE-PB para NK sintética md5**, exatamente como
    `ON CONFLICT (_nk_md5)` não trata esse conflito. Detectado em teste local.
 
 4. **Populate batched** via `python -m etl.refresh_post_incremental
-   --source tce_pb --populate-only` (psycopg2 `autocommit=True` + partial
-   index temporário, **dropado antes de recriar** para auto-heal de runs
-   crashados; o quirk PG16 de COMMIT-em-PROCEDURE via `psql -c/-f` também se
-   aplica aqui — ver ADR-0010).
+   --source tce_pb --populate-only` (psycopg2 `autocommit=True`; o quirk PG16
+   de COMMIT-em-PROCEDURE via `psql -c/-f` também se aplica aqui — ver
+   ADR-0010). **Batching por faixa de `id`** (PK range por batch), não
+   `WHERE _nk_md5 IS NULL ORDER BY id LIMIT N`: em tabelas grandes esse padrão
+   acumula dead tuples no índice parcial e o Index-Only-Scan degrada
+   (quase-quadrático: 44s→109s/batch medido na despesa 16M). A faixa de `id`
+   escaneia cada range uma vez via a PK (taxa estável ~300µs/row na despesa,
+   41 cols). Idempotente/resumível pelo filtro `_nk_md5 IS NULL`.
 
 5. **`sql/42z_tce_pb_finalize.sql`**: preflight (`_nk_md5` populado) → dedupe
    por `_nk_md5` (keep `min(id)`, statement único em DO-block, sem
