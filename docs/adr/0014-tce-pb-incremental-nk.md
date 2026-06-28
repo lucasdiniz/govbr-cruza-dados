@@ -159,23 +159,27 @@ que o framework converte para NULL e o clássico manteve literais. Esperado
 ### Validação local (end-to-end, 2026-06)
 
 Testado contra a base local (mesmo schema/dados que prod, 16M despesa / 22M
-servidor / 311k licitação / 1,2M receita):
+servidor / 311k licitação / 1,2M receita). **As 4 tabelas** passaram o teste
+end-to-end (populate id-range → `sql/42z` → loader 2×):
 
 - Helpers unit-tested: `nk_norm_num(0.00) == nk_norm_num(NULL)`,
   `nk_norm_text(\n) == nk_norm_text(' ')`, sentinela→`''`, código `'0'`
-  preservado.
-- Hash **determinístico**: 0 grupos de rows idênticas com hash divergente.
-- `_populate_nk_md5_table` + `UNIQUE INDEX` em licitação: OK (0 dedupe local).
-- **Loader end-to-end** (`runner --only tce_pb.tce_pb_licitacao
-  --only-buckets 2026`): 1ª run inseriu só rows novas; **2ª run inseriu 0
-  (idempotente)**.
-- **Zero double-load**: as 30 group/60 rows que compartilham a NK natural mas
-  têm `_nk_md5` divergente foram **todas** verificadas como registros
-  genuinamente distintos (objeto/descrição/data diferentes — ex.: "bolo e pão
-  francês" vs "frutas e verduras" no mesmo nº de licitação/proponente/valor) —
-  exatamente o que a NK natural colapsaria e o md5 preserva.
-- Caught+fixed: índices UNIQUE da NK natural remanescentes em local
-  bloqueavam o upsert (step 0c do `sql/42`).
+  preservado. Hash **determinístico** (0 grupos de rows idênticas com hash
+  divergente).
+- **Loader 2ª run = 0 (idempotente) nas 4 tabelas**; 1ª run inseriu só o delta
+  legítimo (servidor +847k, despesa +476k — dados novos de 2026).
+- **Zero double-load**: na licitação, as 30 grupos/60 rows que compartilham a
+  NK natural mas têm `_nk_md5` divergente foram **todas** verificadas como
+  registros genuinamente distintos (ex.: "bolo e pão francês" vs "frutas e
+  verduras" no mesmo nº licitação) — o md5 preserva o que a NK natural
+  colapsaria.
+- **Decimal fix validado** (receita): após o loader, `valor IS NULL` = 0 e 0
+  grupos com `0.00`+`NULL` juntos — as 1843 rows `valor=0` casaram, sem
+  double-load.
+- Achados pegos só no teste local (corrigidos): (a) índices UNIQUE da NK
+  natural remanescentes bloqueavam o upsert (`sql/42` step 0c); (b) populate
+  degradava com `LIMIT`+índice parcial → trocado por faixa de `id`;
+  (c) `SchemaDriftError` por watermark stale → input one-off `rebootstrap_tce_pb`.
 
 ## Consequences
 
@@ -195,6 +199,26 @@ servidor / 311k licitação / 1,2M receita):
 - `+1` coluna `_nk_md5` + `UNIQUE INDEX` por tabela (overhead de espaço/escrita
   aceitável).
 
+### Schema-drift guard: re-bootstrap obrigatório na 1ª migração
+
+`etl/incremental/orchestrator.py:_check_target_schema_drift` recomputa o hash
+do schema do target e compara com `etl_watermark.target_schema_hash` capturado
+no bootstrap; se diferem, **aborta o runner** (`SchemaDriftError`). Como `sql/42`
+ADICIONA a coluna `_nk_md5`, o hash muda. Os deploys falhos de 2026-06-23 já
+bootstraparam as 4 specs `tce_pb` com o schema ANTIGO (sem `_nk_md5`), então o
+1º run pós-migração driftaria e falharia (confirmado em teste local na despesa).
+
+Fix: o input one-off **`rebootstrap_tce_pb=true`** roda
+`bootstrap_watermark --force` para as 4 specs após `sql/42z`, re-baselinando o
+`target_schema_hash`. `--force` faz DELETE+INSERT do watermark
+(`last_value=NULL`), então o 1º run reprocessa os buckets — idempotente via
+`_nk_md5` (insere só o delta). Escopar com `incremental_only_buckets` (ex.:
+`2026`) evita reprocessar todos os anos. **Remover o input após rodar 1x em
+prod** (technical debt; ver "One-off inputs hygiene" em `docs/deploy.md`).
+
+Ambientes sem watermark prévio de `tce_pb` não precisam do input (o
+auto-bootstrap do runner captura o schema novo já com `_nk_md5`).
+
 ### Pré-flight obrigatório de produção (antes do 1º run real)
 
 Como a idempotência cross-boundary depende de paridade de parsing
@@ -204,6 +228,11 @@ upstream − contagem já carregada), **não** ≈ bucket inteiro. Se for ≈ bu
 inteiro, há divergência de parsing (double-load) e o run deve ser abortado e
 investigado. Os `UNIQUE INDEX ix_tce_pb_*_nk_md5` impedem colisões exatas mas
 não rows logicamente-iguais com hash divergente.
+
+Procedimento da 1ª migração em prod (resumo):
+`etl_phase=incremental` + `incremental_only=tce_pb.tce_pb_despesa,...` (as 4) +
+`rebootstrap_tce_pb=true` + `incremental_only_buckets=2026` +
+`refresh_mvs`/`rewarm_cache_keys` conforme o padrão de cache.
 
 ## Alternatives considered
 

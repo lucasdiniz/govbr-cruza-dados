@@ -59,6 +59,11 @@ on:
         description: 'CSV de bucket_ids para limitar processamento (e.g. "2026-02,2026-03"). Vazio = todos buckets enumerados pela spec. Util para BF onde rodar 38 buckets toma horas.'
         required: false
         default: ''
+      rebootstrap_tce_pb:
+        description: 'ONE-OFF (ADR-0014): re-bootstrap --force das 4 specs tce_pb apos sql/42z, p/ re-baselinar o target_schema_hash do etl_watermark (a coluna _nk_md5 muda o hash e o guard de schema-drift bloquearia o runner). Necessario na 1a migracao porque deploys falhos previos ja bootstraparam tce_pb com o schema antigo. REMOVER apos rodar 1x em prod. So aplica com etl_phase=incremental + TCE-PB no escopo.'
+        required: false
+        type: boolean
+        default: false
       drop_cache:
         description: 'TRUNCATE web_cache antes do warm. Use APENAS em mudancas de schema. Por padrao (false), cache antigo eh preservado e UPSERT-ado (evita 12-18h sem cache).'
         required: false
@@ -740,6 +745,22 @@ jobs:
             echo "=== sql/42z (tce_pb: dedupe + UNIQUE INDEX CONCURRENTLY) ==="
             PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
               -f sql/42z_tce_pb_finalize.sql
+
+            # ONE-OFF (ADR-0014): re-baselinar o target_schema_hash do watermark.
+            # A coluna _nk_md5 adicionada por sql/42 muda o schema da tabela; o
+            # guard _check_target_schema_drift compara o hash atual com o do
+            # bootstrap e ABORTA o runner se diferem. Deploys falhos previos
+            # (2026-06-23) ja bootstraparam tce_pb com o schema ANTIGO, entao o
+            # 1o run pos-migracao driftaria. --force faz DELETE+INSERT do
+            # watermark (last_value=NULL) -> o 1o run reprocessa os buckets
+            # (idempotente via _nk_md5). REMOVER este input apos rodar 1x.
+            if [ "${{ inputs.rebootstrap_tce_pb }}" = "true" ]; then
+              echo "=== Re-bootstrap --force das specs tce_pb (one-off, ADR-0014) ==="
+              for TBL in tce_pb_despesa tce_pb_servidor tce_pb_licitacao tce_pb_receita; do
+                python -m etl.incremental.bootstrap_watermark \
+                  --source tce_pb --table "$TBL" --force 2>&1
+              done
+            fi
           fi
 
           # Framework incremental runner
