@@ -730,8 +730,8 @@ jobs:
           # Idempotente: sql/42 e CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS;
           # populate e WHERE _nk_md5 IS NULL (0 rows apos a 1a vez); sql/42z
           # pula dedupe se index existe e usa CREATE INDEX IF NOT EXISTS.
-          # 1a execucao popula ~40M rows (~60-75 min); execucoes seguintes sao
-          # rapidas. Mesmo design do bloco bolsa_familia acima.
+          # 1a execucao popula ~40M rows (~3,5h no teste local end-to-end);
+          # execucoes seguintes sao rapidas. Mesmo design do bloco bolsa_familia.
           if [ "$TCE_PB_IN_SCOPE" = "true" ]; then
             echo "=== sql/42 (tce_pb: _nk_md5 cols + triggers + hash fns) ==="
             PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \

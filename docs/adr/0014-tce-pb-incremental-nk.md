@@ -193,9 +193,8 @@ end-to-end (populate id-range → `sql/42z` → loader 2×):
 ### Negativas / custos
 
 - **Populate inicial** de ~40M rows (despesa 16M + servidor 22M + licitação
-  318k + receita 1,2M): ~60-90 min, uma única vez (despesa ~99µs/row com hash
-  normalizado inlinável). Execuções seguintes: `WHERE _nk_md5 IS NULL` → 0
-  rows, rápido.
+  318k + receita 1,2M): ~3,5h no teste local end-to-end, uma única vez.
+  Execuções seguintes: `WHERE _nk_md5 IS NULL` → 0 rows, rápido.
 - `+1` coluna `_nk_md5` + `UNIQUE INDEX` por tabela (overhead de espaço/escrita
   aceitável).
 

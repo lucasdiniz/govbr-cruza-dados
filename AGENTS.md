@@ -376,7 +376,8 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   `etl_admin.nk_md5_<tabela>_row(<tabela>)` (chamada pelo trigger **e** pelo
   populate — zero drift). Populate + refresh de MVs em
   [`etl/refresh_post_incremental.py`](etl/refresh_post_incremental.py)
-  (`--source tce_pb`). 1º populate de ~40M rows leva ~60-75 min (uma vez).
+  (`--source tce_pb`). 1º populate de ~40M rows levou ~3,5h no teste local
+  end-to-end (uma vez).
 - **Idempotência cross-boundary TCE-PB** (ADR-0014): o hash `_nk_md5` exclui
   cols de normalização (`cnpj_basico`, `cpf_digitos` em despesa; `cpf_digitos_6`,
   `nome_upper` em servidor; `*_proponente` em licitação; e `ano` SÓ em despesa,
