@@ -127,8 +127,10 @@ Migrar **as quatro tabelas TCE-PB para NK sintética md5**, exatamente como
    shadow rewarm/warm leria MVs stale e o swap atômico promoveria cache velho.
    Refresh **adaptativo** (`_refresh_mv_adaptive`): `CONCURRENTLY` se a MV tem
    UNIQUE INDEX, `REFRESH` simples senão (ex.: `mv_q67_dated_pb` em prod não
-   tem), skip+warning se a MV não existe. `mv_rede_pb` é **excluída** (montada
-   de `_tmp_rede_*` não reconstruídas aqui + sem UNIQUE INDEX).
+   tinha; o deploy aplica `sql/15b_add_unique_index_mv_q67.sql` antes do hook),
+   skip+warning se a MV não existe. `mv_rede_pb` é **excluída** (montada de
+   `_tmp_rede_*` não reconstruídas aqui + sem UNIQUE INDEX). Assim, todas as
+   MVs presentes no fluxo de produção refrescam concorrentemente.
 
 7. **`deploy.yml`**: detecta `TCE_PB_IN_SCOPE` e aplica `sql/42` → populate →
    `sql/42z` antes do runner, e `refresh_for_tce_pb` depois (espelha o bloco

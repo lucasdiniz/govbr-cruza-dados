@@ -1511,6 +1511,10 @@ JOIN pgfn_agg pg ON pg.cnpj_basico = d.cnpj_basico;
 CREATE INDEX idx_mv_q67_dated_mun_ano
     ON mv_q67_dated_pb(municipio, ano, divida_pgfn DESC);
 
+-- Necessario para REFRESH MATERIALIZED VIEW CONCURRENTLY.
+CREATE UNIQUE INDEX idx_mv_q67_dated_unique
+    ON mv_q67_dated_pb(municipio, ano, cnpj_basico) NULLS NOT DISTINCT;
+
 
 -- =============================================================================
 -- TABELA AUXILIAR: pncp_municipio (lista distinta de municípios PNCP)

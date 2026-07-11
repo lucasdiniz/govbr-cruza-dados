@@ -746,6 +746,24 @@ jobs:
             PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
               -f sql/42z_tce_pb_finalize.sql
 
+            # Garante zero-downtime no refresh da mv_q67_dated_pb. As demais
+            # MVs do hook TCE-PB ja possuem UNIQUE INDEX no sql/12_views.sql.
+            Q67_HAS_VALID_UNIQUE=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -Atc "
+              SELECT EXISTS (
+                SELECT 1
+                FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indrelid
+                WHERE c.relname = 'mv_q67_dated_pb'
+                  AND i.indisunique AND i.indisvalid
+                  AND i.indpred IS NULL AND i.indexprs IS NULL
+              )
+            ")
+            if [ "$Q67_HAS_VALID_UNIQUE" != "t" ]; then
+              echo "=== UNIQUE INDEX mv_q67_dated_pb (pre-flight refresh concorrente) ==="
+              PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+                -f sql/15b_add_unique_index_mv_q67.sql
+            fi
+
             # ONE-OFF (ADR-0014): re-baselinar o target_schema_hash do watermark.
             # A coluna _nk_md5 adicionada por sql/42 muda o schema da tabela; o
             # guard _check_target_schema_drift compara o hash atual com o do
@@ -779,7 +797,7 @@ jobs:
             python -m etl.refresh_post_incremental --source bolsa_familia 2>&1
           fi
 
-          # Refresh das MVs PB que dependem das tabelas tce_pb_* (L1 -> L2).
+          # Refresh concorrente das MVs PB dependentes (L1 -> L2).
           # Sem isso, o shadow rewarm/warm subsequente leria MVs stale e o swap
           # atomico promoveria cache velho (ADR-0014). Hard-fail se algum
           # REFRESH lancar.
