@@ -336,6 +336,43 @@ ilustra dois pontos não cobertos pelo exemplo padrão:
    Step `ETL: Incremental` no deploy.yml chama automaticamente quando BF
    está no escopo da run.
 
+### Caso especial: TCE-PB (ADR-0014)
+
+As 4 tabelas `tce_pb_*` (despesa/servidor/licitação/receita) também usam
+`nk_synthetic_md5=True`, mas por motivos diferentes de BF — vale como exemplo
+de **por que a NK natural pode ser insegura mesmo quando "parece" única**:
+
+1. **Colisões reais na NK** (`tce_pb_despesa`): 1037 grupos compartilham a NK
+   candidata mas têm valores financeiros distintos (não são duplicatas). Um
+   `UNIQUE INDEX` na NK seria errado e `UPSERT_DO_NOTHING` **descartaria
+   registros novos legítimos**. Sempre rode o profiling full-payload (passo 1),
+   não só `COUNT(*) > 1` na NK.
+
+2. **NULLs em cols da NK** (`tce_pb_servidor`): `municipio` (90k) e
+   `nome_servidor` (201) são NULL. Como `UNIQUE INDEX` trata NULL como
+   **distinto** em PG, essas rows **nunca deduplicam** e re-runs duplicam.
+   Sempre verifique NULL nas cols não-coalescidas da NK antes de optar por NK
+   natural.
+
+3. **Hash single-source-of-truth**: para tabelas largas (despesa = 41 cols),
+   o hash é definido **uma vez** em `etl_admin.nk_md5_<tabela>_row(<tabela>)`
+   (LANGUAGE sql STABLE), chamada pelo trigger **e** pelo populate
+   (`etl/refresh_post_incremental.py:_populate_nk_md5_table`). Evita o drift de
+   duplicar 41 colunas entre trigger e populate.
+
+4. **Excluir cols de normalização do hash**: `cnpj_basico`/`cpf_digitos`
+   (despesa), `cpf_digitos_6`/`nome_upper` (servidor), `*_proponente`
+   (licitação), e `ano` **só em despesa** (dup de `ano_arquivo`) ficam NULL em
+   rows recém-inseridas (populadas por fase posterior) e preenchidas em legacy
+   → incluí-las quebraria a idempotência. (`receita.ano` é business col e ENTRA
+   no hash.) O hash ainda **normaliza** valores para casar classic↔incremental
+   via `etl_admin.nk_norm_text`/`nk_norm_num` (limpa `\t\r\n`/sentinelas;
+   `coalesce(valor,0.00)` porque o parser nulifica o token cru `'0'`).
+
+Defs em [`sql/42_tce_pb_synthetic_nk.sql`](../sql/42_tce_pb_synthetic_nk.sql),
+finalize em [`sql/42z_tce_pb_finalize.sql`](../sql/42z_tce_pb_finalize.sql).
+`SOURCE_REFRESH_FNS["tce_pb"] = refresh_for_tce_pb` (MVs PB L1→L2).
+
 ### Padrão de uso (acionamento)
 
 ```bash

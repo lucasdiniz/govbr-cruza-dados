@@ -33,6 +33,7 @@ veja [`docs/architecture.md`](../architecture.md).
 | ADR-0011 | [Remover LIMIT 200/500 dos top resultados de cidade](0011-remover-limit-top-tabelas.md) | Proposed | 2026-05-17 |
 | ADR-0012 | [Páginas dedicadas para empenhos (`/empenho/pj/...` e `/empenho/pf/...`)](0012-paginas-dedicadas-empenho.md) | Proposed | 2026-05-19 |
 | ADR-0013 | [Zero-downtime no web (deploys + VM resize)](0013-zero-downtime-web.md) | Proposed | 2026-05-19 |
+| ADR-0014 | [NK sintética md5 para tabelas TCE-PB no ETL incremental](0014-tce-pb-incremental-nk.md) | Accepted | 2026-06-23 |
 
 ## Convenções
 

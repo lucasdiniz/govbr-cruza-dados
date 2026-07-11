@@ -142,6 +142,90 @@ def populate_nk_md5_bolsa_familia(conn, batch_size: int = 100_000) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# TCE-PB: synthetic md5 NK (ADR-0014)
+# ──────────────────────────────────────────────────────────────────────────
+# Tabelas TCE-PB que usam _nk_md5 (sql/42 + sql/42z). A funcao de hash
+# etl_admin.nk_md5_<tabela>_row e single source of truth (trigger E populate
+# chamam a mesma), evitando drift.
+TCE_PB_MD5_TABLES: tuple[str, ...] = (
+    "tce_pb_despesa",
+    "tce_pb_servidor",
+    "tce_pb_licitacao",
+    "tce_pb_receita",
+)
+
+
+def _populate_nk_md5_table(conn, table: str, batch_size: int = 200_000) -> None:
+    """Popula _nk_md5 em batches numa tabela TCE-PB via row-function SQL.
+
+    Reusa etl_admin.nk_md5_<table>_row (mesma funcao do trigger) — zero drift
+    entre rows novas (trigger) e legacy (populate).
+
+    Batching por FAIXA DE id (PK) — cada batch faz UPDATE de um range
+    [lo, lo+batch) filtrando _nk_md5 IS NULL. Cada faixa e escaneada UMA vez via
+    o indice da PK, sem depender de um indice parcial que encolhe.
+
+    Por que NAO usar `WHERE _nk_md5 IS NULL ORDER BY id LIMIT N` (padrao BF):
+    em tabelas grandes (despesa 16M) cada UPDATE deixa dead tuples no indice
+    parcial `WHERE _nk_md5 IS NULL`; como autovacuum nao acompanha o ritmo, o
+    Index-Only-Scan passa a pular milhoes de entradas mortas -> tempo por batch
+    cresce (degradacao quase-quadratica observada: 44s -> 109s/batch). A faixa
+    de id evita isso (escaneia cada range uma vez).
+
+    psycopg2 autocommit=True: COMMIT entre batches (psql -c/-f wrappa em
+    transacao implicita e o COMMIT-em-PROCEDURE falharia no PG 16).
+    Idempotente/resumivel: o filtro _nk_md5 IS NULL pula faixas ja populadas.
+    """
+    if table not in TCE_PB_MD5_TABLES:
+        raise ValueError(f"tabela TCE-PB desconhecida: {table!r}")
+    hash_fn = f"etl_admin.nk_md5_{table}_row"
+    logger.info("populate _nk_md5 %s: BATCH_SIZE=%d (id-range)", table, batch_size)
+    prev_autocommit = conn.autocommit
+    conn.autocommit = True
+    t0 = time.time()
+    total = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT min(id), max(id) FROM {table} WHERE _nk_md5 IS NULL"
+            )
+            lo, hi = cur.fetchone()
+            if lo is None:
+                logger.info("populate _nk_md5 %s: nada a fazer (ja populado)", table)
+                return
+
+            cur_id = lo
+            while cur_id <= hi:
+                cur.execute(
+                    f"UPDATE {table} t SET _nk_md5 = {hash_fn}(t) "
+                    f"WHERE t.id >= %s AND t.id < %s AND t._nk_md5 IS NULL",
+                    (cur_id, cur_id + batch_size),
+                )
+                n = cur.rowcount
+                total += n
+                cur_id += batch_size
+                if n:
+                    logger.info(
+                        "populate _nk_md5 %s: ~%s/%s ids, %s rows (%.0fs)",
+                        table, f"{min(cur_id, hi + 1):,}", f"{hi:,}",
+                        f"{total:,}", time.time() - t0,
+                    )
+    finally:
+        conn.autocommit = prev_autocommit
+    logger.info(
+        "populate _nk_md5 %s: DONE — %d rows em %.0fs",
+        table, total, time.time() - t0,
+    )
+
+
+def populate_nk_md5_tce_pb(conn, batch_size: int = 100_000) -> None:
+    """Popula _nk_md5 em todas as 4 tabelas TCE-PB (despesa/servidor/licitacao/
+    receita). Chamado pelo deploy entre sql/42 e sql/42z."""
+    for table in TCE_PB_MD5_TABLES:
+        _populate_nk_md5_table(conn, table, batch_size=batch_size)
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Refresh por source
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -234,12 +318,101 @@ def refresh_for_bolsa_familia(conn) -> None:
     logger.info("refresh_for_bolsa_familia: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
 
 
+# MVs PB que dependem DIRETAMENTE das tabelas tce_pb_*, em ordem L1 -> L2
+# (sql/12_views.sql). _tmp_bf NAO e reconstruido aqui: reflete o estado atual
+# de bolsa_familia, que nao muda num run TCE-PB.
+#
+# mv_rede_pb foi DELIBERADAMENTE excluida: e montada a partir das tabelas
+# _tmp_rede_* (socio/fornecedor/servidor/credor/doador-campanha) que NAO sao
+# reconstruidas aqui — um REFRESH apenas re-le _tmp_rede_* stale (no-op util) e,
+# alem disso, mv_rede_pb nao tem UNIQUE INDEX (REFRESH CONCURRENTLY falharia).
+_TCE_PB_MVS_L1 = (
+    "mv_empresa_governo",
+    "mv_servidor_pb_base",
+    "mv_municipio_pb_risco",
+    "mv_pessoa_pb",
+)
+_TCE_PB_MVS_L2 = (
+    "mv_servidor_pb_risco",
+    "mv_empresa_pb",
+    "mv_municipio_pb_kpi_score",
+    "mv_municipio_pb_mapa",
+    "mv_q67_dated_pb",
+)
+
+
+def _refresh_mv_adaptive(conn, mv: str) -> None:
+    """REFRESH de uma MV escolhendo o modo certo:
+      - CONCURRENTLY se a MV tem UNIQUE INDEX (zero-downtime);
+      - REFRESH simples (lock ACCESS EXCLUSIVE breve) se NAO tem (ex.:
+        mv_q67_dated_pb em prod) — CONCURRENTLY exigiria UNIQUE INDEX e
+        falharia;
+      - skip + warning se a MV nao existe (drift entre ambientes).
+
+    Erros reais de REFRESH propagam (hard-fail) — so o caso "sem unique index"
+    e tratado, nao mascaramos falhas de dados.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM pg_class WHERE relname = %s AND relkind = 'm'", (mv,)
+        )
+        if cur.fetchone() is None:
+            logger.warning("MV %s nao existe — skip refresh (drift?)", mv)
+            return
+        cur.execute(
+            "SELECT bool_or(coalesce(i.indisunique, false)) "
+            "FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid "
+            "WHERE c.relname = %s",
+            (mv,),
+        )
+        has_unique = bool(cur.fetchone()[0])
+
+    if has_unique:
+        _run_sql(conn, f"REFRESH {mv} (CONCURRENTLY)",
+                 f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}", autocommit=True)
+    else:
+        logger.warning(
+            "MV %s sem UNIQUE INDEX — REFRESH simples (lock breve, nao-concurrent)",
+            mv,
+        )
+        _run_sql(conn, f"REFRESH {mv} (plain)",
+                 f"REFRESH MATERIALIZED VIEW {mv}", autocommit=True)
+
+
+def refresh_for_tce_pb(conn) -> None:
+    """Refresh das MVs que dependem das tabelas TCE-PB (despesa/servidor/
+    licitacao/receita), em ordem L1 -> L2.
+
+    Hard-fail: qualquer REFRESH que lance (erro real) aborta o script (exit 1) —
+    preferimos falhar o deploy a deixar o warm/shadow rewarm subsequente ler MV
+    stale. MVs sem UNIQUE INDEX usam REFRESH simples (ver _refresh_mv_adaptive).
+
+    NOTA: mv_empresa_municipio_pagantes (sitemap) e refrescada a parte por
+    etl.22_mv_sitemap no proprio step do deploy.
+    """
+    logger.info("=" * 60)
+    logger.info("refresh_for_tce_pb: iniciando (L1 -> L2)")
+    logger.info("=" * 60)
+    total_t0 = time.time()
+
+    # ANALYZE das tabelas base antes das queries pesadas das MVs.
+    for table in TCE_PB_MD5_TABLES:
+        _run_sql(conn, f"ANALYZE {table}", f"ANALYZE {table}")
+
+    for mv in _TCE_PB_MVS_L1 + _TCE_PB_MVS_L2:
+        _refresh_mv_adaptive(conn, mv)
+
+    total_dt = time.time() - total_t0
+    logger.info("refresh_for_tce_pb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Registry — fontes que tem refresh hooks
 # ──────────────────────────────────────────────────────────────────────────
 
 SOURCE_REFRESH_FNS: dict[str, Callable] = {
     "bolsa_familia": refresh_for_bolsa_familia,
+    "tce_pb": refresh_for_tce_pb,
 }
 
 
@@ -261,7 +434,7 @@ def main():
         "--populate-only",
         action="store_true",
         help="So roda populate_nk_md5 (sem MV refresh). Usado entre sql/41 e "
-             "sql/41z no deploy step. Apenas para source=bolsa_familia.",
+             "sql/41z (bolsa_familia) ou sql/42 e sql/42z (tce_pb) no deploy.",
     )
     parser.add_argument(
         "--dsn",
@@ -277,10 +450,15 @@ def main():
     conn = psycopg2.connect(args.dsn)
     try:
         if args.populate_only:
-            if args.source != "bolsa_familia":
-                logger.error("--populate-only so suporta source=bolsa_familia")
+            if args.source == "bolsa_familia":
+                populate_nk_md5_bolsa_familia(conn)
+            elif args.source == "tce_pb":
+                populate_nk_md5_tce_pb(conn)
+            else:
+                logger.error(
+                    "--populate-only so suporta source=bolsa_familia|tce_pb"
+                )
                 return 2
-            populate_nk_md5_bolsa_familia(conn)
         else:
             fn = SOURCE_REFRESH_FNS[args.source]
             fn(conn)

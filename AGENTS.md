@@ -363,6 +363,33 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   Framework agora suporta `spec.csv_header_rewrites: dict[str, str]` que
   mapeia raw → SQL-safe antes do match com `spec.columns`. Default `{}` =
   no-op para specs existentes (TCE-PB / Dados-PB / pb_extras).
+- **TCE-PB usa NK synthetic md5** (ADR-0014): as 4 tabelas `tce_pb_*` migraram
+  para `_nk_md5` (`nk_synthetic_md5=True`). Motivo: a NK natural de
+  `tce_pb_despesa` tem **1037 grupos de colisão reais** (registros financeiros
+  distintos, não duplicatas → NK natural perderia dados), e `tce_pb_servidor`
+  tem **90k+ NULLs** em cols da NK (`municipio`, `nome_servidor`) que um
+  `UNIQUE INDEX` trataria como distintos → double-load. `sql/30`/`sql/31` foram
+  **deprecados** (a NK natural não serve). Defs em
+  [`sql/42_tce_pb_synthetic_nk.sql`](sql/42_tce_pb_synthetic_nk.sql), finalize
+  (dedupe + index) em [`sql/42z_tce_pb_finalize.sql`](sql/42z_tce_pb_finalize.sql).
+  O hash é definido **uma vez** por tabela em
+  `etl_admin.nk_md5_<tabela>_row(<tabela>)` (chamada pelo trigger **e** pelo
+  populate — zero drift). Populate + refresh de MVs em
+  [`etl/refresh_post_incremental.py`](etl/refresh_post_incremental.py)
+  (`--source tce_pb`). 1º populate de ~40M rows levou ~3,5h no teste local
+  end-to-end (uma vez).
+- **Idempotência cross-boundary TCE-PB** (ADR-0014): o hash `_nk_md5` exclui
+  cols de normalização (`cnpj_basico`, `cpf_digitos` em despesa; `cpf_digitos_6`,
+  `nome_upper` em servidor; `*_proponente` em licitação; e `ano` SÓ em despesa,
+  onde é dup de `ano_arquivo` — `receita.ano` é business col e ENTRA no hash).
+  Elas ficam NULL em rows novas e preenchidas em rows legacy; incluí-las
+  quebraria a deduplicação no republish. O hash também **normaliza** valores
+  para casar classic↔incremental: `coalesce(valor,0.00)` (o parser nulifica o
+  token cru `'0'` que o ETL clássico gravou como `0.00`) e limpeza de
+  `\t\r\n`/sentinelas no texto (`etl_admin.nk_norm_text`/`nk_norm_num`). Antes
+  do **1º incremental real**, conferir que `rows_inserted` do bucket corrente é
+  ≈ (upstream − já carregado), **não** ≈ bucket inteiro (sinal de divergência
+  de parsing → abortar).
 
 ### Git / Workflow / Deploy
 

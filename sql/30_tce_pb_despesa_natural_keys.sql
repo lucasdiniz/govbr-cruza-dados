@@ -1,22 +1,16 @@
--- TCE-PB despesa: UNIQUE INDEX expression-based (resolve '' vs NULL)
+-- TCE-PB despesa: NK natural — DEPRECATED (ADR-0014)
 --
--- Legacy ETL pode ter inserido literal '' em cols opcionais; nosso
--- incremental converte CSV vazio para NULL. ON CONFLICT precisa tratar
--- '' e NULL como equivalentes.
+-- A NK natural de tce_pb_despesa NAO e unica: analise empirica em prod (2026-06)
+-- encontrou 1037 grupos (2530 rows) que compartilham esta NK mas sao registros
+-- financeiros DISTINTOS (valor_*/cpf_cnpj/nome_credor/historico diferentes).
+-- Um UNIQUE INDEX nesta NK seria semanticamente errado e UPSERT_DO_NOTHING
+-- pularia registros distintos silenciosamente.
 --
--- Solução: COALESCE(NULLIF(col, ''), '__NULL__')
---   '' → '__NULL__', NULL → '__NULL__', 'X' → 'X'
+-- Substituida por synthetic md5 (_nk_md5):
+--   * sql/42_tce_pb_synthetic_nk.sql  (coluna + trigger + funcao de hash)
+--   * sql/42z_tce_pb_finalize.sql     (dedupe + UNIQUE INDEX ix_tce_pb_despesa_nk_md5)
 --
--- ON CONFLICT em build_upsert_sql precisa usar EXATAMENTE a mesma expressão.
+-- Este arquivo agora apenas REMOVE o index natural antigo (caso runs/POCs
+-- anteriores o tenham criado). NAO recria o UNIQUE INDEX natural.
 
 DROP INDEX IF EXISTS ix_tce_pb_despesa_nk;
-
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_tce_pb_despesa_nk
-ON tce_pb_despesa (
-    municipio, codigo_ug, numero_empenho, data_empenho, ano_arquivo,
-    COALESCE(NULLIF(codigo_subelemento, ''), '__NULL__'),
-    COALESCE(NULLIF(codigo_fonte_recurso, ''), '__NULL__'),
-    COALESCE(NULLIF(numero_obra, ''), '__NULL__'),
-    COALESCE(NULLIF(numero_licitacao, ''), '__NULL__'),
-    COALESCE(NULLIF(codigo_natureza, ''), '__NULL__')
-);
