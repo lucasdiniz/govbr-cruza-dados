@@ -362,12 +362,25 @@ de **por que a NK natural pode ser insegura mesmo quando "parece" única**:
 
 4. **Excluir cols de normalização do hash**: `cnpj_basico`/`cpf_digitos`
    (despesa), `cpf_digitos_6`/`nome_upper` (servidor), `*_proponente`
-   (licitação), e `ano` **só em despesa** (dup de `ano_arquivo`) ficam NULL em
-   rows recém-inseridas (populadas por fase posterior) e preenchidas em legacy
-   → incluí-las quebraria a idempotência. (`receita.ano` é business col e ENTRA
-   no hash.) O hash ainda **normaliza** valores para casar classic↔incremental
-   via `etl_admin.nk_norm_text`/`nk_norm_num` (limpa `\t\r\n`/sentinelas;
+   (licitação), e `ano` **só em despesa** (dup de `ano_arquivo`) não vêm nos
+   CSVs e são preenchidas depois do INSERT → incluí-las quebraria a
+   idempotência. (`receita.ano` é business col e ENTRA no hash.) O hash ainda
+   **normaliza** valores para casar classic↔incremental via
+   `etl_admin.nk_norm_text`/`nk_norm_num` (limpa `\t\r\n`/sentinelas;
    `coalesce(valor,0.00)` porque o parser nulifica o token cru `'0'`).
+
+5. **Normalizar antes das MVs**: o loader genérico só insere colunas presentes
+   no CSV. `refresh_for_tce_pb` chama `normalize_tce_pb_incremental` antes do
+   `ANALYZE` e dos refreshes para preencher as colunas derivadas acima. Sem
+   esse hook, os dados brutos entram, mas linhas com `cpf_digitos_6` e
+   `nome_upper` NULL ficam invisíveis em `mv_servidor_pb_base`, no ranking e no
+   diálogo de vínculos.
+
+6. **Reconstruir backing tables entre L1 e L2**: depois de atualizar
+   `mv_servidor_pb_base`, o hook executa
+   `sql/43_tmp_servidor_post_incremental.sql` e reconstrói `_tmp_bf` na mesma
+   transação. As tabelas são atualizadas com `TRUNCATE + INSERT` para preservar
+   os OIDs usados por `mv_servidor_pb_risco`; só então a MV L2 é refrescada.
 
 Defs em [`sql/42_tce_pb_synthetic_nk.sql`](../sql/42_tce_pb_synthetic_nk.sql),
 finalize em [`sql/42z_tce_pb_finalize.sql`](../sql/42z_tce_pb_finalize.sql).

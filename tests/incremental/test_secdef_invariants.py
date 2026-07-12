@@ -26,7 +26,7 @@ CHECK_VIOLATION = "23514"
 # ─── search_path locked (R6 BLOCKING) ─────────────────────────────────────────
 
 def test_security_definer_functions_have_locked_search_path(govbr_conn):
-    """Toda função em etl_admin tem SET search_path no proconfig."""
+    """Toda função SECURITY DEFINER em etl_admin trava o search_path."""
     with govbr_conn.cursor() as cur:
         cur.execute(
             """
@@ -35,6 +35,7 @@ def test_security_definer_functions_have_locked_search_path(govbr_conn):
             FROM pg_proc p
             JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'etl_admin'
+              AND p.prosecdef
             ORDER BY p.proname
             """
         )
