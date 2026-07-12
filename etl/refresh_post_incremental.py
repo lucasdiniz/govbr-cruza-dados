@@ -154,6 +154,122 @@ TCE_PB_MD5_TABLES: tuple[str, ...] = (
     "tce_pb_receita",
 )
 
+_TCE_PB_NORMALIZATION_UPDATES: tuple[tuple[str, str], ...] = (
+    (
+        "normalize tce_pb_servidor",
+        """
+        UPDATE tce_pb_servidor
+        SET cpf_digitos_6 = CASE
+                WHEN cpf_digitos_6 IS NULL AND cpf_cnpj LIKE '***%'
+                THEN REGEXP_REPLACE(cpf_cnpj, '[^0-9]', '', 'g')
+                ELSE cpf_digitos_6
+            END,
+            nome_upper = CASE
+                WHEN nome_upper IS NULL AND nome_servidor IS NOT NULL
+                THEN UPPER(TRIM(nome_servidor))
+                ELSE nome_upper
+            END
+        WHERE (cpf_digitos_6 IS NULL AND cpf_cnpj LIKE '***%')
+           OR (nome_upper IS NULL AND nome_servidor IS NOT NULL)
+        """,
+    ),
+    (
+        "normalize tce_pb_despesa cnpj_basico",
+        """
+        UPDATE tce_pb_despesa d
+        SET cnpj_basico = LEFT(d.cpf_cnpj, 8)
+        WHERE d.cnpj_basico IS NULL
+          AND LENGTH(d.cpf_cnpj) = 14
+          AND EXISTS (
+              SELECT 1 FROM estabelecimento e
+              WHERE e.cnpj_completo = d.cpf_cnpj
+          )
+        """,
+    ),
+    (
+        "normalize tce_pb_despesa cpf_digitos",
+        """
+        UPDATE tce_pb_despesa d
+        SET cpf_digitos = SUBSTRING(d.cpf_cnpj FROM 4 FOR 11)
+        WHERE d.cpf_digitos IS NULL
+          AND LENGTH(d.cpf_cnpj) = 14
+          AND NOT EXISTS (
+              SELECT 1 FROM estabelecimento e
+              WHERE e.cnpj_completo = d.cpf_cnpj
+          )
+          AND NOT is_valid_cnpj(d.cpf_cnpj::TEXT)
+          AND is_valid_cpf(SUBSTRING(d.cpf_cnpj FROM 4 FOR 11)::TEXT)
+        """,
+    ),
+    (
+        "normalize tce_pb_despesa ano",
+        """
+        UPDATE tce_pb_despesa
+        SET ano = COALESCE(EXTRACT(YEAR FROM data_empenho)::SMALLINT, ano_arquivo)
+        WHERE ano IS NULL
+        """,
+    ),
+    (
+        "normalize tce_pb_licitacao cnpj_basico_proponente",
+        """
+        UPDATE tce_pb_licitacao
+        SET cnpj_basico_proponente = LEFT(cpf_cnpj_proponente, 8)
+        WHERE cnpj_basico_proponente IS NULL
+          AND LENGTH(cpf_cnpj_proponente) >= 14
+        """,
+    ),
+    (
+        "normalize tce_pb_licitacao cpf_digitos_proponente",
+        """
+        UPDATE tce_pb_licitacao
+        SET cpf_digitos_proponente = SUBSTRING(cpf_cnpj_proponente, 4, 6)
+        WHERE cpf_digitos_proponente IS NULL
+          AND LENGTH(cpf_cnpj_proponente) = 11
+        """,
+    ),
+)
+
+
+def normalize_tce_pb_incremental(conn) -> dict[str, int]:
+    """Preenche colunas derivadas deixadas NULL pelo loader incremental.
+
+    O ETL classico popula essas colunas em etl.15_normalizar, mas elas nao
+    fazem parte dos CSVs TCE-PB. O hook roda antes do refresh das MVs para que
+    linhas novas nao sejam invisiveis aos JOINs e filtros normalizados.
+
+    As colunas abaixo sao excluidas de _nk_md5 no ADR-0014; atualiza-las nao
+    altera a identidade sintetica nem a idempotencia do bucket.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT to_regprocedure('is_valid_cpf(text)') IS NOT NULL,
+                   to_regprocedure('is_valid_cnpj(text)') IS NOT NULL
+            """
+        )
+        has_cpf_fn, has_cnpj_fn = cur.fetchone()
+    if not has_cpf_fn or not has_cnpj_fn:
+        raise RuntimeError(
+            "normalizacao TCE-PB requer is_valid_cpf(text) e "
+            "is_valid_cnpj(text); execute etl.15_normalizar antes"
+        )
+
+    counts: dict[str, int] = {}
+    for label, sql in _TCE_PB_NORMALIZATION_UPDATES:
+        t0 = time.time()
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            counts[label] = cur.rowcount
+        if not conn.autocommit:
+            conn.commit()
+        logger.info(
+            "%s: %d rows em %.1fs",
+            label,
+            counts[label],
+            time.time() - t0,
+        )
+    return counts
+
 
 def _populate_nk_md5_table(conn, table: str, batch_size: int = 200_000) -> None:
     """Popula _nk_md5 em batches numa tabela TCE-PB via row-function SQL.
@@ -263,10 +379,7 @@ def refresh_for_bolsa_familia(conn) -> None:
     # 3. _tmp_bf rebuild via TRUNCATE+INSERT atomic.
     # Body extraido para sql/41c_tmp_bf_body.sql — drift com sql/12_views.sql
     # quebra esta logica (validado em smoke tests).
-    body = _read_sql_file("41c_tmp_bf_body.sql")
-    # Strip statement terminator do body antes de injetar — evita ambiguidade
-    # com concatenacoes futuras (Opus 4.7-high review LOW-5).
-    body_stripped = body.rstrip().rstrip(";").rstrip()
+    body_stripped = _read_sql_file("41c_tmp_bf_body.sql").rstrip().rstrip(";").rstrip()
     # TRUNCATE + INSERT atomic via transacao implicita do psycopg2
     # (autocommit=False default). Os dois statements executam em UMA
     # transacao; AccessExclusiveLock do TRUNCATE eh mantido ate o
@@ -319,8 +432,9 @@ def refresh_for_bolsa_familia(conn) -> None:
 
 
 # MVs PB que dependem DIRETAMENTE das tabelas tce_pb_*, em ordem L1 -> L2
-# (sql/12_views.sql). _tmp_bf NAO e reconstruido aqui: reflete o estado atual
-# de bolsa_familia, que nao muda num run TCE-PB.
+# (sql/12_views.sql). As backing tables de mv_servidor_pb_risco, incluindo
+# _tmp_bf, sao reconstruidas entre as camadas porque dependem da nova
+# mv_servidor_pb_base e/ou dos vinculos atualizados em tce_pb_servidor.
 #
 # mv_rede_pb foi DELIBERADAMENTE excluida: e montada a partir das tabelas
 # _tmp_rede_* (socio/fornecedor/servidor/credor/doador-campanha) que NAO sao
@@ -339,6 +453,19 @@ _TCE_PB_MVS_L2 = (
     "mv_municipio_pb_mapa",
     "mv_q67_dated_pb",
 )
+
+
+def _rebuild_servidor_tmp_after_tce_pb(conn) -> None:
+    """Reconstrói backing tables de mv_servidor_pb_risco atomicamente."""
+    tmp_sql = _read_sql_file("43_tmp_servidor_post_incremental.sql")
+    bf_body = _read_sql_file("41c_tmp_bf_body.sql").rstrip().rstrip(";").rstrip()
+    sql = f"""
+    {tmp_sql}
+    TRUNCATE TABLE _tmp_bf;
+    INSERT INTO _tmp_bf {bf_body};
+    ANALYZE _tmp_bf;
+    """
+    _run_sql(conn, "rebuild tmp servidor TCE-PB", sql)
 
 
 def _refresh_mv_adaptive(conn, mv: str) -> None:
@@ -395,11 +522,18 @@ def refresh_for_tce_pb(conn) -> None:
     logger.info("=" * 60)
     total_t0 = time.time()
 
+    normalize_tce_pb_incremental(conn)
+
     # ANALYZE das tabelas base antes das queries pesadas das MVs.
     for table in TCE_PB_MD5_TABLES:
         _run_sql(conn, f"ANALYZE {table}", f"ANALYZE {table}")
 
-    for mv in _TCE_PB_MVS_L1 + _TCE_PB_MVS_L2:
+    for mv in _TCE_PB_MVS_L1:
+        _refresh_mv_adaptive(conn, mv)
+
+    _rebuild_servidor_tmp_after_tce_pb(conn)
+
+    for mv in _TCE_PB_MVS_L2:
         _refresh_mv_adaptive(conn, mv)
 
     total_dt = time.time() - total_t0

@@ -390,6 +390,16 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   do **1º incremental real**, conferir que `rows_inserted` do bucket corrente é
   ≈ (upstream − já carregado), **não** ≈ bucket inteiro (sinal de divergência
   de parsing → abortar).
+- **Normalização pós-incremental TCE-PB é obrigatória.** Os CSVs não contêm
+  `cpf_digitos_6`, `nome_upper`, `cnpj_basico`, `cpf_digitos`, `ano` nem as
+  colunas normalizadas de proponente. `refresh_for_tce_pb` chama
+  `normalize_tce_pb_incremental` antes de atualizar as MVs; sem isso, linhas
+  novas existem na base mas ficam invisíveis aos JOINs e à interface.
+- **Refresh TCE-PB respeita L1 → backing tables → L2.** Após
+  `mv_servidor_pb_base`, reconstrua `_tmp_socio_empresas`,
+  `_tmp_fornecedor_gov`, `_tmp_conflito`, `_tmp_bf`, `_tmp_duplo` e
+  `_tmp_siape_federal` com `TRUNCATE + INSERT` antes de
+  `mv_servidor_pb_risco`. Nunca use `DROP`: a MV depende dos OIDs.
 
 ### Git / Workflow / Deploy
 
