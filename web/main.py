@@ -18,6 +18,7 @@ from web.routes.mapa import router as mapa_router
 from web.routes.og_image import router as og_router
 from web.routes.contato import build_router as build_contato_router
 from web.routes.seo import router as seo_router
+from web.routes.tce_pb import router as tce_pb_router
 
 _dir = Path(__file__).resolve().parent
 
@@ -186,6 +187,88 @@ templates.env.filters["short_number"] = _format_short_number
 templates.env.filters["short_brl"] = _format_short_brl
 templates.env.filters["clean_text"] = _clean_text
 templates.env.filters["date_br"] = _format_date_br
+
+
+# ----------- Filtros TCE-PB DOE (ADR-0014) -----------
+_TCE_TIPO_MATERIA_LABEL = {
+    "pca":            "PCA",
+    "licitacao":      "Licitação",
+    "denuncia":       "Denúncia",
+    "contrato":       "Contrato",
+    "representacao":  "Representação",
+    "embargos":       "Embargos",
+    "recurso":        "Recurso",
+    "tce_especial":   "TCE",
+    "atos_pessoal":   "Atos de pessoal",
+    "indef":          "—",
+}
+_TCE_ORGAO_LABEL = {
+    "apltc":  "Pleno",
+    "ac1tc":  "1ª Câmara",
+    "ac2tc":  "2ª Câmara",
+    "ds1tc":  "DS-1",
+    "ds2tc":  "DS-2",
+    "dspltc": "DS-Pleno",
+    "rc1tc":  "Relatoria-1",
+}
+_TCE_FASE_LABEL = {
+    "decisao_inicial":         "Decisão inicial",
+    "embargos_de_declaracao":  "Embargos",
+    "recurso":                 "Recurso",
+    "ag_reg":                  "Agravo regimental",
+    "resolucao":               "Resolução",
+}
+_TCE_RESULTADO_CHIP = {
+    "irregular":        ("🔴", "Irregular",        "chip-risk"),
+    "regular_ressalva": ("🟡", "Reg. c/ ressalva", "chip-attention"),
+    "regular":          ("🟢", "Regular",          "chip-ok"),
+    "indef":            ("⚪", "Indef.",            "chip-neutral"),
+}
+
+
+def _tce_tipo_materia_label(v: Any) -> str:
+    return _TCE_TIPO_MATERIA_LABEL.get((v or "").lower(), v or "—")
+
+
+def _tce_orgao_label(v: Any) -> str:
+    return _TCE_ORGAO_LABEL.get((v or "").lower(), (v or "—").upper())
+
+
+def _tce_fase_label(v: Any) -> str:
+    return _TCE_FASE_LABEL.get((v or "").lower(), (v or "—").replace("_", " ").capitalize())
+
+
+def _tce_resultado_chip(p: Any) -> str:
+    """Renderiza chip HTML para o pior_resultado do processo."""
+    if isinstance(p, dict):
+        key = (p.get("pior_resultado") or "indef").lower()
+    else:
+        key = (str(p) or "indef").lower()
+    emoji, label, css = _TCE_RESULTADO_CHIP.get(key, _TCE_RESULTADO_CHIP["indef"])
+    return f'<span class="{css}">{emoji} {label}</span>'
+
+
+def _date_br_short(v: Any) -> str:
+    """DD/MM (sem ano) — usado em labels compactos de botão."""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if not s:
+        return ""
+    if "-" in s[:10]:
+        try:
+            yyyy, mm, dd = s[:10].split("-")
+            return f"{dd}/{mm}"
+        except ValueError:
+            return s
+    return s
+
+
+templates.env.filters["tipo_materia_label"] = _tce_tipo_materia_label
+templates.env.filters["orgao_label"] = _tce_orgao_label
+templates.env.filters["fase_label"] = _tce_fase_label
+templates.env.filters["resultado_chip"] = _tce_resultado_chip
+templates.env.filters["date_br_short"] = _date_br_short
 
 
 # ----------- Metadata de colunas para tabelas de achados (Fase 1/cidadao) -----------
@@ -497,10 +580,13 @@ JS_FILES: list[str] = [
     "components/fornecedores-filter-chips.js",
     "components/clickable-rows.js",
     "components/empenhos-controller.js",
+    # tce-pdf-viewer: dialog MD3 c/ iframe pro proxy /api/tce-pb/decisao/<hash>.pdf
+    # (ADR-0014). No-op em paginas sem .tce-view-btn / #tce-pdf-dialog.
+    "components/tce-pdf-viewer.js",
     "pages/main.js",
 ]
 templates.env.globals["JS_FILES"] = JS_FILES
-templates.env.globals["ASSET_VERSION"] = "123"
+templates.env.globals["ASSET_VERSION"] = "124"
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -667,6 +753,7 @@ app.include_router(mapa_router)
 app.include_router(og_router)
 app.include_router(build_contato_router(templates))
 app.include_router(seo_router)
+app.include_router(tce_pb_router)
 
 
 # Fase 12 - erros amigaveis em vez de stack traces

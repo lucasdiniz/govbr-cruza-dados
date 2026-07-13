@@ -58,6 +58,7 @@ from web.queries.empresa import (
     EMPRESA_SANCOES_CNEP_BY_BASICO,
     EMPRESA_SOCIOS_BY_BASICO,
     EMPRESA_STATS_BY_MUN,
+    EMPRESA_TCE_PB_DOE_BY_BASICO,
     EMPRESA_TOP_ELEMENTOS_BY_MUN,
     EMPRESA_TOP_ELEMENTOS_GLOBAL_BY_BASICO,
 )
@@ -324,6 +325,21 @@ def _fetch_cadastral_block(cur, cnpj_completo: str, cnpj_basico: str,
     cnt_row = cur.fetchone()
     empenhos_total_global = int(cnt_row[0]) if cnt_row else 0
 
+    # TCE-PB DOE (ADR-0014): mv_empresa_tce_pb retorna 0 ou 1 row.
+    # Empresas sem citacao recebem tce_pb=None (template oculta secao).
+    tce_pb_doe = None
+    try:
+        cur.execute(EMPRESA_TCE_PB_DOE_BY_BASICO, (cnpj_basico,))
+        tce_row = cur.fetchone()
+        if tce_row:
+            tce_cols = [d[0] for d in cur.description]
+            tce_pb_doe = _convert_row(_row_to_dict(tce_cols, tce_row))
+    except Exception:
+        # MV pode nao existir ainda (deploy de schema antes do MV swap).
+        # Falha silenciosa preserva backward compat.
+        _log.warning("mv_empresa_tce_pb indisponivel para %s", cnpj_basico,
+                     exc_info=True)
+
     return {
         "estabelecimento": estabelecimento,
         "matriz": matriz,
@@ -336,6 +352,7 @@ def _fetch_cadastral_block(cur, cnpj_completo: str, cnpj_basico: str,
         "monthly_global": monthly_global,
         "empenhos_global": empenhos_global,
         "empenhos_total_global": empenhos_total_global,
+        "tce_pb_doe": tce_pb_doe,
     }
 
 
@@ -488,6 +505,7 @@ def compute_empresa_perfil_dict(
         # entries pre-PR nao tem esses campos, frontend faz fallback live.
         "empenhos_global": cadastral.get("empenhos_global", []),
         "empenhos_total_global": cadastral.get("empenhos_total_global", 0),
+        "tce_pb_doe": cadastral.get("tce_pb_doe"),
         "kpi_total_pb": total_pb_geral,
         "kpi_qtd_municipios": qtd_municipios,
         "kpi_qtd_empenhos": qtd_empenhos_pb,
@@ -607,6 +625,7 @@ def compute_empresa_municipio_perfil_dict(
         "pgfn": cadastral["pgfn"],
         "acordos_leniencia": cadastral["acordos_leniencia"],
         "agregados": agregados,
+        "tce_pb_doe": cadastral.get("tce_pb_doe"),
         "municipios_pagantes": cadastral["municipios_pagantes"],
         # Pagamentos restritos ao municipio:
         "municipio": municipio,

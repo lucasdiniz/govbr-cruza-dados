@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       etl_phase:
-        description: 'ETL phase: "web" (code sync + web deploy only), "sql" (schema+views), "incremental" (incremental ETL framework — TCE-PB + Dados-PB), phase number (e.g. "18"), or "all" (full ETL)'
+        description: 'ETL phase: "web" (code sync + web deploy only), "sql" (schema+views), "incremental" (incremental ETL framework — TCE-PB + Dados-PB), phase number (e.g. "18" runs phase 18..end), "only:N" (runs ONLY phase N — cirurgico), or "all" (full ETL)'
         required: false
         default: 'all'
       clean:
@@ -529,7 +529,7 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
-          for sql_file in sql/40_contato_messages.sql; do
+          for sql_file in sql/40_contato_messages.sql sql/42_tce_pb_decisao.sql; do
             if [ -f "$sql_file" ]; then
               echo "=== Applying $sql_file ==="
               PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f "$sql_file"
@@ -832,13 +832,37 @@ jobs:
       # ── Specific phase ──
       - name: "ETL: Phase ${{ inputs.etl_phase }}"
         if: inputs.etl_phase != 'sql' && inputs.etl_phase != 'all' && inputs.etl_phase != 'web' && inputs.etl_phase != 'incremental'
+        # Passa o input via env: ao inves de interpolar direto no bash.
+        # Interpolacao direta com ${{ inputs.etl_phase }} dentro de heredoc
+        # bash permitiria shell injection via workflow_dispatch (input string
+        # livre fechando aspa e injetando comando). Com env:, $PHASE_INPUT
+        # vira variavel de ambiente nao expandida pelo shell.
+        env:
+          PHASE_INPUT: ${{ inputs.etl_phase }}
         run: |
           set -e
           sudo systemctl restart tor 2>/dev/null || true
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
-          echo "=== ETL from phase ${{ inputs.etl_phase }} ==="
-          python -m etl.run_all "${{ inputs.etl_phase }}" 2>&1
+          echo "=== ETL from phase $PHASE_INPUT ==="
+          # Suporta dois formatos:
+          #   "N"        -> roda da Fase N (1-based index) ate o fim (compat)
+          #   "only:N"   -> roda APENAS a Fase N (cirurgico, nao dispara fases
+          #                 seguintes que podem fazer DROP CASCADE de MVs)
+          # IMPORTANTE: N e o INDICE 1-based na lista `PHASES` de run_all.py,
+          # NAO o label "Fase X" do tuple. Use:
+          #   python -c "from etl.run_all import PHASES; [print(i+1, m) for i,(_,m) in enumerate(PHASES)]"
+          # para descobrir o indice de uma fase especifica.
+          if [[ "$PHASE_INPUT" =~ ^only:[0-9]+$ ]]; then
+            PHASE_NUM="${PHASE_INPUT#only:}"
+            echo "=== Running ONLY phase $PHASE_NUM ==="
+            python -m etl.run_all --only "$PHASE_NUM" 2>&1
+          elif [[ "$PHASE_INPUT" =~ ^[0-9]+$ ]]; then
+            python -m etl.run_all "$PHASE_INPUT" 2>&1
+          else
+            echo "::error::etl_phase invalido: '$PHASE_INPUT'. Esperado: numero, 'only:N', 'all', 'sql', 'web', 'incremental'."
+            exit 1
+          fi
 
       # ── Run fraud queries (opt-in, demora ~30min) ──
       - name: Run queries
@@ -1533,6 +1557,13 @@ jobs:
           node scripts/build-assets.mjs
           echo "=== Asset build OK ==="
           ls -la web/static/dist/
+
+          # ADR-0014: garante cache dir do proxy TCE-PB DOE (PDFs imutaveis
+          # por hash). Idempotente. Permissoes: cruza-web user owns it.
+          # Tamanho esperado: ~5GB max (10k PDFs * 500KB).
+          sudo mkdir -p /var/cache/cruza-web/tce-pb
+          sudo chown -R cruza-web:cruza-web /var/cache/cruza-web/tce-pb || true
+          sudo chmod 0755 /var/cache/cruza-web/tce-pb
 
           # restart funciona em servico ativo OU inativo (alias de stop+start).
           sudo systemctl restart cruza-web

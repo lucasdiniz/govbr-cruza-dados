@@ -1,0 +1,153 @@
+/* === tce-pdf-viewer.css ===
+ * ADR-0014 — Estilo do visualizador embed de PDFs do DOE-TCE-PB
+ * e da secao "TCE-PB — processos publicados no DOE" em /empresa/<cnpj>.
+ *
+ * Mobile-first. Touch targets >= 44px (memoria: mobile-first UX).
+ */
+
+/* ---- Sumario com chips ---- */
+.tce-doe-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0 1rem;
+}
+
+.tce-doe-summary .chip-risk,
+.tce-doe-summary .chip-attention,
+.tce-doe-summary .chip-ok,
+.tce-doe-summary .chip-neutral {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.tce-doe-summary .chip-risk {
+    background: var(--md-sys-color-error-container, #ffdad6);
+    color: var(--md-sys-color-on-error-container, #410002);
+}
+
+.tce-doe-summary .chip-attention {
+    background: var(--md-sys-color-tertiary-container, #ffddb5);
+    color: var(--md-sys-color-on-tertiary-container, #2c1700);
+}
+
+.tce-doe-summary .chip-ok {
+    background: var(--md-sys-color-secondary-container, #d6e4ff);
+    color: var(--md-sys-color-on-secondary-container, #001b3d);
+}
+
+/* ---- Chips inline na celula "Resultado" ---- */
+.tce-doe-processos .chip-risk,
+.tce-doe-processos .chip-attention,
+.tce-doe-processos .chip-ok,
+.tce-doe-processos .chip-neutral {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.tce-doe-processos .chip-risk      { background: #ffdad6; color: #410002; }
+.tce-doe-processos .chip-attention { background: #ffddb5; color: #2c1700; }
+.tce-doe-processos .chip-ok        { background: #d6e4ff; color: #001b3d; }
+.tce-doe-processos .chip-neutral   { background: var(--md-sys-color-surface-variant, #e7e0ec); color: var(--md-sys-color-on-surface-variant, #49454f); }
+
+.tce-doe-processos .chip-risk-mini {
+    margin-left: 0.25rem;
+    font-size: 0.875rem;
+    cursor: help;
+}
+
+/* ---- Acoes (botoes view + busca CSE) ---- */
+.tce-doe-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.tce-view-btn {
+    /* Touch target mobile-first (memoria: ≥44px) */
+    min-height: 44px;
+    --md-text-button-container-shape: 8px;
+}
+
+.tce-cse-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    text-decoration: none;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    transition: background-color .15s ease;
+}
+
+.tce-cse-link:hover,
+.tce-cse-link:focus-visible {
+    background: var(--md-sys-color-surface-variant, #e7e0ec);
+}
+
+/* ---- Disclaimer rodape ---- */
+.disclaimer-tce {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    border-left: 3px solid var(--md-sys-color-outline, #79747e);
+    background: var(--md-sys-color-surface-container, #f3edf7);
+    color: var(--md-sys-color-on-surface-variant, #49454f);
+    border-radius: 0 4px 4px 0;
+}
+
+/* ---- Dialog de visualizacao do PDF ---- */
+.pdf-dialog-fullscreen {
+    --md-dialog-container-max-width: min(95vw, 1100px);
+    max-width: min(95vw, 1100px);
+    width: 95vw;
+    height: 95vh;
+    max-height: 95vh;
+}
+
+.pdf-dialog-body {
+    padding: 0 !important;
+    height: calc(95vh - 130px);
+    min-height: 60vh;
+    overflow: hidden;
+}
+
+.pdf-dialog-body iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #525659;  /* fundo neutro do PDF.js do Chromium */
+}
+
+.md3-link-button {
+    text-decoration: none;
+    display: inline-flex;
+}
+
+/* ---- Mobile (≤600px): dialog ocupa viewport inteira ---- */
+@media (max-width: 600px) {
+    .pdf-dialog-fullscreen {
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+        --md-dialog-container-shape: 0;
+    }
+    .pdf-dialog-body {
+        height: calc(100vh - 130px);
+    }
+    .tce-doe-actions {
+        gap: 0.5rem;  /* mais espaco entre touch targets */
+    }
+}

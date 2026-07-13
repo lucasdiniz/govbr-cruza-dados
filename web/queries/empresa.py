@@ -623,3 +623,28 @@ EMPRESAS_MUNICIPIOS_QUALIFICADAS_TODOS = """
     FROM mv_empresa_municipio_pagantes
     ORDER BY total_pago DESC NULLS LAST, cnpj_completo, municipio
 """
+
+
+# TCE-PB DOE: agregado de processos da MV mv_empresa_tce_pb (ADR-0014).
+# Retorna 1 row com jsonb processos_json embedded, ou 0 rows se a
+# empresa nao tem citacao em DOE.
+EMPRESA_TCE_PB_DOE_BY_BASICO = """
+    SELECT
+        qtd_processos,
+        qtd_decisoes,
+        qtd_processos_irregular,
+        qtd_processos_multa,
+        qtd_processos_debito,
+        multa_total_rs,
+        debito_total_rs,
+        ultima_decisao_em,
+        processos_json
+    FROM mv_empresa_tce_pb
+    WHERE cnpj_basico = %s
+"""
+
+# Whitelist hash para a rota proxy /api/tce-pb/decisao/<hash>.pdf.
+# Garante que so servimos PDFs ja indexados (anti-open-proxy).
+TCE_PB_DECISAO_BY_HASH = """
+    SELECT 1 FROM tce_pb_decisao WHERE hash_publicacao = %s LIMIT 1
+"""

@@ -44,6 +44,7 @@ _CSV_DIRS: dict[str, list[str]] = {
     "etl.18_tse_prestacao": ["tse"],          # mesma pasta que 16_tse
     "etl.19_tce_pb":        ["tce_pb"],
     "etl.20_dados_pb":      ["dados_pb"],
+    # 23_tce_pb_doe nao registra dir aqui: faz cleanup proprio (streaming).
 }
 
 # Diretórios que são compartilhados entre fases — só limpamos depois que
@@ -72,46 +73,81 @@ def _cleanup_csvs(module_name: str, succeeded_modules: set[str]):
             print(f"    Limpeza: {target} removido ({size_mb:,.0f} MB liberados)", flush=True)
 
 
+# Lista canonica de fases do ETL. Modulo-level (NAO dentro de main()) para
+# permitir inspecao programatica via:
+#   python -c "from etl.run_all import PHASES; [print(i+1, m) for i,(_,m) in enumerate(PHASES)]"
+# Esse comando e a salvaguarda institucional contra o bug do PR #202
+# (CRITICAL: confundiu label "Fase 18" com indice 1-based). N em --only N
+# ou etl_phase=N e o INDICE 1-based nesta lista, NAO o numero no label.
+PHASES = [
+    ("Fase 0: Download de dados brutos", "etl.00_download"),
+    ("Fase 1: Schema", "etl.01_schema"),
+    ("Fase 2: Dominio", "etl.02_dominio"),
+    ("Fase 3: RFB (Empresas, Estabelecimentos, Socios, Simples)", "etl.03_rfb"),
+    ("Fase 4.1-4.2: PNCP", "etl.04_pncp"),
+    ("Fase 4.3-4.5: Emendas", "etl.05_emendas"),
+    ("Fase 4.6: CPGF", "etl.06_cpgf"),
+    ("Fase 4.7-4.8+5.2: Complementar (BNDES, Holdings, ComprasNet)", "etl.09_complementar"),
+    ("Fase 5.1: PGFN", "etl.07_pgfn"),
+    ("Fase 5.3: Renuncias Fiscais", "etl.08_renuncias"),
+    ("Fase 6: Indices", "etl.10_indices"),
+    ("Fase 7: Entity Resolution (Pessoa)", "etl.11_pessoa"),
+    ("Fase 8: SIAPE (Servidores)", "etl.12_siape"),
+    ("Fase 9: Sancoes (CEIS/CNEP/CEAF/Acordos)", "etl.13_sancoes"),
+    ("Fase 10: Viagens a Servico", "etl.14_viagens"),
+    ("Fase 11: TSE Candidatos e Bens", "etl.16_tse"),
+    ("Fase 12: Bolsa Familia", "etl.17_bolsa_familia"),
+    ("Fase 13: TSE Prestacao de Contas", "etl.18_tse_prestacao"),
+    ("Fase 14: TCE-PB (Despesas, Servidores, Licitacoes, Receitas)", "etl.19_tce_pb"),
+    ("Fase 15: Dados PB (Pagamento, Empenho, Contratos, Saude, Convenios)", "etl.20_dados_pb"),
+    ("Fase 16: PNCP Itens", "etl.04b_pncp_itens"),
+    ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
+    # TCE-PB DOE roda ANTES das MVs: mv_empresa_tce_pb (em sql/12_views.sql)
+    # le tce_pb_decisao/tce_pb_decisao_cnpj. Se rodasse depois, MVs ficariam vazias
+    # ate o proximo refresh manual.
+    ("Fase 18: TCE-PB DOE (decisoes - download, parse, load)", "etl.23_tce_pb_doe"),
+    ("Fase 19: Views materializadas", "etl.21_views"),
+    ("Fase 20: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
+]
+
+
 def main():
     start = time.time()
 
-    phases = [
-        ("Fase 0: Download de dados brutos", "etl.00_download"),
-        ("Fase 1: Schema", "etl.01_schema"),
-        ("Fase 2: Dominio", "etl.02_dominio"),
-        ("Fase 3: RFB (Empresas, Estabelecimentos, Socios, Simples)", "etl.03_rfb"),
-        ("Fase 4.1-4.2: PNCP", "etl.04_pncp"),
-        ("Fase 4.3-4.5: Emendas", "etl.05_emendas"),
-        ("Fase 4.6: CPGF", "etl.06_cpgf"),
-        ("Fase 4.7-4.8+5.2: Complementar (BNDES, Holdings, ComprasNet)", "etl.09_complementar"),
-        ("Fase 5.1: PGFN", "etl.07_pgfn"),
-        ("Fase 5.3: Renuncias Fiscais", "etl.08_renuncias"),
-        ("Fase 6: Indices", "etl.10_indices"),
-        ("Fase 7: Entity Resolution (Pessoa)", "etl.11_pessoa"),
-        ("Fase 8: SIAPE (Servidores)", "etl.12_siape"),
-        ("Fase 9: Sancoes (CEIS/CNEP/CEAF/Acordos)", "etl.13_sancoes"),
-        ("Fase 10: Viagens a Servico", "etl.14_viagens"),
-        ("Fase 11: TSE Candidatos e Bens", "etl.16_tse"),
-        ("Fase 12: Bolsa Familia", "etl.17_bolsa_familia"),
-        ("Fase 13: TSE Prestacao de Contas", "etl.18_tse_prestacao"),
-        ("Fase 14: TCE-PB (Despesas, Servidores, Licitacoes, Receitas)", "etl.19_tce_pb"),
-        ("Fase 15: Dados PB (Pagamento, Empenho, Contratos, Saude, Convenios)", "etl.20_dados_pb"),
-        ("Fase 16: PNCP Itens", "etl.04b_pncp_itens"),
-        ("Fase 17: Normalizacao (colunas CPF/CNPJ + indices)", "etl.15_normalizar"),
-        ("Fase 18: Views materializadas", "etl.21_views"),
-        ("Fase 19: MV sitemap empresa-municipio", "etl.22_mv_sitemap"),
-    ]
+    phases = PHASES
 
     errors = []
     succeeded: set[str] = set()
 
-    # Permite rodar fase específica: python -m etl.run_all 3
+    # Permite rodar fase específica:
+    #   python -m etl.run_all 3        -> roda da Fase 3 ate o fim
+    #   python -m etl.run_all --only 18 -> roda APENAS a Fase 18
+    # Modo --only e necessario para deploys cirurgicos que NAO querem disparar
+    # fases subsequentes (ex.: rodar so a Fase 18 sem disparar Fase 19=Views
+    # que faz DROP CASCADE de todas as MVs). Adicionado em PR #202 (ADR-0014).
     start_phase = 0
-    if len(sys.argv) > 1:
+    only_phase: int | None = None
+    args = sys.argv[1:]
+    if args and args[0] == "--only":
+        if len(args) < 2:
+            print("Uso: python -m etl.run_all --only <fase>", flush=True)
+            sys.exit(1)
         try:
-            start_phase = int(sys.argv[1]) - 1
+            only_phase = int(args[1]) - 1
+        except ValueError:
+            print(f"Uso: python -m etl.run_all --only <fase>", flush=True)
+            print(f"  Fases: 1-{len(phases)}", flush=True)
+            sys.exit(1)
+        if only_phase < 0 or only_phase >= len(phases):
+            print(f"Fase fora do intervalo: 1-{len(phases)}", flush=True)
+            sys.exit(1)
+        start_phase = only_phase
+    elif args:
+        try:
+            start_phase = int(args[0]) - 1
         except ValueError:
             print(f"Uso: python -m etl.run_all [fase_inicial]", flush=True)
+            print(f"     python -m etl.run_all --only <fase>", flush=True)
             print(f"  Fases: 1-{len(phases)}", flush=True)
             sys.exit(1)
 
@@ -122,6 +158,8 @@ def main():
     for i, (name, module_name) in enumerate(phases):
         if i < start_phase:
             continue
+        if only_phase is not None and i > only_phase:
+            break
 
         phase_start = time.time()
         print(f"\n{'='*60}", flush=True)
