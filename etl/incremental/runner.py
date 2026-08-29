@@ -14,6 +14,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 logging.basicConfig(
@@ -21,6 +22,11 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _remaining_runtime_s(deadline: float) -> int:
+    """Retorna o orçamento restante, arredondado para baixo."""
+    return max(0, int(deadline - time.monotonic()))
 
 
 def _load_all_specs():
@@ -183,10 +189,29 @@ def main():
         only_buckets_list = [b.strip() for b in args.only_buckets.split(",") if b.strip()]
         logger.info("Limiting to buckets: %s", only_buckets_list)
 
+    runtime_deadline = time.monotonic() + args.max_runtime_s
     summaries = []
     for key, spec in specs_to_run.items():
         logger.info("=== START %s ===", key)
         data_dir = _data_dir_for_source(spec.source, data_dir_base)
+        remaining_runtime_s = _remaining_runtime_s(runtime_deadline)
+        if remaining_runtime_s <= 0:
+            logger.error(
+                "=== FAIL %s: orçamento global de %ds esgotado ===",
+                key,
+                args.max_runtime_s,
+            )
+            summaries.append(
+                (
+                    key,
+                    {
+                        "status": "failed",
+                        "error_message": "orçamento global do runner esgotado",
+                        "buckets": [],
+                    },
+                )
+            )
+            break
         try:
             summary = run_incremental_for_source(
                 spec,
@@ -195,7 +220,7 @@ def main():
                 govbr_dsn=args.govbr_dsn,
                 triggered_by=args.triggered_by,
                 commit_sha=args.commit_sha,
-                max_runtime_s=args.max_runtime_s,
+                max_runtime_s=remaining_runtime_s,
                 only_buckets=only_buckets_list,
             )
         except Exception as e:
