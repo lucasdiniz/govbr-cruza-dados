@@ -529,7 +529,9 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source .env 2>/dev/null || true
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
-          for sql_file in sql/40_contato_messages.sql; do
+          for sql_file in \
+            sql/33_etl_cache_invalidation.sql \
+            sql/40_contato_messages.sql; do
             if [ -f "$sql_file" ]; then
               echo "=== Applying $sql_file ==="
               PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f "$sql_file"
@@ -785,9 +787,11 @@ jobs:
           if [ -n "${{ inputs.incremental_only }}" ]; then
             python -m etl.incremental.runner \
                 --only "${{ inputs.incremental_only }}" \
+                --max-runtime-s 345600 \
                 ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
           else
             python -m etl.incremental.runner \
+                --max-runtime-s 345600 \
                 ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
           fi
 

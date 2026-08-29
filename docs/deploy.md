@@ -291,6 +291,17 @@ etl_phase: incremental
 incremental_only: "tce_pb.tce_pb_despesa"
 ```
 
+O workflow passa `--max-runtime-s 345600` (4 dias) como orçamento global do
+runner incremental. O tempo restante é repassado ao watchdog de cada spec.
+Isso evita que cargas mensais grandes, como vários snapshots novos de Bolsa
+Família, sejam interrompidas pelo watchdog padrão de 24 horas e deixa margem
+para refresh das MVs e warm de cache dentro do limite de 5 dias do job
+self-hosted. A retomada é idempotente pelos watermarks por bucket.
+
+O schema idempotente `sql/33_etl_cache_invalidation.sql` também é aplicado em
+todo deploy, antes do ETL, para evitar drift da função
+`etl_admin.enqueue_cache_invalidation` usada ao concluir cada bucket.
+
 ## One-off inputs hygiene
 
 Alguns inputs do `deploy.yml` foram criados para remediar incidentes ou bugs específicos. Após rodarem em produção e o problema ser resolvido, **viram débito técnico**: inflam o UI do `workflow_dispatch`, confundem novos contributors, e arrastam código de step que nunca mais é executado.
