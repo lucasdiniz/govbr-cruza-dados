@@ -400,17 +400,34 @@ BEGIN
         WHERE schemaname = 'etl_staging'
           AND tablename LIKE '\_stg\_%' ESCAPE '\'
     LOOP
-        -- Match _stg_<source>_<table>_<run8>_<seq>_<kind>
+        -- Match _stg_<source>_<table>_<run8>_<bucket>_<seq>_<kind>.
+        -- O bucket não existia no formato original e é opcional para limpar
+        -- tabelas criadas por versões anteriores do framework.
         -- Extract <run8> = primeiros 8 hex chars do run_id
-        v_run8 := substring(r.tablename FROM '^_stg_.+_([a-f0-9]{8})_\d+_(?:raw|typed|final)$');
+        -- Fallback truncado: _stg_<run8>_<bucket>_<seq>_<kind>
+        v_run8 := substring(
+            r.tablename
+            FROM '^_stg_([a-f0-9]{8})_(?:[a-zA-Z0-9_]{1,8}_)?\d+_(?:raw|typed|final)$'
+        );
+        IF v_run8 IS NULL THEN
+            -- Normal/legacy: _stg_<source>_<table>_<run8>_[<bucket>_]<seq>_<kind>
+            v_run8 := substring(
+                r.tablename
+                FROM '^_stg_.+_([a-f0-9]{8})_(?:[a-zA-Z0-9_]{1,8}_)?\d+_(?:raw|typed|final)$'
+            );
+        END IF;
 
         IF v_run8 IS NULL THEN
             -- Nome não-conforme: deixa quieto (pode ser tabela manual)
             CONTINUE;
         END IF;
 
-        -- Drop se NÃO existe run ativa com esse run8 prefix
-        IF NOT EXISTS (
+        -- Só aceita candidatos que correspondem a uma run conhecida. Isso
+        -- evita confundir hashes de nomes truncados antigos com run8.
+        IF EXISTS (
+            SELECT 1 FROM etl_run_log
+            WHERE substring(run_id::text, 1, 8) = v_run8
+        ) AND NOT EXISTS (
             SELECT 1 FROM etl_run_log
             WHERE substring(run_id::text, 1, 8) = v_run8
               AND status = 'running'

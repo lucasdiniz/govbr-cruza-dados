@@ -686,6 +686,10 @@ jobs:
           PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
           echo "=== Incremental ETL framework ==="
 
+          echo "=== Fix idempotente do janitor de staging ==="
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+            -f sql/44_fix_cleanup_orphan_staging.sql
+
           # Determinar se BF esta no escopo desta run.
           # Match preciso (regex bounded) — evita falso-positivo se outra spec
           # tiver "bolsa_familia" no nome no futuro.

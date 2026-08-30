@@ -258,11 +258,16 @@ def run_incremental_for_source(
                             raise
                     except RunFencedError:
                         raise
+                    except (psycopg2.InterfaceError, psycopg2.OperationalError):
+                        logger.exception(
+                            "database connection lost while loading %s",
+                            csv_path,
+                        )
+                        raise
                     except Exception as e:
                         logger.exception("error loading %s", csv_path)
                         file_result = LoadResult(status="failed", error=str(e))
                     finally:
-                        all_staging_to_drop.extend(file_result.staging_tables)
                         # Phase log row
                         try:
                             etl_db.insert_phase_log(
@@ -284,6 +289,14 @@ def run_incremental_for_source(
                             )
                         except Exception as e:
                             logger.warning("insert_phase_log failed: %s", e)
+
+                        # A transação do arquivo já terminou em commit/rollback.
+                        # Liberar raw/typed agora evita acumular dezenas de GB
+                        # até o fim de sources com muitos buckets, como BF.
+                        failed_drops = drop_staging(
+                            drop_raw, *dict.fromkeys(file_result.staging_tables)
+                        )
+                        all_staging_to_drop.extend(failed_drops)
 
                     bucket_run.files.append((csv_path, file_result))
                     bucket_run.total_streamed += file_result.rows_streamed
@@ -364,7 +377,7 @@ def run_incremental_for_source(
         # Stop heartbeat first
         hb.stop()
 
-        # Drop staging tables APÓS main_conn fechar (R6 fix)
+        # Retry de drops que falharam durante o processamento.
         try:
             main_raw.close()
         except Exception:
