@@ -336,6 +336,19 @@ ilustra dois pontos não cobertos pelo exemplo padrão:
    Step `ETL: Incremental` no deploy.yml chama automaticamente quando BF
    está no escopo da run.
 
+4. **Pressão de disco** — cada snapshot nacional gera staging `raw` + `typed`
+   com vários GB. O orchestrator descarta essas tabelas após cada arquivo
+   commitado ou revertido; manter staging até o fim da source esgota o disco
+   antes de concluir uma sequência de meses. O janitor reconhece nomes com o
+   bucket (`_2026_05_`) e remove sobras apenas de runs conhecidas e não ativas.
+   Nomes truncados preservam o prefixo real da run para não confundir hashes
+   auxiliares com identificadores de execução.
+
+5. **Queda de conexão é fatal para a source** — `InterfaceError` e
+   `OperationalError` não viram bucket `partial`. O orchestrator aborta a
+   source, preserva os buckets anteriormente commitados e impede refresh/warm
+   sobre uma sequência incompleta.
+
 ### Caso especial: TCE-PB (ADR-0014)
 
 As 4 tabelas `tce_pb_*` (despesa/servidor/licitação/receita) também usam

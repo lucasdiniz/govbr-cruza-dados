@@ -359,6 +359,10 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   Trigger `BEFORE INSERT compute_nk_md5_bolsa_familia` calcula hash das 9
   cols. `UNIQUE INDEX ix_bolsa_familia_nk_md5`. Mesmo padrão de `pb_extras`
   (`sql/35a-d`).
+- **Staging incremental deve ser descartada por arquivo.** Snapshots nacionais
+  de Bolsa Família criam ~4-5GB entre `raw` e `typed`; acumular até o fim da
+  source enche o disco. `orchestrator.py` dropa após cada commit/rollback e o
+  janitor de `sql/27`/`sql/44` entende nomes com bucket.
 - **CSV headers do Portal BF** vêm com acento e espaço (`"MÊS COMPETÊNCIA"`).
   Framework agora suporta `spec.csv_header_rewrites: dict[str, str]` que
   mapeia raw → SQL-safe antes do match com `spec.columns`. Default `{}` =

@@ -16,7 +16,6 @@ Para POC sem derived_columns nem type-strict, raw e typed podem ser aliases.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import uuid
 from typing import TYPE_CHECKING, Optional
@@ -50,11 +49,9 @@ def staging_name(source: str, table: str, run_id, seq: int, kind: str, *, bucket
     if len(base) <= PG_IDENT_MAX:
         return f"{STAGING_SCHEMA}.{base}"
 
-    # Fallback: md5 hash do nome completo + truncate prefix
-    h = hashlib.md5(base.encode()).hexdigest()[:8]
-    truncated = f"_stg_{source[:8]}_{table[:8]}_{h}_{bucket_clean}_{seq}_{kind}"
-    if len(truncated) > PG_IDENT_MAX:
-        truncated = f"_stg_{h}_{run8}_{bucket_clean}_{seq}_{kind}"
+    # A run_id já garante unicidade entre specs. Manter run8 numa posição
+    # reconhecível permite que o janitor associe a tabela à run correta.
+    truncated = f"_stg_{run8}_{bucket_clean}_{seq}_{kind}"
     if len(truncated) > PG_IDENT_MAX:
         raise RuntimeError(f"staging_name overflow even after truncate: {truncated}")
     return f"{STAGING_SCHEMA}.{truncated}"
@@ -95,18 +92,22 @@ def copy_temp_to_staging(
         return int(cur.fetchone()[0])
 
 
-def drop_staging(conn, *staging_qualified: str) -> None:
-    """DROP TABLE IF EXISTS para cada staging passada. Best-effort.
+def drop_staging(conn, *staging_qualified: str) -> list[str]:
+    """DROP TABLE IF EXISTS para cada staging passada.
 
     IMPORTANTE: usa conn separada autocommit (passada pelo orchestrator),
-    não main_conn. Drop após main_conn fechar (evita deadlock).
+    não main_conn. Retorna as tabelas cujo drop falhou para retry no cleanup
+    final da source.
     """
+    failed = []
     for stg in staging_qualified:
         try:
             with conn.cursor() as cur:
                 cur.execute(f"DROP TABLE IF EXISTS {stg}")
         except Exception as e:
             logger.warning("drop_staging %s failed: %s", stg, e)
+            failed.append(stg)
+    return failed
 
 
 def build_typed_select(spec: "LoaderSpec", stg_raw: str) -> str:
