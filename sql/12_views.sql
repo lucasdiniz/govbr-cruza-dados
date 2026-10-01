@@ -364,6 +364,10 @@ desp AS (
            SUM(d.valor_empenhado) AS total_empenhado,
            SUM(d.valor_pago) AS total_pago,
            COUNT(*) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
+           -- Mesmo criterio de qtd_sem_licitacao, ponderado por valor pago.
+           -- Base da narrativa "Desse dinheiro, X% ..." (pct por contagem
+           -- divergia ate ~40pp do pct por valor).
+           SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS total_pago_sem_licitacao,
            COUNT(*) FILTER (WHERE d.mes LIKE '12%') AS qtd_dezembro,
            COUNT(DISTINCT d.cnpj_basico) AS qtd_fornecedores
     FROM tce_pb_despesa d
@@ -412,6 +416,8 @@ SELECT
     d.qtd_fornecedores,
     d.qtd_sem_licitacao,
     ROUND(100.0 * d.qtd_sem_licitacao / NULLIF(d.qtd_empenhos, 0), 1) AS pct_sem_licitacao,
+    COALESCE(d.total_pago_sem_licitacao, 0) AS total_pago_sem_licitacao,
+    ROUND(100.0 * COALESCE(d.total_pago_sem_licitacao, 0) / NULLIF(d.total_pago, 0), 1) AS pct_valor_sem_licitacao,
     d.qtd_dezembro,
     ROUND(100.0 * d.qtd_dezembro / NULLIF(d.qtd_empenhos, 0), 1) AS pct_dezembro,
     COALESCE(l.qtd_licitacoes, 0) AS qtd_licitacoes,

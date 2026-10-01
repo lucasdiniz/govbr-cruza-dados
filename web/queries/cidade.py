@@ -102,6 +102,9 @@ PERFIL_MUNICIPIO = """
 SELECT r.municipio,
        r.qtd_empenhos, r.total_empenhado, r.total_pago, r.qtd_fornecedores,
        r.qtd_sem_licitacao, r.pct_sem_licitacao,
+       -- REQUER mv_municipio_pb_risco com as colunas de valor sem licitacao
+       -- (deploy/mv_updates/mv_municipio_pb_risco.sql via mv_swap).
+       r.total_pago_sem_licitacao, r.pct_valor_sem_licitacao,
        r.qtd_dezembro, r.pct_dezembro,
        r.qtd_licitacoes, r.qtd_proponente_unico, r.pct_proponente_unico,
        r.pct_nao_executado,
@@ -134,6 +137,7 @@ SELECT
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE(k.risco_score_unificado, r.risco_score))         AS mediana_risco,
     AVG(COALESCE(k.risco_score_unificado, r.risco_score))           AS media_risco,
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_sem_licitacao)   AS mediana_pct_sem_licitacao,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_valor_sem_licitacao) AS mediana_pct_valor_sem_licitacao,
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_folha_receita)   AS mediana_pct_folha,
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.pct_proponente_unico) AS mediana_pct_proponente_unico,
     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.total_pago)          AS mediana_total_pago
@@ -154,6 +158,16 @@ SELECT %(municipio)s AS municipio,
        ROUND(100.0 * COUNT(*) FILTER (WHERE d.numero_licitacao = '000000000'
            OR d.modalidade_licitacao ILIKE '%%sem licit%%')
            / NULLIF(COUNT(*), 0), 1) AS pct_sem_licitacao,
+       -- Ponderado por valor pago, relativo ao total_pago desta mesma linha
+       -- (base do "Desse dinheiro, X%% ..." na narrativa). Mesmo criterio do
+       -- qtd_sem_licitacao de mv_municipio_pb_risco.
+       COALESCE(SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL
+           OR d.numero_licitacao IN ('', '0', '000000000')
+           OR d.modalidade_licitacao ILIKE '%%sem licit%%'), 0) AS total_pago_sem_licitacao,
+       ROUND(100.0 * COALESCE(SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL
+           OR d.numero_licitacao IN ('', '0', '000000000')
+           OR d.modalidade_licitacao ILIKE '%%sem licit%%'), 0)
+           / NULLIF(SUM(d.valor_pago), 0), 1) AS pct_valor_sem_licitacao,
        COUNT(*) FILTER (WHERE d.mes = '12') AS qtd_dezembro,
        ROUND(100.0 * COUNT(*) FILTER (WHERE d.mes = '12')
            / NULLIF(COUNT(*), 0), 1) AS pct_dezembro,

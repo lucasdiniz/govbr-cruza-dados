@@ -459,6 +459,10 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
     total_pago = perfil.get("total_pago") or 0
     qtd_fornecedores = int(perfil.get("qtd_fornecedores") or 0)
     pct_sem_licitacao = perfil.get("pct_sem_licitacao") or 0
+    # % do VALOR pago sem licitacao. None em entradas de web_cache gravadas
+    # antes do mv_swap/rewarm de PERFIL — nesse caso a narrativa cai para a
+    # formulacao por contagem de empenhos (nunca apresenta contagem como valor).
+    pct_valor_sem_licitacao = perfil.get("pct_valor_sem_licitacao")
     risco_score = perfil.get("risco_score")
     pct_folha = perfil.get("pct_folha_receita") or 0
 
@@ -486,6 +490,7 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
 
     mediana_risco = medias.get("mediana_risco")
     mediana_pct_sem_licitacao = medias.get("mediana_pct_sem_licitacao")
+    mediana_pct_valor_sem_licitacao = medias.get("mediana_pct_valor_sem_licitacao")
 
     # ----- Cidadao -----
     qtd_forn_fmt = f"{qtd_fornecedores:,}".replace(",", ".")
@@ -510,12 +515,26 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
         pago_txt += "."
         frag_citizen.append(pago_txt)
 
-    if pct_sem_licitacao:
+    if pct_valor_sem_licitacao is not None:
+        if pct_valor_sem_licitacao:
+            sl_txt = (
+                f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_valor_sem_licitacao)}</strong> "
+                f"saiu em compras sem concorr&ecirc;ncia</a>"
+            )
+            # Comparador PB so faz sentido em all-time (medianas sao all-time).
+            if not is_filtered:
+                cmp_sl = _compare_vs_mediana(
+                    pct_valor_sem_licitacao, mediana_pct_valor_sem_licitacao, higher_is_worse=True
+                )
+                if cmp_sl and mediana_pct_valor_sem_licitacao:
+                    sl_txt += f" — {cmp_sl} (mediana: {_fmt_pct(mediana_pct_valor_sem_licitacao)})"
+            sl_txt += "."
+            frag_citizen.append(sl_txt)
+    elif pct_sem_licitacao:
         sl_txt = (
-            f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_sem_licitacao)}</strong> "
-            f"saiu em compras sem concorr&ecirc;ncia</a>"
+            f" <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_sem_licitacao)}</strong> "
+            f"dos empenhos foram registrados sem licita&ccedil;&atilde;o</a>"
         )
-        # Comparador PB so faz sentido em all-time (medianas sao all-time).
         if not is_filtered:
             cmp_sl = _compare_vs_mediana(pct_sem_licitacao, mediana_pct_sem_licitacao, higher_is_worse=True)
             if cmp_sl and mediana_pct_sem_licitacao:
@@ -553,12 +572,21 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
         f"<a href=\"#fornecedores\">{_fmt_brl_narrative(total_pago)} pago</a> "
         f"({_fmt_pct(pct_pago, decimals=1)})."
     ]
-    if pct_sem_licitacao:
+    if pct_valor_sem_licitacao is not None and (pct_valor_sem_licitacao or pct_sem_licitacao):
+        med_suffix = ""
+        if not is_filtered and mediana_pct_valor_sem_licitacao:
+            med_suffix = f" (p50 PB: {_fmt_pct(mediana_pct_valor_sem_licitacao)})"
+        frag_auditor.append(
+            f" <a href=\"#licitacoes\">Sem licita&ccedil;&atilde;o: {_fmt_pct(pct_valor_sem_licitacao)} do valor pago</a>"
+            + med_suffix
+            + f" ({_fmt_pct(pct_sem_licitacao)} dos empenhos)."
+        )
+    elif pct_sem_licitacao:
         med_suffix = ""
         if not is_filtered and mediana_pct_sem_licitacao:
             med_suffix = f" (p50 PB: {_fmt_pct(mediana_pct_sem_licitacao)})"
         frag_auditor.append(
-            f" <a href=\"#licitacoes\">Dispensa/inexigibilidade: {_fmt_pct(pct_sem_licitacao)}</a>"
+            f" <a href=\"#licitacoes\">Sem licita&ccedil;&atilde;o: {_fmt_pct(pct_sem_licitacao)} dos empenhos</a>"
             + med_suffix
             + "."
         )
