@@ -2,82 +2,22 @@
 
 Arquivos sem header, delimitador ;, encoding Latin-1, decimais com vírgula.
 Usa COPY via staging table UNLOGGED para máxima performance.
+
+Carga inicial (full). Atualizacao mensal de uma base ja carregada eh feita
+por etl/rfb_sync.py (diff in-place) — esta fase pula tabelas ja populadas.
+Conversoes de coluna compartilhadas em etl/rfb_common.py.
 """
 
-import io
-import glob
 from pathlib import Path
 
 from tqdm import tqdm
 
-from etl.config import DATA_DIR, RFB_ENCODING
+from etl.config import DATA_DIR
 from etl.db import get_conn, table_count
+from etl.rfb_common import EMPRESA, ESTABELECIMENTO, SIMPLES, SOCIO, RfbTable, staging_copy
 
-
-def _staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
-    """
-    Cria staging table UNLOGGED com N colunas TEXT.
-    Usa Python csv reader para parsear corretamente campos com ; dentro de aspas,
-    e normaliza para exatamente n_cols campos. Envia como TSV via COPY.
-    """
-    import csv
-    import io
-
-    col_defs = ", ".join(f"c{i} TEXT" for i in range(n_cols))
-    cols = ", ".join(f"c{i}" for i in range(n_cols))
-
-    with conn.cursor() as cur:
-        cur.execute(f"DROP TABLE IF EXISTS {staging_table}")
-        cur.execute(f"CREATE UNLOGGED TABLE {staging_table} ({col_defs})")
-    conn.commit()
-
-    # Usa TAB como delimitador interno (nao aparece nos dados)
-    copy_sql = f"""COPY {staging_table} ({cols}) FROM STDIN
-        WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')"""
-
-    buf = io.BytesIO()
-    flush_every = 100000  # flush a cada 100k linhas
-    count = 0
-
-    def _clean_lines(filepath):
-        """Generator que le Latin-1, remove NUL bytes."""
-        with open(filepath, "r", encoding="latin-1", errors="replace") as f:
-            for line in f:
-                yield line.replace("\x00", "")
-
-    reader = csv.reader(_clean_lines(filepath), delimiter=";", quotechar='"')
-    for row in reader:
-        # Normaliza para exatamente n_cols campos
-        if len(row) > n_cols:
-            row = row[:n_cols]
-        elif len(row) < n_cols:
-            row = row + [""] * (n_cols - len(row))
-
-        # Escape para formato TEXT do PostgreSQL
-        escaped = []
-        for val in row:
-            if val == "" or val is None:
-                escaped.append("\\N")
-            else:
-                val = val.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "")
-                escaped.append(val)
-
-        buf.write(("\t".join(escaped) + "\n").encode("utf-8"))
-        count += 1
-
-        if count % flush_every == 0:
-            buf.seek(0)
-            with conn.cursor() as cur:
-                cur.copy_expert(copy_sql, buf)
-            conn.commit()
-            buf = io.BytesIO()
-
-    # Flush restante
-    if buf.tell() > 0:
-        buf.seek(0)
-        with conn.cursor() as cur:
-            cur.copy_expert(copy_sql, buf)
-        conn.commit()
+# Compat: outros modulos/scripts importavam _staging_copy daqui.
+_staging_copy = staging_copy
 
 
 def _get_files(pattern: str) -> list[Path]:
@@ -89,49 +29,34 @@ def _get_files(pattern: str) -> list[Path]:
     return files
 
 
-def load_empresas(conn):
-    """Carrega Empresas0..9.csv -> tabela empresa."""
-    files = _get_files("Empresas*.csv")
-    if not files:
-        print("    AVISO: Nenhum arquivo Empresas*.csv encontrado.")
-        return
+def _insert_sql(spec: RfbTable, staging: str) -> str:
+    cols = ", ".join(spec.columns)
+    conflict = f"\nON CONFLICT ({', '.join(spec.key)}) DO NOTHING" if spec.key else ""
+    return f"INSERT INTO {spec.table} ({cols})\n{spec.select_sql(staging)}{conflict}"
 
-    staging = "_stg_empresa"
 
-    for filepath in tqdm(files, desc="    Empresas"):
-        _staging_copy(conn, staging, 7, filepath)
+def _load_files(conn, spec: RfbTable, staging: str, files: list[Path], desc: str):
+    for filepath in tqdm(files, desc=desc):
+        staging_copy(conn, staging, spec.n_cols, filepath)
 
         with conn.cursor() as cur:
-            # Filtra linhas corrompidas: c5 (porte) deve ser numerico 1-2 digitos
-            # e c4 (capital_social) deve parecer um numero decimal BR
-            cur.execute(f"""
-                INSERT INTO empresa (cnpj_basico, razao_social, natureza_juridica,
-                                     qualif_responsavel, capital_social, porte, ente_federativo)
-                SELECT
-                    LPAD(TRIM(c0), 8, '0'),
-                    TRIM(c1),
-                    NULLIF(TRIM(c2), ''),
-                    NULLIF(TRIM(c3), ''),
-                    CASE WHEN TRIM(c4) ~ '^[\\d.,]+$' AND TRIM(c4) != ''
-                         THEN CAST(REPLACE(TRIM(c4), ',', '.') AS DECIMAL(15,2))
-                         ELSE NULL
-                    END,
-                    CASE WHEN TRIM(c5) ~ '^\\d{{1,2}}$'
-                         THEN CAST(TRIM(c5) AS SMALLINT)
-                         ELSE NULL
-                    END,
-                    NULLIF(TRIM(c6), '')
-                FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
-                ON CONFLICT (cnpj_basico) DO NOTHING
-            """)
+            cur.execute(_insert_sql(spec, staging))
         conn.commit()
 
         with conn.cursor() as cur:
             cur.execute(f"DROP TABLE IF EXISTS {staging}")
         conn.commit()
 
-    print(f"    empresa: {table_count(conn, 'empresa')} registros")
+    print(f"    {spec.table}: {table_count(conn, spec.table)} registros")
+
+
+def load_empresas(conn):
+    """Carrega Empresas0..9.csv -> tabela empresa."""
+    files = _get_files("Empresas*.csv")
+    if not files:
+        print("    AVISO: Nenhum arquivo Empresas*.csv encontrado.")
+        return
+    _load_files(conn, EMPRESA, "_stg_empresa", files, "    Empresas")
 
 
 def load_estabelecimentos(conn):
@@ -140,69 +65,7 @@ def load_estabelecimentos(conn):
     if not files:
         print("    AVISO: Nenhum arquivo Estabelecimentos*.csv encontrado.")
         return
-
-    staging = "_stg_estab"
-
-    for filepath in tqdm(files, desc="    Estabelecimentos"):
-        _staging_copy(conn, staging, 30, filepath)
-
-        with conn.cursor() as cur:
-            cur.execute(f"""
-                INSERT INTO estabelecimento (
-                    cnpj_basico, cnpj_ordem, cnpj_dv, matriz_filial,
-                    nome_fantasia, situacao_cadastral, dt_situacao, motivo_situacao,
-                    nome_cidade_exterior, pais, dt_inicio_atividade,
-                    cnae_principal, cnae_secundaria,
-                    tipo_logradouro, logradouro, numero, complemento, bairro,
-                    cep, uf, municipio,
-                    ddd1, telefone1, ddd2, telefone2, ddd_fax, fax,
-                    email, situacao_especial, dt_situacao_especial
-                )
-                SELECT
-                    LPAD(TRIM(c0), 8, '0'),
-                    LPAD(TRIM(c1), 4, '0'),
-                    LPAD(TRIM(c2), 2, '0'),
-                    CASE WHEN TRIM(c3) ~ '^\\d+$' THEN CAST(TRIM(c3) AS SMALLINT) ELSE NULL END,
-                    NULLIF(TRIM(c4), ''),
-                    CASE WHEN TRIM(c5) ~ '^\\d+$' THEN CAST(TRIM(c5) AS SMALLINT) ELSE NULL END,
-                    CASE WHEN TRIM(c6) ~ '^\\d{{8}}$' AND TRIM(c6) != '00000000'
-                         THEN safe_to_date(TRIM(c6), 'YYYYMMDD') ELSE NULL END,
-                    NULLIF(TRIM(c7), ''),
-                    NULLIF(TRIM(c8), ''),
-                    NULLIF(TRIM(c9), ''),
-                    CASE WHEN TRIM(c10) ~ '^\\d{{8}}$' AND TRIM(c10) != '00000000'
-                         THEN safe_to_date(TRIM(c10), 'YYYYMMDD') ELSE NULL END,
-                    NULLIF(TRIM(c11), ''),
-                    NULLIF(TRIM(c12), ''),
-                    NULLIF(TRIM(c13), ''),
-                    NULLIF(TRIM(c14), ''),
-                    NULLIF(TRIM(c15), ''),
-                    NULLIF(TRIM(c16), ''),
-                    NULLIF(TRIM(c17), ''),
-                    NULLIF(TRIM(c18), ''),
-                    NULLIF(TRIM(c19), ''),
-                    NULLIF(TRIM(c20), ''),
-                    NULLIF(TRIM(c21), ''),
-                    NULLIF(TRIM(c22), ''),
-                    NULLIF(TRIM(c23), ''),
-                    NULLIF(TRIM(c24), ''),
-                    NULLIF(TRIM(c25), ''),
-                    NULLIF(TRIM(c26), ''),
-                    NULLIF(TRIM(c27), ''),
-                    NULLIF(TRIM(c28), ''),
-                    CASE WHEN TRIM(c29) ~ '^\\d{{8}}$' AND TRIM(c29) != '00000000'
-                         THEN safe_to_date(TRIM(c29), 'YYYYMMDD') ELSE NULL END
-                FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
-                ON CONFLICT (cnpj_basico, cnpj_ordem, cnpj_dv) DO NOTHING
-            """)
-        conn.commit()
-
-        with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {staging}")
-        conn.commit()
-
-    print(f"    estabelecimento: {table_count(conn, 'estabelecimento')} registros")
+    _load_files(conn, ESTABELECIMENTO, "_stg_estab", files, "    Estabelecimentos")
 
 
 def load_socios(conn):
@@ -211,43 +74,7 @@ def load_socios(conn):
     if not files:
         print("    AVISO: Nenhum arquivo Socios*.csv encontrado.")
         return
-
-    staging = "_stg_socio"
-
-    for filepath in tqdm(files, desc="    Sócios"):
-        _staging_copy(conn, staging, 11, filepath)
-
-        with conn.cursor() as cur:
-            cur.execute(f"""
-                INSERT INTO socio (
-                    cnpj_basico, tipo_socio, nome, cpf_cnpj_socio,
-                    qualificacao, dt_entrada, pais,
-                    cpf_representante, nome_representante, qualif_representante,
-                    faixa_etaria
-                )
-                SELECT
-                    LPAD(TRIM(c0), 8, '0'),
-                    CASE WHEN TRIM(c1) ~ '^\\d+$' THEN CAST(TRIM(c1) AS SMALLINT) ELSE NULL END,
-                    NULLIF(TRIM(c2), ''),
-                    NULLIF(TRIM(c3), ''),
-                    NULLIF(TRIM(c4), ''),
-                    CASE WHEN TRIM(c5) ~ '^\\d{{8}}$' AND TRIM(c5) != '00000000'
-                         THEN safe_to_date(TRIM(c5), 'YYYYMMDD') ELSE NULL END,
-                    NULLIF(TRIM(c6), ''),
-                    NULLIF(TRIM(c7), ''),
-                    NULLIF(TRIM(c8), ''),
-                    NULLIF(TRIM(c9), ''),
-                    CASE WHEN TRIM(c10) ~ '^\\d+$' THEN CAST(TRIM(c10) AS SMALLINT) ELSE NULL END
-                FROM {staging}
-                WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
-            """)
-        conn.commit()
-
-        with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {staging}")
-        conn.commit()
-
-    print(f"    socio: {table_count(conn, 'socio')} registros")
+    _load_files(conn, SOCIO, "_stg_socio", files, "    Sócios")
 
 
 def load_simples(conn):
@@ -261,30 +88,10 @@ def load_simples(conn):
 
     staging = "_stg_simples"
     print("    Carregando Simples.csv (pode demorar ~2min)...")
-    _staging_copy(conn, staging, 7, filepath)
+    staging_copy(conn, staging, SIMPLES.n_cols, filepath)
 
     with conn.cursor() as cur:
-        cur.execute(f"""
-            INSERT INTO simples (
-                cnpj_basico, opcao_simples, dt_opcao_simples, dt_exclusao_simples,
-                opcao_mei, dt_opcao_mei, dt_exclusao_mei
-            )
-            SELECT
-                LPAD(TRIM(c0), 8, '0'),
-                NULLIF(TRIM(c1), ''),
-                CASE WHEN TRIM(c2) ~ '^\\d{{8}}$' AND TRIM(c2) != '00000000'
-                     THEN safe_to_date(TRIM(c2), 'YYYYMMDD') ELSE NULL END,
-                CASE WHEN TRIM(c3) ~ '^\\d{{8}}$' AND TRIM(c3) != '00000000'
-                     THEN safe_to_date(TRIM(c3), 'YYYYMMDD') ELSE NULL END,
-                NULLIF(TRIM(c4), ''),
-                CASE WHEN TRIM(c5) ~ '^\\d{{8}}$' AND TRIM(c5) != '00000000'
-                     THEN safe_to_date(TRIM(c5), 'YYYYMMDD') ELSE NULL END,
-                CASE WHEN TRIM(c6) ~ '^\\d{{8}}$' AND TRIM(c6) != '00000000'
-                     THEN safe_to_date(TRIM(c6), 'YYYYMMDD') ELSE NULL END
-            FROM {staging}
-            WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'
-            ON CONFLICT (cnpj_basico) DO NOTHING
-        """)
+        cur.execute(_insert_sql(SIMPLES, staging))
     conn.commit()
 
     with conn.cursor() as cur:

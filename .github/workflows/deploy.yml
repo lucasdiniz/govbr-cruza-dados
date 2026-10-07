@@ -1,4 +1,7 @@
 name: Deploy to Azure VM
+# Titulo com o mes do RFB sync: .github/workflows/rfb-sync-schedule.yml procura
+# runs anteriores por este texto para nao re-disparar o mesmo mes.
+run-name: ${{ inputs.rfb_sync != '' && format('Deploy to Azure VM - rfb_sync {0}', inputs.rfb_sync) || 'Deploy to Azure VM' }}
 
 # Pipeline em 3 jobs:
 #   1. preflight  (github-hosted, OIDC) — resize VM up se etl_phase != web
@@ -136,6 +139,11 @@ on:
         required: false
         type: string
         default: ''
+      rfb_sync:
+        description: 'Sync mensal RFB/CNPJ (etl.rfb_sync, diff in-place em empresa/estabelecimento/simples/socio + refresh MVs). "latest" ou "YYYY-MM"; sufixo ":force" re-sincroniza mes ja feito e IGNORA guards de remocao. Vazio = nao roda. Combine com warm_cache=true + warm_skip_hours=0 + cleanup_orphan_empresa_cache=true. Disparado automaticamente por rfb-sync-schedule.yml. Ver docs/etl-guide.md#sync-mensal-rfb.'
+        required: false
+        type: string
+        default: ''
       cleanup_orphan_empresa_cache:
         description: 'Roda DELETE em web_cache (EMPRESA_PERFIL + EMPRESA_PERFIL_MUN) para entries cujo cnpj_basico nao existe mais em mv_empresa_pb. Usar APOS run_normalize_fix + refresh_mvs (que removeram empresas contaminadas por CPF padded). Sintoma sem cleanup: paginas /empresa/<cnpj>/<slug> orfas servem KPIs falsos do cache enquanto tabela live retorna 0. STANDALONE — nao redispara warm. Idempotente. Tempo: ~1-5 min. Ver ADR-0009.'
         required: false
@@ -206,7 +214,8 @@ jobs:
              && [ -z "${{ inputs.mv_swap }}" ] \
              && [ "${{ inputs.run_normalize_fix }}" != "true" ] \
              && [ -z "${{ inputs.refresh_mvs }}" ] \
-             && [ "${{ inputs.rebuild_tmp_for_servidor }}" != "true" ]; then
+             && [ "${{ inputs.rebuild_tmp_for_servidor }}" != "true" ] \
+             && [ -z "${{ inputs.rfb_sync }}" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
             echo "etl_phase=web sem trabalho pesado → B2 + Standard SSD (web)"
@@ -847,6 +856,47 @@ jobs:
           source venv/bin/activate
           echo "=== ETL from phase ${{ inputs.etl_phase }} ==="
           python -m etl.run_all "${{ inputs.etl_phase }}" 2>&1
+
+      # ── RFB sync mensal (opt-in; agendado por rfb-sync-schedule.yml) ──
+      # Diff in-place das tabelas RFB contra o snapshot do mes (etl/rfb_sync.py):
+      # guards ANTES de qualquer escrita (snapshot encolheu / remocao em massa ->
+      # exit 2 sem tocar na tabela), lotes curtos por prefixo de cnpj_basico
+      # (leitores nunca bloqueados), refresh L1 -> L2 so depois. Roda antes do
+      # cleanup orfao + warm para que ambos vejam as MVs novas.
+      # Input via env (nao interpolado no script) + validado por regex.
+      - name: "ETL: RFB sync"
+        if: inputs.rfb_sync != ''
+        env:
+          RFB_SYNC_INPUT: ${{ inputs.rfb_sync }}
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source venv/bin/activate
+          if ! [[ "$RFB_SYNC_INPUT" =~ ^(latest|[0-9]{4}-(0[1-9]|1[0-2]))(:force)?$ ]]; then
+            echo "::error::rfb_sync invalido: '$RFB_SYNC_INPUT' (use latest, YYYY-MM, opcional sufixo :force)"
+            exit 1
+          fi
+          ARGS=(--month "${RFB_SYNC_INPUT%%:*}")
+          if [[ "$RFB_SYNC_INPUT" == *:force ]]; then
+            echo "::warning::rfb_sync com :force — guards de remocao/encolhimento DESLIGADOS"
+            ARGS+=(--force)
+          fi
+          LOG=$(mktemp)
+          set +e
+          python -m etl.rfb_sync "${ARGS[@]}" 2>&1 | tee "$LOG"
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" -eq 2 ]; then
+            echo "::error::rfb_sync recusado por guard/pre-check — a tabela que disparou NAO foi alterada. Ver log acima e docs/etl-guide.md#sync-mensal-rfb."
+            exit 1
+          elif [ "$RC" -ne 0 ]; then
+            echo "::error::rfb_sync falhou (rc=$RC). Re-disparar o mesmo mes eh seguro (idempotente)."
+            exit 1
+          fi
+          if grep -q "RFB_SYNC_RESULT=synced" "$LOG"; then
+            echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
+            python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
+          fi
 
       # ── Run fraud queries (opt-in, demora ~30min) ──
       - name: Run queries
@@ -2232,7 +2282,8 @@ jobs:
        inputs.mv_swap != '' ||
        inputs.run_normalize_fix == true ||
        inputs.rebuild_tmp_for_servidor == true ||
-       inputs.refresh_mvs != '')
+       inputs.refresh_mvs != '' ||
+       inputs.rfb_sync != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

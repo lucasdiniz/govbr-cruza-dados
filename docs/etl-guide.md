@@ -259,6 +259,65 @@ def run() -> None:
   try/except — uma falha não aborta o pipeline. Verifique os logs (e o
   resumo `_emit_notice` no GitHub Actions) ao final.
 
+## Sync mensal RFB
+
+A fase 3 (`etl.03_rfb`) só faz a **carga inicial**: pula tabelas já populadas
+e usa `ON CONFLICT DO NOTHING`, então nunca atualiza situação cadastral,
+razão social, empresas novas nem sócios. A atualização mensal é feita por
+[`etl/rfb_sync.py`](../etl/rfb_sync.py) (o framework incremental não serve: a
+RFB publica snapshot completo e o sync precisa de UPDATE/DELETE, proibidos
+pelo P2). As conversões de coluna são compartilhadas com a fase 3 em
+[`etl/rfb_common.py`](../etl/rfb_common.py).
+
+**Como roda** — `deploy.yml` com `rfb_sync=latest` (ou `YYYY-MM`), disparado
+pelo agendador semanal [`rfb-sync-schedule.yml`](../.github/workflows/rfb-sync-schedule.yml)
+quando a RFB publica um mês completo (ver [deploy.md](deploy.md#sync-mensal-rfb)).
+Local: `python -m etl.rfb_sync --month 2026-09`.
+
+**Por tabela** (`empresa` → `estabelecimento` → `simples` → `socio`):
+1. Baixa os ZIPs do mês um a um (tamanho conferido com o PROPFIND), carrega
+   numa staging UNLOGGED tipada e apaga o CSV (pico de disco ≈ 1 CSV + staging;
+   o sync exige `--min-free-gb`, default 40).
+2. **Guards antes de qualquer escrita na tabela live** — snapshot menor que a
+   live em mais de 1% ou remoções acima do limite por tabela
+   (`DEFAULT_MAX_DELETE_PCT`) → exit 2, tabela intocada.
+3. Diff em 100 lotes por prefixo de `cnpj_basico`, cada lote uma transação
+   curta: DELETE → UPDATE (`IS DISTINCT FROM`) → INSERT. Leitores do site nunca
+   são bloqueados.
+4. Domínios (`dom_*`) substituídos numa transação; depois
+   `refresh_post_incremental.refresh_for_rfb`: re-liga `cnpj_basico` nas
+   tabelas PB (só os CNPJs em `rfb_sync_estab_delta`) e refresca MVs L1 → L2.
+
+**Sócios** não têm chave natural. Identidade do vínculo = md5 de
+`(cnpj_basico, tipo_socio, nome, cpf_cnpj_socio, qualificacao, dt_entrada)`.
+Mudança de `faixa_etaria`/representante/país atualiza in-place; vínculo que
+some do snapshot é **movido** para `socio_historico` (mesmo `id`, com
+`removido_em`/`rfb_mes_removido`). `socio` continua significando "sócio
+atual" para todas as queries; para análises "era sócio quando recebeu", una
+`socio` com `socio_historico`. O histórico começa no primeiro sync — não há
+dados de saídas anteriores.
+
+**Garantias** — idempotente (re-rodar o mesmo mês converge para diff vazio);
+mês já sincronizado é pulado; mês anterior ao último sucesso é recusado; advisory
+lock impede dois syncs; o mês só vira `success` em `rfb_sync_log` depois do
+refresh das MVs.
+
+**Runbook**
+
+```sql
+-- Últimas execuções, contagens por tabela e motivo de falha/guard
+SELECT id, rfb_mes, status, iniciado_em, finalizado_em, erro, stats
+FROM rfb_sync_log ORDER BY id DESC LIMIT 5;
+```
+
+- *Guard disparou* (`status = aborted`): confira `stats.<tabela>`
+  (`live_antes`, `staging`, `a_remover`). Publicação incompleta/truncada →
+  espere a RFB corrigir. Remoção legítima acima do limite (raro) → re-dispare
+  com `rfb_sync=YYYY-MM:force` (desliga os guards — só após conferir os números).
+- *Falha no meio* (`status = failed`): re-disparar o mesmo mês é seguro; tabelas
+  já aplicadas convergem para diff vazio.
+- *Agendador pausado* (2 falhas no mesmo mês): investigar e disparar manualmente.
+
 ## Como testar localmente
 
 Sem suite automatizada para o ETL clássico (ver seção abaixo). Smoke tests:
@@ -284,7 +343,9 @@ Para testar com subset de dados, coloque manualmente alguns CSVs em
 
 O ETL clássico **não tem suite automatizada** hoje — fases novas não bloqueiam
 por testes. A suite existente (`tests/incremental/`) cobre apenas o framework
-incremental. Se você quiser adicionar testes, modele em cima de
+incremental. Exceção: o sync RFB tem `tests/test_rfb_sync.py` (unitários sempre;
+integração com `TEST_RFB_DSN` apontando para um banco descartável com `test`
+no nome — o fixture recria as tabelas RFB). Se você quiser adicionar testes, modele em cima de
 `tests/incremental/test_*.py` mas note que rodá-los exige Postgres com
 migrations 22–29+32+34+35 + role `etl_incremental`.
 
