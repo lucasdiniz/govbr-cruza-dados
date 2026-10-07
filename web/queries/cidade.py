@@ -104,7 +104,7 @@ SELECT r.municipio,
        r.qtd_sem_licitacao, r.pct_sem_licitacao,
        -- REQUER mv_municipio_pb_risco com as colunas de valor sem licitacao
        -- (deploy/mv_updates/mv_municipio_pb_risco.sql via mv_swap).
-       r.total_pago_sem_licitacao, r.pct_valor_sem_licitacao,
+       r.total_pago_licitavel, r.total_pago_sem_licitacao, r.pct_valor_sem_licitacao,
        r.qtd_dezembro, r.pct_dezembro,
        r.qtd_licitacoes, r.qtd_proponente_unico, r.pct_proponente_unico,
        r.pct_nao_executado,
@@ -158,16 +158,19 @@ SELECT %(municipio)s AS municipio,
        ROUND(100.0 * COUNT(*) FILTER (WHERE d.numero_licitacao = '000000000'
            OR d.modalidade_licitacao ILIKE '%%sem licit%%')
            / NULLIF(COUNT(*), 0), 1) AS pct_sem_licitacao,
-       -- Ponderado por valor pago, relativo ao total_pago desta mesma linha
-       -- (base do "Desse dinheiro, X%% ..." na narrativa). Mesmo criterio do
-       -- qtd_sem_licitacao de mv_municipio_pb_risco.
-       COALESCE(SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL
+       -- Valor pago em despesa licitavel (mesmo criterio de
+       -- mv_municipio_pb_risco: exclui pessoal/encargos/divida/transferencias/
+       -- tributos/sentencas/indenizacoes) e a parte paga sem licitacao.
+       COALESCE(SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0) AS total_pago_licitavel,
+       COALESCE(SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL
            OR d.numero_licitacao IN ('', '0', '000000000')
-           OR d.modalidade_licitacao ILIKE '%%sem licit%%'), 0) AS total_pago_sem_licitacao,
-       ROUND(100.0 * COALESCE(SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL
+           OR d.modalidade_licitacao ILIKE '%%sem licit%%')
+           AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0) AS total_pago_sem_licitacao,
+       ROUND(100.0 * COALESCE(SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL
            OR d.numero_licitacao IN ('', '0', '000000000')
-           OR d.modalidade_licitacao ILIKE '%%sem licit%%'), 0)
-           / NULLIF(SUM(d.valor_pago), 0), 1) AS pct_valor_sem_licitacao,
+           OR d.modalidade_licitacao ILIKE '%%sem licit%%')
+           AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0)
+           / NULLIF(SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0), 1) AS pct_valor_sem_licitacao,
        COUNT(*) FILTER (WHERE d.mes = '12') AS qtd_dezembro,
        ROUND(100.0 * COUNT(*) FILTER (WHERE d.mes = '12')
            / NULLIF(COUNT(*), 0), 1) AS pct_dezembro,

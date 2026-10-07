@@ -23,7 +23,7 @@ def _perfil(**overrides):
 def test_narrativa_desse_dinheiro_usa_pct_por_valor():
     narrativa = build_narrative(_perfil())
 
-    assert "Desse dinheiro, <a href=\"#licitacoes\"><strong>54%</strong>" in narrativa["citizen"]
+    assert "Do que foi pago em compras e servi&ccedil;os, <a href=\"#licitacoes\"><strong>54%</strong>" in narrativa["citizen"]
     assert "95%" not in narrativa["citizen"]
 
 
@@ -42,7 +42,7 @@ def test_narrativa_cache_antigo_sem_pct_valor_usa_formulacao_por_contagem():
 
     narrativa = build_narrative(perfil)
 
-    assert "Desse dinheiro" not in narrativa["citizen"]
+    assert "compras e servi&ccedil;os" not in narrativa["citizen"]
     assert "95%</strong> dos empenhos foram registrados sem licita&ccedil;&atilde;o" in narrativa["citizen"]
     assert "Sem licita&ccedil;&atilde;o: 95% dos empenhos" in narrativa["auditor"]
 
@@ -50,19 +50,23 @@ def test_narrativa_cache_antigo_sem_pct_valor_usa_formulacao_por_contagem():
 def test_narrativa_auditor_mostra_valor_e_contagem():
     narrativa = build_narrative(_perfil())
 
-    assert "Sem licita&ccedil;&atilde;o: 54% do valor pago</a> (95% dos empenhos)." in narrativa["auditor"]
+    assert "Sem licita&ccedil;&atilde;o: 54% do valor pago em compras/servi&ccedil;os</a> (95% dos empenhos)." in narrativa["auditor"]
 
 
 def test_narrativa_omite_frase_quando_nada_pago_sem_licitacao():
     narrativa = build_narrative(_perfil(pct_sem_licitacao=0, pct_valor_sem_licitacao=0))
 
-    assert "Desse dinheiro" not in narrativa["citizen"]
+    assert "compras e servi&ccedil;os" not in narrativa["citizen"]
     assert "Sem licita" not in narrativa["auditor"]
 
 
 def test_queries_de_perfil_expoem_pct_valor_sem_licitacao():
     assert "r.pct_valor_sem_licitacao" in PERFIL_MUNICIPIO
     assert "AS pct_valor_sem_licitacao" in PERFIL_MUNICIPIO_LIVE
+    assert "r.total_pago_licitavel" in PERFIL_MUNICIPIO
+    # Folha (11) e encargos (13) fora da base licitavel nos dois caminhos.
+    for sql in (PERFIL_MUNICIPIO_LIVE, (_ROOT / "sql/12_views.sql").read_text()):
+        assert "codigo_elemento_despesa" in sql and "'11','12','13'" in sql
     assert "AS mediana_pct_valor_sem_licitacao" in PB_MEDIAS
 
 

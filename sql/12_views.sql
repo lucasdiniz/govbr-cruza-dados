@@ -364,10 +364,16 @@ desp AS (
            SUM(d.valor_empenhado) AS total_empenhado,
            SUM(d.valor_pago) AS total_pago,
            COUNT(*) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
-           -- Mesmo criterio de qtd_sem_licitacao, ponderado por valor pago.
-           -- Base da narrativa "Desse dinheiro, X% ..." (pct por contagem
-           -- divergia ate ~40pp do pct por valor).
-           SUM(d.valor_pago) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS total_pago_sem_licitacao,
+           -- Valor pago em despesa LICITAVEL: exclui elementos que por natureza
+           -- nao passam por licitacao (pessoal/encargos/beneficios 01-16,46,49,59,
+           -- 94,96; divida 21-25,71-77; transferencias/contribuicoes 41-48,81;
+           -- tributos 47; sentencas 91; indenizacoes/restituicoes 93). Codigo
+           -- ausente conta como licitavel. Base da narrativa "Das compras e
+           -- servicos, X% ...": com pessoal/divida no denominador o % por valor
+           -- era dominado por folha paga a credor PJ (consignado, encargos).
+           SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')) AS total_pago_licitavel,
+           SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%')
+               AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')) AS total_pago_sem_licitacao,
            COUNT(*) FILTER (WHERE d.mes LIKE '12%') AS qtd_dezembro,
            COUNT(DISTINCT d.cnpj_basico) AS qtd_fornecedores
     FROM tce_pb_despesa d
@@ -416,8 +422,9 @@ SELECT
     d.qtd_fornecedores,
     d.qtd_sem_licitacao,
     ROUND(100.0 * d.qtd_sem_licitacao / NULLIF(d.qtd_empenhos, 0), 1) AS pct_sem_licitacao,
+    COALESCE(d.total_pago_licitavel, 0) AS total_pago_licitavel,
     COALESCE(d.total_pago_sem_licitacao, 0) AS total_pago_sem_licitacao,
-    ROUND(100.0 * COALESCE(d.total_pago_sem_licitacao, 0) / NULLIF(d.total_pago, 0), 1) AS pct_valor_sem_licitacao,
+    ROUND(100.0 * COALESCE(d.total_pago_sem_licitacao, 0) / NULLIF(d.total_pago_licitavel, 0), 1) AS pct_valor_sem_licitacao,
     d.qtd_dezembro,
     ROUND(100.0 * d.qtd_dezembro / NULLIF(d.qtd_empenhos, 0), 1) AS pct_dezembro,
     COALESCE(l.qtd_licitacoes, 0) AS qtd_licitacoes,

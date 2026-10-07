@@ -459,7 +459,9 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
     total_pago = perfil.get("total_pago") or 0
     qtd_fornecedores = int(perfil.get("qtd_fornecedores") or 0)
     pct_sem_licitacao = perfil.get("pct_sem_licitacao") or 0
-    # % do VALOR pago sem licitacao. None em entradas de web_cache gravadas
+    # % do VALOR pago em compras/servicos (despesa licitavel: sem pessoal,
+    # encargos, divida etc. — ver mv_municipio_pb_risco) que saiu sem
+    # licitacao. None em entradas de web_cache gravadas
     # antes do mv_swap/rewarm de PERFIL — nesse caso a narrativa cai para a
     # formulacao por contagem de empenhos (nunca apresenta contagem como valor).
     pct_valor_sem_licitacao = perfil.get("pct_valor_sem_licitacao")
@@ -518,8 +520,8 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
     if pct_valor_sem_licitacao is not None:
         if pct_valor_sem_licitacao:
             sl_txt = (
-                f" Desse dinheiro, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_valor_sem_licitacao)}</strong> "
-                f"saiu em compras sem concorr&ecirc;ncia</a>"
+                f" Do que foi pago em compras e servi&ccedil;os, <a href=\"#licitacoes\"><strong>{_fmt_pct(pct_valor_sem_licitacao)}</strong> "
+                f"saiu sem concorr&ecirc;ncia</a>"
             )
             # Comparador PB so faz sentido em all-time (medianas sao all-time).
             if not is_filtered:
@@ -577,7 +579,7 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
         if not is_filtered and mediana_pct_valor_sem_licitacao:
             med_suffix = f" (p50 PB: {_fmt_pct(mediana_pct_valor_sem_licitacao)})"
         frag_auditor.append(
-            f" <a href=\"#licitacoes\">Sem licita&ccedil;&atilde;o: {_fmt_pct(pct_valor_sem_licitacao)} do valor pago</a>"
+            f" <a href=\"#licitacoes\">Sem licita&ccedil;&atilde;o: {_fmt_pct(pct_valor_sem_licitacao)} do valor pago em compras/servi&ccedil;os</a>"
             + med_suffix
             + f" ({_fmt_pct(pct_sem_licitacao)} dos empenhos)."
         )

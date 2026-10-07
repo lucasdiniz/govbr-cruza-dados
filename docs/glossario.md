@@ -169,7 +169,7 @@ Alterações no contrato após assinatura: valor, prazo, escopo. Limite legal 25
 
 Compras em que não houve processo licitatório identificável — pode ser dispensa, inexigibilidade, ARP-carona ou ausência de dado na fonte.
 
-- **MV**: `mv_municipio_pb_risco.pct_sem_licitacao` (% da **contagem** de empenhos; usado no score) e `mv_municipio_pb_risco.pct_valor_sem_licitacao` (% do **valor pago**; usado na narrativa "Desse dinheiro, X% ...")
+- **MV**: `mv_municipio_pb_risco.pct_sem_licitacao` (% da **contagem** de empenhos; usado no score) e `mv_municipio_pb_risco.pct_valor_sem_licitacao` (% do **valor pago em despesa licitável** — exclui pessoal, encargos, dívida, transferências, tributos, sentenças e indenizações; usado na narrativa "Do que foi pago em compras e serviços, X% ...")
 - **Caveat**: lógica em revisão (issue [#141](https://github.com/lucasdiniz/govbr-cruza-dados/issues/141))
 
 ---
