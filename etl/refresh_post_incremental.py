@@ -540,12 +540,113 @@ def refresh_for_tce_pb(conn) -> None:
     logger.info("refresh_for_tce_pb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
 
 
+# Tabelas com documento de credor 14-char + cnpj_basico derivado. Invariante
+# (sql/15a): cnpj_basico NOT NULL <=> documento existe em estabelecimento.
+RFB_LINKED_DOC_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("tce_pb_despesa", "cpf_cnpj"),
+    ("pb_pagamento", "cpfcnpj_credor"),
+    ("pb_empenho", "cpfcnpj_credor"),
+    ("pb_contrato", "cpfcnpj_contratado"),
+    ("pb_saude", "cpfcnpj_credor"),
+    ("pb_convenio", "cnpj_convenente"),
+    ("pb_liquidacao_despesa", "cpfcnpj_credor"),
+    ("pb_empenho_anulacao", "cpfcnpj_credor"),
+    ("pb_empenho_suplementacao", "cpfcnpj_credor"),
+    ("pb_diaria", "cpfcnpj_credor"),
+)
+
+
+def relink_cnpj_basico_after_rfb(conn) -> dict[str, dict[str, int]]:
+    """Mantem o invariante de cnpj_basico apos o sync RFB, de forma direcionada.
+
+    Usa rfb_sync_estab_delta (estabelecimentos inseridos/removidos no ultimo
+    sync) em vez de varrer cada tabela contra os 60M de estabelecimento:
+    - inserido: credor que antes nao existia na RFB (ex: MEI novo) ganha
+      cnpj_basico -> passa a aparecer em top fornecedores/flags.
+    - removido: cnpj_basico anulado (mesma regra do sql/15a).
+    """
+    out: dict[str, dict[str, int]] = {}
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('rfb_sync_estab_delta') IS NOT NULL")
+        if not cur.fetchone()[0]:
+            logger.warning("rfb_sync_estab_delta ausente — relink pulado")
+            return out
+        cur.execute("SELECT COUNT(*) FROM rfb_sync_estab_delta")
+        if cur.fetchone()[0] == 0:
+            logger.info("relink cnpj_basico: delta vazio, nada a fazer")
+            return out
+    conn.commit()
+
+    for table, doc in RFB_LINKED_DOC_COLUMNS:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass(%s) IS NOT NULL", (table,))
+            if not cur.fetchone()[0]:
+                continue
+            cur.execute(
+                f"""
+                UPDATE {table} t SET cnpj_basico = LEFT(t.{doc}, 8)
+                FROM rfb_sync_estab_delta d
+                WHERE d.mudanca = 'inserido' AND d.cnpj_completo = t.{doc}
+                  AND t.cnpj_basico IS NULL
+                """
+            )
+            ligados = cur.rowcount
+            cur.execute(
+                f"""
+                UPDATE {table} t SET cnpj_basico = NULL
+                FROM rfb_sync_estab_delta d
+                WHERE d.mudanca = 'removido' AND d.cnpj_completo = t.{doc}
+                  AND t.cnpj_basico IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM estabelecimento e WHERE e.cnpj_completo = t.{doc})
+                """
+            )
+            anulados = cur.rowcount
+        conn.commit()
+        out[table] = {"ligados": ligados, "anulados": anulados}
+        logger.info("relink %s: +%d ligados, %d anulados", table, ligados, anulados)
+        if ligados or anulados:
+            _run_sql(conn, f"ANALYZE {table}", f"ANALYZE {table}")
+    return out
+
+
+def refresh_for_rfb(conn) -> None:
+    """Pos-sync RFB (etl.rfb_sync): re-liga cnpj_basico + REFRESH L1 -> L2.
+
+    Quase todas as MVs PB leem empresa/estabelecimento/socio (natureza
+    juridica, situacao cadastral, vinculos de socio), entao o conjunto eh o
+    mesmo do TCE-PB, incluindo o rebuild das _tmp_* de mv_servidor_pb_risco.
+    Hard-fail como os demais hooks.
+
+    NOTA: mv_rede_pb (backing _tmp_rede_*) continua fora — mesma limitacao
+    documentada em _TCE_PB_MVS_L1. mv_empresa_municipio_pagantes (sitemap) eh
+    refrescada pelo step do deploy via etl.22_mv_sitemap.
+    """
+    logger.info("=" * 60)
+    logger.info("refresh_for_rfb: iniciando (relink + L1 -> L2)")
+    logger.info("=" * 60)
+    total_t0 = time.time()
+
+    relink_cnpj_basico_after_rfb(conn)
+
+    for mv in _TCE_PB_MVS_L1:
+        _refresh_mv_adaptive(conn, mv)
+
+    _rebuild_servidor_tmp_after_tce_pb(conn)
+
+    for mv in _TCE_PB_MVS_L2:
+        _refresh_mv_adaptive(conn, mv)
+
+    total_dt = time.time() - total_t0
+    logger.info("refresh_for_rfb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Registry — fontes que tem refresh hooks
 # ──────────────────────────────────────────────────────────────────────────
 
 SOURCE_REFRESH_FNS: dict[str, Callable] = {
     "bolsa_familia": refresh_for_bolsa_familia,
+    "rfb": refresh_for_rfb,
     "tce_pb": refresh_for_tce_pb,
 }
 
