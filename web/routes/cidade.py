@@ -924,6 +924,13 @@ async def _render_cidade(request: Request, municipio: str):
                         applied = True
                 if applied:
                     perfil_periodo = "ANO"
+                    # % por valor tambem precisa ser do ANO. Copia mesmo se
+                    # ausente/NULL (cache ANO antigo): build_narrative cai para
+                    # a formulacao por contagem em vez de rotular o valor
+                    # all-time como "Em <ano>".
+                    for fld in ("total_pago_licitavel", "total_pago_sem_licitacao",
+                                "pct_valor_sem_licitacao"):
+                        perfil[fld] = ano.get(fld)
     except Exception:
         pass
 

@@ -14,6 +14,7 @@ DROP MATERIALIZED VIEW IF EXISTS mv_servidor_pb_base CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_q67_dated_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_mapa CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_kpi_score CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_licitacao_valor CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_municipio_pb_risco CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_pessoa_pb CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_empresa_governo CASCADE;
@@ -364,16 +365,6 @@ desp AS (
            SUM(d.valor_empenhado) AS total_empenhado,
            SUM(d.valor_pago) AS total_pago,
            COUNT(*) FILTER (WHERE d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%') AS qtd_sem_licitacao,
-           -- Valor pago em despesa LICITAVEL: exclui elementos que por natureza
-           -- nao passam por licitacao (pessoal/encargos/beneficios 01-16,46,49,59,
-           -- 94,96; divida 21-25,71-77; transferencias/contribuicoes 41-48,81;
-           -- tributos 47; sentencas 91; indenizacoes/restituicoes 93). Codigo
-           -- ausente conta como licitavel. Base da narrativa "Das compras e
-           -- servicos, X% ...": com pessoal/divida no denominador o % por valor
-           -- era dominado por folha paga a credor PJ (consignado, encargos).
-           SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')) AS total_pago_licitavel,
-           SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%')
-               AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')) AS total_pago_sem_licitacao,
            COUNT(*) FILTER (WHERE d.mes LIKE '12%') AS qtd_dezembro,
            COUNT(DISTINCT d.cnpj_basico) AS qtd_fornecedores
     FROM tce_pb_despesa d
@@ -422,9 +413,6 @@ SELECT
     d.qtd_fornecedores,
     d.qtd_sem_licitacao,
     ROUND(100.0 * d.qtd_sem_licitacao / NULLIF(d.qtd_empenhos, 0), 1) AS pct_sem_licitacao,
-    COALESCE(d.total_pago_licitavel, 0) AS total_pago_licitavel,
-    COALESCE(d.total_pago_sem_licitacao, 0) AS total_pago_sem_licitacao,
-    ROUND(100.0 * COALESCE(d.total_pago_sem_licitacao, 0) / NULLIF(d.total_pago_licitavel, 0), 1) AS pct_valor_sem_licitacao,
     d.qtd_dezembro,
     ROUND(100.0 * d.qtd_dezembro / NULLIF(d.qtd_empenhos, 0), 1) AS pct_dezembro,
     COALESCE(l.qtd_licitacoes, 0) AS qtd_licitacoes,
@@ -454,6 +442,40 @@ LEFT JOIN folha f ON f.municipio = d.municipio;
 
 CREATE UNIQUE INDEX idx_mv_mun_municipio ON mv_municipio_pb_risco(municipio);
 CREATE INDEX idx_mv_mun_risco ON mv_municipio_pb_risco(risco_score DESC);
+
+
+-- -----------------------------------------------------------------------------
+-- 3b. mv_municipio_pb_licitacao_valor: % do VALOR pago em compras/servicos
+--     (despesa licitavel) que saiu sem licitacao, por municipio PB.
+--     Base da narrativa "Do que foi pago em compras e servicos, X% saiu sem
+--     concorrencia" (pct_sem_licitacao de mv_municipio_pb_risco eh % da
+--     CONTAGEM de empenhos e inclui folha/encargos/divida).
+--     MV separada (L1, sem dependentes) para poder ser criada/atualizada sem
+--     DROP CASCADE de mv_municipio_pb_risco (mapa/kpi_score ficariam ilegiveis).
+--     Mesmo universo de mv_municipio_pb_risco.desp (credor PJ nao-publico,
+--     ano >= 2022) e mesmo criterio de "sem licitacao" de qtd_sem_licitacao.
+--     Despesa licitavel exclui elementos que por natureza nao passam por
+--     licitacao: pessoal/encargos/beneficios (01-16, 46, 49, 59, 94, 96),
+--     divida (21-25, 71-77), transferencias/contribuicoes (41-48, 81),
+--     tributos (47), sentencas (91), indenizacoes/restituicoes (93).
+--     Codigo de elemento ausente conta como licitavel. ~223 rows.
+-- -----------------------------------------------------------------------------
+CREATE MATERIALIZED VIEW mv_municipio_pb_licitacao_valor AS
+SELECT d.municipio,
+       COALESCE(SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0) AS total_pago_licitavel,
+       COALESCE(SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%')
+           AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0) AS total_pago_sem_licitacao,
+       ROUND(100.0 * COALESCE(SUM(d.valor_pago) FILTER (WHERE (d.numero_licitacao IS NULL OR d.numero_licitacao = '' OR d.numero_licitacao = '0' OR d.numero_licitacao = '000000000' OR d.modalidade_licitacao ILIKE '%sem licit%')
+           AND COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0)
+           / NULLIF(SUM(d.valor_pago) FILTER (WHERE COALESCE(LPAD(TRIM(d.codigo_elemento_despesa), 2, '0'), '') NOT IN ('01','03','04','05','07','08','09','11','12','13','14','15','16','21','22','23','24','25','41','43','45','46','47','48','49','59','71','72','73','74','75','76','77','81','91','93','94','96')), 0), 1) AS pct_valor_sem_licitacao
+FROM tce_pb_despesa d
+JOIN empresa e ON e.cnpj_basico = d.cnpj_basico
+    AND e.natureza_juridica NOT LIKE '1%'
+WHERE d.cnpj_basico IS NOT NULL AND d.ano >= 2022
+  AND d.municipio IS NOT NULL
+GROUP BY d.municipio;
+
+CREATE UNIQUE INDEX idx_mv_mun_licval_municipio ON mv_municipio_pb_licitacao_valor(municipio);
 
 
 -- -----------------------------------------------------------------------------
@@ -1551,6 +1573,7 @@ GRANT SELECT ON pncp_municipio TO govbr;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empresa_governo;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pessoa_pb;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_risco;
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_municipio_pb_licitacao_valor;
 --   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_servidor_pb_base;
 --   Para mv_servidor_pb_risco: DROP + re-executar steps 1-6 (não suporta REFRESH
 --   porque depende de tabelas _tmp_ intermediárias — abordagem stepwise necessária)

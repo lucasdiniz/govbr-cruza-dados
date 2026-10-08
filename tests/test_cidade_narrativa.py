@@ -61,9 +61,10 @@ def test_narrativa_omite_frase_quando_nada_pago_sem_licitacao():
 
 
 def test_queries_de_perfil_expoem_pct_valor_sem_licitacao():
-    assert "r.pct_valor_sem_licitacao" in PERFIL_MUNICIPIO
+    assert "lv.pct_valor_sem_licitacao" in PERFIL_MUNICIPIO
     assert "AS pct_valor_sem_licitacao" in PERFIL_MUNICIPIO_LIVE
-    assert "r.total_pago_licitavel" in PERFIL_MUNICIPIO
+    assert "LEFT JOIN mv_municipio_pb_licitacao_valor lv" in PERFIL_MUNICIPIO
+    assert "LEFT JOIN mv_municipio_pb_licitacao_valor lv" in PB_MEDIAS
     # Folha (11) e encargos (13) fora da base licitavel nos dois caminhos.
     for sql in (PERFIL_MUNICIPIO_LIVE, (_ROOT / "sql/12_views.sql").read_text()):
         assert "codigo_elemento_despesa" in sql and "'11','12','13'" in sql
@@ -78,16 +79,31 @@ def test_queries_de_perfil_sem_percent_solto():
 
 
 def test_mv_swap_identica_a_fonte_de_verdade():
-    """deploy/mv_updates/mv_municipio_pb_risco.sql deve ter a mesma definicao
-    de sql/12_views.sql (sufixo _swap a parte), senao o proximo rebuild
-    completo divergiria do que foi aplicado via swap."""
+    """deploy/mv_updates/mv_municipio_pb_licitacao_valor.sql deve ter a mesma
+    definicao de sql/12_views.sql (sufixo _swap a parte), senao o proximo
+    rebuild completo divergiria do que foi aplicado via swap."""
     views = (_ROOT / "sql/12_views.sql").read_text()
-    inicio = views.index("CREATE MATERIALIZED VIEW mv_municipio_pb_risco AS")
-    fim = views.index("\n", views.index("CREATE INDEX idx_mv_mun_risco ON mv_municipio_pb_risco"))
+    inicio = views.index("CREATE MATERIALIZED VIEW mv_municipio_pb_licitacao_valor AS")
+    fim = views.index("\n", views.index("CREATE UNIQUE INDEX idx_mv_mun_licval_municipio"))
     fonte = views[inicio:fim].strip()
 
-    swap = (_ROOT / "deploy/mv_updates/mv_municipio_pb_risco.sql").read_text()
+    swap = (_ROOT / "deploy/mv_updates/mv_municipio_pb_licitacao_valor.sql").read_text()
     swap_body = swap[swap.index("CREATE MATERIALIZED VIEW"):].strip()
 
     assert "pct_valor_sem_licitacao" in fonte
     assert swap_body.replace("_swap", "") == fonte
+
+
+def test_mv_municipio_pb_risco_nao_muda():
+    """A MV com dependentes (mapa/kpi_score) nao pode ganhar colunas aqui:
+    swap dela recria os dependentes vazios (ilegiveis) ate o REFRESH."""
+    views = (_ROOT / "sql/12_views.sql").read_text()
+    inicio = views.index("CREATE MATERIALIZED VIEW mv_municipio_pb_risco AS")
+    fim = views.index("CREATE INDEX idx_mv_mun_risco")
+    assert "pct_valor_sem_licitacao" not in views[inicio:fim]
+
+
+def test_mv_nova_entra_no_refresh_pos_incremental():
+    from etl.refresh_post_incremental import _TCE_PB_MVS_L1
+
+    assert "mv_municipio_pb_licitacao_valor" in _TCE_PB_MVS_L1
