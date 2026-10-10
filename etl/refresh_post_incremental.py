@@ -444,6 +444,7 @@ _TCE_PB_MVS_L1 = (
     "mv_empresa_governo",
     "mv_servidor_pb_base",
     "mv_municipio_pb_risco",
+    "mv_municipio_pb_licitacao_valor",
     "mv_pessoa_pb",
 )
 _TCE_PB_MVS_L2 = (
