@@ -286,12 +286,17 @@ Local: `python -m etl.rfb_sync --month 2026-09`.
    são bloqueados.
 4. Domínios (`dom_*`) substituídos numa transação; depois
    `refresh_post_incremental.refresh_for_rfb`: re-liga `cnpj_basico` nas
-   tabelas PB (só os CNPJs em `rfb_sync_estab_delta`) e refresca MVs L1 → L2.
+   tabelas PB (só os CNPJs em `rfb_sync_estab_delta`), apaga do `web_cache` as
+   páginas `/empresa` de estabelecimentos que saíram da RFB e refresca MVs
+   L1 → L2 + `mv_empresa_municipio_pagantes` (sitemap), todas `CONCURRENTLY`
+   quando há UNIQUE INDEX. O delta é **trabalho pendente durável**: acumula
+   entre tentativas e só é limpo depois do relink — re-rodar um mês que parou
+   no meio (guard em `socio`, falha no refresh) não perde nenhum relink.
 
 **Sócios** não têm chave natural. Identidade do vínculo = md5 de
 `(cnpj_basico, tipo_socio, nome, cpf_cnpj_socio, qualificacao, dt_entrada)`.
 Mudança de `faixa_etaria`/representante/país atualiza in-place; vínculo que
-some do snapshot é **movido** para `socio_historico` (mesmo `id`, com
+some do snapshot é **movido** para `socio_historico` (`id` original + chave própria `hist_id`, com
 `removido_em`/`rfb_mes_removido`). `socio` continua significando "sócio
 atual" para todas as queries; para análises "era sócio quando recebeu", una
 `socio` com `socio_historico`. O histórico começa no primeiro sync — não há

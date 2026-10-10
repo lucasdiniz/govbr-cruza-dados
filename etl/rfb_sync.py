@@ -26,7 +26,8 @@ O framework incremental (etl/incremental/) nao se aplica: a fonte eh snapshot
    - socio nao tem chave natural: identidade = md5 de SOCIO_IDENTITY
      (etl/rfb_common.py). Vinculos que sairam sao MOVIDOS para socio_historico.
    - estabelecimentos inseridos/removidos vao para rfb_sync_estab_delta
-     (re-ligacao direcionada de cnpj_basico nas tabelas PB).
+     (re-ligacao direcionada de cnpj_basico nas tabelas PB). O delta acumula
+     entre tentativas e so eh limpo depois do relink (re-run seguro).
 4. Tabelas de dominio (dom_cnae etc.) sao substituidas numa transacao.
 5. Refresh pos-sync (refresh_post_incremental.refresh_for_rfb): re-liga
    cnpj_basico nas tabelas PB + REFRESH das MVs L1 -> L2. O mes so eh marcado
@@ -394,9 +395,11 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
     is_estab = spec.table == "estabelecimento"
     totals = {"removidas": 0, "atualizadas": 0, "inseridas": 0}
 
-    if is_estab:
-        _exec(conn, "DELETE FROM rfb_sync_estab_delta")
-        conn.commit()
+    # rfb_sync_estab_delta NAO eh limpa aqui: eh trabalho pendente durável.
+    # Se a execucao falhar depois de aplicar estabelecimentos (guard em
+    # simples/socio, refresh...), o re-run do mesmo mes acha diff vazio e so
+    # o delta acumulado garante o relink. Consumido e limpo por
+    # refresh_post_incremental.relink_cnpj_basico_after_rfb apos sucesso.
 
     for lo, hi in _batch_bounds():
         rt, rs = _range_pred("t", lo, hi), _range_pred("s", lo, hi)

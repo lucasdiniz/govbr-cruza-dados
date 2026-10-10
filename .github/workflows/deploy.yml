@@ -201,6 +201,9 @@ jobs:
     steps:
       - name: Decide target VM size and disk SKU
         id: decide
+        env:
+          # Via env (nunca interpolado no script): string livre do dispatch.
+          RFB_SYNC_INPUT: ${{ inputs.rfb_sync }}
         run: |
           # Resize UP para B4 (16GB) sempre que houver trabalho pesado:
           #   - qualquer etl_phase != web (ETL/SQL/N usam mais RAM e CPU)
@@ -215,7 +218,7 @@ jobs:
              && [ "${{ inputs.run_normalize_fix }}" != "true" ] \
              && [ -z "${{ inputs.refresh_mvs }}" ] \
              && [ "${{ inputs.rebuild_tmp_for_servidor }}" != "true" ] \
-             && [ -z "${{ inputs.rfb_sync }}" ]; then
+             && [ -z "$RFB_SYNC_INPUT" ]; then
             echo "target_size=${{ env.VM_SIZE_WEB }}" >> "$GITHUB_OUTPUT"
             echo "target_disk_sku=${{ env.DISK_SKU_LIGHT }}" >> "$GITHUB_OUTPUT"
             echo "etl_phase=web sem trabalho pesado → B2 + Standard SSD (web)"
@@ -893,10 +896,9 @@ jobs:
             echo "::error::rfb_sync falhou (rc=$RC). Re-disparar o mesmo mes eh seguro (idempotente)."
             exit 1
           fi
-          if grep -q "RFB_SYNC_RESULT=synced" "$LOG"; then
-            echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
-            python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
-          fi
+          # Sitemap (mv_empresa_municipio_pagantes) ja refrescado CONCURRENTLY
+          # dentro do refresh_for_rfb.
+          grep -q "RFB_SYNC_RESULT=" "$LOG" && grep "RFB_SYNC_RESULT=" "$LOG" | tail -1
 
       # ── Run fraud queries (opt-in, demora ~30min) ──
       - name: Run queries

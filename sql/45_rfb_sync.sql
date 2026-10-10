@@ -10,8 +10,9 @@
 --                         MOVE a linha de `socio` para ca (mesmo id) em vez de
 --                         marcar in-place, para que todas as queries existentes
 --                         sobre `socio` continuem significando "socio atual".
--- rfb_sync_estab_delta  : estabelecimentos inseridos/removidos no ultimo sync.
---                         Consumido por refresh_post_incremental --source rfb
+-- rfb_sync_estab_delta  : estabelecimentos inseridos/removidos ainda nao
+--                         re-ligados (acumula entre tentativas; limpo apos o
+--                         relink). Consumido por refresh_post_incremental --source rfb
 --                         para re-ligar/anular cnpj_basico nas tabelas PB de
 --                         forma direcionada (sem varrer 16M+ linhas inteiras).
 -- =============================================================================
@@ -31,7 +32,9 @@ CREATE INDEX IF NOT EXISTS idx_rfb_sync_log_mes_status
     ON rfb_sync_log (rfb_mes, status);
 
 CREATE TABLE IF NOT EXISTS socio_historico (
-    id                   INTEGER NOT NULL,         -- id original em socio
+    hist_id              BIGSERIAL PRIMARY KEY,
+    id                   INTEGER NOT NULL,         -- id original em socio (nao unico:
+                                                   -- socio recriado reinicia o SERIAL)
     cnpj_basico          CHAR(8) NOT NULL,
     tipo_socio           SMALLINT,
     nome                 VARCHAR(500),
@@ -45,11 +48,11 @@ CREATE TABLE IF NOT EXISTS socio_historico (
     faixa_etaria         SMALLINT,
     cpf_cnpj_norm        TEXT,
     removido_em          DATE NOT NULL,            -- data do sync que detectou a saida
-    rfb_mes_removido     CHAR(7) NOT NULL,         -- 1a publicacao RFB sem o vinculo
-    PRIMARY KEY (id)
+    rfb_mes_removido     CHAR(7) NOT NULL          -- 1a publicacao RFB sem o vinculo
 );
 
 CREATE INDEX IF NOT EXISTS idx_socio_hist_cnpj_basico ON socio_historico (cnpj_basico);
+CREATE INDEX IF NOT EXISTS idx_socio_hist_id ON socio_historico (id);
 CREATE INDEX IF NOT EXISTS idx_socio_hist_cpf_norm
     ON socio_historico (cpf_cnpj_norm) WHERE cpf_cnpj_norm IS NOT NULL;
 

@@ -178,8 +178,9 @@ def db():
     with conn.cursor() as cur:
         for f in ("00_extensions.sql", "01_schema_dominio.sql", "02_schema_rfb.sql"):
             cur.execute((ROOT / "sql" / f).read_text(encoding="utf-8"))
-        cur.execute("DROP TABLE IF EXISTS rfb_sync_log, socio_historico, rfb_sync_estab_delta, tce_pb_despesa")
+        cur.execute("DROP TABLE IF EXISTS rfb_sync_log, socio_historico, rfb_sync_estab_delta, tce_pb_despesa, web_cache")
         cur.execute("CREATE TABLE tce_pb_despesa (cpf_cnpj VARCHAR(14), cnpj_basico CHAR(8))")
+        cur.execute("CREATE TABLE web_cache (query_id TEXT, municipio TEXT, PRIMARY KEY (query_id, municipio))")
     yield conn
     conn.close()
 
@@ -229,6 +230,11 @@ def test_sync_completo_mes_a_mes(db, fake_webdav, tmp_path, capsys):
     db.cursor().execute(
         "INSERT INTO tce_pb_despesa VALUES ('44444444000194', NULL), ('33333333000193', '33333333')"
     )
+    db.cursor().execute(
+        "INSERT INTO web_cache VALUES ('EMPRESA_PERFIL', '33333333000193'), "
+        "('EMPRESA_PERFIL_MUN', '33333333000193:joao-pessoa'), ('EMPRESA_PERFIL', '11111111000191'), "
+        "('PERFIL', 'Joao Pessoa')"
+    )
 
     # Mes seguinte. Limites folgados: fixture minusculo (2 de 3 socios saem = 67%).
     assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 0
@@ -252,19 +258,30 @@ def test_sync_completo_mes_a_mes(db, fake_webdav, tmp_path, capsys):
     assert _rows(db, "SELECT nome, qualificacao, cpf_cnpj_norm FROM socio ORDER BY 1") == [
         ("ANA", "49", "444444"), ("JOAO", "49", "111111"), ("PEDRO", "05", "333333"),
     ]
-    assert _rows(db, "SELECT cnpj_completo, mudanca FROM rfb_sync_estab_delta ORDER BY 1") == [
-        ("33333333000193", "removido"), ("44444444000194", "inserido"),
-    ]
+    # refresh=False: o delta do mes anterior (3 inseridos) ainda nao foi
+    # consumido — acumula, nao eh perdido.
+    assert set(_rows(db, "SELECT cnpj_completo, mudanca, rfb_mes FROM rfb_sync_estab_delta")) == {
+        ("11111111000191", "inserido", "2026-08"), ("22222222000192", "inserido", "2026-08"),
+        ("33333333000193", "inserido", "2026-08"),
+        ("33333333000193", "removido", "2026-09"), ("44444444000194", "inserido", "2026-09"),
+    }
     assert _rows(db, "SELECT descricao FROM dom_qualificacao WHERE codigo = '05'") == [("Administrador",)]
     status = _rows(db, "SELECT rfb_mes, status FROM rfb_sync_log ORDER BY id")
     assert status == [("2026-08", "success"), ("2026-09", "success")]
     assert _rows(db, "SELECT COUNT(*) FROM pg_tables WHERE tablename LIKE '\\_rfb\\_sync\\_%'")[0][0] == 0
 
     # Relink direcionado: credor novo ganha cnpj_basico, removido perde
-    relink_cnpj_basico_after_rfb(db)
+    out = relink_cnpj_basico_after_rfb(db)
     assert _rows(db, "SELECT cpf_cnpj, cnpj_basico FROM tce_pb_despesa ORDER BY 1") == [
         ("33333333000193", None), ("44444444000194", "44444444"),
     ]
+    # Paginas do estabelecimento removido saem do cache; resto intocado.
+    assert out["web_cache_removidos"]["linhas"] == 2
+    assert _rows(db, "SELECT query_id, municipio FROM web_cache ORDER BY 1, 2") == [
+        ("EMPRESA_PERFIL", "11111111000191"), ("PERFIL", "Joao Pessoa"),
+    ]
+    # Delta consumido so depois do relink
+    assert _rows(db, "SELECT COUNT(*) FROM rfb_sync_estab_delta")[0][0] == 0
 
     # Idempotencia / protecoes de ordem
     assert _sync("2026-09", tmp_path) == 0
@@ -315,3 +332,46 @@ def test_linha_duplicada_no_snapshot_vira_um_socio(db, fake_webdav, tmp_path):
     fake_webdav("2026-08", dup)
     assert _sync("2026-08", tmp_path) == 0
     assert _rows(db, "SELECT COUNT(*) FROM socio WHERE nome = 'JOAO'")[0][0] == 1
+
+
+
+def test_retry_apos_guard_em_socio_nao_perde_relink(db, fake_webdav, tmp_path):
+    """Run aplica estabelecimento e para no guard de socio; o re-run do mesmo
+    mes acha diff vazio em estabelecimento — o relink tem que acontecer mesmo
+    assim (delta duravel)."""
+    fake_webdav("2026-08", MONTH_A)
+    fake_webdav("2026-09", MONTH_B)
+    assert _sync("2026-08", tmp_path) == 0
+    db.cursor().execute("DELETE FROM rfb_sync_estab_delta")  # simula delta de 08 ja consumido
+    db.cursor().execute("INSERT INTO tce_pb_despesa VALUES ('44444444000194', NULL)")
+
+    # 1a tentativa: estab aplicado, guard dispara em socio (2 de 3 saem)
+    limits = {"empresa": 100, "estabelecimento": 100, "simples": 100, "socio": 10}
+    assert _sync("2026-09", tmp_path, max_delete_pct=limits) == 2
+    assert _rows(db, "SELECT COUNT(*) FROM estabelecimento WHERE cnpj_basico = '44444444'")[0][0] == 1
+
+    # Re-run: estab ja aplicado -> diff vazio; delta da 1a tentativa preservado
+    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 0
+    stats = _rows(db, "SELECT stats FROM rfb_sync_log WHERE status = 'success' ORDER BY id DESC LIMIT 1")[0][0]
+    assert stats["estabelecimento"]["inseridas"] == 0
+    assert ("44444444000194", "inserido") in _rows(db, "SELECT cnpj_completo, mudanca FROM rfb_sync_estab_delta")
+
+    relink_cnpj_basico_after_rfb(db)
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [("44444444",)]
+
+
+def test_historico_aceita_id_repetido(db, fake_webdav, tmp_path):
+    """socio recriado (02_schema_rfb) reinicia o SERIAL: o mesmo id original
+    pode voltar ao historico sem violar chave."""
+    fake_webdav("2026-08", MONTH_A)
+    assert _sync("2026-08", tmp_path) == 0
+    cur = db.cursor()
+    cur.execute(
+        "INSERT INTO socio_historico (id, cnpj_basico, nome, removido_em, rfb_mes_removido) "
+        "SELECT id, cnpj_basico, nome, CURRENT_DATE, '2026-01' FROM socio"
+    )
+    cur.execute(
+        "INSERT INTO socio_historico (id, cnpj_basico, nome, removido_em, rfb_mes_removido) "
+        "SELECT id, cnpj_basico, nome, CURRENT_DATE, '2026-02' FROM socio"
+    )
+    assert _rows(db, "SELECT COUNT(*), COUNT(DISTINCT id) FROM socio_historico")[0] == (6, 3)
