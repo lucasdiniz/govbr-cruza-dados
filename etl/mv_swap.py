@@ -214,7 +214,8 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
     """Substitui MV `mv_name` pela nova definicao com swap atomico.
 
     Args:
-        mv_name: nome da MV existente (ex: 'mv_empresa_pb').
+        mv_name: nome da MV (ex: 'mv_empresa_pb'). Se ainda nao existir, faz
+          bootstrap: cria `<mv>_swap` e renomeia (sem DROP, sem dependentes).
         new_definition_sql: SQL contendo `CREATE MATERIALIZED VIEW <mv>_swap`
           + `CREATE INDEX ... ON <mv>_swap`. Tudo com sufixo `_swap`.
 
@@ -234,8 +235,12 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
         # === Fase 1: validacoes + build paralelo (autocommit) ===
         conn.autocommit = True
         with conn.cursor() as cur:
-            if not _exists_mv(cur, mv_name):
-                raise RuntimeError(f"MV '{mv_name}' nao existe; abortado.")
+            # MV nova (bootstrap): mesmo fluxo, sem DROP nem dependentes —
+            # so o RENAME do _swap ja populado. Permite criar MVs novas pelo
+            # input mv_swap sem tocar em nenhuma MV existente.
+            bootstrap = not _exists_mv(cur, mv_name)
+            if bootstrap:
+                log.info(f"MV '{mv_name}' nao existe: bootstrap (cria via _swap + rename)")
             if _exists_mv(cur, swap_name):
                 log.warning(f"MV '{swap_name}' stale; dropando antes do build")
                 cur.execute(f"DROP MATERIALIZED VIEW {swap_name} CASCADE")
@@ -255,7 +260,7 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
             log.info(f"=== Capturando metadados ===")
             swap_indexes = _get_mv_indexes(cur, swap_name)
             log.info(f"  {len(swap_indexes)} indexes na MV nova")
-            dependents = _capture_dependents(cur, mv_name)
+            dependents = [] if bootstrap else _capture_dependents(cur, mv_name)
             log.info(f"  {len(dependents)} dependentes a recriar")
 
             cur.execute(f"ANALYZE {swap_name}")
@@ -279,9 +284,10 @@ def swap_materialized_view(mv_name: str, new_definition_sql: str) -> None:
                 # DROP MATERIALIZED VIEW ja adquire ACCESS EXCLUSIVE lock na MV
                 # e propaga pra dependentes; LOCK TABLE explicito nao funciona
                 # pra MVs (Postgres restringe LOCK ao relkind 'r').
-                t0 = time.time()
-                cur.execute(f"DROP MATERIALIZED VIEW {mv_name} CASCADE")
-                log.info(f"  drop velho + dependentes ({time.time()-t0:.2f}s)")
+                if not bootstrap:
+                    t0 = time.time()
+                    cur.execute(f"DROP MATERIALIZED VIEW {mv_name} CASCADE")
+                    log.info(f"  drop velho + dependentes ({time.time()-t0:.2f}s)")
 
                 # 2. Rename swap -> nome final
                 cur.execute(
