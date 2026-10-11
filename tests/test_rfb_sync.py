@@ -375,3 +375,15 @@ def test_historico_aceita_id_repetido(db, fake_webdav, tmp_path):
         "SELECT id, cnpj_basico, nome, CURRENT_DATE, '2026-02' FROM socio"
     )
     assert _rows(db, "SELECT COUNT(*), COUNT(DISTINCT id) FROM socio_historico")[0] == (6, 3)
+
+
+def test_descoberta_por_head_sem_listagem(monkeypatch):
+    """PROPFIND do servidor RFB voltou vazio: meses/arquivos vem de HEAD."""
+    publicados = {"2026-09": {n: 100 for n in rfb_sync.expected_zips(rfb_sync.SYNC_ORDER)},
+                  "2026-10": {"Cnaes.zip": 10, "Empresas0.zip": 10}}  # mes ainda subindo
+    monkeypatch.setattr(rfb_sync, "_candidate_months", lambda n=4: ["2026-10", "2026-09", "2026-08"])
+    monkeypatch.setattr(rfb_sync, "head_file",
+                        lambda mo, name: (publicados[mo][name], None) if name in publicados.get(mo, {}) else None)
+    assert rfb_sync.list_months() == ["2026-09", "2026-10"]
+    assert len(rfb_sync.list_files("2026-09")) == 37
+    assert rfb_sync.resolve_month("latest") == "2026-09"  # 2026-10 incompleto

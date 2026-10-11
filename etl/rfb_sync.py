@@ -13,7 +13,7 @@ O framework incremental (etl/incremental/) nao se aplica: a fonte eh snapshot
 ## Como funciona (por tabela)
 
 1. Baixa os ZIPs do mes (WebDAV RFB) um a um, com tamanho conferido contra o
-   PROPFIND, extrai e carrega numa staging UNLOGGED tipada `_rfb_sync_<tabela>`.
+   HEAD (Content-Length), extrai e carrega numa staging UNLOGGED tipada `_rfb_sync_<tabela>`.
    Cada CSV eh apagado assim que carregado (pico de disco = 1 arquivo + staging).
 2. GUARDS (antes de qualquer escrita na tabela live):
    - staging nao pode ser menor que a live alem de `max_shrink_pct` (download
@@ -64,9 +64,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote
-from urllib.request import Request, urlopen
-from xml.etree import ElementTree
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import psycopg2
 import psycopg2.extras
@@ -131,30 +129,63 @@ def _ipv4_only():
         socket.getaddrinfo = orig
 
 
-def _propfind(path: str) -> list[tuple[str, int | None]]:
-    """Lista (nome, tamanho) dos itens de um diretorio WebDAV (Depth: 1)."""
-    url = f"{WEBDAV_BASE}/{path.strip('/')}/" if path.strip("/") else f"{WEBDAV_BASE}/"
-    req = Request(url, method="PROPFIND", headers={
-        "Depth": "1", "Authorization": _WEBDAV_AUTH, "User-Agent": _UA,
-    })
-    with _ipv4_only(), urlopen(req, timeout=120) as resp:
-        body = resp.read()
-    ns = {"d": "DAV:"}
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *a, **kw):  # 3xx = nao eh o arquivo
+        return None
+
+
+def head_file(month: str, name: str) -> tuple[int, str | None] | None:
+    """HEAD de {month}/{name}: (tamanho, last-modified) ou None se nao existe.
+
+    O servidor RFB passou (out/2026) a responder PROPFIND com corpo vazio —
+    listagem de diretorio indisponivel. HEAD por arquivo continua confiavel
+    (Content-Length exato + 404 para ausente), e eh o que usamos.
+    """
+    req = Request(f"{WEBDAV_BASE}/{month}/{name}", method="HEAD",
+                  headers={"Authorization": _WEBDAV_AUTH, "User-Agent": _UA})
+    opener = build_opener(_NoRedirect)
+    for attempt in range(1, 4):
+        try:
+            with _ipv4_only(), opener.open(req, timeout=60) as resp:
+                size = resp.headers.get("Content-Length")
+                if resp.status != 200 or not size or not size.isdigit():
+                    return None
+                return int(size), resp.headers.get("Last-Modified")
+        except HTTPError as e:
+            if e.code in (404, 403, 410) or 300 <= e.code < 400:
+                return None
+            err = e
+        except (URLError, OSError) as e:
+            err = e
+        logger.warning("HEAD %s/%s tentativa %d falhou: %s", month, name, attempt, err)
+        time.sleep(5 * attempt)
+    raise RuntimeError(f"HEAD {month}/{name} falhou 3x: {err}")
+
+
+def _candidate_months(n: int = 4) -> list[str]:
+    from datetime import date
+
+    y, m = date.today().year, date.today().month
     out = []
-    for r in ElementTree.fromstring(body).findall("d:response", ns):
-        href = unquote(r.findtext("d:href", default="", namespaces=ns)).rstrip("/")
-        name = href.rsplit("/", 1)[-1]
-        size_txt = r.findtext(".//d:getcontentlength", default=None, namespaces=ns)
-        out.append((name, int(size_txt) if size_txt else None))
+    for _ in range(n):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
     return out
 
 
 def list_months() -> list[str]:
-    return sorted(n for n, _ in _propfind("") if _MONTH_RE.match(n))
+    """Meses publicados entre os ultimos 4 (sonda Cnaes.zip, o menor arquivo)."""
+    return sorted(mo for mo in _candidate_months() if head_file(mo, "Cnaes.zip"))
 
 
 def list_files(month: str) -> dict[str, int]:
-    return {n: s for n, s in _propfind(month) if n.endswith(".zip") and s is not None}
+    """{zip: tamanho} dos arquivos ESPERADOS presentes no mes (via HEAD)."""
+    out = {}
+    for name in expected_zips(SYNC_ORDER):
+        info = head_file(month, name)
+        if info:
+            out[name] = info[0]
+    return out
 
 
 def expected_zips(tables: tuple[str, ...]) -> list[str]:
@@ -165,9 +196,10 @@ def expected_zips(tables: tuple[str, ...]) -> list[str]:
 def resolve_month(arg: str) -> str:
     if arg == "latest":
         months = list_months()
-        if not months:
-            raise RuntimeError("nenhum mes publicado encontrado no WebDAV RFB")
-        return months[-1]
+        for mo in reversed(months):  # mais recente COMPLETO
+            if len(list_files(mo)) == len(expected_zips(SYNC_ORDER)):
+                return mo
+        raise RuntimeError(f"nenhum mes completo publicado no WebDAV RFB (sondados: {months})")
     if not _MONTH_RE.match(arg):
         raise ValueError(f"--month invalido: {arg!r} (use 'latest' ou YYYY-MM)")
     return arg

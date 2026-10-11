@@ -297,7 +297,7 @@ warm_cache: true
 warm_skip_hours: "0"        # rebuild completo em UPSERT (sem cache miss), ~20h
 ```
 
-**Agendador** — [`rfb-sync-schedule.yml`](../.github/workflows/rfb-sync-schedule.yml) roda às segundas, detecta o mês RFB mais recente com os 37 ZIPs presentes e estável há ≥24h, e dispara exatamente os inputs acima se ainda não houver run com sucesso/em andamento para o mês (procura pelo `run-name` `rfb_sync <mes>`). Após 2 falhas no mesmo mês ele para e exige ação manual. **Vem desligado**: habilite depois do primeiro sync manual supervisionado com `gh variable set RFB_SYNC_SCHEDULE_ENABLED --body true`. `workflow_dispatch` com `dry_run=true` mostra a decisão sem disparar.
+**Agendador** — [`rfb-sync-schedule.yml`](../.github/workflows/rfb-sync-schedule.yml) roda às segundas, detecta (via `HEAD` por arquivo) o mês RFB mais recente com os 37 ZIPs presentes e estável há ≥24h, e dispara exatamente os inputs acima se ainda não houver run com sucesso/em andamento para o mês (procura pelo `run-name` `rfb_sync <mes>`). Após 2 falhas no mesmo mês ele para e exige ação manual. **Vem desligado**: habilite depois do primeiro sync manual supervisionado com `gh variable set RFB_SYNC_SCHEDULE_ENABLED --body true`. `workflow_dispatch` com `dry_run=true` mostra a decisão sem disparar.
 
 ### Incremental TCE-PB apenas
 

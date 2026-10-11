@@ -275,7 +275,7 @@ quando a RFB publica um mês completo (ver [deploy.md](deploy.md#sync-mensal-rfb
 Local: `python -m etl.rfb_sync --month 2026-09`.
 
 **Por tabela** (`empresa` → `estabelecimento` → `simples` → `socio`):
-1. Baixa os ZIPs do mês um a um (tamanho conferido com o PROPFIND), carrega
+1. Baixa os ZIPs do mês um a um (tamanho conferido com o `HEAD` — o servidor RFB não lista mais diretórios via PROPFIND), carrega
    numa staging UNLOGGED tipada e apaga o CSV (pico de disco ≈ 1 CSV + staging;
    o sync exige `--min-free-gb`, default 40).
 2. **Guards antes de qualquer escrita na tabela live** — snapshot menor que a
