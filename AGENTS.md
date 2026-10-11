@@ -69,6 +69,7 @@ python -m etl.run_all             # full ETL (24 phases incl. Download)
 python -m etl.run_all 4           # resume from phase N (1-based index into phases list)
 python -m etl.00_download         # downloads only
 python -m etl.probe_sources       # test source availability
+python -m etl.rfb_sync --month latest   # monthly RFB/CNPJ diff-sync (docs/etl-guide.md#sync-mensal-rfb)
 
 python -m etl.run_queries                 # run all Q## fraud queries → resultados/
 python -m etl.run_queries --query Q03     # single query

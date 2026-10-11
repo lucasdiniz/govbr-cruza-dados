@@ -1,0 +1,140 @@
+name: RFB sync - agendador
+
+# Verifica semanalmente se a RFB publicou um novo mes do CNPJ e, se sim,
+# dispara deploy.yml com rfb_sync=<mes> (+ warm completo). Ver
+# docs/etl-guide.md#sync-mensal-rfb.
+#
+# Seguranca / dados live:
+# - So dispara com a publicacao COMPLETA (todos os 37 ZIPs) e estavel ha
+#   >= 24h (a RFB sobe os arquivos ao longo de horas).
+# - Nao re-dispara mes ja sincronizado/em andamento: procura runs do
+#   deploy.yml pelo run-name "rfb_sync <mes>".
+# - Para de tentar apos 2 falhas no mesmo mes (evita loop semanal de resize de
+#   VM + warm sobre uma publicacao quebrada) — exige acao manual.
+# - O proprio etl.rfb_sync re-checa tudo (guards, mes ja feito, regressao).
+#
+# Concorrencia: deploy.yml usa concurrency group deploy-azure-vm. Um disparo
+# manual enquanto este run estiver PENDENTE cancela o pendente (regra do
+# GitHub); o agendador re-dispara na semana seguinte.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # segundas 06:00 BRT
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "So mostra a decisao, nao dispara o deploy"
+        type: boolean
+        default: false
+
+permissions:
+  actions: write   # gh workflow run (workflow_dispatch funciona com GITHUB_TOKEN)
+  contents: read
+
+concurrency:
+  group: rfb-sync-schedule
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # Desligado ate o 1o sync manual supervisionado em prod dar certo:
+    #   gh variable set RFB_SYNC_SCHEDULE_ENABLED --body true
+    if: github.event_name == 'workflow_dispatch' || vars.RFB_SYNC_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Detectar mes RFB completo mais recente
+        id: rfb
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import base64, socket, sys, urllib.error, urllib.request
+          from datetime import date, datetime, timezone
+          from email.utils import parsedate_to_datetime
+
+          orig = socket.getaddrinfo  # RFB nao responde em IPv6
+          socket.getaddrinfo = lambda *a, **k: [r for r in orig(*a, **k) if r[0] == socket.AF_INET]
+          BASE = "https://arquivos.receitafederal.gov.br/public.php/webdav"
+          AUTH = "Basic " + base64.b64encode(b"YggdBLfdninEJX9:").decode()
+
+          # PROPFIND (listagem) passou a voltar vazio no servidor RFB; HEAD por
+          # arquivo eh confiavel (Content-Length + Last-Modified, 404 se ausente).
+          def head(path):
+              req = urllib.request.Request(f"{BASE}/{path}", method="HEAD", headers={"Authorization": AUTH})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      lm = r.headers.get("Last-Modified")
+                      return parsedate_to_datetime(lm) if lm else None
+              except urllib.error.HTTPError as e:
+                  if e.code in (403, 404, 410):
+                      return False
+                  raise
+
+          expected = ([f"{p}{i}.zip" for p in ("Empresas", "Estabelecimentos", "Socios") for i in range(10)]
+                      + [f"{n}.zip" for n in ("Simples", "Cnaes", "Municipios", "Naturezas",
+                                              "Paises", "Qualificacoes", "Motivos")])
+          y, m = date.today().year, date.today().month
+          months = []
+          for _ in range(3):
+              months.append(f"{y:04d}-{m:02d}")
+              y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+          now = datetime.now(timezone.utc)
+          chosen = ""
+          for mo in months:  # mais recente primeiro
+              if head(f"{mo}/Cnaes.zip") is False:
+                  print(f"{mo}: nao publicado", file=sys.stderr)
+                  continue
+              stamps = {f: head(f"{mo}/{f}") for f in expected}
+              missing = [f for f, v in stamps.items() if v is False]
+              newest = max((v for v in stamps.values() if v), default=None)
+              age_h = (now - newest).total_seconds() / 3600 if newest else -1
+              print(f"{mo}: faltando={len(missing)} idade_ultimo_arquivo={age_h:.0f}h", file=sys.stderr)
+              if not missing and age_h >= 24:
+                  chosen = mo
+                  break
+          print(f"month={chosen}")
+          PY
+          cat "$GITHUB_OUTPUT"
+
+      - name: Decidir disparo
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ steps.rfb.outputs.month }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MONTH" ]; then
+            echo "Nenhuma publicacao RFB completa e estavel encontrada."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          RUNS=$(gh run list -R "$GITHUB_REPOSITORY" -w deploy.yml -L 200 \
+                   --json displayTitle,status,conclusion \
+                   --jq "[.[] | select(.displayTitle | test(\"rfb_sync ${MONTH}(:force)?\$\"))]")
+          echo "Runs anteriores para $MONTH: $RUNS"
+          OK=$(echo "$RUNS" | jq '[.[] | select(.conclusion == "success" or .status != "completed")] | length')
+          FAILS=$(echo "$RUNS" | jq '[.[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "timed_out"))] | length')
+          if [ "$OK" -gt 0 ]; then
+            echo "$MONTH ja sincronizado ou em andamento — nada a fazer."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+          elif [ "$FAILS" -ge 2 ]; then
+            echo "::error::rfb_sync $MONTH falhou $FAILS vezes — agendador pausado para este mes. Investigar o log do deploy e disparar manualmente."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          else
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Disparar deploy (rfb_sync)
+        if: steps.decide.outputs.dispatch == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ steps.rfb.outputs.month }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy.yml -R "$GITHUB_REPOSITORY" --ref main \
+            -f etl_phase=web \
+            -f rfb_sync="$MONTH" \
+            -f cleanup_orphan_empresa_cache=true \
+            -f warm_cache=true \
+            -f warm_skip_hours=0
+          echo "Disparado deploy.yml rfb_sync=$MONTH"

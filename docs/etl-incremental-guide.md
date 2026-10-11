@@ -18,7 +18,9 @@ O framework incremental existe para fontes que:
 - Têm uma **natural key estável** (corruptíveis se sobrescritas)
 
 Para fontes que não atendem essas condições — RFB CNPJ snapshot mensal, TSE
-prestação de contas anual full — **mantenha clássico**. Ver
+prestação de contas anual full — **mantenha clássico**. RFB tem sync mensal
+próprio (diff in-place, fora deste framework): ver
+[etl-guide.md](etl-guide.md#sync-mensal-rfb). Ver
 [architecture.md](architecture.md) para o panorama e
 [etl-guide.md](etl-guide.md) para o fluxo clássico.
 
@@ -438,8 +440,11 @@ code após primeira execução). Padrão único: `etl_phase=incremental` +
 Da auditoria do projeto, ordenadas por payoff:
 
 1. **CEIS / CNEP** (sanções administrativas — ver [glossario.md](glossario.md)).
-   Alto valor para cruzamentos de fraude, NK clara `(CNPJ, data_inicio_sancao,
-   orgao_sancionador)`. Append-only.
+   Alto valor para cruzamentos de fraude. **Atenção:** o Portal publica
+   **snapshot diário completo**, não append-only — sanções revogadas/encerradas
+   somem do arquivo. Carga append-only manteria sanções revogadas como vigentes;
+   o caminho certo é reload completo com troca atômica (padrão do sync RFB),
+   não este framework.
 2. **SIAPE / Bolsa Família** — publicação mensal, idempotência crítica
    (rebuild full = horas de ETL). NK estável (matrícula+mês).
 3. **PNCP** — maior payoff, mas exige novo `CursorStrategy=API_CURSOR` (API
