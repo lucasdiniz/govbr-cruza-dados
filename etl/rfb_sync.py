@@ -205,32 +205,54 @@ def resolve_month(arg: str) -> str:
     return arg
 
 
-def download_zip(month: str, name: str, expected_size: int, dest_dir: Path, retries: int = 3) -> Path:
-    """Baixa {month}/{name} conferindo o tamanho exato (download truncado = erro)."""
+def download_zip(month: str, name: str, expected_size: int, dest_dir: Path, retries: int = 8) -> Path:
+    """Baixa {month}/{name} conferindo o tamanho exato (download truncado = erro).
+
+    Retomavel: o servidor RFB derruba conexoes longas (reset no meio de
+    arquivos de GBs); cada nova tentativa continua do byte onde parou via
+    `Range` (206). Se o servidor ignorar o Range (200), recomeca do zero.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / name
     if dest.exists() and dest.stat().st_size == expected_size:
         return dest
     part = dest.with_name(dest.name + ".part")
+    part.unlink(missing_ok=True)
     url = f"{WEBDAV_BASE}/{month}/{name}"
     last_err: Exception | None = None
+    t0 = time.time()
     for attempt in range(1, retries + 1):
+        have = part.stat().st_size if part.exists() else 0
+        if have > expected_size:
+            part.unlink()
+            have = 0
+        headers = {"Authorization": _WEBDAV_AUTH, "User-Agent": _UA}
+        if have:
+            headers["Range"] = f"bytes={have}-"
         try:
-            t0 = time.time()
-            req = Request(url, headers={"Authorization": _WEBDAV_AUTH, "User-Agent": _UA})
-            with _ipv4_only(), urlopen(req, timeout=300) as resp, open(part, "wb") as f:
-                shutil.copyfileobj(resp, f, length=4 * 1024 * 1024)
+            req = Request(url, headers=headers)
+            with _ipv4_only(), urlopen(req, timeout=300) as resp:
+                mode = "ab" if (have and resp.status == 206) else "wb"
+                with open(part, mode) as f:
+                    shutil.copyfileobj(resp, f, length=4 * 1024 * 1024)
             got = part.stat().st_size
             if got != expected_size:
                 raise IOError(f"{name}: tamanho {got} != esperado {expected_size}")
             part.replace(dest)
-            logger.info("baixado %s/%s (%.1f MB em %.0fs)", month, name, got / 1e6, time.time() - t0)
+            logger.info("baixado %s/%s (%.1f MB em %.0fs, %d tentativa(s))",
+                        month, name, got / 1e6, time.time() - t0, attempt)
             return dest
-        except (HTTPError, URLError, OSError) as e:
+        except HTTPError as e:
             last_err = e
-            part.unlink(missing_ok=True)
-            logger.warning("download %s tentativa %d/%d falhou: %s", name, attempt, retries, e)
-            time.sleep(10 * attempt)
+            if e.code == 416:  # Range invalido: recomeca
+                part.unlink(missing_ok=True)
+        except (URLError, OSError) as e:
+            last_err = e
+        logger.warning("download %s tentativa %d/%d falhou (%s bytes ate aqui): %s",
+                       name, attempt, retries,
+                       part.stat().st_size if part.exists() else 0, last_err)
+        time.sleep(min(10 * attempt, 60))
+    part.unlink(missing_ok=True)
     raise RuntimeError(f"download de {month}/{name} falhou apos {retries} tentativas: {last_err}")
 
 
@@ -270,6 +292,32 @@ def apply_schema(conn) -> None:
     path = Path(__file__).resolve().parents[1] / "sql" / "45_rfb_sync.sql"
     _exec(conn, path.read_text(encoding="utf-8"))
     conn.commit()
+
+
+def not_null_columns(conn, table: str) -> set[str]:
+    """Colunas NOT NULL (sem default gerado) da tabela live."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.attname FROM pg_attribute a
+            WHERE a.attrelid = %s::regclass AND a.attnum > 0 AND NOT a.attisdropped
+              AND a.attnotnull AND a.attgenerated = ''
+            """,
+            (table,),
+        )
+        return {r[0] for r in cur.fetchall()}
+
+
+def _required_cols(conn, spec: RfbTable) -> list[str]:
+    """Colunas de dados (fora da chave) NOT NULL na live."""
+    nn = not_null_columns(conn, spec.table)
+    return [c for c in spec.columns if c in nn and c not in spec.key]
+
+
+def _incomplete_pred(alias: str, cols: list[str]) -> str:
+    """Linha do snapshot que violaria NOT NULL da live (registro incompleto da
+    RFB — ex.: 2 empresas sem razao_social e natureza '0000' em 2026-09)."""
+    return " OR ".join(f"{alias}.{c} IS NULL" for c in cols) if cols else "FALSE"
 
 
 def column_types(conn, table: str) -> dict[str, str]:
@@ -395,14 +443,32 @@ def plan_table(conn, spec: RfbTable, staging_rows: int) -> dict:
         conn,
         f"SELECT COUNT(*) FROM {spec.table} t WHERE NOT EXISTS (SELECT 1 FROM {stg} s WHERE {match})",
     ))
+    incomplete = 0
+    if spec is not SOCIO:
+        req = _required_cols(conn, spec)
+        if req:
+            incomplete = int(_scalar(conn, f"SELECT COUNT(*) FROM {stg} s WHERE {_incomplete_pred('s', req)}"))
     conn.commit()
-    return {"live_antes": live, "staging": staging_rows, "a_remover": to_delete}
+    return {"live_antes": live, "staging": staging_rows, "a_remover": to_delete,
+            "incompletas": incomplete}
+
+
+# Registros incompletos tolerados (ignorados) antes de abortar. 2026-09 trouxe
+# 2 em 70M; volume grande = formato/coluna deslocada -> abortar, nao ignorar.
+MAX_INCOMPLETE_ROWS = 1000
+MAX_INCOMPLETE_PCT = 0.01
 
 
 def check_guards(spec: RfbTable, plan: dict, max_delete_pct: float, max_shrink_pct: float) -> None:
     live, stg, rem = plan["live_antes"], plan["staging"], plan["a_remover"]
     if stg == 0:
         raise GuardError(f"{spec.table}: snapshot vazio — download/parse falhou")
+    inc = plan.get("incompletas", 0)
+    if inc > max(MAX_INCOMPLETE_ROWS, stg * MAX_INCOMPLETE_PCT / 100):
+        raise GuardError(
+            f"{spec.table}: {inc:,} linhas do snapshot com coluna NOT NULL vazia "
+            f"(limite max({MAX_INCOMPLETE_ROWS}, {MAX_INCOMPLETE_PCT}%)) — mudanca de formato?"
+        )
     if live == 0:
         return  # carga inicial via sync: nada a proteger
     if stg < live * (1 - max_shrink_pct / 100):
@@ -425,7 +491,17 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
     all_cols = ", ".join(spec.columns)
     s_all = ", ".join(f"s.{c}" for c in spec.columns)
     is_estab = spec.table == "estabelecimento"
-    totals = {"removidas": 0, "atualizadas": 0, "inseridas": 0}
+    totals = {"removidas": 0, "atualizadas": 0, "inseridas": 0, "incompletas_ignoradas": 0}
+    # Registro incompleto (violaria NOT NULL): a linha live correspondente fica
+    # intocada (nem UPDATE nem DELETE — a chave esta na staging) e nao ha
+    # INSERT de chave nova. Volume limitado por check_guards ANTES daqui.
+    req = _required_cols(conn, spec)
+    complete = f"NOT ({_incomplete_pred('s', req)})"
+    totals["incompletas_ignoradas"] = int(_scalar(
+        conn, f"SELECT COUNT(*) FROM {stg} s WHERE NOT ({complete})"))
+    if totals["incompletas_ignoradas"]:
+        logger.warning("%s: %d linhas do snapshot com NOT NULL vazio (%s) ignoradas",
+                       spec.table, totals["incompletas_ignoradas"], ", ".join(req))
 
     # rfb_sync_estab_delta NAO eh limpa aqui: eh trabalho pendente durável.
     # Se a execucao falhar depois de aplicar estabelecimentos (guard em
@@ -440,7 +516,7 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
             f"AND NOT EXISTS (SELECT 1 FROM {stg} s WHERE {_key_eq(spec, 's', 't')})"
         )
         insert_sql = (
-            f"INSERT INTO {spec.table} ({all_cols}) SELECT {s_all} FROM {stg} s WHERE {rs} "
+            f"INSERT INTO {spec.table} ({all_cols}) SELECT {s_all} FROM {stg} s WHERE {rs} AND {complete} "
             f"AND NOT EXISTS (SELECT 1 FROM {spec.table} t WHERE {_key_eq(spec, 't', 's')})"
         )
         if is_estab:
@@ -458,7 +534,7 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
         totals["atualizadas"] += _exec(
             conn,
             f"UPDATE {spec.table} t SET ({', '.join(data_cols)}) = ROW({s_cols}) "
-            f"FROM {stg} s WHERE {_key_eq(spec, 't', 's')} AND {rt} "
+            f"FROM {stg} s WHERE {_key_eq(spec, 't', 's')} AND {rt} AND {complete} "
             f"AND ({t_cols}) IS DISTINCT FROM ({s_cols})",
         )
         totals["inseridas"] += _exec(conn, insert_sql, {"mes": month})

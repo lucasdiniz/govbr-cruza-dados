@@ -70,6 +70,9 @@ def test_identidade_socio_ignora_faixa_etaria_e_representante():
     ({"live_antes": 1000, "staging": 0, "a_remover": 1000}, False),      # snapshot vazio
     ({"live_antes": 1000, "staging": 500, "a_remover": 0}, False),       # encolheu
     ({"live_antes": 1000, "staging": 1000, "a_remover": 50}, False),     # remocao em massa
+    ({"live_antes": 70_000_000, "staging": 70_085_591, "a_remover": 0, "incompletas": 2}, True),  # 2026-09 real
+    ({"live_antes": 70_000_000, "staging": 70_000_000, "a_remover": 0, "incompletas": 7_001}, False),
+    ({"live_antes": 1000, "staging": 1000, "a_remover": 0, "incompletas": 1001}, False),
 ])
 def test_guards(plan, ok):
     spec = RFB_TABLES["empresa"]
@@ -387,3 +390,78 @@ def test_descoberta_por_head_sem_listagem(monkeypatch):
     assert rfb_sync.list_months() == ["2026-09", "2026-10"]
     assert len(rfb_sync.list_files("2026-09")) == 37
     assert rfb_sync.resolve_month("latest") == "2026-09"  # 2026-10 incompleto
+
+
+def test_empresa_sem_razao_social_nao_derruba_sync(db, fake_webdav, tmp_path):
+    """2026-09 trouxe 2 empresas com razao_social vazia (natureza '0000').
+    Existente: fica intocada (nem update nem delete). Nova: nao entra."""
+    fake_webdav("2026-08", MONTH_A)
+    vazia = _q("11111111", "", "0000", "00", "0,00", "", "")          # existente
+    nova_vazia = _q("55555555", "", "0000", "00", "0,00", "", "")     # nova
+    fake_webdav("2026-09", dict(MONTH_A, Empresas=[vazia, nova_vazia] + MONTH_A["Empresas"][1:]))
+    assert _sync("2026-08", tmp_path) == 0
+    antes = _rows(db, "SELECT * FROM empresa WHERE cnpj_basico = '11111111'")
+
+    assert _sync("2026-09", tmp_path) == 0
+    assert _rows(db, "SELECT * FROM empresa WHERE cnpj_basico = '11111111'") == antes
+    assert _rows(db, "SELECT COUNT(*) FROM empresa WHERE cnpj_basico = '55555555'")[0][0] == 0
+    stats = _rows(db, "SELECT stats FROM rfb_sync_log ORDER BY id DESC LIMIT 1")[0][0]
+    assert stats["empresa"]["incompletas_ignoradas"] == 2
+    assert stats["empresa"]["removidas"] == 0
+
+
+def test_download_retoma_apos_reset(tmp_path, monkeypatch):
+    """Servidor derruba a conexao no meio; a 2a tentativa continua via Range."""
+    import http.server
+    import threading
+
+    payload = bytes(range(256)) * 4000  # ~1 MB
+    calls = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            rng = self.headers.get("Range")
+            calls.append(rng)
+            if rng is None:  # 1a: manda metade e derruba
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload[: len(payload) // 2])
+                self.wfile.flush()
+                self.connection.shutdown(2)
+                return
+            start = int(rng.split("=")[1].rstrip("-"))
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{len(payload)-1}/{len(payload)}")
+            self.send_header("Content-Length", str(len(payload) - start))
+            self.end_headers()
+            self.wfile.write(payload[start:])
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(rfb_sync, "WEBDAV_BASE", f"http://127.0.0.1:{srv.server_address[1]}")
+        monkeypatch.setattr(rfb_sync.time, "sleep", lambda s: None)
+        out = rfb_sync.download_zip("2026-09", "X.zip", len(payload), tmp_path)
+    finally:
+        srv.shutdown()
+    assert out.read_bytes() == payload
+    assert calls[0] is None and calls[1] == f"bytes={len(payload) // 2}-"
+
+
+
+def test_snapshot_com_muitas_razoes_vazias_aborta_sem_tocar_live(db, fake_webdav, tmp_path, monkeypatch):
+    """Revisao PR #209: incompletos em massa (formato mudou) abortam ANTES do
+    primeiro lote, em vez de virar 'success' com a tabela parada."""
+    monkeypatch.setattr(rfb_sync, "MAX_INCOMPLETE_ROWS", 1)
+    fake_webdav("2026-08", MONTH_A)
+    sem_nome = [_q(cb, "", "2062", "49", "1,00", "01", "") for cb in ("11111111", "22222222", "33333333")]
+    fake_webdav("2026-09", dict(MONTH_B, Empresas=sem_nome))
+    assert _sync("2026-08", tmp_path) == 0
+    antes = _rows(db, "SELECT * FROM empresa ORDER BY 1")
+    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 2
+    assert _rows(db, "SELECT * FROM empresa ORDER BY 1") == antes
+    assert _rows(db, "SELECT status FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [("aborted",)]
