@@ -70,6 +70,9 @@ def test_identidade_socio_ignora_faixa_etaria_e_representante():
     ({"live_antes": 1000, "staging": 0, "a_remover": 1000}, False),      # snapshot vazio
     ({"live_antes": 1000, "staging": 500, "a_remover": 0}, False),       # encolheu
     ({"live_antes": 1000, "staging": 1000, "a_remover": 50}, False),     # remocao em massa
+    ({"live_antes": 70_000_000, "staging": 70_085_591, "a_remover": 0, "incompletas": 2}, True),  # 2026-09 real
+    ({"live_antes": 70_000_000, "staging": 70_000_000, "a_remover": 0, "incompletas": 7_001}, False),
+    ({"live_antes": 1000, "staging": 1000, "a_remover": 0, "incompletas": 1001}, False),
 ])
 def test_guards(plan, ok):
     spec = RFB_TABLES["empresa"]
@@ -447,3 +450,18 @@ def test_download_retoma_apos_reset(tmp_path, monkeypatch):
         srv.shutdown()
     assert out.read_bytes() == payload
     assert calls[0] is None and calls[1] == f"bytes={len(payload) // 2}-"
+
+
+
+def test_snapshot_com_muitas_razoes_vazias_aborta_sem_tocar_live(db, fake_webdav, tmp_path, monkeypatch):
+    """Revisao PR #209: incompletos em massa (formato mudou) abortam ANTES do
+    primeiro lote, em vez de virar 'success' com a tabela parada."""
+    monkeypatch.setattr(rfb_sync, "MAX_INCOMPLETE_ROWS", 1)
+    fake_webdav("2026-08", MONTH_A)
+    sem_nome = [_q(cb, "", "2062", "49", "1,00", "01", "") for cb in ("11111111", "22222222", "33333333")]
+    fake_webdav("2026-09", dict(MONTH_B, Empresas=sem_nome))
+    assert _sync("2026-08", tmp_path) == 0
+    antes = _rows(db, "SELECT * FROM empresa ORDER BY 1")
+    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 2
+    assert _rows(db, "SELECT * FROM empresa ORDER BY 1") == antes
+    assert _rows(db, "SELECT status FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [("aborted",)]

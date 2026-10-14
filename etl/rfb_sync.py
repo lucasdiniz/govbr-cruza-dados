@@ -308,6 +308,12 @@ def not_null_columns(conn, table: str) -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
+def _required_cols(conn, spec: RfbTable) -> list[str]:
+    """Colunas de dados (fora da chave) NOT NULL na live."""
+    nn = not_null_columns(conn, spec.table)
+    return [c for c in spec.columns if c in nn and c not in spec.key]
+
+
 def _incomplete_pred(alias: str, cols: list[str]) -> str:
     """Linha do snapshot que violaria NOT NULL da live (registro incompleto da
     RFB — ex.: 2 empresas sem razao_social e natureza '0000' em 2026-09)."""
@@ -437,14 +443,32 @@ def plan_table(conn, spec: RfbTable, staging_rows: int) -> dict:
         conn,
         f"SELECT COUNT(*) FROM {spec.table} t WHERE NOT EXISTS (SELECT 1 FROM {stg} s WHERE {match})",
     ))
+    incomplete = 0
+    if spec is not SOCIO:
+        req = _required_cols(conn, spec)
+        if req:
+            incomplete = int(_scalar(conn, f"SELECT COUNT(*) FROM {stg} s WHERE {_incomplete_pred('s', req)}"))
     conn.commit()
-    return {"live_antes": live, "staging": staging_rows, "a_remover": to_delete}
+    return {"live_antes": live, "staging": staging_rows, "a_remover": to_delete,
+            "incompletas": incomplete}
+
+
+# Registros incompletos tolerados (ignorados) antes de abortar. 2026-09 trouxe
+# 2 em 70M; volume grande = formato/coluna deslocada -> abortar, nao ignorar.
+MAX_INCOMPLETE_ROWS = 1000
+MAX_INCOMPLETE_PCT = 0.01
 
 
 def check_guards(spec: RfbTable, plan: dict, max_delete_pct: float, max_shrink_pct: float) -> None:
     live, stg, rem = plan["live_antes"], plan["staging"], plan["a_remover"]
     if stg == 0:
         raise GuardError(f"{spec.table}: snapshot vazio — download/parse falhou")
+    inc = plan.get("incompletas", 0)
+    if inc > max(MAX_INCOMPLETE_ROWS, stg * MAX_INCOMPLETE_PCT / 100):
+        raise GuardError(
+            f"{spec.table}: {inc:,} linhas do snapshot com coluna NOT NULL vazia "
+            f"(limite max({MAX_INCOMPLETE_ROWS}, {MAX_INCOMPLETE_PCT}%)) — mudanca de formato?"
+        )
     if live == 0:
         return  # carga inicial via sync: nada a proteger
     if stg < live * (1 - max_shrink_pct / 100):
@@ -470,8 +494,8 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
     totals = {"removidas": 0, "atualizadas": 0, "inseridas": 0, "incompletas_ignoradas": 0}
     # Registro incompleto (violaria NOT NULL): a linha live correspondente fica
     # intocada (nem UPDATE nem DELETE — a chave esta na staging) e nao ha
-    # INSERT de chave nova. Nunca derruba o sync nem remove empresa.
-    req = [c for c in spec.columns if c in not_null_columns(conn, spec.table) and c not in spec.key]
+    # INSERT de chave nova. Volume limitado por check_guards ANTES daqui.
+    req = _required_cols(conn, spec)
     complete = f"NOT ({_incomplete_pred('s', req)})"
     totals["incompletas_ignoradas"] = int(_scalar(
         conn, f"SELECT COUNT(*) FROM {stg} s WHERE NOT ({complete})"))
