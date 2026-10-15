@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import base64, socket, sys, urllib.error, urllib.request
+          import base64, http.client, socket, sys, urllib.error, urllib.request
           from datetime import date, datetime, timezone
           from email.utils import parsedate_to_datetime
 
@@ -73,10 +73,11 @@ jobs:
                       if e.code in (403, 404, 410):
                           return False
                       err = e
-                  except (urllib.error.URLError, OSError) as e:
+                  except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
                       err = e
                   print(f"HEAD {path} tentativa {i}/{tries}: {err}", file=sys.stderr)
-                  time.sleep(10 * i)
+                  if i < tries:
+                      time.sleep(10 * i)
               raise RuntimeError(f"HEAD {path} falhou {tries}x: {err}")
 
           expected = ([f"{p}{i}.zip" for p in ("Empresas", "Estabelecimentos", "Socios") for i in range(10)]
