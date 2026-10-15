@@ -41,14 +41,14 @@ jobs:
     #   gh variable set RFB_SYNC_SCHEDULE_ENABLED --body true
     if: github.event_name == 'workflow_dispatch' || vars.RFB_SYNC_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Detectar mes RFB completo mais recente
         id: rfb
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import base64, socket, sys, urllib.error, urllib.request
+          import base64, http.client, socket, sys, urllib.error, urllib.request
           from datetime import date, datetime, timezone
           from email.utils import parsedate_to_datetime
 
@@ -59,16 +59,26 @@ jobs:
 
           # PROPFIND (listagem) passou a voltar vazio no servidor RFB; HEAD por
           # arquivo eh confiavel (Content-Length + Last-Modified, 404 se ausente).
-          def head(path):
-              req = urllib.request.Request(f"{BASE}/{path}", method="HEAD", headers={"Authorization": AUTH})
-              try:
-                  with urllib.request.urlopen(req, timeout=60) as r:
-                      lm = r.headers.get("Last-Modified")
-                      return parsedate_to_datetime(lm) if lm else None
-              except urllib.error.HTTPError as e:
-                  if e.code in (403, 404, 410):
-                      return False
-                  raise
+          def head(path, tries=5):
+              # Servidor RFB oscila (timeouts/resets): retry com backoff, como
+              # etl.rfb_sync.head_file. Esgotado -> falha o job (nao dispara).
+              import time
+              for i in range(1, tries + 1):
+                  req = urllib.request.Request(f"{BASE}/{path}", method="HEAD", headers={"Authorization": AUTH})
+                  try:
+                      with urllib.request.urlopen(req, timeout=90) as r:
+                          lm = r.headers.get("Last-Modified")
+                          return parsedate_to_datetime(lm) if lm else None
+                  except urllib.error.HTTPError as e:
+                      if e.code in (403, 404, 410):
+                          return False
+                      err = e
+                  except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+                      err = e
+                  print(f"HEAD {path} tentativa {i}/{tries}: {err}", file=sys.stderr)
+                  if i < tries:
+                      time.sleep(10 * i)
+              raise RuntimeError(f"HEAD {path} falhou {tries}x: {err}")
 
           expected = ([f"{p}{i}.zip" for p in ("Empresas", "Estabelecimentos", "Socios") for i in range(10)]
                       + [f"{n}.zip" for n in ("Simples", "Cnaes", "Municipios", "Naturezas",
