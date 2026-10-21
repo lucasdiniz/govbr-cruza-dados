@@ -24,7 +24,7 @@ psql -c "SELECT * FROM v_etl_run_summary LIMIT 10"
 ## Princípios não-negociáveis (P1-P6)
 
 1. 🔴 **NÃO CORROMPER DADOS EXISTENTES** (sobrepõe tudo)
-2. **NÃO-DESTRUTIVO** — sem TRUNCATE/DROP/DELETE em targets
+2. **NÃO-DESTRUTIVO** — sem TRUNCATE/DROP/DELETE em targets (exceção controlada: `bucket_replace` dos snapshots TCE-PB, só via `etl_admin.tce_pb_replace_bucket` + backup — ADR-0015)
 3. **AUDITÁVEL** — rastro completo, imutável pelo ETL role
 4. **ERROR RESILIENT** — recuperável de qualquer crash
 5. **FAST** — download condicional + idempotency

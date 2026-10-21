@@ -1,7 +1,9 @@
 name: Deploy to Azure VM
 # Titulo com o mes do RFB sync: .github/workflows/rfb-sync-schedule.yml procura
 # runs anteriores por este texto para nao re-disparar o mesmo mes.
-run-name: ${{ inputs.rfb_sync != '' && format('Deploy to Azure VM - rfb_sync {0}', inputs.rfb_sync) || 'Deploy to Azure VM' }}
+# Incremental: incremental-schedule.yml usa "incremental" no titulo para saber
+# quando foi o ultimo ciclo TCE-PB/BF com sucesso.
+run-name: ${{ inputs.rfb_sync != '' && format('Deploy to Azure VM - rfb_sync {0}', inputs.rfb_sync) || (inputs.etl_phase == 'incremental' && format('Deploy to Azure VM - incremental {0} [{1}]', inputs.incremental_only || 'todas', inputs.incremental_only_buckets || 'todos')) || 'Deploy to Azure VM' }}
 
 # Pipeline em 3 jobs:
 #   1. preflight  (github-hosted, OIDC) — resize VM up se etl_phase != web
@@ -764,6 +766,13 @@ jobs:
             PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
               -f sql/42z_tce_pb_finalize.sql
 
+            # Replace por bucket (ADR-0015): backups <tabela>_removido +
+            # etl_admin.tce_pb_replace_bucket. Idempotente; precisa existir
+            # antes do runner (specs despesa/receita chamam a funcao).
+            echo "=== sql/46 (tce_pb: replace por bucket — backups + funcao guardada) ==="
+            PGPASSWORD="$PASS" psql -U govbr -d govbr -v ON_ERROR_STOP=1 \
+              -f sql/46_tce_pb_bucket_replace.sql
+
             # Garante zero-downtime no refresh da mv_q67_dated_pb. As demais
             # MVs do hook TCE-PB ja possuem UNIQUE INDEX no sql/12_views.sql.
             Q67_HAS_VALID_UNIQUE=$(PGPASSWORD="$PASS" psql -U govbr -d govbr -Atc "
@@ -799,16 +808,24 @@ jobs:
             fi
           fi
 
-          # Framework incremental runner
+          # Framework incremental runner.
+          # Codigo de saida guardado (nao aborta aqui): buckets que comitaram
+          # (ex.: replace TCE-PB de outros anos, ADR-0015) precisam do refresh
+          # das MVs abaixo mesmo que outro bucket tenha falhado — senao MVs e
+          # tabelas base ficam inconsistentes. O step falha no fim.
+          RUNNER_RC=0
           if [ -n "${{ inputs.incremental_only }}" ]; then
             python -m etl.incremental.runner \
                 --only "${{ inputs.incremental_only }}" \
                 --max-runtime-s 345600 \
-                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
+                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1 || RUNNER_RC=$?
           else
             python -m etl.incremental.runner \
                 --max-runtime-s 345600 \
-                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1
+                ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1 || RUNNER_RC=$?
+          fi
+          if [ "$RUNNER_RC" -ne 0 ]; then
+            echo "::error::Runner incremental terminou com codigo $RUNNER_RC — refrescando MVs dos buckets comitados e falhando o step no fim"
           fi
 
           # Refresh post-incremental para sources com MVs dependentes.
@@ -833,6 +850,33 @@ jobs:
           # etl_phase=sql. Idempotente, ~1-2min.
           echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
           python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
+
+          exit "$RUNNER_RC"
+
+      # Watermarks do ETL incremental como artifact: incremental-schedule.yml
+      # (GitHub-hosted, sem acesso ao banco) le daqui o ultimo mes de Bolsa
+      # Familia carregado. Roda mesmo se o incremental falhar (estado real).
+      - name: "ETL: Exportar watermarks (agendador)"
+        if: always() && inputs.etl_phase == 'incremental'
+        run: |
+          set -euo pipefail
+          cd ${{ env.PROJECT_DIR }}
+          source .env 2>/dev/null || true
+          PASS="${POSTGRES_PASSWORD:-${{ secrets.DB_PASSWORD }}}"
+          mkdir -p "$RUNNER_TEMP/etl-watermarks"
+          PGPASSWORD="$PASS" psql -U govbr -d govbr -Atc "
+            SELECT COALESCE(json_object_agg(source || '.' || table_name, last_value), '{}'::json)
+            FROM etl_watermark" > "$RUNNER_TEMP/etl-watermarks/watermarks.json"
+          cat "$RUNNER_TEMP/etl-watermarks/watermarks.json"
+
+      - name: "ETL: Publicar artifact de watermarks"
+        if: always() && inputs.etl_phase == 'incremental'
+        uses: actions/upload-artifact@v4
+        with:
+          name: etl-watermarks
+          path: ${{ runner.temp }}/etl-watermarks/watermarks.json
+          retention-days: 90
+          if-no-files-found: warn
 
       # ── Download seletivo (opt-in) ──
       # Roda ANTES do ETL phase quando download_sources != ''. Caso de uso:

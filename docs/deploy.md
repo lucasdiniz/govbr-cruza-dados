@@ -304,7 +304,21 @@ warm_skip_hours: "0"        # rebuild completo em UPSERT (sem cache miss), ~20h
 ```yaml
 etl_phase: incremental
 incremental_only: "tce_pb.tce_pb_despesa"
+incremental_only_buckets: "2026"   # sempre limite os anos: sem isso TODOS os anos (2018+) sao reprocessados
 ```
+
+`tce_pb_despesa` e `tce_pb_receita` rodam em **replace por bucket**
+([ADR-0015](adr/0015-tce-pb-replace-por-bucket.md)): o ano no banco passa a
+ser igual ao arquivo publicado (versões antigas vão para
+`<tabela>_removido`, com guardas). Um ano com guarda violada ou download falho
+faz o runner falhar; as MVs dos anos que comitaram são refrescadas mesmo assim
+e o step falha no fim. O `run-name` fica `Deploy to Azure VM - incremental
+<specs> [<buckets>]` (usado pelo agendador). O step publica o artifact
+`etl-watermarks` (watermarks do banco) ao final.
+
+**Warm**: incremental TCE-PB muda praticamente todas as chaves de cidade e
+empresa → use `warm_cache: true` + `warm_skip_hours: "0"` (rebuild em UPSERT,
+sem cache miss; o cache antigo serve até cada chave ser reescrita).
 
 O workflow passa `--max-runtime-s 345600` (4 dias) como orçamento global do
 runner incremental. O tempo restante é repassado ao watchdog de cada spec.
@@ -316,6 +330,32 @@ self-hosted. A retomada é idempotente pelos watermarks por bucket.
 O schema idempotente `sql/33_etl_cache_invalidation.sql` também é aplicado em
 todo deploy, antes do ETL, para evitar drift da função
 `etl_admin.enqueue_cache_invalidation` usada ao concluir cada bucket.
+
+### Agendador incremental (TCE-PB + Bolsa Família)
+
+[`incremental-schedule.yml`](../.github/workflows/incremental-schedule.yml)
+roda às quintas 06:00 BRT (o RFB roda às segundas) e dispara:
+
+```yaml
+etl_phase: incremental
+incremental_only: "tce_pb.tce_pb_despesa,tce_pb.tce_pb_servidor,tce_pb.tce_pb_licitacao,tce_pb.tce_pb_receita[,bolsa_familia.bolsa_familia]"
+incremental_only_buckets: "<ano>[,<ano-1> de jan a mar][,<meses BF novos>]"
+warm_cache: true
+warm_skip_hours: "0"
+```
+
+quando (a) o último incremental TCE-PB com sucesso tem ≥ 28 dias **ou** (b) o
+Portal da Transparência publicou meses de Bolsa Família após o último
+carregado (watermark lido do artifact `etl-watermarks` do último incremental;
+fallback `INCREMENTAL_BF_BASELINE=YYYY-MM`; máx. 2 meses por ciclo). Ano
+TCE-PB sem arquivo publicado (404 em janeiro) fica de fora. **Não dispara** se
+houver qualquer `deploy.yml` em andamento/na fila (um disparo novo cancelaria
+o pendente — o `rfb-sync-schedule.yml` segue a mesma regra) e **pausa** após
+2 incrementais seguidos com falha. Ciclo típico: TCE-PB ~1–2h + refresh ~4,5h
+(+ BF ~10h/mês + refresh ~2h) + warm ~16–20h, em B4 com as 2 janelas de resize.
+
+Vem **desligado**: `gh variable set INCREMENTAL_SCHEDULE_ENABLED --body true`.
+`workflow_dispatch` com `dry_run=true` mostra a decisão sem disparar.
 
 ## One-off inputs hygiene
 

@@ -116,6 +116,27 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
     return failed_keys
 
 
+def _replace_problems(key: str, spec, summary: dict) -> list[str]:
+    """Buckets de specs com bucket_replace (ADR-0015) que não aplicaram.
+
+    Sempre erro do runner: o bucket segue com versões antigas/duplicadas.
+    Inclui guarda violada, dry-run e download falho (replace não roda com
+    cache possivelmente velho).
+    """
+    if getattr(spec, "bucket_replace", None) is None:
+        return []
+    if summary.get("status") == "failed" and not summary.get("buckets"):
+        return [f"{key}: {summary.get('error_message') or 'falhou antes dos buckets'}"]
+    problems = []
+    for b in summary.get("buckets", []):
+        if getattr(b, "all_success", False):
+            continue
+        errors = [r.error for _, r in getattr(b, "files", []) if getattr(r, "error", None)]
+        reason = errors[0] if errors else "download falhou / arquivo ausente"
+        problems.append(f"{key} bucket {b.bucket_id}: {reason}")
+    return problems
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", default="", help='CSV "source.table,source.table"')
@@ -232,25 +253,37 @@ def main():
         n_success = sum(1 for b in summary.get("buckets", []) if getattr(b, "all_success", False))
         n_total = len(summary.get("buckets", []))
         n_inserted = sum(getattr(b, "total_inserted", 0) for b in summary.get("buckets", []))
-        logger.info("=== END %s status=%s buckets=%d/%d inserted=%d ===",
-                    key, status, n_success, n_total, n_inserted)
+        n_deleted = sum(getattr(b, "total_deleted", 0) for b in summary.get("buckets", []))
+        logger.info("=== END %s status=%s buckets=%d/%d inserted=%d deleted=%d ===",
+                    key, status, n_success, n_total, n_inserted, n_deleted)
 
     # Final report
     print("\n" + "=" * 60)
     print("INCREMENTAL ETL SUMMARY")
     print("=" * 60)
     n_failed = 0
+    replace_problems = []
     for key, summary in summaries:
         status = summary["status"]
         marker = "✓" if status == "success" else ("⚠" if status == "partial" else "✗")
         n_buckets = len(summary.get("buckets", []))
         n_success = sum(1 for b in summary.get("buckets", []) if getattr(b, "all_success", False))
         n_inserted = sum(getattr(b, "total_inserted", 0) for b in summary.get("buckets", []))
-        print(f"  {marker} {key}: {status} ({n_success}/{n_buckets} buckets, +{n_inserted} rows)")
+        n_deleted = sum(getattr(b, "total_deleted", 0) for b in summary.get("buckets", []))
+        deleted_str = f", -{n_deleted} rows" if n_deleted else ""
+        print(f"  {marker} {key}: {status} ({n_success}/{n_buckets} buckets, +{n_inserted} rows{deleted_str})")
         if status == "failed":
             n_failed += 1
+        replace_problems.extend(_replace_problems(key, specs_to_run.get(key), summary))
 
     print(f"\nTotal: {len(summaries)} specs, {n_failed} failed")
+    if replace_problems:
+        # Replace por bucket (ADR-0015) que não aplicou é sempre erro: o bucket
+        # continua com as versões antigas/duplicadas.
+        print("\nREPLACE POR BUCKET NAO APLICADO:")
+        for line in replace_problems:
+            print(f"  ✗ {line}")
+        return 1
     return 1 if n_failed > 0 else 0
 
 

@@ -60,6 +60,13 @@ A role `etl_incremental` (criada em `sql/28_etl_role_grants.sql`) tem apenas
 Qualquer spec que precise dessas grants viola P2 e deve ser rejeitada em
 review.
 
+**Única exceção controlada (ADR-0015)**: specs com `bucket_replace`
+(snapshots anuais TCE-PB) removem versões que saíram do arquivo — **sem**
+grant de `DELETE`: só via `etl_admin.tce_pb_replace_bucket` (SECURITY DEFINER,
+allowlist de tabelas, guardas G1–G4) e com backup integral em
+`<tabela>_removido` (P1/P3 preservados: reversível e auditável). Nova tabela
+nesse modo exige ampliar a allowlist em `sql/46` + revisão.
+
 ## Quando NÃO usar incremental
 
 Mantenha clássico se **qualquer** for verdade:
@@ -400,6 +407,19 @@ de **por que a NK natural pode ser insegura mesmo quando "parece" única**:
 Defs em [`sql/42_tce_pb_synthetic_nk.sql`](../sql/42_tce_pb_synthetic_nk.sql),
 finalize em [`sql/42z_tce_pb_finalize.sql`](../sql/42z_tce_pb_finalize.sql).
 `SOURCE_REFRESH_FNS["tce_pb"] = refresh_for_tce_pb` (MVs PB L1→L2).
+
+7. **Snapshot anual → replace por bucket (ADR-0015)**: hash de linha inteira +
+   `UPSERT_DO_NOTHING` **acumula versões** quando a fonte edita registros
+   (`valor_pago` que avança, descrição corrigida). `tce_pb_despesa` e
+   `tce_pb_receita` usam `bucket_replace=BucketReplace()`: após o upsert, na
+   mesma transação, `etl_admin.tce_pb_replace_bucket` (sql/46) remove do ano as
+   linhas cujo `_nk_md5` não está no arquivo, com guardas G1–G4 (escopo,
+   paridade do hash, limite de órfãos, arquivo vazio) e backup em
+   `<tabela>_removido`. Spec com replace sempre re-baixa o arquivo e pula o
+   bucket se o download falhar. Use replace em qualquer fonte nova cujo arquivo
+   seja o **retrato completo** do bucket; mantenha acumulativo para fontes
+   append-only (BF, Dados-PB mensais). `ETL_REPLACE_DRY_RUN=1` mostra as
+   estatísticas sem gravar.
 
 ### Padrão de uso (acionamento)
 

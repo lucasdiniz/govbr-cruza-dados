@@ -107,7 +107,7 @@ Framework dedicado em [`etl/incremental/`](etl/incremental/README.md) para fonte
 
 |  | Clássico (`etl/00-22`) | Incremental (`etl/incremental/`) |
 |---|---|---|
-| Carga | TRUNCATE + reload | Append-only + `ON CONFLICT DO NOTHING` |
+| Carga | TRUNCATE + reload | Append-only + `ON CONFLICT DO NOTHING` (snapshots TCE-PB: replace por bucket, ADR-0015) |
 | Role DB | superuser | `etl_incremental` (sem DROP/DELETE/TRUNCATE) |
 | Audit | logs efêmeros | `etl_run_log` + `etl_phase_log` + `etl_download_log` + `etl_rejected_rows` (DLQ) |
 | Idempotência | manual | watermark + uuid5 bucket_token |
@@ -117,7 +117,7 @@ Framework dedicado em [`etl/incremental/`](etl/incremental/README.md) para fonte
 ### Princípios não-negociáveis (P1-P6)
 
 1. 🔴 **NÃO CORROMPER DADOS EXISTENTES** (sobrepõe tudo)
-2. **NÃO-DESTRUTIVO** — sem TRUNCATE/DROP/DELETE em targets
+2. **NÃO-DESTRUTIVO** — sem TRUNCATE/DROP/DELETE em targets (exceção controlada: replace por bucket dos snapshots TCE-PB, só via função guardada + backup integral — [ADR-0015](docs/adr/0015-tce-pb-replace-por-bucket.md))
 3. **AUDITÁVEL** — rastro completo, imutável pelo role ETL
 4. **ERROR RESILIENT** — recuperável de qualquer crash
 5. **FAST** — download condicional + idempotency

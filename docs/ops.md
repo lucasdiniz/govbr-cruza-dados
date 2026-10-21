@@ -239,6 +239,39 @@ PGPASSWORD=$PASS psql -U govbr -d govbr -v ON_ERROR_STOP=1 -f sql/41z_bolsa_fami
 Se forem rows que parecem distintas mas hash colidiu: investigar
 `etl_admin.row_hash_md5` (não deve acontecer com a versão atual `array_to_json` — collision-free).
 
+## Runbook: restaurar linhas removidas pelo replace TCE-PB
+
+O replace por bucket (ADR-0015) move cada linha removida de `tce_pb_despesa` /
+`tce_pb_receita` para `tce_pb_despesa_removido` / `tce_pb_receita_removido`
+(linha inteira + `removido_run_id`, `removido_bucket`, `removido_motivo`).
+
+```sql
+-- 1. O que um run removeu (run_id = etl_run_log.run_id, também no log do deploy):
+SELECT removido_bucket, removido_motivo, count(*)
+FROM tce_pb_despesa_removido WHERE removido_run_id = '<run_id>'
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- 2. Restaurar (mesmo id/_nk_md5; ON CONFLICT ignora o que já voltou):
+DO $$
+DECLARE cols text;
+BEGIN
+  SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) INTO cols
+  FROM information_schema.columns c
+  WHERE c.table_schema = 'public' AND c.table_name = 'tce_pb_despesa'
+    AND EXISTS (SELECT 1 FROM information_schema.columns b
+                WHERE b.table_name = 'tce_pb_despesa_removido' AND b.column_name = c.column_name);
+  EXECUTE format('INSERT INTO tce_pb_despesa (%s) SELECT %s FROM tce_pb_despesa_removido
+                  WHERE removido_run_id = %L ON CONFLICT (_nk_md5) DO NOTHING',
+                 cols, cols, '<run_id>');
+END $$;
+```
+
+Depois: `refresh_mvs` das MVs TCE-PB (ou `etl_phase=incremental` com os mesmos
+buckets) + warm. **Atenção**: o próximo incremental com replace removerá de
+novo as linhas que não estão no arquivo — restaure só para investigar ou junto
+com a correção da causa. Poda do backup (após 90 dias):
+`DELETE FROM tce_pb_despesa_removido WHERE removido_em < now() - interval '90 days';`
+
 ## Runbook: backup DB
 
 **Status atual: pendente.** Não há estratégia documentada de backup/restore validada em produção. Este é um gap operacional A4.

@@ -36,6 +36,7 @@ from .conn import IncrementalLoadContext
 from .parser import (
     SchemaDriftError, stream_csv_to_staging, validate_csv_header,
 )
+from .replace import GUARD_PREFIX, ReplaceGuardError, apply_bucket_replace
 from .spec import DedupeStrategy, LoaderSpec
 from .staging import (
     build_typed_select, build_upsert_sql, copy_temp_to_staging,
@@ -62,6 +63,8 @@ class LoadResult:
     rows_failed: int = 0
     rows_rejected_null_key: int = 0
     rows_coerced_null: int = 0
+    rows_deleted: int = 0          # replace por bucket (ADR-0015)
+    replace_stats: Optional[dict] = None
     new_watermark: Optional[str] = None
     csv_header_hash: Optional[str] = None
     staging_tables: list[str] = field(default_factory=list)
@@ -279,6 +282,21 @@ def _incremental_load(
             rows_inserted = int(row[0]) if row[0] is not None else 0
             rows_updated = int(row[1]) if row[1] is not None else 0
 
+    # Step 13b: replace por bucket (ADR-0015) — mesma transação do upsert.
+    rows_deleted = 0
+    replace_stats = None
+    if spec.bucket_replace is not None:
+        if file_sequence != 1:
+            raise ReplaceGuardError(
+                f"{GUARD_PREFIX}: {spec.table} bucket {bucket_id} tem mais de 1 "
+                f"arquivo (seq={file_sequence}); replace exige 1 arquivo = bucket inteiro"
+            )
+        _check_fence(ctx)
+        replace_stats = apply_bucket_replace(
+            ctx.main, spec, stg_final, bucket_id=bucket_id, run_id=ctx.run_id,
+        )
+        rows_deleted = int(replace_stats.get("removidas") or 0)
+
     # Step 14: compute new_watermark (only if watermark_col defined)
     new_watermark = None
     if spec.watermark_col:
@@ -294,6 +312,8 @@ def _incremental_load(
         rows_inserted=rows_inserted,
         rows_updated=rows_updated,
         rows_failed=0,
+        rows_deleted=rows_deleted,
+        replace_stats=replace_stats,
         new_watermark=new_watermark,
         csv_header_hash=csv_hash,
         staging_tables=staging_tables,

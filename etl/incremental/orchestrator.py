@@ -55,6 +55,7 @@ class BucketRun:
     total_inserted: int = 0
     total_updated: int = 0
     total_failed: int = 0
+    total_deleted: int = 0
 
 
 def _bucket_token(source: str, table: str, bucket_id: str) -> uuid.UUID:
@@ -176,6 +177,7 @@ def run_incremental_for_source(
         "total_inserted": 0,
         "total_updated": 0,
         "total_failed": 0,
+        "total_deleted": 0,
         "started_at": datetime.now().isoformat(),
     }
     final_status = "failed"
@@ -220,6 +222,19 @@ def run_incremental_for_source(
 
                 bucket_run = BucketRun(bucket_id=bucket_id)
                 bucket_token = _bucket_token(spec.source, spec.table, bucket_id)
+
+                # Replace (ADR-0015) só com o arquivo recém-baixado: nunca
+                # remover linhas com base num cache possivelmente velho.
+                if spec.bucket_replace is not None and bucket_download_failed:
+                    logger.error(
+                        "bucket %s/%s: download falhou — replace NAO executado "
+                        "(cache local pode estar desatualizado)",
+                        spec.source, bucket_id,
+                    )
+                    bucket_run.total_failed = 1
+                    summary["buckets"].append(bucket_run)
+                    summary["total_failed"] += 1
+                    continue
 
                 # SKIP bucket if download said no change AND token already matches
                 if bucket_skip_reason:
@@ -303,6 +318,7 @@ def run_incremental_for_source(
                     bucket_run.total_inserted += file_result.rows_inserted
                     bucket_run.total_updated += file_result.rows_updated
                     bucket_run.total_failed += file_result.rows_failed
+                    bucket_run.total_deleted += file_result.rows_deleted
 
                 bucket_run.all_success = (
                     bool(bucket_run.files)
@@ -318,6 +334,7 @@ def run_incremental_for_source(
                 summary["total_inserted"] += bucket_run.total_inserted
                 summary["total_updated"] += bucket_run.total_updated
                 summary["total_failed"] += bucket_run.total_failed
+                summary["total_deleted"] += bucket_run.total_deleted
 
                 # 7. Set watermark APENAS se bucket completo
                 if bucket_run.all_success and spec.watermark_col:
@@ -340,7 +357,8 @@ def run_incremental_for_source(
 
                 # 8. Enqueue cache invalidation if rows changed (D17 hook)
                 if bucket_run.all_success and (
-                    bucket_run.total_inserted + bucket_run.total_updated > 0
+                    bucket_run.total_inserted + bucket_run.total_updated
+                    + bucket_run.total_deleted > 0
                 ):
                     try:
                         with lock_raw.cursor() as cur:
@@ -348,7 +366,8 @@ def run_incremental_for_source(
                                 "SELECT etl_admin.enqueue_cache_invalidation(%s,%s,%s,%s,%s,%s,%s)",
                                 (
                                     str(run_id), spec.source, spec.table, bucket_id,
-                                    bucket_run.total_inserted, bucket_run.total_updated,
+                                    bucket_run.total_inserted,
+                                    bucket_run.total_updated + bucket_run.total_deleted,
                                     None,  # pattern: futuro hint para warm_cache
                                 ),
                             )
@@ -530,7 +549,9 @@ def _build_buckets(
 
             for url, fname in url_pairs:
                 dest = data_dir / fname
-                force = bid in tail_set
+                # Replace (ADR-0015) sempre re-baixa: o arquivo vira a verdade
+                # do bucket, entao nao pode ser um cache antigo (304).
+                force = bid in tail_set or spec.bucket_replace is not None
                 try:
                     dr = download_and_log(
                         etl_conn=etl_conn,
