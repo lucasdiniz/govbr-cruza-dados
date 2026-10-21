@@ -50,9 +50,11 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
   `UPSERT_DO_NOTHING`, `YEAR_WINDOW` e 1 arquivo por bucket.
 - `etl/incremental/replace.py` recalcula o `_nk_md5` de cada linha do arquivo
   com a **mesma projeção do upsert** (`build_target_projection`) e a **mesma
-  função do trigger** (`etl_admin.nk_md5_<tabela>_row`), passando o registro por
-  `jsonb_populate_record(NULL::<tabela>, …)` para aplicar os typmods do target
-  (ex.: `DECIMAL(15,2)`) exatamente como o `INSERT`.
+  função do trigger** (`etl_admin.nk_md5_<tabela>_row`), montando
+  `ROW(...)::<tabela>` com cada coluna convertida para o tipo+typmod do target
+  (ex.: `DECIMAL(15,2)`) — mesmo arredondamento do `INSERT`. (Versão com
+  `jsonb_populate_record` dava o mesmo hash mas levava ~30 min para 2M linhas;
+  `ROW` leva ~2 min.)
 - A remoção é feita **só** por `etl_admin.tce_pb_replace_bucket` (SECURITY
   DEFINER, [`sql/46`](../../sql/46_tce_pb_bucket_replace.sql)). O role
   `etl_incremental` continua **sem `DELETE`** nas tabelas alvo (P1). A função
@@ -68,7 +70,17 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
     `municipio+codigo_ug+mes_ano+codigo_receita` ainda presente) ≤
     `max(2000, 1% do bucket)`. Pega arquivo truncado/errado. O conjunto de
     gêmeos vem das linhas **mantidas** do target, não do chamador.
-  - **G4**: arquivo sem linhas nunca remove nada.
+  - **G4**: arquivo sem linhas nunca remove nada — e, em spec com replace,
+    arquivo vazio/placeholder HTML/só cabeçalho é **falha**, não "sucesso sem
+    linhas".
+  - **G5** (loader): replace exige o arquivo completo. Specs com replace **não**
+    desviam linhas com NK declarativa NULL para a DLQ (o `ON CONFLICT` usa só o
+    `_nk_md5`, que tolera NULL): `despesas-2023` tem ~7k linhas com
+    `municipio`/UG vazios e `receitas` tem `valor='0'` (vira NULL) — desviadas,
+    as cópias delas no banco seriam removidas.
+  - `p_file` é lido com privilégios do dono: a função só aceita **tabela TEMP
+    comum da própria sessão**, sem RLS, com coluna `h text` (view/policy
+    executariam código do chamador como dono).
 - Toda linha removida vai inteira para `<tabela>_removido` (com
   `removido_run_id`, `removido_bucket`, `removido_motivo` =
   `versao_substituida` | `ausente_no_arquivo`). Restauração:
@@ -76,9 +88,11 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
 - Replace roda só com arquivo **recém-baixado**: specs com replace sempre
   re-baixam (sem 304) e, se o download falha, o bucket é pulado (nunca
   substitui a partir de cache possivelmente velho).
-- Bucket com replace que não aplica (guarda, download falho, dry-run) faz o
-  runner sair com erro. O `deploy.yml` ainda refresca as MVs dos buckets que
-  comitaram antes de falhar o step (MVs consistentes com as tabelas base).
+- Bucket com replace que não aplica (guarda, download falho, dry-run, sucesso
+  sem `replace_stats`) faz o runner sair com erro. O `deploy.yml` guarda o
+  código, refresca as MVs **e aquece o cache** dos buckets que comitaram, e só
+  falha o job no último step ("Propagar falha do incremental") — MVs e cache
+  ficam consistentes com as tabelas base.
 - `ETL_REPLACE_DRY_RUN=1` calcula as estatísticas e faz rollback (uso manual).
 
 `tce_pb_servidor` e `tce_pb_licitacao` continuam acumulativos: excesso medido
@@ -105,6 +119,18 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
   (`DELETE … WHERE removido_em < now() - interval '90 days'`).
 - Bucket processado inteiro a cada execução (download forçado + scan do ano).
   ~40 min por ano de despesa no B4.
+
+### Validação
+
+- 19 testes (`tests/incremental/test_tce_pb_bucket_replace.py`, Postgres 16
+  real com `sql/19`+`42`+`46`).
+- E2E local com o runner real e `despesas-2026` publicado (1.984.953 linhas):
+  carga inicial e re-run idêntico com G2 OK e 0 remoções; com 93.177 versões
+  antigas + 521 empenhos inexistentes injetados, removeu exatamente esses
+  (`versao_substituida`/`ausente_no_arquivo`) e não tocou 2025; download
+  corrompido ("not a zip") → bucket pulado, runner com erro, nada alterado.
+- Revisão: 3 agentes; achados (NK NULL, `p_file` em SECURITY DEFINER, buraco
+  de mês BF, warm após falha parcial, arquivo vazio) corrigidos.
 
 ## Alternatives considered
 

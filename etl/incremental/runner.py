@@ -130,6 +130,15 @@ def _replace_problems(key: str, spec, summary: dict) -> list[str]:
     problems = []
     for b in summary.get("buckets", []):
         if getattr(b, "all_success", False):
+            # Sucesso so conta se o replace de fato rodou em cada arquivo.
+            sem_replace = [
+                p.name for p, r in getattr(b, "files", [])
+                if getattr(r, "replace_stats", None) is None
+            ]
+            if sem_replace:
+                problems.append(
+                    f"{key} bucket {b.bucket_id}: sucesso com replace nao executado ({sem_replace[0]})"
+                )
             continue
         errors = [r.error for _, r in getattr(b, "files", []) if getattr(r, "error", None)]
         reason = errors[0] if errors else "download falhou / arquivo ausente"

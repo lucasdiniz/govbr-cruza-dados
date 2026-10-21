@@ -811,8 +811,11 @@ jobs:
           # Framework incremental runner.
           # Codigo de saida guardado (nao aborta aqui): buckets que comitaram
           # (ex.: replace TCE-PB de outros anos, ADR-0015) precisam do refresh
-          # das MVs abaixo mesmo que outro bucket tenha falhado — senao MVs e
-          # tabelas base ficam inconsistentes. O step falha no fim.
+          # das MVs abaixo E do warm mesmo que outro bucket tenha falhado —
+          # senao MVs/cache ficam inconsistentes com as tabelas base. A falha
+          # e propagada no ultimo step do job ("Propagar falha do incremental").
+          # Erro no REFRESH (set -e) continua falhando aqui: nao aquecer cache
+          # a partir de MV velha.
           RUNNER_RC=0
           if [ -n "${{ inputs.incremental_only }}" ]; then
             python -m etl.incremental.runner \
@@ -825,8 +828,9 @@ jobs:
                 ${{ inputs.incremental_only_buckets != '' && format('--only-buckets "{0}"', inputs.incremental_only_buckets) || '' }} 2>&1 || RUNNER_RC=$?
           fi
           if [ "$RUNNER_RC" -ne 0 ]; then
-            echo "::error::Runner incremental terminou com codigo $RUNNER_RC — refrescando MVs dos buckets comitados e falhando o step no fim"
+            echo "::error::Runner incremental terminou com codigo $RUNNER_RC — refresh/warm seguem para os buckets comitados; o job falha no ultimo step"
           fi
+          echo "INCREMENTAL_RC=$RUNNER_RC" >> "$GITHUB_ENV"
 
           # Refresh post-incremental para sources com MVs dependentes.
           if [ "$BF_IN_SCOPE" = "true" ]; then
@@ -850,8 +854,6 @@ jobs:
           # etl_phase=sql. Idempotente, ~1-2min.
           echo "=== Refresh mv_empresa_municipio_pagantes (sitemap) ==="
           python -m etl.22_mv_sitemap 2>&1 || echo "::warning::Refresh da MV de sitemap falhou — sitemap pode ficar stale ate proximo etl_phase=sql"
-
-          exit "$RUNNER_RC"
 
       # Watermarks do ETL incremental como artifact: incremental-schedule.yml
       # (GitHub-hosted, sem acesso ao banco) le daqui o ultimo mes de Bolsa
@@ -2302,6 +2304,15 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           source venv/bin/activate
           python3 -m etl.verify 2>/dev/null || echo "Verify script not available"
+
+      # Runner incremental com erro (ex.: guarda do replace TCE-PB, ADR-0015):
+      # refresh + warm ja rodaram para os buckets comitados; agora o job falha
+      # para o agendador/operador verem (postflight nao reduz a VM em falha).
+      - name: "ETL: Propagar falha do incremental"
+        if: always() && inputs.etl_phase == 'incremental' && env.INCREMENTAL_RC != '' && env.INCREMENTAL_RC != '0'
+        run: |
+          echo "::error::Runner incremental terminou com codigo $INCREMENTAL_RC — ver 'REPLACE POR BUCKET NAO APLICADO' / 'INCREMENTAL ETL SUMMARY' no step ETL: Incremental"
+          exit 1
 
   # ─────────────────────────────────────────────────────────────────────
   # POSTFLIGHT: redimensiona a VM de volta para o tamanho web (B2as_v2)

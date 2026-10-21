@@ -147,26 +147,33 @@ def _incremental_load(
     # Resolve spec para bucket (suporta schema drift histórico)
     spec = _resolve_spec_for_bucket(spec, bucket_id)
 
-    # Step 0: skip empty files (source publica 0-byte placeholders em alguns meses)
-    if csv_path.stat().st_size == 0:
+    def _empty_success(reason: str, csv_header_hash: str = "", staging=None) -> LoadResult:
+        # Replace por bucket (ADR-0015): arquivo vazio/placeholder NAO e
+        # "bucket sem linhas" — e publicacao quebrada. Falha (nao remove nada).
+        if spec.bucket_replace is not None:
+            return LoadResult(
+                status="failed",
+                csv_header_hash=csv_header_hash,
+                staging_tables=staging or [],
+                error=f"{GUARD_PREFIX} G4: {spec.table} bucket {bucket_id} — {reason}; replace nao aplicado",
+            )
         return LoadResult(
             status="success",
             rows_streamed=0,
-            csv_header_hash="",
-            staging_tables=[],
+            csv_header_hash=csv_header_hash,
+            staging_tables=staging or [],
         )
+
+    # Step 0: skip empty files (source publica 0-byte placeholders em alguns meses)
+    if csv_path.stat().st_size == 0:
+        return _empty_success("arquivo de 0 bytes")
 
     # Step 0b: skip HTML placeholder pages ("Arquivo Sendo Processado")
     try:
         with open(csv_path, "rb") as _fchk:
             _head = _fchk.read(64)
         if _head.lstrip().startswith(b"<!DOCTYPE") or _head.lstrip().startswith(b"<html"):
-            return LoadResult(
-                status="success",
-                rows_streamed=0,
-                csv_header_hash="",
-                staging_tables=[],
-            )
+            return _empty_success("arquivo e pagina HTML (placeholder)")
     except Exception:
         pass
 
@@ -181,12 +188,7 @@ def _incremental_load(
                 content = f.read(2048)
             if not content.strip() or content.count(b"\n") <= 1:
                 # File tem só header (ou nada) — não é dados reais
-                return LoadResult(
-                    status="success",
-                    rows_streamed=0,
-                    csv_header_hash="",
-                    staging_tables=[],
-                )
+                return _empty_success("arquivo so com cabecalho")
         except Exception:
             pass
         return LoadResult(status="failed", error=str(e))
@@ -211,12 +213,7 @@ def _incremental_load(
 
     if rows_streamed == 0 and rows_failed_streaming == 0:
         # Empty file
-        return LoadResult(
-            status="success",
-            rows_streamed=0,
-            csv_header_hash=csv_hash,
-            staging_tables=staging_tables,
-        )
+        return _empty_success("arquivo sem linhas", csv_hash, staging_tables)
 
     # Step 5: COPY temp → staging RAW
     try:
@@ -233,7 +230,14 @@ def _incremental_load(
         cur.execute(f"CREATE TABLE {stg_typed} AS {typed_sql}")
 
     # NK NULL move via single SQL (D6 dual-write trade-off: docked em main TX)
-    rows_rejected_null_key = _move_nk_null_to_dlq(spec, ctx, stg_typed, csv_path)
+    # Replace por bucket (ADR-0015): o arquivo inteiro e a verdade do bucket e
+    # o ON CONFLICT usa so o _nk_md5 (que tolera NULL). Desviar linhas com NK
+    # declarativa NULL (ex.: municipio vazio em despesas-2023, valor '0' em
+    # receitas) faria o replace apagar as copias delas que ja estao no banco.
+    if spec.bucket_replace is not None:
+        rows_rejected_null_key = 0
+    else:
+        rows_rejected_null_key = _move_nk_null_to_dlq(spec, ctx, stg_typed, csv_path)
 
     # Step 8: build staging_final (POC: alias for now if no derived_columns)
     # Derived columns na FORMA literal/SQL acontece no INSERT INTO target via
@@ -290,6 +294,15 @@ def _incremental_load(
             raise ReplaceGuardError(
                 f"{GUARD_PREFIX}: {spec.table} bucket {bucket_id} tem mais de 1 "
                 f"arquivo (seq={file_sequence}); replace exige 1 arquivo = bucket inteiro"
+            )
+        # G5: linhas do arquivo desviadas para a DLQ (NK NULL) nao entram no
+        # conjunto de hashes — as copias delas no banco seriam tratadas como
+        # "fora do arquivo" e removidas. Replace exige o arquivo completo.
+        if rows_rejected_null_key > 0:
+            raise ReplaceGuardError(
+                f"{GUARD_PREFIX} G5: {spec.table} bucket {bucket_id} — "
+                f"{rows_rejected_null_key} linha(s) do arquivo foram para a DLQ "
+                f"(NK NULL); replace exige o arquivo completo"
             )
         _check_fence(ctx)
         replace_stats = apply_bucket_replace(

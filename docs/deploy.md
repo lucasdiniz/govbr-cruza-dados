@@ -311,8 +311,9 @@ incremental_only_buckets: "2026"   # sempre limite os anos: sem isso TODOS os an
 ([ADR-0015](adr/0015-tce-pb-replace-por-bucket.md)): o ano no banco passa a
 ser igual ao arquivo publicado (versões antigas vão para
 `<tabela>_removido`, com guardas). Um ano com guarda violada ou download falho
-faz o runner falhar; as MVs dos anos que comitaram são refrescadas mesmo assim
-e o step falha no fim. O `run-name` fica `Deploy to Azure VM - incremental
+faz o runner falhar; refresh das MVs **e warm** rodam mesmo assim para os anos
+que comitaram, e o job falha no último step ("ETL: Propagar falha do
+incremental"; a VM fica em B4, como em qualquer falha). O `run-name` fica `Deploy to Azure VM - incremental
 <specs> [<buckets>]` (usado pelo agendador). O step publica o artifact
 `etl-watermarks` (watermarks do banco) ao final.
 
@@ -347,7 +348,7 @@ warm_skip_hours: "0"
 quando (a) o último incremental TCE-PB com sucesso tem ≥ 28 dias **ou** (b) o
 Portal da Transparência publicou meses de Bolsa Família após o último
 carregado (watermark lido do artifact `etl-watermarks` do último incremental;
-fallback `INCREMENTAL_BF_BASELINE=YYYY-MM`; máx. 2 meses por ciclo). Ano
+fallback `INCREMENTAL_BF_BASELINE=YYYY-MM`; 1 mês por ciclo — o watermark é o MAX dos meses, então 2+ meses com falha no 1º deixariam buraco). Ano
 TCE-PB sem arquivo publicado (404 em janeiro) fica de fora. **Não dispara** se
 houver qualquer `deploy.yml` em andamento/na fila (um disparo novo cancelaria
 o pendente — o `rfb-sync-schedule.yml` segue a mesma regra) e **pausa** após

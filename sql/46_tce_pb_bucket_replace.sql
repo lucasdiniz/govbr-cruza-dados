@@ -131,11 +131,30 @@ BEGIN
         RAISE EXCEPTION 'tce_pb_replace_bucket: limites de orfaos invalidos';
     END IF;
 
+    -- p_file e lido com os privilegios do DEFINIDOR: so aceitar tabela
+    -- comum, TEMP desta sessao, sem RLS, com coluna h TEXT. View, foreign
+    -- table, tabela com policy etc. executariam codigo do chamador como dono.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+         WHERE c.oid = p_file
+           AND c.relkind = 'r'
+           AND c.relnamespace = pg_my_temp_schema()
+           AND NOT c.relrowsecurity
+           AND NOT c.relforcerowsecurity
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_attribute a
+         WHERE a.attrelid = p_file AND a.attname = 'h'
+           AND a.atttypid = 'text'::regtype AND NOT a.attisdropped
+    ) THEN
+        RAISE EXCEPTION 'tce_pb_replace_bucket: p_file % deve ser tabela TEMP comum desta sessao, sem RLS, com coluna h text',
+            p_file;
+    END IF;
+
     -- Hashes do arquivo (distintos).
     DROP TABLE IF EXISTS pg_temp._rb_file;
     EXECUTE format(
         'CREATE TEMP TABLE _rb_file ON COMMIT DROP AS
-           SELECT DISTINCT h FROM %s WHERE h IS NOT NULL', p_file);
+           SELECT DISTINCT h FROM %s WHERE h IS NOT NULL', p_file::regclass);
     CREATE UNIQUE INDEX ON pg_temp._rb_file (h);
     ANALYZE pg_temp._rb_file;
     SELECT count(*) INTO v_file_hashes FROM pg_temp._rb_file;

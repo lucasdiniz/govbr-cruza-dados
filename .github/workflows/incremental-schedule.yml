@@ -14,15 +14,17 @@ name: Incremental TCE-PB/BF - agendador
 # - Bolsa Familia: meses publicados apos o ultimo carregado. O ultimo mes
 #   carregado vem do artifact `etl-watermarks` publicado pelo proprio
 #   deploy.yml (watermark real do banco); fallback: variavel
-#   INCREMENTAL_BF_BASELINE (YYYY-MM). Max BF_MAX_MONTHS meses por ciclo
-#   (~10h de carga por mes).
+#   INCREMENTAL_BF_BASELINE (YYYY-MM). UM mes por ciclo (BF_MAX_MONTHS=1):
+#   o watermark e o MAX dos meses carregados, entao com 2+ meses uma falha
+#   no 1o e sucesso no 2o deixaria um buraco que o agendador nunca veria.
+#   ~10h de carga por mes; o Portal publica ~1 mes por mes.
 #
 # Seguranca / dados live:
 # - Nao dispara se ha QUALQUER deploy.yml em andamento/na fila: um disparo
 #   enquanto outro esta pendente CANCELA o pendente (regra de concurrency do
 #   GitHub). Tenta de novo na semana seguinte.
 # - Para apos 2 falhas seguidas de incremental (exige acao manual).
-# - Guardas do proprio ETL (replace G1-G4, watermarks, paridade) seguem
+# - Guardas do proprio ETL (replace G1-G5, watermarks, paridade) seguem
 #   valendo; o agendador so decide QUANDO rodar.
 
 on:
@@ -57,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TCE_INTERVAL_DAYS: "28"
-          BF_MAX_MONTHS: "2"
+          BF_MAX_MONTHS: "1"  # >1 pode criar buraco (ver cabecalho)
           BF_BASELINE: ${{ vars.INCREMENTAL_BF_BASELINE }}
         run: |
           set -euo pipefail
@@ -187,8 +189,10 @@ jobs:
           if not ((tce_due and tce_years) or bf_months):
               no_dispatch("Nada a fazer: TCE-PB nao devido e nenhum mes novo de Bolsa Familia.")
 
-          specs = (TCE_SPECS if tce_years else []) + ([BF_SPEC] if bf_months else [])
-          buckets = tce_years + bf_months
+          # TCE-PB so quando devido (nao pega carona em ciclo so de BF).
+          run_tce = tce_due and bool(tce_years)
+          specs = (TCE_SPECS if run_tce else []) + ([BF_SPEC] if bf_months else [])
+          buckets = (tce_years if run_tce else []) + bf_months
           print(f"DISPARAR: specs={','.join(specs)} buckets={','.join(buckets)}")
           out(dispatch="true", specs=",".join(specs), buckets=",".join(buckets))
           PY

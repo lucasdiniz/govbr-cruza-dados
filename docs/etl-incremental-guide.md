@@ -63,7 +63,7 @@ review.
 **Única exceção controlada (ADR-0015)**: specs com `bucket_replace`
 (snapshots anuais TCE-PB) removem versões que saíram do arquivo — **sem**
 grant de `DELETE`: só via `etl_admin.tce_pb_replace_bucket` (SECURITY DEFINER,
-allowlist de tabelas, guardas G1–G4) e com backup integral em
+allowlist de tabelas, guardas G1–G5) e com backup integral em
 `<tabela>_removido` (P1/P3 preservados: reversível e auditável). Nova tabela
 nesse modo exige ampliar a allowlist em `sql/46` + revisão.
 
@@ -413,8 +413,8 @@ finalize em [`sql/42z_tce_pb_finalize.sql`](../sql/42z_tce_pb_finalize.sql).
    (`valor_pago` que avança, descrição corrigida). `tce_pb_despesa` e
    `tce_pb_receita` usam `bucket_replace=BucketReplace()`: após o upsert, na
    mesma transação, `etl_admin.tce_pb_replace_bucket` (sql/46) remove do ano as
-   linhas cujo `_nk_md5` não está no arquivo, com guardas G1–G4 (escopo,
-   paridade do hash, limite de órfãos, arquivo vazio) e backup em
+   linhas cujo `_nk_md5` não está no arquivo, com guardas G1–G5 (escopo,
+   paridade do hash, limite de órfãos, arquivo vazio/placeholder = falha, arquivo completo — sem desvio de NK NULL para a DLQ) e backup em
    `<tabela>_removido`. Spec com replace sempre re-baixa o arquivo e pula o
    bucket se o download falhar. Use replace em qualquer fonte nova cujo arquivo
    seja o **retrato completo** do bucket; mantenha acumulativo para fontes

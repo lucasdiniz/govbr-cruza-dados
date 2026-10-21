@@ -103,6 +103,14 @@ def test_runner_trata_bucket_replace_falho_como_erro():
     assert _replace_problems("k", DESPESA, {"status": "partial", "buckets": [sem_arquivo]}) == [
         "k bucket 2024: download falhou / arquivo ausente"
     ]
+    # "Sucesso" sem replace executado (ex.: caminho futuro que pule o replace).
+    sem_replace = SimpleNamespace(
+        bucket_id="2023", all_success=True,
+        files=[(Path("d.csv"), SimpleNamespace(error=None, replace_stats=None))],
+    )
+    assert _replace_problems("k", DESPESA, {"status": "success", "buckets": [sem_replace]}) == [
+        "k bucket 2023: sucesso com replace nao executado (d.csv)"
+    ]
 
 
 # ─── Integração ───────────────────────────────────────────────────────────────
@@ -369,3 +377,62 @@ def test_backup_restaura_linhas_removidas(clean):
         )
     clean.commit()
     assert _count(clean, "SELECT count(*) FROM tce_pb_despesa") == 2
+
+
+def test_arquivo_vazio_ou_so_cabecalho_falha_em_replace(tmp_path):
+    """Publicacao vazia/placeholder nunca vira 'sucesso sem replace'."""
+    from etl.incremental.loader import _incremental_load
+
+    vazio = tmp_path / "despesas-2026.csv"
+    vazio.write_bytes(b"")
+    res = _incremental_load(DESPESA, None, vazio, file_sequence=1, bucket_id="2026")
+    assert res.status == "failed" and "G4" in res.error
+    html = tmp_path / "html.csv"
+    html.write_bytes(b"<!DOCTYPE html><html>Arquivo Sendo Processado</html>")
+    res = _incremental_load(DESPESA, None, html, file_sequence=1, bucket_id="2026")
+    assert res.status == "failed" and "G4" in res.error
+    # Spec acumulativa mantem o comportamento antigo (sucesso vazio).
+    acumulativa = dataclasses.replace(DESPESA, bucket_replace=None)
+    res = _incremental_load(acumulativa, None, vazio, file_sequence=1, bucket_id="2026")
+    assert res.status == "success"
+
+
+def test_linha_com_municipio_vazio_e_mantida(clean):
+    """despesas-2023 tem ~7k linhas com municipio/UG vazios: em replace elas
+    entram no conjunto do arquivo (nao vao para a DLQ) e nao sao removidas."""
+    rows = [_desp(1, municipio=None, codigo_unidade_gestora=None), _desp(2)]
+    _load(clean, DESPESA, rows, "2026")
+    inserted, stats = _load(clean, DESPESA, rows, "2026")
+    assert inserted == 0 and stats["removidas"] == 0
+    assert _count(clean, "SELECT count(*) FROM tce_pb_despesa WHERE municipio IS NULL") == 1
+
+
+def test_p_file_precisa_ser_tabela_temp_comum(clean):
+    """SECURITY DEFINER: view/tabela comum como p_file executaria codigo do
+    chamador com privilegios do dono — rejeitado antes de ler."""
+    _load(clean, DESPESA, [_desp(1)], "2026")
+    run = str(uuid.uuid4())
+    with clean.cursor() as cur:
+        cur.execute("CREATE TEMP VIEW _v AS SELECT _nk_md5 AS h FROM tce_pb_despesa")
+        with pytest.raises(Exception, match="TEMP comum"):
+            cur.execute(
+                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._v'::regclass, %s)",
+                (run,),
+            )
+    clean.rollback()
+    with clean.cursor() as cur:
+        cur.execute("CREATE TABLE public._f_perm AS SELECT _nk_md5 AS h FROM tce_pb_despesa")
+        with pytest.raises(Exception, match="TEMP comum"):
+            cur.execute(
+                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'public._f_perm'::regclass, %s)",
+                (run,),
+            )
+    clean.rollback()
+    with clean.cursor() as cur:
+        cur.execute("CREATE TEMP TABLE _f_int ON COMMIT DROP AS SELECT 1 AS h")
+        with pytest.raises(Exception, match="TEMP comum"):
+            cur.execute(
+                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._f_int'::regclass, %s)",
+                (run,),
+            )
+    clean.rollback()

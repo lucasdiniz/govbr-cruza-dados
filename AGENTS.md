@@ -400,7 +400,7 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   avança, descrição corrigida) → ~2× linhas em 2020–2026 (issue #211). Specs
   com `bucket_replace` removem, na mesma transação do upsert, as linhas do ano
   ausentes do arquivo via `etl_admin.tce_pb_replace_bucket` (sql/46, SECURITY
-  DEFINER com guardas G1–G4; backup em `<tabela>_removido`; restore em
+  DEFINER com guardas G1–G5; backup em `<tabela>_removido`; restore em
   `docs/ops.md`). `etl_incremental` segue sem `DELETE`. Sempre passe
   `incremental_only_buckets` (sem ele todos os anos são reprocessados).
   Agendamento: `incremental-schedule.yml` (quintas) + `rfb-sync-schedule.yml`
