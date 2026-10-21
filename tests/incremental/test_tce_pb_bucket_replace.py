@@ -316,30 +316,20 @@ def test_guarda_g1_receita_fora_do_ano(clean):
 def test_guarda_g2_paridade_e_g4_vazio_na_funcao(clean):
     _load(clean, DESPESA, [_desp(1)], "2026")
     run = str(uuid.uuid4())
+    call = "SELECT etl_admin.tce_pb_replace_bucket(%s, 2026, %s::text[], %s)"
     with clean.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE _f (h text) ON COMMIT DROP")
-        cur.execute("INSERT INTO _f SELECT _nk_md5 FROM tce_pb_despesa UNION ALL SELECT md5('x')")
+        cur.execute("SELECT array_agg(_nk_md5) || ARRAY[md5('x')] FROM tce_pb_despesa")
+        hashes = cur.fetchone()[0]
         with pytest.raises(Exception, match="G2"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._f'::regclass, %s)",
-                (run,),
-            )
+            cur.execute(call, ("tce_pb_despesa", hashes, run))
     clean.rollback()
     with clean.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE _f (h text) ON COMMIT DROP")
         with pytest.raises(Exception, match="G4"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._f'::regclass, %s)",
-                (run,),
-            )
+            cur.execute(call, ("tce_pb_despesa", [], run))
     clean.rollback()
     with clean.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE _f (h text) ON COMMIT DROP")
         with pytest.raises(Exception, match="allowlist"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('socio', 2026, 'pg_temp._f'::regclass, %s)",
-                (run,),
-            )
+            cur.execute(call, ("socio", ["a"], run))
     clean.rollback()
     assert _count(clean, "SELECT count(*) FROM tce_pb_despesa") == 1
 
@@ -407,32 +397,22 @@ def test_linha_com_municipio_vazio_e_mantida(clean):
     assert _count(clean, "SELECT count(*) FROM tce_pb_despesa WHERE municipio IS NULL") == 1
 
 
-def test_p_file_precisa_ser_tabela_temp_comum(clean):
-    """SECURITY DEFINER: view/tabela comum como p_file executaria codigo do
-    chamador com privilegios do dono — rejeitado antes de ler."""
-    _load(clean, DESPESA, [_desp(1)], "2026")
-    run = str(uuid.uuid4())
+def test_funcao_recebe_hashes_como_dado_nao_relacao(clean):
+    """SECURITY DEFINER nao pode ler relacao do chamador (view, policy,
+    CHECK/indice parcial executariam codigo dele como dono): a assinatura so
+    aceita TEXT[] e a assinatura antiga (REGCLASS) nao existe."""
     with clean.cursor() as cur:
-        cur.execute("CREATE TEMP VIEW _v AS SELECT _nk_md5 AS h FROM tce_pb_despesa")
-        with pytest.raises(Exception, match="TEMP comum"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._v'::regclass, %s)",
-                (run,),
-            )
-    clean.rollback()
-    with clean.cursor() as cur:
-        cur.execute("CREATE TABLE public._f_perm AS SELECT _nk_md5 AS h FROM tce_pb_despesa")
-        with pytest.raises(Exception, match="TEMP comum"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'public._f_perm'::regclass, %s)",
-                (run,),
-            )
-    clean.rollback()
-    with clean.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE _f_int ON COMMIT DROP AS SELECT 1 AS h")
-        with pytest.raises(Exception, match="TEMP comum"):
-            cur.execute(
-                "SELECT etl_admin.tce_pb_replace_bucket('tce_pb_despesa', 2026, 'pg_temp._f_int'::regclass, %s)",
-                (run,),
-            )
-    clean.rollback()
+        cur.execute(
+            """SELECT array_agg(pg_get_function_identity_arguments(p.oid))
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'etl_admin' AND p.proname = 'tce_pb_replace_bucket'"""
+        )
+        sigs = cur.fetchone()[0]
+        cur.execute(
+            """SELECT p.prosecdef, array_to_string(p.proconfig, ',')
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'etl_admin' AND p.proname = 'tce_pb_replace_bucket'"""
+        )
+        secdef, cfg = cur.fetchone()
+    assert len(sigs) == 1 and "p_hashes text[]" in sigs[0] and "regclass" not in sigs[0]
+    assert secdef and "search_path=pg_catalog, etl_admin, public, pg_temp" in cfg

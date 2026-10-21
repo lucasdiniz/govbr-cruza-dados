@@ -8,7 +8,8 @@ Chamado pelo loader logo após o upsert, na MESMA transação do arquivo:
    cada coluna convertida para o tipo+typmod do target (ex.: DECIMAL(15,2))
    — o mesmo arredondamento do INSERT. (~10x mais rápido que
    ``jsonb_populate_record``: ~2 min vs ~30 min para 2M linhas.)
-2. Chama ``etl_admin.tce_pb_replace_bucket`` (SECURITY DEFINER, sql/46), que
+2. Passa os hashes como ``TEXT[]`` (dado, não relação) para
+   ``etl_admin.tce_pb_replace_bucket`` (SECURITY DEFINER, sql/46), que
    valida as guardas G1-G4 (G5 fica no loader), faz backup e remove as linhas do bucket que não
    estão no arquivo.
 
@@ -97,8 +98,10 @@ def apply_bucket_replace(main, spec, stg_final: str, *, bucket_id: str, run_id) 
         )
         try:
             cur.execute(
+                # ARRAY(...) e avaliado AQUI (contexto do chamador), antes de
+                # entrar na funcao SECURITY DEFINER — ver sql/46.
                 """SELECT etl_admin.tce_pb_replace_bucket(
-                       %s, %s, 'pg_temp._replace_file_hashes'::regclass, %s,
+                       %s, %s, ARRAY(SELECT h FROM pg_temp._replace_file_hashes), %s,
                        %s, %s, %s)""",
                 (
                     spec.table, bucket, str(run_id),

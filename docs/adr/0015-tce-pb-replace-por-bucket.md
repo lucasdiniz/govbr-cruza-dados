@@ -78,9 +78,11 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
     `_nk_md5`, que tolera NULL): `despesas-2023` tem ~7k linhas com
     `municipio`/UG vazios e `receitas` tem `valor='0'` (vira NULL) — desviadas,
     as cópias delas no banco seriam removidas.
-  - `p_file` é lido com privilégios do dono: a função só aceita **tabela TEMP
-    comum da própria sessão**, sem RLS, com coluna `h text` (view/policy
-    executariam código do chamador como dono).
+  - Os hashes do arquivo entram na função como **dado** (`TEXT[]`,
+    materializado pelo chamador no próprio contexto), nunca como relação:
+    qualquer relação do chamador lida dentro da função SECURITY DEFINER (view,
+    policy, `CHECK`/índice parcial com função do chamador) executaria código
+    dele com os privilégios do dono.
 - Toda linha removida vai inteira para `<tabela>_removido` (com
   `removido_run_id`, `removido_bucket`, `removido_motivo` =
   `versao_substituida` | `ausente_no_arquivo`). Restauração:
@@ -129,8 +131,9 @@ linhas do ano cujo `_nk_md5` não está no arquivo são removidas.
   antigas + 521 empenhos inexistentes injetados, removeu exatamente esses
   (`versao_substituida`/`ausente_no_arquivo`) e não tocou 2025; download
   corrompido ("not a zip") → bucket pulado, runner com erro, nada alterado.
-- Revisão: 3 agentes; achados (NK NULL, `p_file` em SECURITY DEFINER, buraco
-  de mês BF, warm após falha parcial, arquivo vazio) corrigidos.
+- Revisão: 3 agentes em 3 rodadas; achados (NK NULL, relação do chamador lida
+  em SECURITY DEFINER, buraco de mês BF, warm após falha parcial, arquivo
+  vazio) corrigidos.
 
 ## Alternatives considered
 

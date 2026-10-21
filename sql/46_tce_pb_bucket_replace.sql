@@ -73,13 +73,20 @@ COMMENT ON TABLE tce_pb_receita_removido IS
 
 
 -- ── Funcao principal ─────────────────────────────────────────────────────────
--- p_file: tabela (normalmente TEMP da sessao do loader) com coluna `h` TEXT =
---         _nk_md5 de cada linha do arquivo, calculado com
---         etl_admin.nk_md5_<tabela>_row (mesma funcao do trigger).
+-- p_hashes: _nk_md5 de cada linha do arquivo, calculado pelo chamador com
+--           etl_admin.nk_md5_<tabela>_row (mesma funcao do trigger).
+-- Recebido como DADO (TEXT[]) e nao como relacao: qualquer relacao do
+-- chamador lida aqui dentro (view, policy, CHECK/indice parcial com funcao do
+-- chamador) executaria codigo dele com os privilegios do dono. O chamador
+-- materializa o array no proprio contexto: ARRAY(SELECT h FROM pg_temp...).
+
+-- Assinatura anterior (rascunho com REGCLASS, nunca em prod).
+DROP FUNCTION IF EXISTS etl_admin.tce_pb_replace_bucket(TEXT, INTEGER, REGCLASS, UUID, NUMERIC, BIGINT, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION etl_admin.tce_pb_replace_bucket(
     p_table           TEXT,
     p_bucket          INTEGER,
-    p_file            REGCLASS,
+    p_hashes          TEXT[],
     p_run_id          UUID,
     p_max_orphan_pct  NUMERIC DEFAULT 1.0,
     p_min_orphan_abs  BIGINT  DEFAULT 2000,
@@ -123,7 +130,7 @@ BEGIN
         RAISE EXCEPTION 'tce_pb_replace_bucket: tabela % fora da allowlist', p_table;
     END IF;
 
-    IF p_bucket IS NULL OR p_run_id IS NULL OR p_file IS NULL THEN
+    IF p_bucket IS NULL OR p_run_id IS NULL OR p_hashes IS NULL THEN
         RAISE EXCEPTION 'tce_pb_replace_bucket: parametros obrigatorios nulos';
     END IF;
     IF p_max_orphan_pct IS NULL OR p_max_orphan_pct < 0 OR p_max_orphan_pct > 100
@@ -131,30 +138,10 @@ BEGIN
         RAISE EXCEPTION 'tce_pb_replace_bucket: limites de orfaos invalidos';
     END IF;
 
-    -- p_file e lido com os privilegios do DEFINIDOR: so aceitar tabela
-    -- comum, TEMP desta sessao, sem RLS, com coluna h TEXT. View, foreign
-    -- table, tabela com policy etc. executariam codigo do chamador como dono.
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_class c
-         WHERE c.oid = p_file
-           AND c.relkind = 'r'
-           AND c.relnamespace = pg_my_temp_schema()
-           AND NOT c.relrowsecurity
-           AND NOT c.relforcerowsecurity
-    ) OR NOT EXISTS (
-        SELECT 1 FROM pg_attribute a
-         WHERE a.attrelid = p_file AND a.attname = 'h'
-           AND a.atttypid = 'text'::regtype AND NOT a.attisdropped
-    ) THEN
-        RAISE EXCEPTION 'tce_pb_replace_bucket: p_file % deve ser tabela TEMP comum desta sessao, sem RLS, com coluna h text',
-            p_file;
-    END IF;
-
     -- Hashes do arquivo (distintos).
     DROP TABLE IF EXISTS pg_temp._rb_file;
-    EXECUTE format(
-        'CREATE TEMP TABLE _rb_file ON COMMIT DROP AS
-           SELECT DISTINCT h FROM %s WHERE h IS NOT NULL', p_file::regclass);
+    CREATE TEMP TABLE _rb_file ON COMMIT DROP AS
+        SELECT DISTINCT h FROM unnest(p_hashes) AS u(h) WHERE h IS NOT NULL;
     CREATE UNIQUE INDEX ON pg_temp._rb_file (h);
     ANALYZE pg_temp._rb_file;
     SELECT count(*) INTO v_file_hashes FROM pg_temp._rb_file;
@@ -270,11 +257,11 @@ COMMENT ON FUNCTION etl_admin.tce_pb_replace_bucket IS
     'Replace por bucket TCE-PB (ADR-0015): remove do ano as linhas cujo _nk_md5 '
     'nao esta no arquivo, com guardas G1-G4 e backup em <tabela>_removido.';
 
-REVOKE ALL ON FUNCTION etl_admin.tce_pb_replace_bucket(TEXT, INTEGER, REGCLASS, UUID, NUMERIC, BIGINT, BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION etl_admin.tce_pb_replace_bucket(TEXT, INTEGER, TEXT[], UUID, NUMERIC, BIGINT, BOOLEAN) FROM PUBLIC;
 
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'etl_incremental') THEN
-        EXECUTE 'GRANT EXECUTE ON FUNCTION etl_admin.tce_pb_replace_bucket(TEXT, INTEGER, REGCLASS, UUID, NUMERIC, BIGINT, BOOLEAN) TO etl_incremental';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION etl_admin.tce_pb_replace_bucket(TEXT, INTEGER, TEXT[], UUID, NUMERIC, BIGINT, BOOLEAN) TO etl_incremental';
     END IF;
 END $$;
