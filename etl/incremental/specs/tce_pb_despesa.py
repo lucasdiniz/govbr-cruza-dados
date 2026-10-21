@@ -11,7 +11,7 @@ import re
 from datetime import date
 from typing import Optional
 
-from ..spec import LoaderSpec, CursorStrategy, DedupeStrategy
+from ..spec import BucketReplace, LoaderSpec, CursorStrategy, DedupeStrategy
 
 
 _TCE_BASE = "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados"
@@ -153,6 +153,10 @@ SPEC = LoaderSpec(
     cursor_strategy=CursorStrategy.YEAR_WINDOW,
     dedupe_strategy=DedupeStrategy.UPSERT_DO_NOTHING,
     nk_synthetic_md5=True,
+    # Arquivo anual = SNAPSHOT do ano (ADR-0015): apos o upsert, linhas do ano
+    # ausentes do arquivo (versoes antigas de registros editados upstream) sao
+    # removidas com backup em <tabela>_removido. Guardas em sql/46.
+    bucket_replace=BucketReplace(),
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,

@@ -15,7 +15,9 @@ name: RFB sync - agendador
 #
 # Concorrencia: deploy.yml usa concurrency group deploy-azure-vm. Um disparo
 # manual enquanto este run estiver PENDENTE cancela o pendente (regra do
-# GitHub); o agendador re-dispara na semana seguinte.
+# GitHub); o agendador re-dispara na semana seguinte. Pelo mesmo motivo o
+# agendador NAO dispara se ja houver deploy.yml em andamento/na fila (ex.:
+# ciclo do incremental-schedule.yml).
 
 on:
   schedule:
@@ -115,6 +117,16 @@ jobs:
           set -euo pipefail
           if [ -z "$MONTH" ]; then
             echo "Nenhuma publicacao RFB completa e estavel encontrada."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Outro deploy em andamento/na fila (ex.: incremental-schedule.yml):
+          # um disparo agora ficaria pendente e CANCELARIA qualquer outro
+          # pendente do grupo deploy-azure-vm. Tenta na semana seguinte.
+          BUSY=$(gh run list -R "$GITHUB_REPOSITORY" -w deploy.yml -L 50 \
+                   --json databaseId,status,displayTitle \
+                   --jq '[.[] | select(.status != "completed")]')
+          if [ "$(echo "$BUSY" | jq 'length')" -gt 0 ]; then
+            echo "deploy.yml em andamento/na fila: $BUSY — tenta na proxima semana."
             echo "dispatch=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           RUNS=$(gh run list -R "$GITHUB_REPOSITORY" -w deploy.yml -L 200 \

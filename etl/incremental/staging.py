@@ -165,6 +165,29 @@ def build_typed_select(spec: "LoaderSpec", stg_raw: str) -> str:
     return f"SELECT\n  " + ",\n  ".join(parts) + f"\nFROM {stg_raw}"
 
 
+def build_target_projection(spec: "LoaderSpec", *, bucket_id: str = None) -> tuple[list[str], list[str]]:
+    """(expressões do SELECT sobre a staging, colunas do target) na ordem do INSERT.
+
+    Fonte única da projeção staging → target: usada pelo upsert e pelo replace
+    por bucket (ADR-0015), que precisa recalcular o _nk_md5 das MESMAS linhas
+    que o upsert insere.
+    """
+    select_parts = []
+    target_cols = []
+    for col in spec.columns:
+        select_parts.append(col)  # raw col name from staging
+        target_cols.append(spec.column_renames.get(col, col))
+
+    for col, expr in spec.derived_columns.items():
+        if "{bucket_id}" in expr and bucket_id is not None:
+            resolved = expr.replace("{bucket_id}", repr(bucket_id))
+        else:
+            resolved = expr
+        select_parts.append(resolved)
+        target_cols.append(col)
+    return select_parts, target_cols
+
+
 def build_upsert_sql(spec: "LoaderSpec", stg_typed: str, *, bucket_id: str = None) -> str:
     """SQL para INSERT INTO target ... ON CONFLICT (NK) ... RETURNING xmax.
 
@@ -178,22 +201,7 @@ def build_upsert_sql(spec: "LoaderSpec", stg_typed: str, *, bucket_id: str = Non
 
     target = f"{spec.target_schema}.{spec.table}"
 
-    # Build SELECT clause: CSV cols (renamed where needed) + derived
-    select_parts = []
-    target_cols = []
-    for col in spec.columns:
-        target_col = spec.column_renames.get(col, col)
-        select_parts.append(col)  # raw col name from staging
-        target_cols.append(target_col)
-
-    # Derived columns
-    for col, expr in spec.derived_columns.items():
-        if "{bucket_id}" in expr and bucket_id is not None:
-            resolved = expr.replace("{bucket_id}", repr(bucket_id))
-        else:
-            resolved = expr
-        select_parts.append(resolved)
-        target_cols.append(col)
+    select_parts, target_cols = build_target_projection(spec, bucket_id=bucket_id)
 
     select_clause = ", ".join(select_parts)
     target_cols_str = ", ".join(target_cols)

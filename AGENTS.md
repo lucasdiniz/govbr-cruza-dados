@@ -395,6 +395,16 @@ parse clean as of PR #155. See those PRs for the exact pattern.
   do **1º incremental real**, conferir que `rows_inserted` do bucket corrente é
   ≈ (upstream − já carregado), **não** ≈ bucket inteiro (sinal de divergência
   de parsing → abortar).
+- **TCE-PB despesa/receita são snapshots → replace por bucket** (ADR-0015).
+  Hash de linha inteira + `UPSERT_DO_NOTHING` acumulava versões (valor_pago que
+  avança, descrição corrigida) → ~2× linhas em 2020–2026 (issue #211). Specs
+  com `bucket_replace` removem, na mesma transação do upsert, as linhas do ano
+  ausentes do arquivo via `etl_admin.tce_pb_replace_bucket` (sql/46, SECURITY
+  DEFINER com guardas G1–G5; backup em `<tabela>_removido`; restore em
+  `docs/ops.md`). `etl_incremental` segue sem `DELETE`. Sempre passe
+  `incremental_only_buckets` (sem ele todos os anos são reprocessados).
+  Agendamento: `incremental-schedule.yml` (quintas) + `rfb-sync-schedule.yml`
+  (segundas); nenhum dispara se houver deploy em andamento/na fila.
 - **Normalização pós-incremental TCE-PB é obrigatória.** Os CSVs não contêm
   `cpf_digitos_6`, `nome_upper`, `cnpj_basico`, `cpf_digitos`, `ano` nem as
   colunas normalizadas de proponente. `refresh_for_tce_pb` chama

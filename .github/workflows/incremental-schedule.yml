@@ -1,0 +1,214 @@
+name: Incremental TCE-PB/BF - agendador
+
+# Verifica semanalmente se ha dados novos do TCE-PB / Bolsa Familia e, se
+# sim, dispara deploy.yml com etl_phase=incremental (+ warm completo). Ver
+# docs/deploy.md, secao "Agendador incremental (TCE-PB + Bolsa Familia)".
+#
+# Decisao (GitHub-hosted, sem acesso ao banco):
+# - TCE-PB: arquivos anuais (despesa/servidor/licitacao/receita) mudam todo
+#   dia; o ciclo roda a cada TCE_INTERVAL_DAYS (padrao 28) desde o ultimo
+#   incremental TCE-PB com sucesso. Ano corrente sempre; ano anterior so de
+#   jan a mar (o TCE-PB fecha o arquivo do ano anterior em ~fevereiro).
+#   Ano sem arquivo publicado (404 em janeiro) fica de fora. Despesa/receita
+#   rodam em modo replace por bucket (ADR-0015).
+# - Bolsa Familia: meses publicados apos o ultimo carregado. O ultimo mes
+#   carregado vem do artifact `etl-watermarks` publicado pelo proprio
+#   deploy.yml (watermark real do banco); fallback: variavel
+#   INCREMENTAL_BF_BASELINE (YYYY-MM). UM mes por ciclo (BF_MAX_MONTHS=1):
+#   o watermark e o MAX dos meses carregados, entao com 2+ meses uma falha
+#   no 1o e sucesso no 2o deixaria um buraco que o agendador nunca veria.
+#   ~10h de carga por mes; o Portal publica ~1 mes por mes.
+#
+# Seguranca / dados live:
+# - Nao dispara se ha QUALQUER deploy.yml em andamento/na fila: um disparo
+#   enquanto outro esta pendente CANCELA o pendente (regra de concurrency do
+#   GitHub). Tenta de novo na semana seguinte.
+# - Para apos 2 falhas seguidas de incremental (exige acao manual).
+# - Guardas do proprio ETL (replace G1-G5, watermarks, paridade) seguem
+#   valendo; o agendador so decide QUANDO rodar.
+
+on:
+  schedule:
+    - cron: "0 9 * * 4"   # quintas 06:00 BRT (RFB roda as segundas)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "So mostra a decisao, nao dispara o deploy"
+        type: boolean
+        default: false
+
+permissions:
+  actions: write   # gh workflow run + leitura de artifacts
+  contents: read
+
+concurrency:
+  group: incremental-schedule
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # Desligado ate o 1o ciclo supervisionado (limpeza ADR-0015) dar certo:
+    #   gh variable set INCREMENTAL_SCHEDULE_ENABLED --body true
+    if: github.event_name == 'workflow_dispatch' || vars.INCREMENTAL_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Decidir disparo
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TCE_INTERVAL_DAYS: "28"
+          BF_MAX_MONTHS: "1"  # >1 pode criar buraco (ver cabecalho)
+          BF_BASELINE: ${{ vars.INCREMENTAL_BF_BASELINE }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, socket, subprocess, sys, tempfile, time
+          import urllib.error, urllib.request
+          from datetime import date, datetime, timedelta, timezone
+
+          REPO = os.environ["REPO"]
+          UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+          TCE_BASE = "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados"
+          BF_BASE = "https://portaldatransparencia.gov.br/download-de-dados/novo-bolsa-familia"
+          TCE_SPECS = ["tce_pb.tce_pb_despesa", "tce_pb.tce_pb_servidor",
+                       "tce_pb.tce_pb_licitacao", "tce_pb.tce_pb_receita"]
+          BF_SPEC = "bolsa_familia.bolsa_familia"
+
+          def out(**kv):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  for k, v in kv.items():
+                      f.write(f"{k}={v}\n")
+
+          def gh(*args):
+              return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+
+          def probe(url, *, ranged=False, tries=4):
+              """(existe, tamanho_total). 403/404/410 = nao publicado; rede
+              instavel -> retry; esgotado -> excecao (job falha, nao dispara)."""
+              err = None
+              for i in range(1, tries + 1):
+                  headers = {"User-Agent": UA, "Accept": "*/*"}
+                  if ranged:
+                      headers["Range"] = "bytes=0-0"
+                  req = urllib.request.Request(url, headers=headers,
+                                               method="GET" if ranged else "HEAD")
+                  try:
+                      with urllib.request.urlopen(req, timeout=90) as r:
+                          ctype = r.headers.get("Content-Type", "")
+                          crange = r.headers.get("Content-Range", "")
+                          size = int(crange.rsplit("/", 1)[1]) if "/" in crange else int(r.headers.get("Content-Length") or 0)
+                          return ("zip" in ctype.lower() or url.endswith(".zip")), size
+                  except urllib.error.HTTPError as e:
+                      if e.code in (403, 404, 410):
+                          return False, 0
+                      err = e
+                  except (urllib.error.URLError, OSError) as e:
+                      err = e
+                  print(f"  {url} tentativa {i}/{tries}: {err}")
+                  if i < tries:
+                      time.sleep(10 * i)
+              raise RuntimeError(f"{url} falhou {tries}x: {err}")
+
+          def no_dispatch(reason, *, error=False):
+              print(("::error::" if error else "") + reason)
+              out(dispatch="false")
+              sys.exit(1 if error else 0)
+
+          runs = json.loads(gh("run", "list", "-R", REPO, "-w", "deploy.yml", "-L", "100",
+                               "--json", "databaseId,displayTitle,status,conclusion,createdAt"))
+          busy = [r for r in runs if r["status"] != "completed"]
+          if busy:
+              no_dispatch("deploy.yml em andamento/na fila (" + ", ".join(
+                  f"{r['databaseId']} {r['status']}" for r in busy) + ") — tenta na proxima semana.")
+
+          incr = [r for r in runs if " - incremental " in r["displayTitle"]]
+          last2 = incr[:2]
+          if len(last2) == 2 and all(r["conclusion"] in ("failure", "timed_out") for r in last2):
+              no_dispatch("2 ultimos incrementais falharam (" + ", ".join(
+                  str(r["databaseId"]) for r in last2) + ") — agendador pausado. "
+                  "Investigar o log e disparar manualmente.", error=True)
+
+          now = datetime.now(timezone.utc)
+          today = date.today()
+
+          # ── TCE-PB ──
+          def has_tce(title):
+              return "tce_pb" in title or "incremental todas" in title
+          last_tce = next((r for r in incr if r["conclusion"] == "success" and has_tce(r["displayTitle"])), None)
+          interval = timedelta(days=int(os.environ["TCE_INTERVAL_DAYS"]))
+          if last_tce is None:
+              tce_due = True
+              print("TCE-PB: nenhum incremental com sucesso no historico -> devido")
+          else:
+              age = now - datetime.fromisoformat(last_tce["createdAt"].replace("Z", "+00:00"))
+              tce_due = age >= interval
+              print(f"TCE-PB: ultimo ciclo ok run {last_tce['databaseId']} ha {age.days}d (intervalo {interval.days}d) -> devido={tce_due}")
+          years = [today.year - 1, today.year] if today.month <= 3 else [today.year]
+          tce_years = []
+          for y in years:
+              ok, size = probe(f"{TCE_BASE}/despesas/despesas-{y}.zip")
+              print(f"TCE-PB despesas-{y}.zip: publicado={ok} tamanho={size}")
+              if ok and size > 10_000_000:
+                  tce_years.append(str(y))
+
+          # ── Bolsa Familia ──
+          bf_last = None
+          for r in incr[:20]:
+              arts = json.loads(gh("api", f"repos/{REPO}/actions/runs/{r['databaseId']}/artifacts"))
+              if not any(a["name"] == "etl-watermarks" and not a["expired"] for a in arts.get("artifacts", [])):
+                  continue
+              d = tempfile.mkdtemp()
+              gh("run", "download", str(r["databaseId"]), "-R", REPO, "-n", "etl-watermarks", "-D", d)
+              with open(os.path.join(d, "watermarks.json")) as f:
+                  wm = json.load(f)
+              bf_last = wm.get(BF_SPEC)
+              print(f"BF: watermark {bf_last!r} (artifact do run {r['databaseId']})")
+              break
+          if not bf_last and os.environ.get("BF_BASELINE"):
+              bf_last = os.environ["BF_BASELINE"].replace("-", "")
+              print(f"BF: watermark {bf_last!r} (variavel INCREMENTAL_BF_BASELINE)")
+          bf_months = []
+          if bf_last and len(bf_last) == 6 and bf_last.isdigit():
+              y, m = int(bf_last[:4]), int(bf_last[4:])
+              while len(bf_months) < int(os.environ["BF_MAX_MONTHS"]):
+                  y, m = (y, m + 1) if m < 12 else (y + 1, 1)
+                  if (y, m) >= (today.year, today.month):
+                      break  # mes corrente nunca esta publicado
+                  ok, size = probe(f"{BF_BASE}/{y:04d}{m:02d}", ranged=True)
+                  print(f"BF {y:04d}-{m:02d}: publicado={ok} tamanho={size}")
+                  if not (ok and size > 50_000_000):
+                      break  # meses precisam ser consecutivos
+                  bf_months.append(f"{y:04d}-{m:02d}")
+          else:
+              print("::warning::BF: ultimo mes carregado desconhecido (sem artifact etl-watermarks "
+                    "e sem INCREMENTAL_BF_BASELINE) — Bolsa Familia fora deste ciclo.")
+
+          if not ((tce_due and tce_years) or bf_months):
+              no_dispatch("Nada a fazer: TCE-PB nao devido e nenhum mes novo de Bolsa Familia.")
+
+          # TCE-PB so quando devido (nao pega carona em ciclo so de BF).
+          run_tce = tce_due and bool(tce_years)
+          specs = (TCE_SPECS if run_tce else []) + ([BF_SPEC] if bf_months else [])
+          buckets = (tce_years if run_tce else []) + bf_months
+          print(f"DISPARAR: specs={','.join(specs)} buckets={','.join(buckets)}")
+          out(dispatch="true", specs=",".join(specs), buckets=",".join(buckets))
+          PY
+
+      - name: Disparar deploy (incremental)
+        if: steps.decide.outputs.dispatch == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPECS: ${{ steps.decide.outputs.specs }}
+          BUCKETS: ${{ steps.decide.outputs.buckets }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy.yml -R "$GITHUB_REPOSITORY" --ref main \
+            -f etl_phase=incremental \
+            -f incremental_only="$SPECS" \
+            -f incremental_only_buckets="$BUCKETS" \
+            -f warm_cache=true \
+            -f warm_skip_hours=0
+          echo "Disparado deploy.yml incremental specs=$SPECS buckets=$BUCKETS"

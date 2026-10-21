@@ -71,6 +71,26 @@ def _validate_derived_expr(col: str, expr: str) -> None:
 
 
 @dataclass(frozen=True)
+class BucketReplace:
+    """Config do replace por bucket (ADR-0015).
+
+    A tabela precisa estar na allowlist de etl_admin.tce_pb_replace_bucket
+    (sql/46), que define coluna de escopo, chave "gêmeo" e tabela de backup.
+    """
+
+    # Remoções SEM sucessora no arquivo (registro sumiu da publicação) acima de
+    # max(min_orphan_abs, max_orphan_pct% do bucket) abortam o arquivo.
+    max_orphan_pct: float = 1.0
+    min_orphan_abs: int = 2000
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.max_orphan_pct <= 100.0):
+            raise ConfigError("bucket_replace.max_orphan_pct must be in [0, 100]")
+        if self.min_orphan_abs < 0:
+            raise ConfigError("bucket_replace.min_orphan_abs must be >= 0")
+
+
+@dataclass(frozen=True)
 class LoaderSpec:
     """Declaração imutável de como carregar uma fonte (source, table) incremental.
 
@@ -139,7 +159,11 @@ class LoaderSpec:
     # lista de bucket_ids candidatos (e.g. range(2018, 2027) para year window).
     # Default: deriva do disco se url_for_bucket=None.
     enumerate_buckets: Optional[Callable[[], list[str]]] = None
-
+    # Substituição por bucket (ADR-0015): o arquivo do bucket é SNAPSHOT
+    # completo (TCE-PB anual). Após o upsert, linhas do bucket ausentes do
+    # arquivo são removidas via etl_admin.tce_pb_replace_bucket (guardas +
+    # backup). None = comportamento acumulativo (append/upsert) padrão.
+    bucket_replace: Optional["BucketReplace"] = None
     def __post_init__(self) -> None:
         # Basic types
         if not self.source or not isinstance(self.source, str):
@@ -225,6 +249,19 @@ class LoaderSpec:
                     f"cursor_strategy={self.cursor_strategy.value} requires bucket_from_filename"
                 )
 
+        # Replace por bucket: só faz sentido com hash de linha inteira e
+        # 1 arquivo = 1 bucket inteiro (o replace de um arquivo apagaria as
+        # linhas dos outros arquivos do mesmo bucket).
+        if self.bucket_replace is not None:
+            if not self.nk_synthetic_md5:
+                raise ConfigError("bucket_replace requires nk_synthetic_md5=True")
+            if self.dedupe_strategy != DedupeStrategy.UPSERT_DO_NOTHING:
+                raise ConfigError("bucket_replace requires UPSERT_DO_NOTHING")
+            if self.cursor_strategy != CursorStrategy.YEAR_WINDOW:
+                raise ConfigError("bucket_replace requires YEAR_WINDOW (bucket = ano)")
+            if self.file_pattern is not None and len(self.file_pattern("2000")) != 1:
+                raise ConfigError("bucket_replace requires exactly 1 file per bucket")
+
     @property
     def spec_hash(self) -> str:
         """SHA-256 do JSON canônico de campos primitivos. Estável cross-run."""
@@ -251,6 +288,13 @@ class LoaderSpec:
             "bootstrap_tolerance_pct": self.bootstrap_tolerance_pct,
             "csv_header_rewrites": dict(self.csv_header_rewrites),
         }
+        # Só entra no hash quando definido: specs sem replace mantêm o
+        # spec_hash histórico.
+        if self.bucket_replace is not None:
+            canonical["bucket_replace"] = {
+                "max_orphan_pct": self.bucket_replace.max_orphan_pct,
+                "min_orphan_abs": self.bucket_replace.min_orphan_abs,
+            }
         return hashlib.sha256(
             json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()

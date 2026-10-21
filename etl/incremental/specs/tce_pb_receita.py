@@ -12,7 +12,7 @@ NK candidata: (municipio, codigo_ug, mes_ano, codigo_receita, codigo_fonte_recur
 from __future__ import annotations
 import re
 from datetime import date
-from ..spec import LoaderSpec, CursorStrategy, DedupeStrategy
+from ..spec import BucketReplace, LoaderSpec, CursorStrategy, DedupeStrategy
 
 _TCE_BASE = "https://download.tce.pb.gov.br/dados-abertos/dados-consolidados"
 
@@ -68,6 +68,10 @@ SPEC = LoaderSpec(
     # nk_synthetic_md5=True -> ON CONFLICT (_nk_md5). md5 por uniformidade com
     # despesa/servidor (ADR-0014). Requer sql/42 + sql/42z.
     nk_synthetic_md5=True,
+    # Arquivo anual = SNAPSHOT do ano (ADR-0015): apos o upsert, linhas do ano
+    # ausentes do arquivo (versoes antigas de registros editados upstream) sao
+    # removidas com backup em <tabela>_removido. Guardas em sql/46.
+    bucket_replace=BucketReplace(),
     columns=COLUMNS,
     column_types=COLUMN_TYPES,
     column_renames=COLUMN_RENAMES,
