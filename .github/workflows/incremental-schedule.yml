@@ -6,8 +6,9 @@ name: Incremental TCE-PB/BF - agendador
 #
 # Decisao (GitHub-hosted, sem acesso ao banco):
 # - TCE-PB: arquivos anuais (despesa/servidor/licitacao/receita) mudam todo
-#   dia; o ciclo roda a cada TCE_INTERVAL_DAYS (padrao 28) desde o ultimo
-#   incremental TCE-PB com sucesso. Ano corrente sempre; ano anterior so de
+#   dia; cada tabela roda a cada TCE_INTERVAL_DAYS (padrao 28) desde o ultimo
+#   incremental com sucesso que incluiu a tabela E o ano corrente. Uma carga
+#   parcial nao adia as outras tabelas. Ano corrente sempre; ano anterior so de
 #   jan a mar (o TCE-PB fecha o arquivo do ano anterior em ~fevereiro).
 #   Ano sem arquivo publicado (404 em janeiro) fica de fora. Despesa/receita
 #   rodam em modo replace por bucket (ADR-0015).
@@ -148,6 +149,39 @@ jobs:
               out(dispatch="false")
               sys.exit(1 if error else 0)
 
+          def tce_devidas(runs, agora, ano, intervalo):
+              ultimos = {}
+              for r in runs:  # historico do GitHub: mais recente primeiro
+                  if r["conclusion"] != "success":
+                      continue
+                  titulo = re.fullmatch(
+                      r"Deploy to Azure VM - incremental (\S+) \[([^\]]+)\]",
+                      r["displayTitle"])
+                  if not titulo:
+                      continue
+                  escopo, buckets = (set(v.split(",")) for v in titulo.groups())
+                  if str(ano) not in buckets and "todos" not in buckets:
+                      continue  # reprocessar so anos antigos nao atualiza o corrente
+                  for spec in TCE_SPECS:
+                      if (spec in escopo or "todas" in escopo) and spec not in ultimos:
+                          ultimos[spec] = r
+
+              devidas = []
+              for spec in TCE_SPECS:
+                  ultimo = ultimos.get(spec)
+                  if ultimo is None:
+                      devido = True
+                      print(f"TCE-PB {spec}: sem incremental com sucesso identificado "
+                            f"para {ano} -> devido=True")
+                  else:
+                      idade = agora - datetime.fromisoformat(ultimo["createdAt"].replace("Z", "+00:00"))
+                      devido = idade >= intervalo
+                      print(f"TCE-PB {spec}: ultimo ciclo ok run {ultimo['databaseId']} "
+                            f"ha {idade.days}d (intervalo {intervalo.days}d) -> devido={devido}")
+                  if devido:
+                      devidas.append(spec)
+              return devidas
+
           runs = json.loads(gh("run", "list", "-R", REPO, "-w", "deploy.yml", "-L", "100",
                                "--json", "databaseId,displayTitle,status,conclusion,createdAt"))
           busy = [r for r in runs if r["status"] != "completed"]
@@ -166,17 +200,8 @@ jobs:
           today = date.today()
 
           # ── TCE-PB ──
-          def has_tce(title):
-              return "tce_pb" in title or "incremental todas" in title
-          last_tce = next((r for r in incr if r["conclusion"] == "success" and has_tce(r["displayTitle"])), None)
           interval = timedelta(days=int(os.environ["TCE_INTERVAL_DAYS"]))
-          if last_tce is None:
-              tce_due = True
-              print("TCE-PB: nenhum incremental com sucesso no historico -> devido")
-          else:
-              age = now - datetime.fromisoformat(last_tce["createdAt"].replace("Z", "+00:00"))
-              tce_due = age >= interval
-              print(f"TCE-PB: ultimo ciclo ok run {last_tce['databaseId']} ha {age.days}d (intervalo {interval.days}d) -> devido={tce_due}")
+          tce_due = tce_devidas(incr, now, today.year, interval)
           years = [today.year - 1, today.year] if today.month <= 3 else [today.year]
           tce_years = []
           for y in years:
@@ -227,7 +252,7 @@ jobs:
 
           # TCE-PB so quando devido (nao pega carona em ciclo so de BF).
           run_tce = tce_due and bool(tce_years)
-          specs = (TCE_SPECS if run_tce else []) + ([BF_SPEC] if bf_months else [])
+          specs = (tce_due if run_tce else []) + ([BF_SPEC] if bf_months else [])
           buckets = (tce_years if run_tce else []) + bf_months
           print(f"DISPARAR: specs={','.join(specs)} buckets={','.join(buckets)}")
           out(dispatch="true", specs=",".join(specs), buckets=",".join(buckets))

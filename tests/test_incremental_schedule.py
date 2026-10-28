@@ -84,7 +84,7 @@ def preparar_decisao(agendador):
     ultimo_mes = (agora.replace(day=1) - timedelta(days=32)).strftime("%Y%m")
     agendador["os"].environ["BF_BASELINE"] = ultimo_mes
     agendador["gh"] = lambda *args: json.dumps([{
-        "databaseId": 1, "displayTitle": "Deploy to Azure VM - incremental todas [2026]",
+        "databaseId": 1, "displayTitle": f"Deploy to Azure VM - incremental todas [{agora.year}]",
         "status": "completed", "conclusion": "success", "createdAt": agora.isoformat(),
     }]) if args[0] == "run" else '{"artifacts":[]}'
     agendador["probe"] = Mock(return_value=(True, 100_000_000))
@@ -129,3 +129,64 @@ def test_watermark_desconhecido_ou_invalido_falha(agendador, baseline):
     with pytest.raises(SystemExit) as exc:
         exec(DECISAO, agendador)
     assert exc.value.code == 1
+
+
+def ciclo(agora, dias, escopo, buckets="2026", status="success"):
+    return {
+        "databaseId": dias,
+        "displayTitle": f"Deploy to Azure VM - incremental {escopo} [{buckets}]",
+        "status": "completed", "conclusion": status,
+        "createdAt": (agora - timedelta(days=dias)).isoformat(),
+    }
+
+
+def test_carga_parcial_nao_adia_tabelas_mais_antigas(agendador):
+    agora = datetime(2026, 10, 29, 9, tzinfo=timezone.utc)
+    historico = [
+        ciclo(agora, 8, "tce_pb.tce_pb_despesa,tce_pb.tce_pb_receita"),
+        ciclo(agora, 28, "todas", "todos"),
+    ]
+    assert agendador["tce_devidas"](historico, agora, 2026, timedelta(days=28)) == [
+        "tce_pb.tce_pb_servidor", "tce_pb.tce_pb_licitacao",
+    ]
+
+
+@pytest.mark.parametrize("escopo,buckets,status", [
+    ("bolsa_familia.bolsa_familia", "2026-09", "success"),
+    ("todas", "2025", "success"),
+    ("tce_pb.tce_pb_servidor_backup", "2026", "success"),
+    ("todas", "todos", "failure"),
+])
+def test_ciclo_fora_do_escopo_ou_falho_nao_reinicia_relogio(agendador, escopo, buckets, status):
+    agora = datetime(2026, 10, 29, 9, tzinfo=timezone.utc)
+    historico = [ciclo(agora, 1, escopo, buckets, status)]
+    assert agendador["tce_devidas"](historico, agora, 2026, timedelta(days=28)) == agendador["TCE_SPECS"]
+
+
+def test_ciclo_completo_recente_mantem_todas_as_tabelas_em_dia(agendador):
+    agora = datetime(2026, 10, 29, 9, tzinfo=timezone.utc)
+    historico = [ciclo(agora, 27, ",".join(agendador["TCE_SPECS"]), "2025,2026")]
+    assert agendador["tce_devidas"](historico, agora, 2026, timedelta(days=28)) == []
+
+
+@pytest.mark.parametrize("bf_novo", [False, True])
+def test_decisao_dispara_somente_tabelas_devidas_com_bf_opcional(agendador, bf_novo):
+    proximo = preparar_decisao(agendador)
+    agora = datetime.now(timezone.utc)
+    historico = [
+        ciclo(agora, 7, "tce_pb.tce_pb_despesa,tce_pb.tce_pb_receita", str(agora.year)),
+        ciclo(agora, 29, "todas", "todos"),
+    ]
+    agendador["gh"] = lambda *args: json.dumps(historico) if args[0] == "run" else '{"artifacts":[]}'
+    agendador["bf_publicados"] = lambda: {proximo} if bf_novo else {f"{int(proximo[:4]) - 1}-12"}
+    exec(DECISAO, agendador)
+    output = Path(agendador["os"].environ["GITHUB_OUTPUT"]).read_text()
+    assert "dispatch=true\n" in output
+    specs = "tce_pb.tce_pb_servidor,tce_pb.tce_pb_licitacao"
+    if bf_novo:
+        specs += ",bolsa_familia.bolsa_familia"
+    assert f"specs={specs}\n" in output
+    esperado = f"{agora.year - 1},{agora.year}" if agora.month <= 3 else str(agora.year)
+    if bf_novo:
+        esperado += f",{proximo}"
+    assert f"buckets={esperado}\n" in output
