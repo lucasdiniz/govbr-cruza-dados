@@ -339,13 +339,14 @@ roda às quintas 06:00 BRT (o RFB roda às segundas) e dispara:
 
 ```yaml
 etl_phase: incremental
-incremental_only: "tce_pb.tce_pb_despesa,tce_pb.tce_pb_servidor,tce_pb.tce_pb_licitacao,tce_pb.tce_pb_receita[,bolsa_familia.bolsa_familia]"
+incremental_only: "<somente as tabelas TCE-PB devidas>[,bolsa_familia.bolsa_familia]"
 incremental_only_buckets: "<ano>[,<ano-1> de jan a mar][,<meses BF novos>]"
 warm_cache: true
 warm_skip_hours: "0"
 ```
 
-quando (a) o último incremental TCE-PB com sucesso tem ≥ 28 dias **ou** (b) o
+quando (a) alguma tabela TCE-PB está há ≥ 28 dias sem incremental com sucesso
+que inclua **essa tabela e o ano corrente** **ou** (b) o
 Portal da Transparência publicou meses de Bolsa Família após o último
 carregado (watermark lido do artifact `etl-watermarks` do último incremental;
 fallback `INCREMENTAL_BF_BASELINE=YYYY-MM`; 1 mês por ciclo — o watermark é o MAX dos meses, então 2+ meses com falha no 1º deixariam buraco). Ano
@@ -354,6 +355,15 @@ houver qualquer `deploy.yml` em andamento/na fila (um disparo novo cancelaria
 o pendente — o `rfb-sync-schedule.yml` segue a mesma regra) e **pausa** após
 2 incrementais seguidos com falha. Ciclo típico: TCE-PB ~1–2h + refresh ~4,5h
 (+ BF ~10h/mês + refresh ~2h) + warm ~16–20h, em B4 com as 2 janelas de resize.
+
+O intervalo é **por tabela**, não por fonte: um ciclo somente de despesas/
+receitas não adia servidores/licitações. O escopo e os buckets são lidos do
+`run-name` do deploy; `todas`/`todos` cobrem todas as tabelas/anos. Falhas,
+ciclos só de BF e reprocessamentos somente de anos antigos não reiniciam o
+relógio. Sem sucesso identificável no histórico consultado (inclusive deploys
+legados sem escopo no título), a tabela é considerada devida; nunca se presume
+que uma carga parcial atualizou as demais. Só as tabelas devidas são enviadas
+ao próximo incremental, mantendo o limite de anos acima.
 
 Vem **desligado**: `gh variable set INCREMENTAL_SCHEDULE_ENABLED --body true`.
 `workflow_dispatch` com `dry_run=true` mostra a decisão sem disparar.
