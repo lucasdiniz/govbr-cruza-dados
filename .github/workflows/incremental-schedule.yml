@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, socket, subprocess, sys, tempfile, time
+          import json, os, re, subprocess, sys, tempfile, time
           import urllib.error, urllib.request
           from datetime import date, datetime, timedelta, timezone
 
@@ -86,8 +86,8 @@ jobs:
               return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
 
           def probe(url, *, ranged=False, tries=4):
-              """(existe, tamanho_total). 403/404/410 = nao publicado; rede
-              instavel -> retry; esgotado -> excecao (job falha, nao dispara)."""
+              """(existe, tamanho_total). 404/410 = ausente; 403 e falhas
+              de rede nunca viram sucesso sem trabalho."""
               err = None
               for i in range(1, tries + 1):
                   headers = {"User-Agent": UA, "Accept": "*/*"}
@@ -100,9 +100,9 @@ jobs:
                           ctype = r.headers.get("Content-Type", "")
                           crange = r.headers.get("Content-Range", "")
                           size = int(crange.rsplit("/", 1)[1]) if "/" in crange else int(r.headers.get("Content-Length") or 0)
-                          return ("zip" in ctype.lower() or url.endswith(".zip")), size
+                          return ("zip" in ctype.lower() or r.geturl().endswith(".zip")), size
                   except urllib.error.HTTPError as e:
-                      if e.code in (403, 404, 410):
+                      if e.code in (404, 410):
                           return False, 0
                       err = e
                   except (urllib.error.URLError, OSError) as e:
@@ -111,6 +111,37 @@ jobs:
                   if i < tries:
                       time.sleep(10 * i)
               raise RuntimeError(f"{url} falhou {tries}x: {err}")
+
+          def bf_publicados(tries=4):
+              """Usa a mesma lista de meses oferecida pela pagina oficial.
+
+              O S3 retorna 403 tambem para objetos ainda nao publicados; so
+              a lista permite distinguir isso de bloqueio de um ZIP existente.
+              """
+              err = None
+              for i in range(1, tries + 1):
+                  req = urllib.request.Request(BF_BASE, headers={"User-Agent": UA})
+                  try:
+                      with urllib.request.urlopen(req, timeout=90) as r:
+                          html = r.read().decode("utf-8")
+                      arquivos = [json.loads(obj) for obj in re.findall(
+                          r"arquivos\.push\(\s*(\{[^\n]*?\})\s*\)", html)]
+                      meses = {
+                          f"{a['ano']}-{a['mes']}" for a in arquivos
+                          if a.get("origem") == "NovoBolsaFamilia"
+                          and re.fullmatch(r"\d{4}", a.get("ano", ""))
+                          and re.fullmatch(r"0[1-9]|1[0-2]", a.get("mes", ""))
+                      }
+                      if not meses:
+                          raise ValueError("lista oficial de meses BF vazia ou formato alterado")
+                      print(f"BF: ultimo mes publicado na lista oficial={max(meses)}")
+                      return meses
+                  except (urllib.error.URLError, OSError, ValueError) as e:
+                      err = e
+                  print(f"  Lista BF tentativa {i}/{tries}: {err}")
+                  if i < tries:
+                      time.sleep(10 * i)
+              raise RuntimeError(f"Lista oficial BF falhou {tries}x: {err}")
 
           def no_dispatch(reason, *, error=False):
               print(("::error::" if error else "") + reason)
@@ -171,20 +202,25 @@ jobs:
               bf_last = os.environ["BF_BASELINE"].replace("-", "")
               print(f"BF: watermark {bf_last!r} (variavel INCREMENTAL_BF_BASELINE)")
           bf_months = []
-          if bf_last and len(bf_last) == 6 and bf_last.isdigit():
+          if isinstance(bf_last, str) and re.fullmatch(r"\d{4}(0[1-9]|1[0-2])", bf_last):
+              publicados = bf_publicados()
               y, m = int(bf_last[:4]), int(bf_last[4:])
               while len(bf_months) < int(os.environ["BF_MAX_MONTHS"]):
                   y, m = (y, m + 1) if m < 12 else (y + 1, 1)
                   if (y, m) >= (today.year, today.month):
                       break  # mes corrente nunca esta publicado
+                  mes = f"{y:04d}-{m:02d}"
+                  if mes not in publicados:
+                      print(f"BF {mes}: ainda nao consta na lista oficial; aguardando publicacao.")
+                      break  # nao sonda URL inexistente (S3 responde 403)
                   ok, size = probe(f"{BF_BASE}/{y:04d}{m:02d}", ranged=True)
-                  print(f"BF {y:04d}-{m:02d}: publicado={ok} tamanho={size}")
+                  print(f"BF {mes}: listado=True zip_valido={ok} tamanho={size}")
                   if not (ok and size > 50_000_000):
-                      break  # meses precisam ser consecutivos
-                  bf_months.append(f"{y:04d}-{m:02d}")
+                      raise RuntimeError(f"BF {mes} consta na lista oficial mas ZIP indisponivel/invalido.")
+                  bf_months.append(mes)
           else:
-              print("::warning::BF: ultimo mes carregado desconhecido (sem artifact etl-watermarks "
-                    "e sem INCREMENTAL_BF_BASELINE) — Bolsa Familia fora deste ciclo.")
+              no_dispatch("BF: ultimo mes carregado desconhecido/invalido (sem artifact etl-watermarks "
+                          "valido e sem INCREMENTAL_BF_BASELINE) — corrigir antes de agendar.", error=True)
 
           if not ((tce_due and tce_years) or bf_months):
               no_dispatch("Nada a fazer: TCE-PB nao devido e nenhum mes novo de Bolsa Familia.")

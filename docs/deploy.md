@@ -358,6 +358,14 @@ o pendente — o `rfb-sync-schedule.yml` segue a mesma regra) e **pausa** após
 Vem **desligado**: `gh variable set INCREMENTAL_SCHEDULE_ENABLED --body true`.
 `workflow_dispatch` com `dry_run=true` mostra a decisão sem disparar.
 
+**Publicação BF vs. erro de acesso:** o agendador consulta a lista de meses
+na página oficial antes de sondar o ZIP. Mês ausente da lista significa
+aguardar publicação (o S3 da CGU também retorna 403 para objetos inexistentes).
+Mês listado com ZIP bloqueado/ausente/inválido, lista ilegível ou watermark
+desconhecido **falha o job**, em vez de aparentar sucesso sem atualizar BF.
+Os meses continuam consecutivos e limitados a um por ciclo; nunca pule um
+mês indisponível nem avance o watermark manualmente para contorná-lo.
+
 ## One-off inputs hygiene
 
 Alguns inputs do `deploy.yml` foram criados para remediar incidentes ou bugs específicos. Após rodarem em produção e o problema ser resolvido, **viram débito técnico**: inflam o UI do `workflow_dispatch`, confundem novos contributors, e arrastam código de step que nunca mais é executado.
