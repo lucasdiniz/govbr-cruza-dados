@@ -46,6 +46,14 @@ sequenceDiagram
 
 > **Cache-only by design:** rotas pesadas (`/api/cidade/q/*`) só leem `web_cache`; nunca tocam Postgres em request quente. Quem popula o cache é [`web/warm_cache.py`](../web/warm_cache.py). Detalhes em [cache.md](cache.md).
 
+**Vínculos no diálogo de servidor:** `/api/servidor/detalhes` consolida o
+histórico por município, unidade gestora, matrícula, cargo e admissão.
+Municípios ausentes (`NULL`, vazio, `\N`, `-`) só usam o nome conhecido de
+outros registros do mesmo servidor e da mesma UG quando há um único nome
+válido. Sem essa evidência, aparece “Municipio nao informado”; o município
+da página não é usado como suposição. A consolidação mantém o primeiro/
+último registro e o maior salário, sem somar duplicatas nem alterar a base.
+
 ## 1. Adicionando uma query nova ao registry
 
 As Q## do modo deep-dive são registradas em [`web/queries/registry.py`](../web/queries/registry.py) via `QueryDef`:
