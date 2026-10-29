@@ -1691,6 +1691,48 @@ def _get_bf_meses_disponiveis() -> list[str]:
     return vals
 
 
+def _agrupar_vinculos_servidor(vinculos: list[dict]) -> list[dict]:
+    municipios_por_ug: dict[str, set[str]] = {}
+    normalizados = []
+    for vinculo in vinculos:
+        municipio = (vinculo.get("municipio") or "").strip()
+        if municipio.upper() in ("", "\\N", "NULL", "-"):
+            municipio = None
+        registro = dict(vinculo, municipio=municipio)
+        normalizados.append(registro)
+        codigo_ug = registro.get("codigo_ug")
+        if codigo_ug and municipio:
+            municipios_por_ug.setdefault(codigo_ug, set()).add(municipio)
+
+    grupos = {}
+    for registro in normalizados:
+        municipio = registro["municipio"]
+        candidatos = municipios_por_ug.get(registro.get("codigo_ug"), set())
+        if municipio is None and len(candidatos) == 1:
+            municipio = next(iter(candidatos))
+        # A UG/matricula preserva cargos distintos; nunca inferir municipio
+        # pelo contexto da pagina ou escolher entre nomes conflitantes.
+        chave = (municipio, registro.get("codigo_ug"), registro.get("matricula"),
+                 registro["descricao_cargo"], registro["data_admissao"])
+        if chave not in grupos:
+            grupos[chave] = {
+                campo: registro[campo] for campo in (
+                    "descricao_cargo", "data_admissao", "primeiro_registro",
+                    "ultimo_registro", "maior_salario",
+                )
+            }
+            grupos[chave]["municipio"] = municipio or "Municipio nao informado"
+        else:
+            grupo = grupos[chave]
+            for campo, agregar in (("primeiro_registro", min),
+                                   ("ultimo_registro", max), ("maior_salario", max)):
+                grupo[campo] = agregar(
+                    (v for v in (grupo[campo], registro[campo]) if v is not None),
+                    default=None,
+                )
+    return sorted(grupos.values(), key=lambda v: v["ultimo_registro"] or "", reverse=True)
+
+
 @router.post("/api/servidor/detalhes")
 async def get_servidor_detalhes(payload: dict = Body(...)):
     """Retorna detalhes enriquecidos de um servidor: empresas, BF, vinculo, sancoes, empenhos."""
@@ -1752,13 +1794,13 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                 # bloco BF usa `vinculos` para decidir se servidor sem
                 # parcela ainda tem snapshots a reportar).
                 cur.execute("""
-                    SELECT municipio, descricao_cargo, data_admissao,
+                    SELECT municipio, codigo_ug, matricula, descricao_cargo, data_admissao,
                            MIN(ano_mes) AS primeiro_registro,
                            MAX(ano_mes) AS ultimo_registro,
                            MAX(valor_vantagem) AS maior_salario
                     FROM tce_pb_servidor
                     WHERE cpf_digitos_6 = %s AND nome_upper = %s
-                    GROUP BY municipio, descricao_cargo, data_admissao
+                    GROUP BY municipio, codigo_ug, matricula, descricao_cargo, data_admissao
                     ORDER BY MAX(ano_mes) DESC
                 """, (cpf6, nome))
                 srv_cols = [d[0] for d in cur.description]
@@ -1773,6 +1815,7 @@ async def get_servidor_detalhes(payload: dict = Body(...)):
                             elif hasattr(v, 'isoformat'):
                                 r[k] = v.isoformat()
                         vinculos.append(r)
+                    vinculos = _agrupar_vinculos_servidor(vinculos)
                     result["vinculos"] = vinculos
 
                 cur.execute("""
