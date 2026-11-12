@@ -331,6 +331,49 @@ sudo fail2ban-client set recidive unbanip <IP>
 
 Se você bloqueou o próprio SSH, use `debug-logs.yml` e/ou console Azure para recuperar acesso.
 
+> **`backend = auto` é obrigatório** nos três jails. O Ubuntu usa
+> `backend = systemd` por padrão; com ele o fail2ban ignora `logpath` e lê o
+> journal, onde o `access.log` do nginx não existe. O sintoma é
+> `fail2ban-client status <jail>` mostrar `Journal matches:` (em vez de
+> `File list:`) e `Total failed: 0` para sempre.
+
+## Runbook: bloqueio de bots
+
+O nginx responde `403` a dois grupos ([`../deploy/nginx-bloqueio-bots.conf`](../deploy/nginx-bloqueio-bots.conf)):
+
+1. **User-Agent de crawler sem valor**: SEO comercial (Ahrefs, Semrush,
+   SERanking, MJ12, DotBot...), crawlers agressivos (ShapBot, Bytespider,
+   PetalBot) e scanners. Os mesmos nomes recebem `Disallow: /` no
+   `/robots.txt` ([`../web/routes/seo.py`](../web/routes/seo.py)).
+2. **IP de nuvem Tencent/Huawei/Alibaba**: navegadores automatizados
+   que renderizam a página e disparam o Umami (os "visitantes" CN/HK/SG
+   com device `laptop`). Faixas em
+   [`../deploy/nginx-datacenter-cidrs.conf`](../deploy/nginx-datacenter-cidrs.conf).
+
+Nunca bloqueados: `/robots.txt`, desafio ACME, buscadores (Googlebot,
+bingbot, Applebot, DuckDuckBot, YandexBot) e buscadores de IA que geram
+visitas (OAI-SearchBot, ChatGPT-User, ClaudeBot, PerplexityBot). O
+`HeadlessChrome` em faixas Microsoft é o renderizador do Bing, por isso **não**
+bloqueamos por `HeadlessChrome`.
+
+Critério para adicionar um bloqueio: só UA que se identifica como bot, ou
+ASN de **data center**. Nunca bloqueie ASN de provedor residencial/móvel,
+nem o scraper distribuído (1 hit por IP em provedores residenciais do mundo
+todo, inclusive BR), porque não dá para separá-lo de usuário real por IP.
+
+```bash
+# Atualizar faixas (local; commitar o resultado e fazer deploy etl_phase=web)
+python deploy/gerar_bloqueio_datacenter.py
+
+# Quanto está sendo bloqueado (na VM)
+sudo awk '$9 == 403' /var/log/nginx/access.log | wc -l
+
+# Desligar emergencialmente (na VM), sem deploy:
+echo 'map "" $tpb_bloquear_bot { default 0; }' | sudo tee /etc/nginx/conf.d/transparenciapb-bloqueio-bots.conf
+sudo nginx -t && sudo systemctl reload nginx
+# O próximo deploy reinstala o arquivo do repo. Para desligar de vez, reverta o PR.
+```
+
 ## Runbook: logs ad-hoc
 
 Workflow [`../.github/workflows/debug-logs.yml`](../.github/workflows/debug-logs.yml) coleta logs da VM sem depender de sessão SSH interativa. Use quando:

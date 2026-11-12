@@ -171,7 +171,21 @@ def _site_origin(request: Request) -> str:
 @router.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt(request: Request) -> PlainTextResponse:
     origin = _site_origin(request)
+    # Crawlers comerciais sem valor pro site; tambem bloqueados no nginx
+    # (deploy/nginx-bloqueio-bots.conf). O Disallow faz os que respeitam
+    # robots.txt pararem de tentar, em vez de colecionar 403.
+    bloqueados = "".join(
+        f"User-agent: {ua}\n"
+        for ua in (
+            "ShapBot", "AhrefsBot", "SemrushBot", "SERankingBacklinksBot",
+            "PetalBot", "MJ12bot", "DotBot", "BLEXBot", "DataForSeoBot",
+            "Barkrowler", "Bytespider",
+        )
+    )
     body = (
+        f"{bloqueados}"
+        "Disallow: /\n"
+        "\n"
         "User-agent: *\n"
         "Allow: /\n"
         "# API endpoints (sem conteudo indexavel)\n"
