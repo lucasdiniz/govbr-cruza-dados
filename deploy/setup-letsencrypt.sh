@@ -74,7 +74,19 @@ if [[ -f "${RATE_LIMIT_ZONES_SRC}" ]]; then
     log "Rate limit zones instaladas em ${RATE_LIMIT_ZONES_PATH}"
 fi
 
-# 3c) Garantir traversal de /home/<user>/ pra nginx servir static via alias.
+# 3c) Bloqueio de bots (http context). O site config referencia
+# $tpb_bloquear_bot, entao estes arquivos precisam estar no lugar antes do
+# `nginx -t` em install_nginx_config. Lista de CIDRs fica fora de conf.d/
+# porque so eh valida dentro do bloco `geo`.
+BOT_BLOCK_SRC="${REPO_DIR}/deploy/nginx-bloqueio-bots.conf"
+BOT_BLOCK_PATH="/etc/nginx/conf.d/transparenciapb-bloqueio-bots.conf"
+DC_CIDRS_SRC="${REPO_DIR}/deploy/nginx-datacenter-cidrs.conf"
+DC_CIDRS_PATH="/etc/nginx/transparenciapb-datacenter-cidrs.conf"
+install -m 0644 "${DC_CIDRS_SRC}" "${DC_CIDRS_PATH}"
+install -m 0644 "${BOT_BLOCK_SRC}" "${BOT_BLOCK_PATH}"
+log "Bloqueio de bots instalado em ${BOT_BLOCK_PATH} (+ ${DC_CIDRS_PATH})"
+
+# 3d) Garantir traversal de /home/<user>/ pra nginx servir static via alias.
 # Por padrao, /home/<user> eh drwxr-x--- (no traversal por outros). nginx
 # (www-data) precisa de execute bit pra atravessar ate o project_root e ler
 # /home/govbr/govbr-project/web/static/. Sem isso, todo /static/* retorna 404.

@@ -167,4 +167,8 @@ computadas em runtime.
 - Painel: [`/_traffic/analytics/`](https://transparenciapb.org/_traffic/analytics/)
   (admin, basic-auth + login Umami).
 - Logs do tracker: `journalctl -u cruza-umami` na VM.
+- Navegadores automatizados em nuvem (Tencent/Huawei/Alibaba) e crawlers
+  comerciais são barrados no nginx antes de carregar o tracker — ver
+  [`docs/ops.md`](ops.md#runbook-bloqueio-de-bots). Quedas de visitantes
+  CN/HK/SG a partir de nov/2026 são esse filtro, não perda de público.
 - Detalhes de infra: [`docs/ops.md`](ops.md#runbook-goaccess--umami).

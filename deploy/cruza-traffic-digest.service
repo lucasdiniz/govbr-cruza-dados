@@ -24,7 +24,9 @@ RestrictNamespaces=true
 RestrictRealtime=true
 SystemCallArchitectures=native
 ReadOnlyPaths=/var/log/nginx /etc
-ReadWritePaths=/var/log/cruza-traffic-digest /var/log/msmtp.log
+# "-" = opcional: msmtp.log so existe se o MTA foi configurado. Sem o
+# prefixo, o systemd aborta com 226/NAMESPACE quando o arquivo falta.
+ReadWritePaths=/var/log/cruza-traffic-digest -/var/log/msmtp.log
 # Limites
 TimeoutStartSec=300
 Nice=10
