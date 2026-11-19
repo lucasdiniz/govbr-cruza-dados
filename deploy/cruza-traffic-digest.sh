@@ -75,6 +75,13 @@ grep "\[${YESTERDAY_NGINX}:" "${LOG}" > "${FILTERED}" || true
 total_hits=$(wc -l < "${FILTERED}" | tr -d ' ')
 unique_ips=$(awk '{print $1}' "${FILTERED}" | sort -u | wc -l | tr -d ' ')
 
+# Top-N sem `head`: com `set -o pipefail`, `head` fecha o pipe antes do
+# `sort` terminar de escrever (saida > 64KB em dias com muitos paths) e o
+# SIGPIPE derruba o script inteiro. awk le a entrada ate o fim.
+primeiras() {
+    awk -v n="$1" 'NR <= n'
+}
+
 # Sanitiza strings de header pra evitar header injection via env file.
 sanitize_header() {
     printf '%s' "$1" | tr -d '\r\n'
@@ -92,15 +99,15 @@ top_paths=$(awk -F\" '
         print path
     }
 ' "${FILTERED}" \
-    | sort | uniq -c | sort -rn | head -15 \
+    | sort | uniq -c | sort -rn | primeiras 15 \
     | awk '{printf "  - `%s` (%s hits)\n", $2, $1}')
 
 # Top referers (excluindo own domain + empty)
 top_refs=$(awk -F\" '{print $4}' "${FILTERED}" \
     | awk '$0 != "" && $0 != "-" && $0 !~ /transparenciapb\.org/' \
-    | sort | uniq -c | sort -rn | head -10 \
+    | sort | uniq -c | sort -rn | primeiras 10 \
     | awk '{count=$1; $1=""; sub(/^ /, ""); printf "  - %s (%s hits)\n", $0, count}' \
-    | head -10)
+    | primeiras 10)
 
 # Status code breakdown
 status_breakdown=$(awk -F\" '
@@ -115,7 +122,7 @@ status_breakdown=$(awk -F\" '
 
 # Top IPs (potencial bot/scanner)
 top_ips=$(awk '{print $1}' "${FILTERED}" \
-    | sort | uniq -c | sort -rn | head -10 \
+    | sort | uniq -c | sort -rn | primeiras 10 \
     | awk '{printf "  - %s (%s hits)\n", $2, $1}')
 
 # 4xx/5xx errors — quais paths bombam?
@@ -132,7 +139,7 @@ top_errors=$(awk -F\" '
         print code, path
     }
 ' "${FILTERED}" \
-    | sort | uniq -c | sort -rn | head -10 \
+    | sort | uniq -c | sort -rn | primeiras 10 \
     | awk '{printf "  - HTTP %s `%s` (%s vezes)\n", $2, $3, $1}')
 
 # Exploit attempts (paths suspeitos — mesmas heuristicas do fail2ban
@@ -147,13 +154,13 @@ exploits=$(awk -F\" '
     }
 ' "${FILTERED}" \
     | { grep -iE '\.env|\.aws|\.git|\.docker|\.ssh|wp-admin|wp-login|wp-json|xmlrpc\.php|/admin|/phpmyadmin|/php\.ini|/web-console|/saml|/vpn|/v[12345]/api|/actuator|/manager/html|/cgi-bin' || true; } \
-    | sort | uniq -c | sort -rn | head -10 \
+    | sort | uniq -c | sort -rn | primeiras 10 \
     | awk '{printf "  - %s -> `%s` (%s)\n", $2, $3, $1}')
 
 # IPs identificados (>100 hits + sao usuarios reais provaveis pelo UA)
 # Heuristica simples — Mozilla + nao-bot UA
 real_users=$(awk -F\" '$6 ~ /Mozilla/ && $6 !~ /[Bb]ot|[Cc]rawler|[Ss]craper|[Ss]pider/' "${FILTERED}" \
-    | awk '{print $1}' | sort | uniq -c | sort -rn | head -10 \
+    | awk '{print $1}' | sort | uniq -c | sort -rn | primeiras 10 \
     | awk '{printf "  - %s (%s hits)\n", $2, $1}')
 
 # Compose markdown
