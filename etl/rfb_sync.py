@@ -61,6 +61,9 @@ import time
 import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from http.client import HTTPException
 from pathlib import Path
 from typing import Iterator
 from urllib.error import HTTPError, URLError
@@ -134,32 +137,37 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def head_file(month: str, name: str) -> tuple[int, str | None] | None:
-    """HEAD de {month}/{name}: (tamanho, last-modified) ou None se nao existe.
-
-    O servidor RFB passou (out/2026) a responder PROPFIND com corpo vazio —
-    listagem de diretorio indisponivel. HEAD por arquivo continua confiavel
-    (Content-Length exato + 404 para ausente), e eh o que usamos.
-    """
+def head_file(month: str, name: str) -> tuple[int, datetime] | None:
+    """Metadados do ZIP; apenas 404/410 significam arquivo ausente."""
     req = Request(f"{WEBDAV_BASE}/{month}/{name}", method="HEAD",
                   headers={"Authorization": _WEBDAV_AUTH, "User-Agent": _UA})
     opener = build_opener(_NoRedirect)
     for attempt in range(1, 4):
         try:
             with _ipv4_only(), opener.open(req, timeout=60) as resp:
-                size = resp.headers.get("Content-Length")
-                if resp.status != 200 or not size or not size.isdigit():
-                    return None
-                return int(size), resp.headers.get("Last-Modified")
+                tipo = resp.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+                size = resp.headers.get("Content-Length", "")
+                if (resp.status != 200 or tipo not in {
+                    "application/zip", "application/x-zip-compressed", "application/octet-stream"
+                } or not size.isascii() or not size.isdigit() or int(size) <= 0):
+                    raise ValueError(f"metadados inesperados: HTTP {resp.status}, tipo={tipo!r}, tamanho={size!r}")
+                try:
+                    alterado = parsedate_to_datetime(resp.headers.get("Last-Modified", ""))
+                    if alterado.tzinfo is None:
+                        raise ValueError("data sem fuso")
+                except (ValueError, TypeError, OverflowError) as e:
+                    raise ValueError("Last-Modified ausente/invalido") from e
+                return int(size), alterado
         except HTTPError as e:
-            if e.code in (404, 403, 410) or 300 <= e.code < 400:
+            if e.code in (404, 410):
                 return None
             err = e
-        except (URLError, OSError) as e:
+        except (URLError, OSError, HTTPException, ValueError) as e:
             err = e
         logger.warning("HEAD %s/%s tentativa %d falhou: %s", month, name, attempt, err)
-        time.sleep(5 * attempt)
-    raise RuntimeError(f"HEAD {month}/{name} falhou 3x: {err}")
+        if attempt < 3:
+            time.sleep(5 * attempt)
+    raise RuntimeError(f"HEAD {month}/{name} falhou 3x: {err}") from err
 
 
 def _candidate_months(n: int = 4) -> list[str]:

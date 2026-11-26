@@ -12,12 +12,16 @@ from __future__ import annotations
 import os
 import shutil
 import zipfile
+from contextlib import nullcontext
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock
+from urllib.error import HTTPError
 
 import psycopg2
 import pytest
 
-from etl import rfb_sync
+from etl import rfb_sync, verificar_publicacao_rfb
 from etl.refresh_post_incremental import SOURCE_REFRESH_FNS, relink_cnpj_basico_after_rfb
 from etl.rfb_common import RFB_TABLES, SOCIO, SOCIO_ATTRS, SOCIO_IDENTITY
 
@@ -55,6 +59,56 @@ def test_publicacao_esperada_tem_37_zips():
     zips = rfb_sync.expected_zips(rfb_sync.SYNC_ORDER)
     assert len(zips) == 37
     assert "Estabelecimentos9.zip" in zips and "Simples.zip" in zips and "Cnaes.zip" in zips
+
+
+@pytest.mark.parametrize("tipo,tamanho,data,valido", [
+    ("application/zip", "123", "Mon, 16 Nov 2026 10:00:00 GMT", True),
+    ("application/octet-stream; charset=binary", "123", "Mon, 16 Nov 2026 10:00:00 GMT", True),
+    ("text/html", "245", "Mon, 16 Nov 2026 10:00:00 GMT", False),
+    ("application/zip", "0", "Mon, 16 Nov 2026 10:00:00 GMT", False),
+    ("application/zip", "123", "", False),
+    ("application/zip", "123", "ontem", False),
+])
+def test_head_valida_resposta_inteira(monkeypatch, tipo, tamanho, data, valido):
+    resposta = Mock(status=200, headers={"Content-Type": tipo, "Content-Length": tamanho, "Last-Modified": data})
+    cliente = Mock()
+    cliente.open.side_effect = lambda *a, **kw: nullcontext(resposta)
+    monkeypatch.setattr(rfb_sync, "build_opener", lambda *_: cliente)
+    monkeypatch.setattr(rfb_sync.time, "sleep", lambda _: None)
+    if valido:
+        assert rfb_sync.head_file("2026-11", "Cnaes.zip") == (123, datetime(2026, 11, 16, 10, tzinfo=timezone.utc))
+    else:
+        with pytest.raises(RuntimeError, match="2026-11/Cnaes.zip"):
+            rfb_sync.head_file("2026-11", "Cnaes.zip")
+
+
+@pytest.mark.parametrize("erro,ausente", [(404, True), (410, True), (403, False), (302, False), (503, False)])
+def test_head_distingue_ausencia_de_falha(monkeypatch, erro, ausente):
+    cliente = Mock()
+    cliente.open.side_effect = HTTPError("https://exemplo.gov.br", erro, "erro", {}, None)
+    monkeypatch.setattr(rfb_sync, "build_opener", lambda *_: cliente)
+    monkeypatch.setattr(rfb_sync.time, "sleep", lambda _: None)
+    if ausente:
+        assert rfb_sync.head_file("2026-11", "Cnaes.zip") is None
+    else:
+        with pytest.raises(RuntimeError, match="HEAD"):
+            rfb_sync.head_file("2026-11", "Cnaes.zip")
+
+
+@pytest.mark.parametrize("estado,esperado", [("estavel", "2026-11"), ("recente", ""), ("ausente", "")])
+def test_agendador_considera_tambem_o_ultimo_zip(monkeypatch, estado, esperado):
+    agora = datetime(2026, 11, 26, tzinfo=timezone.utc)
+
+    def sonda(mes, nome):
+        if nome == "Motivos.zip":
+            if estado == "ausente":
+                return None
+            if estado == "recente":
+                return 100, agora - timedelta(hours=23)
+        return 100, agora - timedelta(hours=24)
+
+    monkeypatch.setattr(verificar_publicacao_rfb, "head_file", sonda)
+    assert verificar_publicacao_rfb.mes_estavel(["2026-11"], agora) == esperado
 
 
 def test_identidade_socio_ignora_faixa_etaria_e_representante():
