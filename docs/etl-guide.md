@@ -269,32 +269,41 @@ RFB publica snapshot completo e o sync precisa de UPDATE/DELETE, proibidos
 pelo P2). As conversões de coluna são compartilhadas com a fase 3 em
 [`etl/rfb_common.py`](../etl/rfb_common.py).
 
-**Como roda** — `deploy.yml` com `rfb_sync=latest` (ou `YYYY-MM`), disparado
-pelo agendador semanal [`rfb-sync-schedule.yml`](../.github/workflows/rfb-sync-schedule.yml)
-quando a RFB publica um mês completo (ver [deploy.md](deploy.md#sync-mensal-rfb)).
-Local: `python -m etl.rfb_sync --month 2026-09`.
+**Contrato prospectivo — rollout bloqueado.** A configuração do [agendador e
+deploy](deploy.md#sync-mensal-rfb) não muda. O procedimento abaixo descreve
+o comportamento do código; não autoriza acionar a carga, usar `:force` ou reparar a base.
 
-**Por tabela** (`empresa` → `estabelecimento` → `simples` → `socio`):
-1. Baixa os ZIPs do mês um a um (tamanho conferido com o `HEAD` — o servidor RFB não lista mais diretórios via PROPFIND), carrega
-   numa staging UNLOGGED tipada e apaga o CSV (pico de disco ≈ 1 CSV + staging;
-   o sync exige `--min-free-gb`, default 40).
-2. **Guards antes de qualquer escrita na tabela live** — snapshot menor que a
-   live em mais de 1% ou remoções acima do limite por tabela
-   (`DEFAULT_MAX_DELETE_PCT`) → exit 2, tabela intocada.
-3. Diff em 100 lotes por prefixo de `cnpj_basico`, cada lote uma transação
-   curta: DELETE → UPDATE (`IS DISTINCT FROM`) → INSERT. Leitores do site nunca
-   são bloqueados.
-4. Domínios (`dom_*`) substituídos numa transação; depois
-   `refresh_post_incremental.refresh_for_rfb`: re-liga `cnpj_basico` nas
-   tabelas PB (só os CNPJs em `rfb_sync_estab_delta`), apaga do `web_cache` as
-   páginas `/empresa` de estabelecimentos que saíram da RFB e refresca MVs
-   L1 → L2 + `mv_empresa_municipio_pagantes` (sitemap), todas `CONCURRENTLY`
-   quando há UNIQUE INDEX. O delta é **trabalho pendente durável**: acumula
-   entre tentativas e só é limpo depois do relink — re-rodar um mês que parou
-   no meio (guard em `socio`, falha no refresh) não perde nenhum relink.
+1. **Pré-validação:** carrega os 37 ZIPs, prepara as quatro stagings tipadas e
+   testa os seis domínios (estrutura, tipos, PK, volume) antes de aplicar
+   `empresa`. `--tables` limita a escrita, não o conjunto validado. Nesse
+   ponto só há escritas de staging e de suporte/auditoria. Snapshot vazio,
+   remoção excessiva, conflito de sócio ou último domínio inválido não deixam
+   lotes de negócio aplicados. Erros de leitura/conversão também interrompem.
+2. **Aplicação:** `empresa` → `estabelecimento` → `simples` → `socio`, em
+   transações por prefixo de `cnpj_basico`. Para cada tabela aplicada, compara
+   a live à staging **nos dois sentidos** antes de prosseguir. Nas tabelas com
+   PK permanece a exceção pré-existente de registro incompleto: preservar o
+   existente, não inserir o novo e contabilizar `incompletas_ignoradas`.
+   Os domínios só são substituídos no escopo completo, numa transação.
+3. **Publicação do sync:** só com as quatro tabelas, domínios e refresh habilitado.
+   Religa os CNPJs do delta, purga o cache dos estabelecimentos removidos e
+   atualiza L1 → auxiliares → L2 e sitemap. Ausência de MV prevista é falha.
+   O delta só é baixado na transação que registra o `success` final. Esse
+   sucesso é do **sync RFB**, não do aquecimento externo do cache/site.
 
-**Sócios** não têm chave natural. Identidade do vínculo = md5 de
-`(cnpj_basico, tipo_socio, nome, cpf_cnpj_socio, qualificacao, dt_entrada)`.
+**Sócios:** a identidade é a tupla completa
+`(cnpj_basico, tipo_socio, nome, cpf_cnpj_socio, qualificacao, dt_entrada)`;
+o MD5 auxilia a busca, não substitui a comparação dos campos (inclusive nulos).
+Uma ocorrência descartada da origem exige o mesmo SHA-256 dos bytes do registro
+CSV e os mesmos campos tipados na staging; repetições comprovadas ficam em
+`repeticoes_identicas`. A igualdade após conversão, sozinha, não basta.
+Antes do primeiro lote, `identidades_multiplas_live > 0` recusa a aplicação,
+inclusive se a identidade sairia do snapshot ou se uma falta compensar a sobra.
+Isso **não** transforma troca legítima de vínculos entre meses em erro: faltas
+e saídas únicas são planejadas separadamente. Depois dos lotes, comparam-se
+multiplicidades dos registros completos (identidade **e** atributos) e as
+inserções/saídas efetivas com o plano. Não há tolerância `+27` nem lista de ids
+para exclusão deduzida do saldo.
 Mudança de `faixa_etaria`/representante/país atualiza in-place; vínculo que
 some do snapshot é **movido** para `socio_historico` (`id` original + chave própria `hist_id`, com
 `removido_em`/`rfb_mes_removido`). `socio` continua significando "sócio
@@ -302,12 +311,21 @@ atual" para todas as queries; para análises "era sócio quando recebeu", una
 `socio` com `socio_historico`. O histórico começa no primeiro sync — não há
 dados de saídas anteriores.
 
-**Garantias** — idempotente (re-rodar o mesmo mês converge para diff vazio);
-mês já sincronizado é pulado; mês anterior ao último sucesso é recusado; advisory
-lock impede dois syncs; o mês só vira `success` em `rfb_sync_log` depois do
-refresh das MVs.
+**Saídas e auditoria**
 
-**Runbook**
+| Saída | Significado |
+|---|---|
+| `0`, `synced` ou `skipped` | Sync integral confirmado ou competência já confirmada, sem aplicação nova pendente. |
+| `1` | Falha; se `stats.aplicacao_iniciada`, pode haver commits de negócio. Não equivale a rollback do mês. |
+| `2` | Recusa por guarda/pré-condição, antes da aplicação desta tentativa. |
+| `3`, `publicacao_pendente` | `--tables` parcial ou `--no-refresh`: escopo solicitado aplicado, **sem** relink, purga, refresh ou avanço do último sucesso. |
+
+Uma tentativa nova que entrou em aplicação bloqueia outra competência e o
+refresh avulso até a confirmação integral. O retry da mesma competência não
+pula trabalho por causa de um `success` anterior à pendência. O contrato
+histórico de leitura do log é preservado: sucessos legados sem marcador de
+tabelas parciais continuam sendo considerados; não se exige evidência nova
+retroativamente nem se declara que esses runs foram revalidados.
 
 ```sql
 -- Últimas execuções, contagens por tabela e motivo de falha/guard
@@ -315,13 +333,31 @@ SELECT id, rfb_mes, status, iniciado_em, finalizado_em, erro, stats
 FROM rfb_sync_log ORDER BY id DESC LIMIT 5;
 ```
 
-- *Guard disparou* (`status = aborted`): confira `stats.<tabela>`
-  (`live_antes`, `staging`, `a_remover`). Publicação incompleta/truncada →
-  espere a RFB corrigir. Remoção legítima acima do limite (raro) → re-dispare
-  com `rfb_sync=YYYY-MM:force` (desliga os guards — só após conferir os números).
-- *Falha no meio* (`status = failed`): re-disparar o mesmo mês é seguro; tabelas
-  já aplicadas convergem para diff vazio.
-- *Agendador pausado* (2 falhas no mesmo mês): investigar e disparar manualmente.
+**Condições para liberar, ainda não atendidas:**
+
+- **Custo e evidência em clone:** as comparações substituem as contagens
+  anteriores (uma leitura lógica da live no plano e outra na pós-condição de
+  cada tabela aplicada, além do diff). Não se acrescenta censo nacional ao
+  fim nem índice `UNIQUE` em `socio`; agrupar registros largos ainda pode ser
+  caro. As quatro stagings agora coexistem. Medir `EXPLAIN (ANALYZE, BUFFERS)`,
+  I/O, temporários, disco **do PostgreSQL** e duração em clone representativo.
+  `--min-free-gb` no diretório de download não garante esse espaço.
+- **Origem e baseline:** `stats.manifesto` fixa SHA-256 e bytes de cada ZIP
+  e de seu membro CSV antes da primeira escrita. Se uma aplicação anterior
+  ficou pendente, a retomada exige o mesmo manifesto integral, mesmo com
+  `--force`. Hashes não substituem o arquivamento autorizado dos objetos nem
+  a verificação de que a baseline da live não mudou entre tentativas. Conciliar por prefixo
+  a origem, atributos, multiplicidade, ids atuais, histórico e controles em
+  réplica/clone, sem publicar dados individuais. Nas outras tabelas, o
+  `ON CONFLICT DO NOTHING` da staging não classifica colisões da origem.
+- **Recuperação e exposição:** o marcador conservador de início não é um
+  diário transacional por lote. Leitores diretos podem ver lotes comitados;
+  o relink/purga e as MVs tampouco trocam todos de geração atomicamente.
+  O lock coordena sync e refresh avulso, não todo escritor externo. Exigir
+  recuperação demonstrada com pré-imagem, mesmo manifesto, ausência de
+  escritor concorrente, competências contíguas e controle das rotas/cache
+  antes de qualquer canário. Não usar retry, mês posterior ou `--force` como
+  diagnóstico em produção. Nenhuma agenda é pausada por este documento.
 
 ## Como testar localmente
 

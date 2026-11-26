@@ -2,7 +2,7 @@
 
 Unitarios rodam sempre. Os de integracao precisam de um Postgres DESCARTAVEL:
 
-    TEST_RFB_DSN="host=/tmp port=54329 dbname=rfb_sync_test user=postgres" pytest tests/test_rfb_sync.py
+    TEST_RFB_DSN="host=$PWD/.ensaio/socket dbname=rfb_sync_test" pytest tests/test_rfb_sync.py
 
 O fixture RECRIA as tabelas RFB (sql/02_schema_rfb.sql faz DROP TABLE), por
 isso recusa qualquer banco cujo nome nao contenha "test".
@@ -21,8 +21,9 @@ from urllib.error import HTTPError
 import psycopg2
 import pytest
 
+from etl import refresh_post_incremental as refresh
 from etl import rfb_sync, verificar_publicacao_rfb
-from etl.refresh_post_incremental import SOURCE_REFRESH_FNS, relink_cnpj_basico_after_rfb
+from etl.refresh_post_incremental import SOURCE_REFRESH_FNS
 from etl.rfb_common import RFB_TABLES, SOCIO, SOCIO_ATTRS, SOCIO_IDENTITY
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -210,11 +211,13 @@ def _write_month(base: Path, month: str, data: dict) -> dict[str, Path]:
     d = base / f"src-{month}"
     d.mkdir(parents=True)
     out = {}
-    for prefix, rows in {**data, **DOMAIN}.items():
+    for prefix, rows in {**DOMAIN, **data}.items():
         spec = next((s for s in RFB_TABLES.values() if s.file_prefix == prefix), None)
         names = spec.file_names() if spec else [prefix]
         for i, name in enumerate(names):
             chunk = rows if i == 0 else []  # tudo no arquivo 0; demais vazios
+            if prefix == "Socios":
+                chunk = rows[i::len(names)]  # exercita inclusive colisões entre ZIPs
             zpath = d / f"{name}.zip"
             with zipfile.ZipFile(zpath, "w") as z:
                 body = "".join(r + "\n" for r in chunk).encode("latin-1")
@@ -224,7 +227,7 @@ def _write_month(base: Path, month: str, data: dict) -> dict[str, Path]:
 
 
 @pytest.fixture
-def db():
+def db(monkeypatch):
     if not TEST_DSN:
         pytest.skip("TEST_RFB_DSN nao definido")
     conn = psycopg2.connect(TEST_DSN)
@@ -238,6 +241,13 @@ def db():
         cur.execute("DROP TABLE IF EXISTS rfb_sync_log, socio_historico, rfb_sync_estab_delta, tce_pb_despesa, web_cache")
         cur.execute("CREATE TABLE tce_pb_despesa (cpf_cnpj VARCHAR(14), cnpj_basico CHAR(8))")
         cur.execute("CREATE TABLE web_cache (query_id TEXT, municipio TEXT, PRIMARY KEY (query_id, municipio))")
+        # Grafo reduzido de MVs reais. A fixture não carrega as bases nacionais.
+        cur.execute("CREATE MATERIALIZED VIEW teste_rfb_l1 AS SELECT count(*) AS n FROM socio")
+        cur.execute("CREATE MATERIALIZED VIEW teste_rfb_l2 AS SELECT n FROM teste_rfb_l1")
+        cur.execute("CREATE MATERIALIZED VIEW mv_empresa_municipio_pagantes AS SELECT n FROM teste_rfb_l2")
+    monkeypatch.setattr(refresh, "_TCE_PB_MVS_L1", ("teste_rfb_l1",))
+    monkeypatch.setattr(refresh, "_TCE_PB_MVS_L2", ("teste_rfb_l2",))
+    monkeypatch.setattr(refresh, "_rebuild_servidor_tmp_after_tce_pb", lambda conn: None)
     yield conn
     conn.close()
 
@@ -265,7 +275,7 @@ def fake_webdav(tmp_path, monkeypatch):
 
 
 def _sync(month, tmp_path, **kw):
-    opts = rfb_sync.SyncOptions(month=month, work_dir=tmp_path / "work", min_free_gb=0, refresh=False, **kw)
+    opts = rfb_sync.SyncOptions(month=month, work_dir=tmp_path / "work", min_free_gb=0, **kw)
     return rfb_sync.run_sync(TEST_DSN, opts)
 
 
@@ -315,25 +325,17 @@ def test_sync_completo_mes_a_mes(db, fake_webdav, tmp_path, capsys):
     assert _rows(db, "SELECT nome, qualificacao, cpf_cnpj_norm FROM socio ORDER BY 1") == [
         ("ANA", "49", "444444"), ("JOAO", "49", "111111"), ("PEDRO", "05", "333333"),
     ]
-    # refresh=False: o delta do mes anterior (3 inseridos) ainda nao foi
-    # consumido — acumula, nao eh perdido.
-    assert set(_rows(db, "SELECT cnpj_completo, mudanca, rfb_mes FROM rfb_sync_estab_delta")) == {
-        ("11111111000191", "inserido", "2026-08"), ("22222222000192", "inserido", "2026-08"),
-        ("33333333000193", "inserido", "2026-08"),
-        ("33333333000193", "removido", "2026-09"), ("44444444000194", "inserido", "2026-09"),
-    }
     assert _rows(db, "SELECT descricao FROM dom_qualificacao WHERE codigo = '05'") == [("Administrador",)]
     status = _rows(db, "SELECT rfb_mes, status FROM rfb_sync_log ORDER BY id")
     assert status == [("2026-08", "success"), ("2026-09", "success")]
     assert _rows(db, "SELECT COUNT(*) FROM pg_tables WHERE tablename LIKE '\\_rfb\\_sync\\_%'")[0][0] == 0
 
     # Relink direcionado: credor novo ganha cnpj_basico, removido perde
-    out = relink_cnpj_basico_after_rfb(db)
     assert _rows(db, "SELECT cpf_cnpj, cnpj_basico FROM tce_pb_despesa ORDER BY 1") == [
         ("33333333000193", None), ("44444444000194", "44444444"),
     ]
     # Paginas do estabelecimento removido saem do cache; resto intocado.
-    assert out["web_cache_removidos"]["linhas"] == 2
+    assert _rows(db, "SELECT n FROM mv_empresa_municipio_pagantes") == [(3,)]
     assert _rows(db, "SELECT query_id, municipio FROM web_cache ORDER BY 1, 2") == [
         ("EMPRESA_PERFIL", "11111111000191"), ("PERFIL", "Joao Pessoa"),
     ]
@@ -344,6 +346,7 @@ def test_sync_completo_mes_a_mes(db, fake_webdav, tmp_path, capsys):
     assert _sync("2026-09", tmp_path) == 0
     assert "RFB_SYNC_RESULT=skipped" in capsys.readouterr().out
     assert _sync("2026-08", tmp_path) == 2  # regrediria a base
+    assert _sync("2026-08", tmp_path, force=True) == 2
 
 
 def test_resync_forcado_eh_noop(db, fake_webdav, tmp_path):
@@ -389,31 +392,193 @@ def test_linha_duplicada_no_snapshot_vira_um_socio(db, fake_webdav, tmp_path):
     fake_webdav("2026-08", dup)
     assert _sync("2026-08", tmp_path) == 0
     assert _rows(db, "SELECT COUNT(*) FROM socio WHERE nome = 'JOAO'")[0][0] == 1
+    assert _rows(db, "SELECT stats->'socio'->'repeticoes_identicas' FROM rfb_sync_log") == [(1,)]
 
 
-
-def test_retry_apos_guard_em_socio_nao_perde_relink(db, fake_webdav, tmp_path):
-    """Run aplica estabelecimento e para no guard de socio; o re-run do mesmo
-    mes acha diff vazio em estabelecimento — o relink tem que acontecer mesmo
-    assim (delta duravel)."""
+@pytest.mark.parametrize("parcial", [True, False], ids=["somente-estabelecimento", "sem-refresh"])
+def test_pendente_nao_publica_nem_consume_delta(db, fake_webdav, tmp_path, capsys, parcial):
     fake_webdav("2026-08", MONTH_A)
     fake_webdav("2026-09", MONTH_B)
     assert _sync("2026-08", tmp_path) == 0
-    db.cursor().execute("DELETE FROM rfb_sync_estab_delta")  # simula delta de 08 ja consumido
+    capsys.readouterr()
     db.cursor().execute("INSERT INTO tce_pb_despesa VALUES ('44444444000194', NULL)")
+    db.cursor().execute("INSERT INTO web_cache VALUES ('EMPRESA_PERFIL','33333333000193')")
+    limites = {t: 100 for t in RFB_TABLES}
+    modo = {"tables": ("estabelecimento",)} if parcial else {"refresh": False}
+    assert _sync("2026-09", tmp_path, max_delete_pct=limites, **modo) == 3
+    assert capsys.readouterr().out.strip() == "RFB_SYNC_RESULT=publicacao_pendente"
+    assert _rows(db, "SELECT status, stats->'dados_aplicados' FROM rfb_sync_log ORDER BY id DESC LIMIT 1"
+                 ) == [("publicacao_pendente", True)]
+    assert rfb_sync._last_success(db) == "2026-08"
+    with pytest.raises(RuntimeError, match="pendente"):
+        SOURCE_REFRESH_FNS["rfb"](db)
+    assert _rows(db, "SELECT cnpj_completo, mudanca FROM rfb_sync_estab_delta ORDER BY 1") == [
+        ("33333333000193", "removido"), ("44444444000194", "inserido")]
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [(None,)]
+    assert _rows(db, "SELECT count(*) FROM web_cache") == [(1,)]
+    assert _sync("2026-10", tmp_path) == 2  # não atravessa a pendência
+    assert _sync("2026-09", tmp_path, max_delete_pct=limites) == 0
+    assert rfb_sync._last_success(db) == "2026-09"
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [("44444444",)]
+    assert _rows(db, "SELECT count(*) FROM web_cache") == [(0,)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(0,)]
 
-    # 1a tentativa: estab aplicado, guard dispara em socio (2 de 3 saem)
-    limits = {"empresa": 100, "estabelecimento": 100, "simples": 100, "socio": 10}
-    assert _sync("2026-09", tmp_path, max_delete_pct=limits) == 2
-    assert _rows(db, "SELECT COUNT(*) FROM estabelecimento WHERE cnpj_basico = '44444444'")[0][0] == 1
 
-    # Re-run: estab ja aplicado -> diff vazio; delta da 1a tentativa preservado
-    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 0
+def _estado_negocio(db):
+    tabelas = (*rfb_sync.SYNC_ORDER, *rfb_sync.DOMAIN_FILES.values(),
+               "socio_historico", "rfb_sync_estab_delta", "web_cache", "tce_pb_despesa")
+    return {t: _rows(db, f"SELECT xmin, t.* FROM {t} t ORDER BY t") for t in tabelas}
+
+
+@pytest.mark.parametrize("compensado", [False, True], ids=["103x104", "falta-compensa-sobra"])
+def test_multiplicidade_live_recusada_antes_de_empresa(db, fake_webdav, tmp_path, compensado):
+    socios = MONTH_A["Socios"] + [_socio("55555555", f"CONTROLE {n}", "") for n in range(100)]
+    fake_webdav("2026-08", dict(MONTH_A, Socios=socios))
+    fake_webdav("2026-09", dict(MONTH_B, Socios=socios))
+    assert _sync("2026-08", tmp_path) == 0
+    cols = ", ".join(SOCIO.columns)
+    db.cursor().execute(f"INSERT INTO socio ({cols}) SELECT {cols} FROM socio WHERE nome='JOAO'")
+    if compensado:
+        db.cursor().execute("DELETE FROM socio WHERE nome='MARIA'")
+    antes = _estado_negocio(db)
+    # Nem o escopo parcial nem --force desabilitam a barreira.
+    modo = {"tables": ("empresa",), "force": True} if compensado else {}
+    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}, **modo) == 2
+    assert _estado_negocio(db) == antes
+    status, plano = _rows(db, "SELECT status, stats->'socio' FROM rfb_sync_log ORDER BY id DESC LIMIT 1")[0]
+    assert status == "aborted"
+    assert (plano["staging"], plano["live_antes"]) == (103, 103 if compensado else 104)
+    assert (plano["identidades_multiplas_live"], plano["a_inserir"]) == (1, int(compensado))
+
+
+@pytest.mark.parametrize("defeito", ["atributo-conflitante", "conversao-iguala", "ultimo-dominio-invalido"])
+def test_recusa_arquivo_ambiguo_antes_do_primeiro_lote(db, fake_webdav, tmp_path, defeito):
+    fake_webdav("2026-08", MONTH_A)
+    if defeito == "ultimo-dominio-invalido":
+        dados = dict(MONTH_B, Motivos=[])
+    else:
+        faixa = "6" if defeito == "atributo-conflitante" else "05"
+        dados = dict(MONTH_B, Socios=MONTH_B["Socios"] + [_socio("11111111", "JOAO", "***111111**", faixa=faixa)])
+    fake_webdav("2026-09", dados)
+    assert _sync("2026-08", tmp_path) == 0
+    antes = _estado_negocio(db)
+    assert _sync("2026-09", tmp_path, max_delete_pct={t: 100 for t in RFB_TABLES}) == 2
+    assert _estado_negocio(db) == antes
+    assert _rows(db, "SELECT status FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [("aborted",)]
+
+
+def test_pos_condicao_recusa_chave_trocada_com_mesmo_total(db, fake_webdav, tmp_path):
+    fake_webdav("2026-08", MONTH_A)
+    db.cursor().execute("""
+        CREATE OR REPLACE FUNCTION trocar_nome_teste() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN NEW.nome := 'OUTRA IDENTIDADE'; RETURN NEW; END $$;
+        CREATE TRIGGER teste BEFORE INSERT ON socio FOR EACH ROW EXECUTE FUNCTION trocar_nome_teste()
+    """)
+    assert _sync("2026-08", tmp_path) == 1
+    assert _rows(db, "SELECT count(*) FROM socio") == [(3,)]
+    assert _rows(db, "SELECT n FROM teste_rfb_l1") == [(0,)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
+    assert _rows(db, "SELECT status FROM rfb_sync_log") == [("failed",)]
+
+
+def test_falha_apos_relink_antes_de_l2_preserva_delta(db, fake_webdav, tmp_path, monkeypatch):
+    fake_webdav("2026-08", MONTH_A)
+    db.cursor().execute("INSERT INTO tce_pb_despesa VALUES ('11111111000191', NULL)")
+    with monkeypatch.context() as m:
+        m.setattr(refresh, "_TCE_PB_MVS_L2", ("teste_l2_ausente",))
+        assert _sync("2026-08", tmp_path) == 1
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [("11111111",)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
+    assert rfb_sync._last_success(db) is None
+    assert _sync("2026-08", tmp_path) == 0
+    assert _rows(db, "SELECT n FROM teste_rfb_l2") == [(3,)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(0,)]
+
+
+def test_falha_na_marca_integral_desfaz_baixa_do_delta(db, fake_webdav, tmp_path, monkeypatch):
+    fake_webdav("2026-08", MONTH_A)
+    original = rfb_sync._update_log
+
+    def falha(conn, log_id, status, stats, erro=None):
+        if status == "success":
+            raise RuntimeError("falha injetada na confirmação final")
+        original(conn, log_id, status, stats, erro)
+
+    monkeypatch.setattr(rfb_sync, "_update_log", falha)
+    assert _sync("2026-08", tmp_path) == 1
+    assert rfb_sync._last_success(db) is None
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
+
+
+def test_migracao_preserva_auditoria_historica_e_skip_nao_encobre_pendencia(db, fake_webdav, tmp_path):
+    rfb_sync.apply_schema(db)
+    db.cursor().execute("""
+        ALTER TABLE rfb_sync_log DROP CONSTRAINT rfb_sync_log_status_v2,
+            ADD CHECK (status IN ('running','success','failed','aborted'));
+        INSERT INTO rfb_sync_log (rfb_mes, status, stats) VALUES
+            ('2026-08','success','{}'), ('2026-09','success','{"tabelas_parciais":["socio"]}');
+    """)
+    historico = _rows(db, "SELECT * FROM rfb_sync_log ORDER BY id")
+    fake_webdav("2026-08", MONTH_A)
+    assert _sync("2026-08", tmp_path) == 0  # sucesso legado, sem exigir novos campos
+    assert _rows(db, "SELECT * FROM rfb_sync_log ORDER BY id") == historico
+    assert _sync("2026-08", tmp_path, force=True, refresh=False) == 3
+    assert _sync("2026-08", tmp_path) == 0  # precisa publicar, não pular
+    assert _rows(db, "SELECT status FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [("success",)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(0,)]
+
+
+
+def test_retry_nao_mistura_republicacao_do_mesmo_tamanho(db, fake_webdav, tmp_path):
+    mes = "2026-08"
+    fake_webdav(mes, MONTH_A)
+    assert _sync(mes, tmp_path, tables=("empresa",)) == 3
+    manifesto, = _rows(db, "SELECT stats->'manifesto' FROM rfb_sync_log")[0]
+    assert len(manifesto) == 37
+    zip_path = tmp_path / f"src-{mes}" / "Empresas0.zip"
+    with zipfile.ZipFile(zip_path) as z:
+        membro, = z.infolist()
+        original = z.read(membro)
+    empresas = _rows(db, "SELECT cnpj_basico,razao_social FROM empresa ORDER BY 1")
+    alterado = original.replace(b"ALFA", b"BETA")
+    assert alterado != original
+    with zipfile.ZipFile(zip_path, "w") as z:
+        z.writestr(membro, alterado)
+    assert zip_path.stat().st_size == manifesto["Empresas0.zip"]["zip_bytes"]
+    assert _sync(mes, tmp_path, force=True) == 2
+    assert _rows(db, "SELECT cnpj_basico,razao_social FROM empresa ORDER BY 1") == empresas
+    assert _rows(db, "SELECT count(*) FROM estabelecimento") == [(0,)]
+    assert _rows(db, "SELECT status,stats ? 'aplicacao_iniciada' FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [
+        ("aborted", False)]
+
+
+def test_retry_apos_falha_entre_lotes_preserva_historico_e_delta(db, fake_webdav, tmp_path, monkeypatch):
+    fake_webdav("2026-08", MONTH_A)
+    fake_webdav("2026-09", MONTH_B)
+    assert _sync("2026-08", tmp_path) == 0
+    db.cursor().execute("INSERT INTO tce_pb_despesa VALUES ('44444444000194', NULL)")
+    id_controle = _rows(db, "SELECT id FROM socio WHERE nome='JOAO'")
+    id_saida = _rows(db, "SELECT id FROM socio WHERE nome='MARIA'")
+    limites = {t: 100 for t in RFB_TABLES}
+    original = rfb_sync._exec
+
+    def falha(conn, sql, params=None):
+        if sql.startswith("WITH gone AS") and "t.cnpj_basico >= '22'" in sql:
+            raise RuntimeError("falha injetada após commit do prefixo 11")
+        return original(conn, sql, params)
+
+    with monkeypatch.context() as m:
+        m.setattr(rfb_sync, "_exec", falha)
+        assert _sync("2026-09", tmp_path, max_delete_pct=limites) == 1
+    assert _rows(db, "SELECT id FROM socio_historico WHERE nome='MARIA'") == id_saida
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(2,)]
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [(None,)]
+    assert _sync("2026-09", tmp_path, max_delete_pct=limites) == 0
     stats = _rows(db, "SELECT stats FROM rfb_sync_log WHERE status = 'success' ORDER BY id DESC LIMIT 1")[0][0]
     assert stats["estabelecimento"]["inseridas"] == 0
-    assert ("44444444000194", "inserido") in _rows(db, "SELECT cnpj_completo, mudanca FROM rfb_sync_estab_delta")
-
-    relink_cnpj_basico_after_rfb(db)
+    assert _rows(db, "SELECT id FROM socio_historico WHERE nome='MARIA'") == id_saida
+    assert _rows(db, "SELECT id FROM socio WHERE nome='JOAO'") == id_controle
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(0,)]
     assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [("44444444",)]
 
 
