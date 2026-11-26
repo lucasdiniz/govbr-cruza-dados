@@ -184,22 +184,34 @@ def test_conflito_financeiro_nao_e_duplicata(recorte):
     assert ler(f"SELECT count(*) FROM {t}") == [(0,)]
 
 
-def test_sha_e_contagem_persistem_quando_copy_falha(recorte, monkeypatch):
+@pytest.mark.parametrize("erro", [ValueError, psycopg2.InterfaceError, psycopg2.OperationalError])
+def test_sha_e_contagem_persistem_quando_copy_falha(recorte, monkeypatch, erro):
     from etl.incremental import loader
     t, executar, ler, arquivo = recorte
     sha = arquivo("2025", "a;2025;11,00\n")
     def falhar(*args):
-        raise ValueError("COPY simulado")
+        if issubclass(erro, psycopg2.Error):
+            args[0].close()
+        raise erro("COPY simulado")
     with monkeypatch.context() as m:
         m.setattr(loader, "copy_temp_to_staging", falhar)
         res = executar("2025")
     assert res["status"] == "failed"
     assert ler("SELECT right(file_path,64),rows_streamed,rows_inserted,error_message FROM etl_phase_log WHERE run_id=%s",
-               (str(res["run_id"]),)) == [(sha,1,0,"COPY: ValueError")]
+               (str(res["run_id"]),)) == [(sha,1,0,f"COPY: {erro.__name__}")]
     novo = arquivo("2025", "a;2025;12,00\n")
     res = executar("2025")
     assert novo != sha and res["status"] == "success"
     assert ler("SELECT right(file_path,64) FROM etl_phase_log WHERE run_id=%s", (str(res["run_id"]),)) == [(novo,)]
+
+
+def test_so_cabecalho_preserva_sha_da_rejeicao(recorte):
+    t, executar, ler, arquivo = recorte
+    sha = arquivo("2025", "")
+    res = executar("2025")
+    assert res["status"] == "failed"
+    assert ler("SELECT right(file_path,64),rows_streamed,rows_inserted FROM etl_phase_log WHERE run_id=%s",
+               (str(res["run_id"]),)) == [(sha,0,0)]
 
 
 @pytest.mark.parametrize("com_cache", [False, True])

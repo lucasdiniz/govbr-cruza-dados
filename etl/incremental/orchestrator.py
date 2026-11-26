@@ -82,6 +82,15 @@ def _registrar_fase(conn, run_id, spec, caminho, seq, inicio, resultado):
     )
 
 
+def _falha_sem_commit(progresso, erro):
+    return LoadResult(
+        status="failed", error=f"{progresso.error or 'confirmação da fase'}: {type(erro).__name__}",
+        rows_streamed=progresso.rows_streamed, rows_failed=progresso.rows_failed,
+        rows_rejected_null_key=progresso.rows_rejected_null_key,
+        csv_header_hash=progresso.csv_header_hash, arquivo_sha256=progresso.arquivo_sha256,
+    )
+
+
 class SchemaDriftError(RuntimeError):
     """Target schema mudou desde o bootstrap; abort para inspecao manual."""
 
@@ -265,6 +274,7 @@ def run_incremental_for_source(
                     # Phase log: insert before processing
                     started = datetime.now()
                     file_result = LoadResult(status="failed", error="not started")
+                    commit_iniciado = False
                     try:
                         # Build context (per-file, mas bucket_token shared)
                         ctx = IncrementalLoadContext(
@@ -296,23 +306,28 @@ def run_incremental_for_source(
                                         bucket_token=bucket_token, new_value=marca, watermark_type=spec.watermark_type,
                                         actual_max=marca, actual_count=None,
                                     )
+                            commit_iniciado = True
                             main_raw.commit()
                         else:
                             main_raw.rollback()
                     except RunFencedError:
                         main_raw.rollback()
                         raise
-                    except (psycopg2.InterfaceError, psycopg2.OperationalError):
+                    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+                        if not commit_iniciado:
+                            # Fechar a TX em vez de depender de rollback por uma
+                            # conexão já perdida. A conexão de auditoria é separada.
+                            main_raw.close()
+                            _registrar_fase(lock_raw, run_id, spec, csv_path, seq, started,
+                                            _falha_sem_commit(file_result, e))
+                            raise RuntimeError("Conexão interrompida antes do commit do arquivo") from None
                         # COMMIT pode ter sido confirmado pelo servidor. A fase
                         # transacional é a evidência; não gravar "falhou" às cegas.
                         raise RuntimeError("Conexão interrompida; conferir fase antes de retomar") from None
                     except Exception as e:
                         main_raw.rollback()
                         logger.error("Arquivo %s não aplicado (%s)", csv_path.name, type(e).__name__)
-                        file_result = LoadResult(
-                            status="failed", error=f"{file_result.error or 'confirmação da fase'}: {type(e).__name__}",
-                            rows_streamed=file_result.rows_streamed, rows_failed=file_result.rows_failed,
-                            csv_header_hash=file_result.csv_header_hash, arquivo_sha256=file_result.arquivo_sha256)
+                        file_result = _falha_sem_commit(file_result, e)
                     if file_result.status != "success":
                         _registrar_fase(lock_raw, run_id, spec, csv_path, seq, started, file_result)
                     all_staging_to_drop.extend(drop_staging(drop_raw, *dict.fromkeys(file_result.staging_tables)))

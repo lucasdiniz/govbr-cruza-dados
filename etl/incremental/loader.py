@@ -151,18 +151,19 @@ def _incremental_load(
     # Resolve spec para bucket (suporta schema drift histórico)
     spec = _resolve_spec_for_bucket(spec, bucket_id)
 
-    def _vazio(reason: str, csv_header_hash: str = "", staging=None) -> LoadResult:
+    def _vazio(reason: str, csv_header_hash: str = "", staging=None, sha=None) -> LoadResult:
         prefixo = f"{GUARD_PREFIX} G4: " if spec.bucket_replace is not None else ""
         return LoadResult(
             status="failed",
             error=f"{prefixo}{spec.table} bucket {bucket_id}: {reason}",
             csv_header_hash=csv_header_hash,
+            arquivo_sha256=sha,
             staging_tables=staging or [],
         )
 
     # Step 0: skip empty files (source publica 0-byte placeholders em alguns meses)
     if csv_path.stat().st_size == 0:
-        return _vazio("arquivo de 0 bytes")
+        return _vazio("arquivo de 0 bytes", sha=hashlib.sha256(b"").hexdigest())
 
     # Step 0b: skip HTML placeholder pages ("Arquivo Sendo Processado")
     try:
@@ -229,7 +230,7 @@ def _incremental_load(
         ):
             raise RuntimeError("Arquivo mudou durante a leitura; versão não confirmada")
         if not rows_streamed:
-            return _vazio("arquivo sem linhas", csv_hash, staging_tables)
+            return _vazio("arquivo sem linhas", csv_hash, staging_tables, arquivo_sha256)
         copiadas = copy_temp_to_staging(ctx.main, stg_raw, pp.temp_path, [*spec.columns, "_registro_origem"])
         if copiadas != pp.valid_count:
             raise RuntimeError(f"Balanço do COPY divergente: válidas={pp.valid_count}, copiadas={copiadas}")
