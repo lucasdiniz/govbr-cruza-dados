@@ -21,7 +21,7 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         });
         if (!response.ok) {
             showPanelError('Nao foi possivel carregar este bloco agora.');
-            return;
+            return false;
         }
         panel.innerHTML = await response.text();
         panel.setAttribute('aria-busy', 'false');
@@ -31,8 +31,9 @@ async function loadAsyncPanel(panelName, municipio, uf) {
         initInteractiveToggles(panel);
         initMobileDescriptions(panel);
         initClickableRows(panel);
+        return true;
     } catch {
         showPanelError('Nao foi possivel carregar este bloco agora.');
+        return false;
     }
 }
-

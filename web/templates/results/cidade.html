@@ -630,7 +630,8 @@ document.addEventListener("DOMContentLoaded", () => {
         {{ perfil.municipio|tojson }},
         {{ (display_uf or 'PB')|tojson }},
         {{ default_data_inicio|tojson }},
-        {{ default_data_fim|tojson }}
+        {{ default_data_fim|tojson }},
+        true
     ).finally(() => {
         // Após bootstrap (mesmo se algum painel falhou), tenta abrir dialog
         // a partir de ?d=...&d_*=... na URL (deep-link compartilhavel).

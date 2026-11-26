@@ -156,6 +156,14 @@ município**; somente a preparação pode calculá-lo antes disso. Se ambos os
 perfis forem invalidados será necessária nova publicação. Revalidar também as
 rotas com os consumidores e limites de latência do clone antes de expor.
 
+O readiness do manifesto estático não cobre esta transição. Antes de abrir
+tráfego no leitor novo, exigir 200 no HTML de cidade, perfil, KPIs e batch e
+conferir o intervalo e os indicadores nas quatro respostas. Ensaiar também
+o dia seguinte ao da foto: o intervalo congelado vira `CUSTOM` e a abertura
+pode trocar uma leitura em lote por chamadas por painel. Medir a latência
+e o custo no clone; não chamar essas chaves de “até hoje” para ganhar cache.
+Na inversa, não reabrir o tráfego com o leitor novo sobre as linhas legadas.
+
 Para repetir o teste offline, usar PG16 descartável com `listen_addresses=''`,
 socket único em diretório privado, porta de socket `54160`, usuário `p1b_teste`,
 base `p1b_test` e `P1B_TEST_SOCKET` apontando para esse diretório. Executar
