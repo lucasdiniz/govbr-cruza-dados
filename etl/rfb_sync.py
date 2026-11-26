@@ -120,6 +120,10 @@ class GuardError(RuntimeError):
     """Pré-validação recusou o sync antes das escritas de negócio."""
 
 
+class DivergenciaParidade(RuntimeError):
+    """Pós-condição violada; mensagem contém somente diagnósticos agregados."""
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # WebDAV RFB
 # ──────────────────────────────────────────────────────────────────────────
@@ -391,8 +395,8 @@ def _staging_name(spec: RfbTable) -> str:
 def build_staging(conn, spec: RfbTable, csv_files: Iterator[Path]) -> dict:
     """Carrega todos os CSVs da tabela numa staging tipada (mesmos tipos da live).
 
-    Em sócio, colisões só são aceitas com o mesmo registro na origem e os
-    mesmos campos tipados. Nas tabelas com PK mantém a semântica clássica.
+    Colisões só são aceitas com o mesmo registro na origem e os mesmos
+    campos tipados, inclusive entre partes distintas da publicação.
     """
     stg = _staging_name(spec)
     raw = f"{stg}_raw"
@@ -402,9 +406,9 @@ def build_staging(conn, spec: RfbTable, csv_files: Iterator[Path]) -> dict:
         raise RuntimeError(f"{spec.table}: colunas ausentes na tabela live: {missing}")
 
     col_defs = [f"{c} {types[c]}" for c in spec.columns]
+    col_defs.append("_origem BYTEA NOT NULL")
     if spec is SOCIO:
         col_defs.append("_id TEXT NOT NULL")
-        col_defs.append("_origem BYTEA NOT NULL")
         col_defs.append("UNIQUE (cnpj_basico, _id)")
     else:
         col_defs.append(f"PRIMARY KEY ({', '.join(spec.key)})")
@@ -413,37 +417,38 @@ def build_staging(conn, spec: RfbTable, csv_files: Iterator[Path]) -> dict:
     conn.commit()
 
     cols = ", ".join(spec.columns)
-    origem = spec.select_sql(raw, com_assinatura=spec is SOCIO)
+    origem = spec.select_sql(raw, com_assinatura=True)
     if spec is SOCIO:
         # Identidade calculada com os MESMOS tipos da live (cast explicito),
         # senao ROW(...)::text divergiria entre staging e live.
         typed = ", ".join(f"x.{c}::{types[c]}" for c in SOCIO_IDENTITY)
+        chave = f"s.cnpj_basico = x.cnpj_basico AND s._id = md5(ROW({typed})::text)"
         insert_sql = (
             f"INSERT INTO {stg} ({cols}, _origem, _id)\n"
             f"SELECT x.*, md5(ROW({typed})::text) FROM (\n{origem}\n) x\n"
             "ON CONFLICT DO NOTHING"
         )
     else:
-        insert_sql = f"INSERT INTO {stg} ({cols})\n{origem}\nON CONFLICT DO NOTHING"
+        chave = _key_eq(spec, "s", "x")
+        insert_sql = f"INSERT INTO {stg} ({cols}, _origem)\n{origem}\nON CONFLICT DO NOTHING"
 
     inseridas = repetidas = 0
     for csv_path in csv_files:
         t0 = time.time()
-        lidas = staging_copy(conn, raw, spec.n_cols, csv_path, assinar_registro=spec is SOCIO)
+        lidas = staging_copy(conn, raw, spec.n_cols, csv_path, assinar_registro=True)
         n = _exec(conn, insert_sql)
-        if spec is SOCIO and n != lidas:
+        if n != lidas:
             # ON CONFLICT pode esconder atributos divergentes (inclusive entre
             # ZIPs). Só explicar o descarte se cada ocorrência tem um espelho
             # completo na staging; uma raiz filtrada também falha na conta.
-            igualdade = _mesma_linha(SOCIO.columns, "s", "x")
+            igualdade = _mesma_linha(spec.columns, "s", "x")
             espelhadas = _scalar(conn, f"""
                 SELECT count(*) FROM ({origem}) x
                 WHERE EXISTS (SELECT 1 FROM {stg} s
-                    WHERE s.cnpj_basico = x.cnpj_basico AND s._id = md5(ROW({typed})::text)
-                      AND s._origem = x._origem AND {igualdade})
+                    WHERE {chave} AND s._origem = x._origem AND {igualdade})
             """)
             if espelhadas != lidas:
-                raise GuardError(f"socio: {lidas - espelhadas} ocorrências sem espelho idêntico em {csv_path.name}")
+                raise GuardError(f"{spec.table}: {lidas - espelhadas} ocorrências sem espelho idêntico em {csv_path.name}")
             repetidas += lidas - n
         inseridas += n
         _exec(conn, f"DROP TABLE IF EXISTS {raw}")
@@ -453,7 +458,7 @@ def build_staging(conn, spec: RfbTable, csv_files: Iterator[Path]) -> dict:
 
     _exec(conn, f"ANALYZE {stg}")
     conn.commit()
-    return {"staging": inseridas, **({"repeticoes_identicas": repetidas} if spec is SOCIO else {})}
+    return {"staging": inseridas, "repeticoes_identicas": repetidas}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -599,7 +604,8 @@ def apply_keyed(conn, spec: RfbTable, month: str) -> dict:
             f"AND ({t_cols}) IS DISTINCT FROM ({s_cols})",
         )
         totals["inseridas"] += _exec(conn, insert_sql, {"mes": month})
-        conn.commit()
+        if hi is not None:  # último lote confirma junto com a barreira de pós-paridade
+            conn.commit()
     return totals
 
 
@@ -636,7 +642,8 @@ def apply_socio(conn, month: str) -> dict:
             f"FROM {stg} s WHERE {rs} "
             f"AND NOT EXISTS (SELECT 1 FROM socio t WHERE {_socio_match('t', 's')})",
         )
-        conn.commit()
+        if hi is not None:
+            conn.commit()
     return totals
 
 
@@ -689,7 +696,7 @@ def verificar_paridade(conn, spec: RfbTable, plano: dict) -> None:
         if (b["extras"] or b["ausentes"] or b["grupos_multiplos"]
                 or plano["a_remover"] != plano["movidas_historico"]
                 or plano["a_inserir"] != plano["inseridas"]):
-            raise RuntimeError(f"socio: divergência após aplicação: {b}")
+            raise DivergenciaParidade(f"socio: divergência após aplicação: {b}")
         return
     incompleta = _incomplete_pred("s", _required_cols(conn, spec))
     with conn.cursor() as cur:
@@ -701,7 +708,7 @@ def verificar_paridade(conn, spec: RfbTable, plano: dict) -> None:
         """)
         plano["live_depois"], extras, divergentes = cur.fetchone()
     if extras or divergentes or plano["a_remover"] != plano["removidas"]:
-        raise RuntimeError(f"{spec.table}: divergência após aplicação: {extras} extras, {divergentes} divergentes")
+        raise DivergenciaParidade(f"{spec.table}: divergência após aplicação: {extras} extras, {divergentes} divergentes")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -740,11 +747,11 @@ def _aplicacao_pendente(conn) -> tuple | None:
     # pode ser encoberta pelo skip de um sucesso anterior da mesma competência.
     with conn.cursor() as cur:
         cur.execute("""
-        SELECT rfb_mes, stats->'manifesto' FROM rfb_sync_log
+        SELECT rfb_mes, stats->'manifesto', stats->>'paridade_nao_confirmada' FROM rfb_sync_log
         WHERE stats ? 'aplicacao_iniciada' AND id > (
             SELECT COALESCE(max(id), 0) FROM rfb_sync_log
             WHERE status = 'success' AND NOT (stats ? 'tabelas_parciais'))
-        ORDER BY id LIMIT 1
+        ORDER BY (stats ? 'paridade_nao_confirmada') DESC, id LIMIT 1
         """)
         return cur.fetchone()
 
@@ -785,17 +792,25 @@ def run_sync(dsn: str, opts: SyncOptions) -> int:
     stats: dict = {}
     try:
         apply_schema(conn)
+        pendente = _aplicacao_pendente(conn)
+        if pendente and pendente[2]:
+            raise GuardError(f"{pendente[0]}: paridade de {pendente[2]} não confirmada após aplicação; "
+                             "reconciliação obrigatória, sem retomada automática")
         month = resolve_month(opts.month)
         if not opts.tables or set(opts.tables) - set(SYNC_ORDER):
             raise GuardError("seleção de tabelas vazia ou desconhecida")
         parcial = set(opts.tables) != set(SYNC_ORDER)
         last = _last_success(conn)
-        pendente = _aplicacao_pendente(conn)
         if pendente and pendente[0] != month:
             raise GuardError(f"há aplicação pendente de {pendente[0]}; recusada outra competência")
         logger.info("mes alvo %s; ultimo sync completo: %s", month, last)
         if last and last > month:
             raise GuardError(f"mes {month} anterior ao ultimo sync ({last}) — regrediria a base")
+        if last and month > last:
+            ano, mes = map(int, last.split("-"))
+            seguinte = f"{ano + mes // 12:04d}-{mes % 12 + 1:02d}"
+            if month != seguinte:
+                raise GuardError(f"competência não contígua: após {last} é necessário aplicar {seguinte}")
         if last == month and not pendente and not opts.force:
             logger.info("RFB %s ja sincronizado — nada a fazer", month)
             print("RFB_SYNC_RESULT=skipped")
@@ -824,6 +839,11 @@ def run_sync(dsn: str, opts: SyncOptions) -> int:
         stats["refresh_solicitado"] = opts.refresh
         manifesto = {}
 
+        if not parcial and opts.refresh:
+            from etl.refresh_post_incremental import destinos_relink_ausentes
+            ausentes = destinos_relink_ausentes(conn)
+            if ausentes:
+                raise GuardError(f"destinos de publicação RFB incompletos: {', '.join(ausentes)}")
         limits = {**DEFAULT_MAX_DELETE_PCT, **(opts.max_delete_pct or {})}
         selecionadas = [t for t in SYNC_ORDER if t in opts.tables]
         # --tables limita a escrita, não a barreira de integridade do mês.
@@ -853,7 +873,12 @@ def run_sync(dsn: str, opts: SyncOptions) -> int:
             plan = stats[table]
             applied = apply_socio(conn, month) if spec is SOCIO else apply_keyed(conn, spec, month)
             plan.update(applied)
+            # Durável no commit do último lote. Mesmo se a consulta ou o log
+            # de falha cair, a próxima tentativa não reinterpreta a live.
+            stats["paridade_nao_confirmada"] = table
+            _update_log(conn, log_id, "running", stats)
             verificar_paridade(conn, spec, plan)
+            del stats["paridade_nao_confirmada"]
             _exec(conn, f"DROP TABLE IF EXISTS {_staging_name(spec)}")
             conn.commit()
             conn.autocommit = True
@@ -889,7 +914,13 @@ def run_sync(dsn: str, opts: SyncOptions) -> int:
         return 2
     except Exception as e:
         # Erros de COPY/constraint podem incluir a linha inteira no DETAIL.
-        diagnostico = f"{type(e).__name__} (SQLSTATE {getattr(e, 'pgcode', None) or '-'})"
+        if isinstance(e, DivergenciaParidade):
+            stats["classe_falha"] = "divergencia_integridade"
+            diagnostico = str(e)
+        else:
+            stats["classe_falha"] = ("integridade_nao_confirmada" if "paridade_nao_confirmada" in stats
+                                     else "operacional")
+            diagnostico = f"{type(e).__name__} (SQLSTATE {getattr(e, 'pgcode', None) or '-'})"
         logger.error("rfb_sync falhou: %s", diagnostico)
         if log_id is not None:
             try:

@@ -216,7 +216,7 @@ def _write_month(base: Path, month: str, data: dict) -> dict[str, Path]:
         names = spec.file_names() if spec else [prefix]
         for i, name in enumerate(names):
             chunk = rows if i == 0 else []  # tudo no arquivo 0; demais vazios
-            if prefix == "Socios":
+            if prefix in ("Socios", "Empresas"):
                 chunk = rows[i::len(names)]  # exercita inclusive colisões entre ZIPs
             zpath = d / f"{name}.zip"
             with zipfile.ZipFile(zpath, "w") as z:
@@ -239,7 +239,9 @@ def db(monkeypatch):
         for f in ("00_extensions.sql", "01_schema_dominio.sql", "02_schema_rfb.sql"):
             cur.execute((ROOT / "sql" / f).read_text(encoding="utf-8"))
         cur.execute("DROP TABLE IF EXISTS rfb_sync_log, socio_historico, rfb_sync_estab_delta, tce_pb_despesa, web_cache")
-        cur.execute("CREATE TABLE tce_pb_despesa (cpf_cnpj VARCHAR(14), cnpj_basico CHAR(8))")
+        for tabela, doc in refresh.RFB_LINKED_DOC_COLUMNS:
+            cur.execute(f"DROP TABLE IF EXISTS {tabela}")
+            cur.execute(f"CREATE TABLE {tabela} ({doc} VARCHAR(14), cnpj_basico CHAR(8))")
         cur.execute("CREATE TABLE web_cache (query_id TEXT, municipio TEXT, PRIMARY KEY (query_id, municipio))")
         # Grafo reduzido de MVs reais. A fixture não carrega as bases nacionais.
         cur.execute("CREATE MATERIALIZED VIEW teste_rfb_l1 AS SELECT count(*) AS n FROM socio")
@@ -467,18 +469,131 @@ def test_recusa_arquivo_ambiguo_antes_do_primeiro_lote(db, fake_webdav, tmp_path
     assert _rows(db, "SELECT status FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [("aborted",)]
 
 
-def test_pos_condicao_recusa_chave_trocada_com_mesmo_total(db, fake_webdav, tmp_path):
+@pytest.mark.parametrize("perde_log_final", [False, True])
+def test_pos_condicao_recusa_chave_trocada_com_mesmo_total(db, fake_webdav, tmp_path, monkeypatch, perde_log_final):
     fake_webdav("2026-08", MONTH_A)
+    # Já existe uma pendência retomável; ela não pode esconder a mais grave.
+    assert _sync("2026-08", tmp_path, tables=("empresa",)) == 3
     db.cursor().execute("""
         CREATE OR REPLACE FUNCTION trocar_nome_teste() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN NEW.nome := 'OUTRA IDENTIDADE'; RETURN NEW; END $$;
         CREATE TRIGGER teste BEFORE INSERT ON socio FOR EACH ROW EXECUTE FUNCTION trocar_nome_teste()
     """)
+    registrar = rfb_sync._update_log
+
+    def falha_no_log(conn, log_id, status, stats, erro=None):
+        if status == "failed" and perde_log_final:
+            raise RuntimeError("interrupção antes da gravação da falha")
+        registrar(conn, log_id, status, stats, erro)
+
+    monkeypatch.setattr(rfb_sync, "_update_log", falha_no_log)
     assert _sync("2026-08", tmp_path) == 1
     assert _rows(db, "SELECT count(*) FROM socio") == [(3,)]
     assert _rows(db, "SELECT n FROM teste_rfb_l1") == [(0,)]
     assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
-    assert _rows(db, "SELECT status FROM rfb_sync_log") == [("failed",)]
+    assert _rows(db, "SELECT status, stats->>'classe_falha', stats->>'paridade_nao_confirmada' "
+                     "FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [
+        ("running", None, "socio") if perde_log_final else ("failed", "divergencia_integridade", "socio")]
+    db.cursor().execute("DROP TRIGGER teste ON socio")
+    antes = _estado_negocio(db)
+    for forcar in (False, True):
+        assert _sync("2026-08", tmp_path, force=forcar, max_delete_pct={"socio": 100}) == 2
+        assert _estado_negocio(db) == antes
+    assert _rows(db, "SELECT count(*) FROM socio_historico") == [(0,)]
+
+
+def test_socio_multilinha_assinado_preserva_id_do_parser_legado(db, fake_webdav, tmp_path):
+    socio = _socio("11111111", "A\rB\r\nC\nD", "***111111**")
+    arquivo = tmp_path / "legado.csv"
+    arquivo.write_bytes((socio + "\n").encode("latin-1"))
+    rfb_sync.staging_copy(db, "_legado", SOCIO.n_cols, arquivo)
+    db.cursor().execute(f"INSERT INTO socio ({', '.join(SOCIO.columns)}) {SOCIO.select_sql('_legado')}")
+    antes = _rows(db, "SELECT id, nome FROM socio")
+    assert antes[0][1] == "A\nB\nC\nD"
+    fake_webdav("2026-08", dict(MONTH_A, Socios=[socio]))
+    assert _sync("2026-08", tmp_path) == 0
+    assert _rows(db, "SELECT id, nome FROM socio") == antes
+    assert _rows(db, "SELECT count(*) FROM socio_historico") == [(0,)]
+
+
+@pytest.mark.parametrize("conflito", [False, True], ids=["espelho-identico", "payload-divergente"])
+def test_mesma_pk_em_dois_zips(db, fake_webdav, tmp_path, conflito):
+    primeira = MONTH_A["Empresas"][0]
+    outra = _empresa("11111111", "DISTINTA") if conflito else primeira
+    fake_webdav("2026-08", dict(MONTH_A, Empresas=[primeira, outra]))
+    if conflito:
+        assert _sync("2026-08", tmp_path, force=True) == 2
+        assert _rows(db, "SELECT status, stats ? 'aplicacao_iniciada' FROM rfb_sync_log") == [("aborted", False)]
+        assert _rows(db, "SELECT count(*) FROM empresa") == [(0,)]
+    else:
+        assert _sync("2026-08", tmp_path) == 0
+        assert _rows(db, "SELECT stats->'empresa'->'repeticoes_identicas' FROM rfb_sync_log") == [(1,)]
+
+
+def test_competencias_contiguas_preservam_saida_e_reingresso(db, fake_webdav, tmp_path):
+    fake_webdav("2026-11", MONTH_A)
+    fake_webdav("2026-12", MONTH_B)
+    fake_webdav("2027-01", MONTH_A)
+    limites = {t: 100 for t in RFB_TABLES}
+    assert _sync("2026-11", tmp_path) == 0
+    antes = _estado_negocio(db)
+    for forcar in (False, True):
+        assert _sync("latest", tmp_path, force=forcar) == 2
+        assert _estado_negocio(db) == antes
+    id_saida = _rows(db, "SELECT id FROM socio WHERE nome='MARIA'")
+    for mes in ("2026-12", "2027-01"):
+        assert _sync(mes, tmp_path, max_delete_pct=limites, max_shrink_pct=100) == 0
+    assert _rows(db, "SELECT id FROM socio_historico WHERE nome='MARIA' AND rfb_mes_removido='2026-12'") == id_saida
+    assert _rows(db, "SELECT id FROM socio WHERE nome='MARIA'")[0] != id_saida[0]
+
+
+@pytest.mark.parametrize("fonte", ["bolsa_familia", "tce_pb"])
+def test_barreira_hooks_comuns_antes_e_depois_do_primeiro_sync(db, fake_webdav, tmp_path, monkeypatch, fonte):
+    fake_webdav("2026-08", MONTH_A)
+    primeiro_passo = "_run_sql" if fonte == "bolsa_familia" else "normalize_tce_pb_incremental"
+    chamadas = []
+
+    def sonda(conn, *args, **kwargs):
+        chamadas.append(fonte)
+        conn.commit()  # o lock deve atravessar os commits internos do hook
+        assert _sync("2026-08", tmp_path) == 1
+        raise RuntimeError("interrupção de teste no corpo do hook")
+
+    monkeypatch.setattr(refresh, primeiro_passo, sonda)
+    with pytest.raises(RuntimeError, match="interrupção de teste"):
+        SOURCE_REFRESH_FNS[fonte](db)
+    assert _rows(db, "SELECT to_regclass('rfb_sync_log')") == [(None,)]  # sem bootstrap pelo hook
+    outra = psycopg2.connect(TEST_DSN)
+    try:
+        outra.cursor().execute("SELECT pg_advisory_lock(%s)", (rfb_sync.ADVISORY_LOCK_KEY,))
+        with pytest.raises(RuntimeError, match="concorrente"):
+            SOURCE_REFRESH_FNS[fonte](db)
+    finally:
+        outra.close()
+    assert _sync("2026-08", tmp_path, refresh=False) == 3
+    with pytest.raises(RuntimeError, match="pendente"):
+        SOURCE_REFRESH_FNS[fonte](db)
+    assert chamadas == [fonte]
+    assert _rows(db, "SELECT n FROM teste_rfb_l1") == [(0,)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
+
+
+@pytest.mark.parametrize("remover", ["DROP TABLE pb_diaria", "DROP TABLE web_cache",
+                                     "ALTER TABLE pb_pagamento DROP COLUMN cpfcnpj_credor"])
+def test_publicacao_exige_todos_destinos_antes_do_relink(db, fake_webdav, tmp_path, remover):
+    fake_webdav("2026-08", MONTH_A)
+    assert _sync("2026-08", tmp_path, refresh=False) == 3
+    db.cursor().execute("INSERT INTO tce_pb_despesa VALUES ('11111111000191', NULL)")
+    db.cursor().execute(remover)
+    assert _sync("2026-08", tmp_path) == 2
+    assert _rows(db, "SELECT stats ? 'aplicacao_iniciada' FROM rfb_sync_log ORDER BY id DESC LIMIT 1") == [(False,)]
+    # Mesmo se o destino desaparecer entre a pré-validação e o hook.
+    with pytest.raises(RuntimeError, match="destinos de publicação RFB incompletos"):
+        refresh.refresh_for_rfb(db)
+    assert _rows(db, "SELECT cnpj_basico FROM tce_pb_despesa") == [(None,)]
+    assert _rows(db, "SELECT n FROM teste_rfb_l1") == [(0,)]
+    assert _rows(db, "SELECT count(*) FROM rfb_sync_estab_delta") == [(3,)]
+    assert rfb_sync._last_success(db) is None
 
 
 def test_falha_apos_relink_antes_de_l2_preserva_delta(db, fake_webdav, tmp_path, monkeypatch):

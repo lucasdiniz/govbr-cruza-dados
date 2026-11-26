@@ -278,7 +278,10 @@ o comportamento do código; não autoriza acionar a carga, usar `:force` ou repa
    `empresa`. `--tables` limita a escrita, não o conjunto validado. Nesse
    ponto só há escritas de staging e de suporte/auditoria. Snapshot vazio,
    remoção excessiva, conflito de sócio ou último domínio inválido não deixam
-   lotes de negócio aplicados. Erros de leitura/conversão também interrompem.
+   lotes de negócio aplicados. Nas tabelas com PK, inclusive entre ZIPs,
+   só se aceita repetição comprovada pelos mesmos bytes do registro e campos
+   tipados; payload divergente para a mesma chave aborta. Erros de
+   leitura/conversão também interrompem.
 2. **Aplicação:** `empresa` → `estabelecimento` → `simples` → `socio`, em
    transações por prefixo de `cnpj_basico`. Para cada tabela aplicada, compara
    a live à staging **nos dois sentidos** antes de prosseguir. Nas tabelas com
@@ -287,7 +290,10 @@ o comportamento do código; não autoriza acionar a carga, usar `:force` ou repa
    Os domínios só são substituídos no escopo completo, numa transação.
 3. **Publicação do sync:** só com as quatro tabelas, domínios e refresh habilitado.
    Religa os CNPJs do delta, purga o cache dos estabelecimentos removidos e
-   atualiza L1 → auxiliares → L2 e sitemap. Ausência de MV prevista é falha.
+   atualiza L1 → auxiliares → L2 e sitemap. Os destinos de relink, o delta e
+   `web_cache` (incluindo as colunas utilizadas) são obrigatórios: o sync
+   integral confere o catálogo antes do primeiro lote e novamente antes do
+   relink, mesmo com delta vazio. Ausência de MV prevista também é falha.
    O delta só é baixado na transação que registra o `success` final. Esse
    sucesso é do **sync RFB**, não do aquecimento externo do cache/site.
 
@@ -297,6 +303,8 @@ o MD5 auxilia a busca, não substitui a comparação dos campos (inclusive nulos
 Uma ocorrência descartada da origem exige o mesmo SHA-256 dos bytes do registro
 CSV e os mesmos campos tipados na staging; repetições comprovadas ficam em
 `repeticoes_identicas`. A igualdade após conversão, sozinha, não basta.
+O hash usa os bytes crus; para o parser, CR, CRLF e LF continuam virando LF,
+inclusive dentro de campo entre aspas, como na carga clássica.
 Antes do primeiro lote, `identidades_multiplas_live > 0` recusa a aplicação,
 inclusive se a identidade sairia do snapshot ou se uma falta compensar a sobra.
 Isso **não** transforma troca legítima de vínculos entre meses em erro: faltas
@@ -320,12 +328,28 @@ dados de saídas anteriores.
 | `2` | Recusa por guarda/pré-condição, antes da aplicação desta tentativa. |
 | `3`, `publicacao_pendente` | `--tables` parcial ou `--no-refresh`: escopo solicitado aplicado, **sem** relink, purga, refresh ou avanço do último sucesso. |
 
-Uma tentativa nova que entrou em aplicação bloqueia outra competência e o
-refresh avulso até a confirmação integral. O retry da mesma competência não
+Após o primeiro sucesso integral, só se aceita o mesmo mês ou seu sucessor
+imediato (inclusive dezembro → janeiro). `latest` e `--force` não atravessam
+uma lacuna: uma saída seguida de reingresso ficaria invisível no histórico.
+Uma tentativa nova que entrou em aplicação bloqueia outra competência e os
+hooks de refresh RFB, TCE-PB e Bolsa Família até a confirmação integral. O
+lock de sessão cobre o hook inteiro, inclusive seus commits; sem log RFB
+o hook incremental adquire o lock e segue sem criar esquema. O retry não
 pula trabalho por causa de um `success` anterior à pendência. O contrato
 histórico de leitura do log é preservado: sucessos legados sem marcador de
 tabelas parciais continuam sendo considerados; não se exige evidência nova
 retroativamente nem se declara que esses runs foram revalidados.
+
+**Falha após commit:** o último lote da tabela grava atomicamente
+`stats.paridade_nao_confirmada`; só a pós-condição bem-sucedida libera essa
+barreira. Se a comparação divergir ou sua confirmação for interrompida, a
+retomada automática é **recusada**, mesmo com manifesto igual, mesmo com
+`--force` e mesmo após remover a causa da divergência. Comparar novamente
+contra uma live corrompida poderia arquivar uma saída que nunca existiu.
+Exige conciliação e decisão humana em clone; não apagar o marcador para
+destravar. Falhas operacionais antes dessa fronteira ou no refresh continuam
+elegíveis à retomada sob os guards de competência e manifesto. `failed`
+sozinho não distingue os casos; consultar `stats.classe_falha` e o marcador.
 
 ```sql
 -- Últimas execuções, contagens por tabela e motivo de falha/guard
@@ -348,12 +372,13 @@ FROM rfb_sync_log ORDER BY id DESC LIMIT 5;
   `--force`. Hashes não substituem o arquivamento autorizado dos objetos nem
   a verificação de que a baseline da live não mudou entre tentativas. Conciliar por prefixo
   a origem, atributos, multiplicidade, ids atuais, histórico e controles em
-  réplica/clone, sem publicar dados individuais. Nas outras tabelas, o
-  `ON CONFLICT DO NOTHING` da staging não classifica colisões da origem.
+  réplica/clone, sem publicar dados individuais. Orçar também o SHA-256 por
+  registro e a coluna de assinatura nas quatro stagings.
 - **Recuperação e exposição:** o marcador conservador de início não é um
   diário transacional por lote. Leitores diretos podem ver lotes comitados;
   o relink/purga e as MVs tampouco trocam todos de geração atomicamente.
-  O lock coordena sync e refresh avulso, não todo escritor externo. Exigir
+  O lock coordena o sync e os três hooks, não SQL avulso, cargas das outras
+  fontes, aquecimento do cache ou todo escritor externo. Exigir
   recuperação demonstrada com pré-imagem, mesmo manifesto, ausência de
   escritor concorrente, competências contíguas e controle das rotas/cache
   antes de qualquer canário. Não usar retry, mês posterior ou `--force` como

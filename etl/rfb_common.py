@@ -51,6 +51,9 @@ def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path, *, assin
                 # remover NUL, ajustar largura ou converter valores.
                 if assinatura is not None:
                     assinatura.update(line.encode("latin-1"))
+                    # Só os bytes assinados são crus. Entregar ao csv.reader
+                    # as mesmas quebras universais do caminho legado (newline=None).
+                    line = line.replace("\r\n", "\n").replace("\r", "\n")
                 yield line.replace("\x00", "")
 
     reader = csv.reader(_clean_lines(filepath), delimiter=";", quotechar='"')
