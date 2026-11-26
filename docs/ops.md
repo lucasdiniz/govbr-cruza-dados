@@ -274,6 +274,13 @@ com a correção da causa. Poda do backup (após 90 dias):
 
 ## Runbook: backup DB
 
+Antes de planejar um restore, o mantenedor pode despachar
+[`inventario-restore.yml`](../.github/workflows/inventario-restore.yml) na `main`.
+O runner verifica somente os metadados de arquivos regulares `govbr-*.dump`
+no diretório documentado, sem SSH, secrets, `sudo`, SQL ou leitura do conteúdo.
+Um candidato **não** comprova backup consistente nem restore ensaiado. Ausência
+de candidato não exclui snapshots Azure, backups externos ou links simbólicos.
+
 **Status atual: pendente.** Não há estratégia documentada de backup/restore validada em produção. Este é um gap operacional A4.
 
 Sugestões a formalizar:

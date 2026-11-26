@@ -1,0 +1,49 @@
+name: Verificar candidato a restore
+
+on: workflow_dispatch
+permissions: {}
+
+jobs:
+  inventario:
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: [self-hosted, Linux, azure]
+    timeout-minutes: 2
+    steps:
+      - name: Conferir metadados no diretório de backup documentado
+        shell: python3 -I {0}
+        run: |
+          import datetime
+          import os
+          import stat
+
+          def inventario(pasta):
+              candidatos = []
+              try:
+                  if stat.S_ISLNK(os.lstat(pasta).st_mode):
+                      return {"estado": "inconclusivo_diretorio"}
+                  with os.scandir(pasta) as entradas:
+                      for indice, item in enumerate(entradas):
+                          if indice == 256:
+                              return {"estado": "inconclusivo_limite"}
+                          if not item.name.startswith("govbr-") or not item.name.endswith(".dump"):
+                              continue
+                          try:
+                              meta = item.stat(follow_symlinks=False)
+                          except FileNotFoundError:
+                              return {"estado": "inconclusivo_mudanca"}
+                          if stat.S_ISREG(meta.st_mode) and meta.st_size > 0:
+                              candidatos.append((meta.st_mtime, meta.st_size))
+              except FileNotFoundError:
+                  return {"estado": "sem_candidato_verificado"}
+              except OSError:
+                  return {"estado": "inconclusivo_acesso"}
+              if not candidatos:
+                  return {"estado": "sem_candidato_verificado"}
+              instante, tamanho = max(candidatos)
+              dia = datetime.datetime.fromtimestamp(instante, datetime.timezone.utc).date()
+              return {"estado": "candidato_local", "quantidade": len(candidatos),
+                      "modificado_utc": dia.isoformat(), "tamanho_mib": (tamanho + 1048575) // 1048576}
+
+          # Somente metadados agregados; nunca abrir dumps, listar nomes ou resolver links.
+          resultado = inventario("/data/backups")
+          print("INVENTARIO_RESTORE", *[f"{k}={v}" for k, v in resultado.items()])
