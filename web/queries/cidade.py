@@ -198,15 +198,29 @@ WHERE d.municipio = %(municipio)s
 ), folha AS (
     SELECT SUM(valor_vantagem) AS total_folha FROM tce_pb_servidor
     WHERE unaccent(municipio) = unaccent(%(municipio)s)
-      AND ano_mes BETWEEN REPLACE(%(ano_mes_inicio)s, '-', '')
-                      AND REPLACE(%(ano_mes_fim)s, '-', '')
+      AND ano_mes ~ '^[0-9]{4}-?(0[1-9]|1[0-2])$'
+      AND replace(ano_mes, '-', '') BETWEEN replace(%(ano_mes_inicio)s, '-', '')
+                                        AND replace(%(ano_mes_fim)s, '-', '')
 )
 SELECT despesa.*, receita_arrecadada, total_folha,
        ROUND(100.0 * total_folha / NULLIF(receita_arrecadada, 0), 1) AS pct_folha_receita,
        NULL::numeric AS risco_score,
        %(ano_mes_inicio)s::text AS competencia_receita_inicio,
-       %(ano_mes_fim)s::text AS competencia_receita_fim
+       %(ano_mes_fim)s::text AS competencia_receita_fim,
+       %(data_inicio)s::text AS periodo_inicio, %(data_fim)s::text AS periodo_fim
 FROM despesa CROSS JOIN receita CROSS JOIN folha
+"""
+
+# Só a preparação privada usa a consulta sem esta guarda. Na leitura pública,
+# a própria consulta verifica a publicação no mesmo snapshot (inclusive CUSTOM).
+# Um miss de um dos perfis ainda tem o outro como testemunha da aprovação.
+PERFIL_MUNICIPIO_PUBLICADO = PERFIL_MUNICIPIO_LIVE + """
+WHERE EXISTS (
+    SELECT 1 FROM web_cache
+    WHERE municipio = %(municipio)s AND query_id IN ('ANO:PERFIL', '12M:PERFIL')
+      AND columns @> '["periodo_inicio","periodo_fim","competencia_receita_inicio"]'::jsonb
+      AND row_count = 1
+)
 """
 
 HEATMAP_MENSAL = """

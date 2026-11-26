@@ -183,7 +183,12 @@ def _skip_mode_label() -> str:
 # _effective_qid.
 SHADOW_SUFFIX = "__pending"
 # Não reutilizar as sombras revisadas no swap genérico (nem o contrário).
-SUFIXO_PERFIL_DATADO = "__perfil_datado__pending"
+
+
+def sombra_perfil_datado(qid: str) -> str:
+    # Único ":" na primeira posição: nem o batch legado (prefixo + ":",
+    # ou sem ":" para all-time) alcança esta chave. Reset LIKE '%__pending' também não.
+    return ":p1b_" + qid.replace(":", "_")
 
 # Patterns de query_id em modo shadow (match EXATO de qid ou base). Vazio = sem shadow.
 REWARM_KEYS = {
@@ -257,8 +262,7 @@ def _effective_qid(query_id: str) -> str:
     """
     if not _is_shadow_for(query_id):
         return query_id
-    sufixo = SUFIXO_PERFIL_DATADO if _somente_perfil_datado() else SHADOW_SUFFIX
-    return query_id + sufixo
+    return sombra_perfil_datado(query_id) if _somente_perfil_datado() else query_id + SHADOW_SUFFIX
 
 
 def _record_shadow_result(query_id: str, ok: int, fail: int) -> None:
@@ -745,6 +749,20 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
             scols, srows = serv_cache
             servidores = [_row_to_dict(scols, r) for r in srows]
         summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+        if _somente_perfil_datado() and prefix:
+            # TOP_* não registra os limites no cache legado. A data do novo
+            # perfil, sozinha, não prova que o KPI tirado desses TOPs é do período.
+            params = _parametros_datados(date.fromisoformat(perfil["periodo_fim"]))[periodo]
+            if params["data_inicio"] != perfil["periodo_inicio"]:
+                raise ValueError("Limites do perfil divergentes do preset")
+            params["municipio"] = mun
+            fc, fr = _execute(conn, TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN)
+            sc, sr = _execute(conn, TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV)
+            referencia = compute_cidade_kpis(perfil, [_row_to_dict(fc, r) for r in fr],
+                                             [_row_to_dict(sc, r) for r in sr])
+            if summary != referencia:
+                raise ValueError("KPI das dependências diverge do intervalo do perfil")
+            summary.update({k: perfil[k] for k in ("periodo_inicio", "periodo_fim")})
         # score_canonical = mv_municipio_pb_kpi_score.risco_score_unificado, mesmo
         # valor exibido no mapa coropletico. Eh uma metrica all-time da reputacao
         # do municipio, period-independent. Para periodos ANO/12M, o PERFIL local
@@ -1047,12 +1065,14 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     cycle_ok = cycle_fail = 0
 
     # 1. PERFIL — alimenta KPI_SUMMARY (dependencia)
-    perfil_sql = PERFIL_MUNICIPIO_LIVE if is_dated else PERFIL_MUNICIPIO
-    ok, fail = _warm_query_across_munis(
-        f"{prefix}PERFIL", perfil_sql, municipios, extra_params, TIMEOUT_PERFIL_LIVE, verbose,
-    )
-    cycle_ok += ok
-    cycle_fail += fail
+    # ANO/12M pertencem à publicação coordenada, inclusive em miss, cron
+    # sem REWARM_KEYS e rebuild. Nunca materializar metade da geração.
+    if not is_dated:
+        ok, fail = _warm_query_across_munis(
+            "PERFIL", PERFIL_MUNICIPIO, municipios, extra_params, TIMEOUT_PERFIL_LIVE, verbose,
+        )
+        cycle_ok += ok
+        cycle_fail += fail
 
     # 2. TOP_FORNECEDORES — alimenta KPI_SUMMARY
     forn_sql = TOP_FORNECEDORES_DATED if is_dated else TOP_FORNECEDORES
@@ -1071,9 +1091,10 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     cycle_fail += fail
 
     # 4. KPI_SUMMARY — depende dos 3 acima
-    ok, fail = _warm_kpi_summary_across_munis(municipios, phase_name, verbose)
-    cycle_ok += ok
-    cycle_fail += fail
+    if not is_dated:
+        ok, fail = _warm_kpi_summary_across_munis(municipios, phase_name, verbose)
+        cycle_ok += ok
+        cycle_fail += fail
 
     # 5. HEATMAP — apenas all-time
     if not is_dated:

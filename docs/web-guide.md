@@ -56,6 +56,13 @@ Exemplo: em 26/11/2026, `12M` vai de 27/11/2025 a 26/11/2026: **13**
 competências (nov/2025 a nov/2026). `ANO` usa jan–nov/2026. Sem filtro, a
 leitura continua histórica, pela MV/cache sem prefixo. O resumo mensal de
 despesas (`/cidade/<slug>/AAAA-MM`) não mede essa receita nem seus centavos.
+Para folha, `YYYYMM` e `YYYY-MM` são equivalentes; meses inválidos não entram.
+As APIs exigem dias em `AAAA-MM-DD`. Nos dois presets, `PERFIL` e `KPI_SUMMARY`
+só atendem o cache hit se **ambos os limites diários** da linha corresponderem
+ao pedido. O HTML pode mostrar a última foto ANO com suas **datas reais**:
+se não termina hoje, não seleciona “Ano atual”. O bootstrap pede o intervalo
+exibido, não o ano do relógio. Se não há foto verificável, não preencher com
+all-time; ver a [ordem de publicação e reversão](cache.md#perfil-por-competência-preparação-aprovação-e-reversão).
 
 **Vínculos no diálogo de servidor:** `/api/servidor/detalhes` consolida o
 histórico por município, unidade gestora, matrícula, cargo e admissão.

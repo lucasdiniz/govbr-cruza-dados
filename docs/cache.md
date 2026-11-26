@@ -87,20 +87,33 @@ Procedimento **manual**, primeiro em clone datado. Não é etapa de deploy.
 O alvo é o produto de **todo o cadastro não nulo** de `mv_municipio_pb_risco`
 por quatro chaves: `ANO:PERFIL`, `12M:PERFIL` e os respectivos `KPI_SUMMARY`.
 Nada de `PERFIL` sem prefixo, `drop_cache`, invalidação geral ou `etl_phase=sql`.
+O warm genérico **desta versão** não escreve essas quatro chaves, nem em
+cron/rebuild com cache miss. Os demais resultados (inclusive all-time)
+continuam no ciclo habitual. `TRUNCATE`, invalidações por substring, escritores
+antigos e mudanças das fontes não obedecem ao lock deste módulo.
+Após alterações nas fontes ou nos TOPs, coordenar nova preparação e aprovação;
+o cron genérico não atualiza os quatro resultados publicados.
 
 1. Identificar responsável, SHA do código, snapshot das fontes, horário de
    Brasília, escopo municipal esperado e limites de latência/locks. Confirmar
    que ETL, refresh, warm e reset/invalidação não estão ativos nem serão
    disparados até o fim. O advisory lock do comando serializa **só** outros
-   comandos deste módulo. Sem essa coordenação, não iniciar. Verificar o plano
+   comandos deste módulo. **Não é seguro publicar com o cron ativo.** Sem
+   controle da fila e de todos os produtores, não iniciar. Verificar o plano
    com volume representativo, espaço e permissões (incluindo `CREATE TABLE`
    para a inversa). As leituras web já devem ocultar `__pending`.
 2. `WARM_REWARM_KEYS=ANO:PERFIL,12M:PERFIL python -m web.cache_perfil_datado preparar`
-   calcula só as quatro sombras, com sufixo reservado `__perfil_datado__pending`
-   que o swap genérico não promove. Exige dependências live presentes (`PERFIL`
+   escreve só as quatro sombras (`:p1b_ANO_PERFIL`, `:p1b_12M_PERFIL`,
+   `:p1b_ANO_KPI_SUMMARY`, `:p1b_12M_KPI_SUMMARY`). Não casam com o reset
+   `LIKE '%__pending'`, nem com os prefixos públicos, inclusive no batch
+   legado. Exige dependências live presentes (`PERFIL`
    histórico e `TOP_*` dos dois períodos); lista vazia é diferente de chave
    ausente. Não aceita sombra residual: após falha, investigar e, com autorização,
-   descartar **apenas** as quatro chaves com esse sufixo exato antes de recomeçar.
+   descartar **apenas** as quatro chaves privadas exatas antes de recomeçar.
+   Para não atribuir o período de um perfil novo a TOPs antigos, a preparação
+   compara o KPI derivado do cache com o recalculado pelas duas consultas TOP
+   nos mesmos dias. Divergência bloqueia o lote; não reescreve os TOPs. Orçar
+   também essas leituras (duas por período/município) e a duração até a virada do dia.
    Falha de município ou mudança na baseline não emite manifesto aprovado.
 3. Guardar o SHA-256 emitido, dia e limites dos dois períodos. O hash identifica
    os dados, **não certifica a paridade**. Conferir os pares município/chave
@@ -120,18 +133,35 @@ Nada de `PERFIL` sem prefixo, `drop_cache`, invalidação geral ou `etl_phase=sq
    não couber no orçamento em clone, não liberar. Requests com vários SELECTs
    podem atravessar o commit; a atomicidade é da geração no banco.
 5. Se necessário e autorizado, `python -m web.cache_perfil_datado reverter SHA256_APROVADO`.
-   Exige que as linhas ainda correspondam à pós-imagem, restaura os valores e
+   Mesmo em outro dia, verifica a pós-imagem **e** a assinatura das cinco
+   dependências por município do escopo original, antes de qualquer escrita.
+   Restaura os valores e
    timestamps anteriores e remove só pares que antes não existiam. Se outra
    escrita interveio, parar e reconciliar, não forçar. Após estabilização,
    arquivar a tabela de inversa com acesso restrito, verificar restauração e
    só então liberar o nome para outra geração. **Reverter código não restaura
-   cache**; reverter cache também não reverte a SQL de um cache miss.
+   cache**. A inversa restaura as linhas, não o comportamento dos binários antigos.
+
+**Compatibilidade e ordem de exposição.** Preparar e revisar a sombra fora do
+tráfego com os escritores parados. Coordenar aprovação, promoção e troca dos
+leitores; se não for possível separar código instalado de código servindo
+tráfego, exigir janela de manutenção. Não há promessa de zero downtime: o
+novo SSR e as APIs datadas recusam (`503`) fotos legadas sem limites comprovados,
+inclusive depois de uma inversa para o legado. Manter a versão anterior do
+leitor disponível para esse rollback. All-time explícito continua disponível.
+O batch omite só `PERFIL`/`KPI_SUMMARY` quando não são do preset solicitado;
+as demais chaves mantêm o contrato legado. Em cache miss/CUSTOM a SQL pública
+só lê as tabelas financeiras se houver um perfil datado publicado **daquele
+município**; somente a preparação pode calculá-lo antes disso. Se ambos os
+perfis forem invalidados será necessária nova publicação. Revalidar também as
+rotas com os consumidores e limites de latência do clone antes de expor.
 
 Para repetir o teste offline, usar PG16 descartável com `listen_addresses=''`,
 socket único em diretório privado, porta de socket `54160`, usuário `p1b_teste`,
 base `p1b_test` e `P1B_TEST_SOCKET` apontando para esse diretório. Executar
 `python -m pytest -q tests/test_perfil_competencia.py` e parar o cluster ao fim.
-As fixtures não chamam o site nem o ciclo de warm.
+As fixtures não chamam o site. Exercitam os workers e o caminho de cron
+somente no schema sintético desse socket.
 
 ## 3 modos de atualização
 

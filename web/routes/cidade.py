@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hmac
 import io
+import json
 import logging
 import os
 import time
@@ -37,7 +38,7 @@ from web.queries.cidade import (
     HEATMAP_MES_EMPENHOS,
     PB_MEDIAS,
     PERFIL_MUNICIPIO,
-    PERFIL_MUNICIPIO_LIVE,
+    PERFIL_MUNICIPIO_PUBLICADO,
     TOP_FORNECEDORES,
     TOP_FORNECEDORES_DATED,
     TOP_SERVIDORES_RISCO,
@@ -169,7 +170,29 @@ def _date_validation_error(payload: MunicipioPayload) -> str | None:
         return "Data invalida. Use o formato AAAA-MM-DD."
     if inicio > fim:
         return "A data inicial nao pode ser maior que a data final."
+    if (payload.data_inicio, payload.data_fim) != (inicio.isoformat(), fim.isoformat()):
+        return "Use datas no formato AAAA-MM-DD."
     return None
+
+
+def _resumo_cache(rows):
+    if not rows or not rows[0]:
+        return None
+    valor = rows[0][0]
+    if isinstance(valor, str):
+        try:
+            valor = json.loads(valor)
+        except ValueError:
+            return None
+    return valor if isinstance(valor, dict) else None
+
+
+def _mesmo_intervalo(dados, inicio, fim):
+    return dados and (dados.get("periodo_inicio"), dados.get("periodo_fim")) == (inicio, fim)
+
+
+class _PeriodoIndisponivel(Exception):
+    """Não substituir um recorte sem publicação comprovada por dados históricos."""
 
 
 def _get_periodo(payload: MunicipioPayload) -> str:
@@ -897,12 +920,6 @@ async def _render_cidade(request: Request, municipio: str):
             status_code=404,
         )
 
-    _today = _today_gmt3()
-    date_ctx = {
-        "default_data_inicio": f"{_today.year}-01-01",
-        "default_data_fim": _today.isoformat(),
-    }
-
     # IMPORTANTE: cache eh keyed pelo nome canonico (com acento). Derivar antes
     # do overlay para que tanto PERFIL quanto KPI_SUMMARY/TOP_* batam quando
     # a URL veio sem acento.
@@ -912,95 +929,33 @@ async def _render_cidade(request: Request, municipio: str):
     # filtro com o cache ANO:PERFIL para alinhar o primeiro paint com o filtro
     # ativo (evita flash de all-time). Mantem campos historicos (risco_score,
     # qtd_licitacoes, pct_proponente_unico) intactos.
-    perfil_periodo = ""  # "" = all-time, "ANO" = ano corrente
+    cached_ano = read_web_cache("PERFIL", canonical_mun, periodo="ANO")
+    ano = _row_to_dict(cached_ano[0], cached_ano[1][0]) if cached_ano and cached_ano[1] else {}
+    cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun, periodo="ANO")
+    kpi_ctx = _resumo_cache(cached_summary[1]) if cached_summary else None
     try:
-        cached_ano = read_web_cache("PERFIL", canonical_mun, periodo="ANO")
-        if cached_ano:
-            ano_cols, ano_rows = cached_ano
-            if ano_rows and ano_rows[0]:
-                ano = _row_to_dict(ano_cols, ano_rows[0])
-                perfil_periodo = "ANO"
-                # NULL (ou coluna ausente no cache legado) não autoriza herdar
-                # um valor histórico sob o rótulo "Ano atual".
-                for fld in (
-                    "qtd_empenhos", "total_empenhado", "total_pago",
-                    "qtd_fornecedores", "qtd_sem_licitacao", "pct_sem_licitacao",
-                    "qtd_dezembro", "pct_dezembro", "pct_nao_executado",
-                    "receita_arrecadada", "total_folha", "pct_folha_receita",
-                    "competencia_receita_inicio", "competencia_receita_fim",
-                    "total_pago_licitavel", "total_pago_sem_licitacao", "pct_valor_sem_licitacao",
-                ):
-                    perfil[fld] = ano.get(fld)
-    except Exception:
-        pass
+        inicio = date.fromisoformat(ano["periodo_inicio"])
+        fim = date.fromisoformat(ano["periodo_fim"])
+        hoje = _today_gmt3()
+        if (inicio != date(fim.year, 1, 1) or fim > hoje
+                or not _mesmo_intervalo(kpi_ctx, inicio.isoformat(), fim.isoformat())):
+            raise ValueError
+    except (KeyError, ValueError, TypeError):
+        return Response("Perfil do período ainda não disponível.", status_code=503,
+                        headers={"Retry-After": "300"})
 
-    # Narrativa date-aware: quando o perfil foi sobreposto com dados ANO,
-    # build_narrative omite comparadores PB (medianas all-time) e o risco_score
-    # (MV all-time) e adiciona um prefixo identificando o periodo.
-    narrative = build_narrative(perfil, get_pb_medias(), periodo=perfil_periodo)
-
-    # Carrega KPI_SUMMARY com ANO-first; SEM fallback all-time se ANO faltou:
-    # como o primeiro paint precisa refletir o filtro 'Ano atual', mostrar
-    # numeros all-time aqui apenas para depois ser corrigido pelo /api/kpis
-    # recria exatamente o flash que este PR tenta eliminar. Em cache miss do
-    # ANO, cai para o calculo live via compute_cidade_kpis (que ja le os
-    # caches ANO:TOP_* abaixo, e tambem nao usa fallback all-time).
-    kpi_ctx: dict | None = None
-    try:
-        cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun, periodo="ANO")
-        if not cached_summary and not perfil_periodo:
-            # Nao ha ANO disponivel para esta cidade: aceita all-time (consistente
-            # com perfil all-time tambem nao sobreposto).
-            cached_summary = read_web_cache("KPI_SUMMARY", canonical_mun)
-        if cached_summary:
-            scols, srows = cached_summary
-            if srows and srows[0]:
-                blob = srows[0][0]
-                if isinstance(blob, str):
-                    import json as _json
-                    kpi_ctx = _json.loads(blob)
-                elif isinstance(blob, dict):
-                    kpi_ctx = blob
-    except Exception:
-        kpi_ctx = None
-    if kpi_ctx is None:
-        # Replica a estrategia de _kpi_summary_payload (usado por /api/kpis)
-        # para que SSR e API produzam o mesmo resultado mesmo quando apenas
-        # ANO:PERFIL esta no cache mas ANO:TOP_* faltam: la, _load_*_for_kpis
-        # cai para uma query live datada. Fazer o mesmo aqui evita primeiro
-        # paint com KPIs zerados/subestimados que depois sao corrigidos pela
-        # chamada subsequente a /api/kpis.
-        fornecedores_dicts: list[dict] = []
-        servidores_dicts: list[dict] = []
-        ano_payload: MunicipioPayload | None = None
-        if perfil_periodo == "ANO":
-            ano_payload = MunicipioPayload(
-                municipio=canonical_mun,
-                data_inicio=date_ctx["default_data_inicio"],
-                data_fim=date_ctx["default_data_fim"],
-            )
-        try:
-            if ano_payload is not None:
-                fornecedores_dicts = _load_fornecedores_for_kpis(canonical_mun, ano_payload, "ANO")
-            else:
-                forn_cached = read_web_cache("TOP_FORNECEDORES", canonical_mun)
-                if forn_cached:
-                    fcols, frows = forn_cached
-                    fornecedores_dicts = [_row_to_dict(fcols, r) for r in frows]
-        except Exception:
-            pass
-        try:
-            if ano_payload is not None:
-                servidores_dicts = _load_servidores_for_kpis(canonical_mun, ano_payload, "ANO")
-            else:
-                serv_cached = read_web_cache("TOP_SERVIDORES", canonical_mun)
-                if serv_cached:
-                    scols, srows = serv_cached
-                    scols, srows = _sanitize_top_servidores_cache(scols, srows)
-                    servidores_dicts = [_row_to_dict(scols, r) for r in srows]
-        except Exception:
-            pass
-        kpi_ctx = compute_cidade_kpis(perfil, fornecedores_dicts, servidores_dicts)
+    # O cache ANO é uma foto, não um relógio. O primeiro paint e o JS
+    # recebem o intervalo efetivo mesmo no dia seguinte ou na virada do ano.
+    date_ctx = {"default_data_inicio": inicio.isoformat(), "default_data_fim": fim.isoformat(),
+                "ano_atual": fim == hoje}
+    for fld in (
+        "qtd_empenhos", "total_empenhado", "total_pago", "qtd_fornecedores", "qtd_sem_licitacao",
+        "pct_sem_licitacao", "qtd_dezembro", "pct_dezembro", "pct_nao_executado", "receita_arrecadada",
+        "total_folha", "pct_folha_receita", "competencia_receita_inicio", "competencia_receita_fim",
+        "total_pago_licitavel", "total_pago_sem_licitacao", "pct_valor_sem_licitacao",
+    ):
+        perfil[fld] = ano.get(fld)
+    narrative = build_narrative(perfil, get_pb_medias(), periodo="ANO" if fim == hoje else "CUSTOM")
 
     return templates.TemplateResponse(
         request,
@@ -1179,6 +1134,11 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
     """
     municipio = _normalize_municipio(municipio_path)
     result = {}
+    if periodo not in ("", "ANO", "12M"):
+        return JSONResponse(result)
+    hoje = _today_gmt3()
+    inicio, fim = (_last_12m_bounds(hoje) if periodo == "12M"
+                   else (f"{hoje.year}-01-01", hoje.isoformat()))
     try:
         from web.db import get_conn
         with get_conn() as conn:
@@ -1186,7 +1146,8 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT query_id, columns, rows, row_count FROM web_cache "
-                    "WHERE municipio = %s AND right(query_id, length('__pending')) <> '__pending'",
+                    "WHERE municipio = %s AND right(query_id, length('__pending')) <> '__pending' "
+                    "AND left(query_id, 1) <> ':'",
                     (municipio,),
                 )
                 prefix = f"{periodo}:" if periodo else ""
@@ -1207,6 +1168,11 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
                     if periodo and qid.startswith(prefix):
                         # Prefixed entry: strip prefix for the response key
                         base_qid = qid[len(prefix):]
+                        if base_qid in ("PERFIL", "KPI_SUMMARY"):
+                            dados = (_resumo_cache(response_rows) if base_qid == "KPI_SUMMARY"
+                                     else dict(zip(response_cols, response_rows[0])) if response_rows else {})
+                            if not _mesmo_intervalo(dados, inicio, fim):
+                                continue
                         result[base_qid] = entry
                     elif not periodo and ":" not in qid:
                         # Unprefixed entry for all-time
@@ -1224,19 +1190,29 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
     return JSONResponse(result)
 
 
-def _load_perfil_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> dict | None:
-    """Carrega perfil respeitando filtro temporal. Tenta cache (PERFIL/ANO:PERFIL) e cai para live."""
-    if periodo != "CUSTOM":
-        cached = read_web_cache("PERFIL", municipio, periodo=periodo)
-        if cached:
+def _ler_perfil_ou_kpi(qid: str, municipio: str, payload: MunicipioPayload, periodo: str):
+    # Depois da virada, o intervalo efetivo da foto do SSR passa a CUSTOM.
+    for prefixo in (("ANO", "12M") if periodo == "CUSTOM" else (periodo,)):
+        cached = read_web_cache(qid, municipio, periodo=prefixo)
+        if cached and cached[1]:
             cols, rows = cached
-            if rows:
-                return _row_to_json_dict(cols, rows[0])
+            dados = _resumo_cache(rows) if qid == "KPI_SUMMARY" else _row_to_json_dict(cols, rows[0])
+            if not periodo or _mesmo_intervalo(dados, payload.data_inicio, payload.data_fim):
+                return dados
+    return None
+
+
+def _load_perfil_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> dict | None:
+    perfil = _ler_perfil_ou_kpi("PERFIL", municipio, payload, periodo)
+    if perfil is not None:
+        return perfil
     if _has_date_filter(payload):
         try:
-            cols, rows = execute_query(PERFIL_MUNICIPIO_LIVE, _date_params(payload), timeout_sec=15)
+            cols, rows = execute_query(PERFIL_MUNICIPIO_PUBLICADO, _date_params(payload), timeout_sec=15)
+            if not rows:
+                raise _PeriodoIndisponivel
         except QueryCanceled:
-            return None
+            raise _PeriodoIndisponivel
     else:
         try:
             cols, rows = cached_query(
@@ -1252,56 +1228,13 @@ def _load_perfil_for_kpis(municipio: str, payload: MunicipioPayload, periodo: st
     return None
 
 
-def _load_fornecedores_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> list[dict]:
-    """Carrega fornecedores respeitando filtro temporal."""
-    cols: list[str] = []
-    rows: list = []
-    if _has_date_filter(payload):
-        if periodo in ("ANO", "12M"):
-            cached = read_web_cache("TOP_FORNECEDORES", municipio, periodo=periodo)
-            if cached:
-                cols, rows = cached
-        if not rows:
-            try:
-                cols, rows = _load_top_fornecedores_dated(_date_params(payload))
-            except Exception:
-                pass
-    else:
-        cached = read_web_cache("TOP_FORNECEDORES", municipio)
-        if cached:
-            cols, rows = cached
-        else:
-            try:
-                cols, rows = _load_top_fornecedores(municipio)
-            except Exception:
-                pass
-    return [_row_to_json_dict(cols, r) for r in rows]
-
-
-def _load_servidores_for_kpis(municipio: str, payload: MunicipioPayload, periodo: str) -> list[dict]:
-    """Carrega servidores respeitando filtro temporal."""
-    cols: list[str] = []
-    rows: list = []
-    if _has_date_filter(payload):
-        if periodo in ("ANO", "12M"):
-            cached = read_web_cache("TOP_SERVIDORES", municipio, periodo=periodo)
-            if cached:
-                cols, rows = cached
-        if not rows:
-            try:
-                cols, rows = _load_top_servidores(municipio, _date_params(payload))
-            except Exception:
-                pass
-    else:
-        cached = read_web_cache("TOP_SERVIDORES", municipio)
-        if cached:
-            cols, rows = cached
-        else:
-            try:
-                cols, rows = _load_top_servidores(municipio)
-            except Exception:
-                pass
-    cols, rows = _sanitize_top_servidores_cache(cols, rows)
+def _top_historico_para_kpis(qid, municipio, carregar):
+    try:
+        cols, rows = read_web_cache(qid, municipio) or carregar(municipio)
+    except Exception:
+        return []
+    if qid == "TOP_SERVIDORES":
+        cols, rows = _sanitize_top_servidores_cache(cols, rows)
     return [_row_to_json_dict(cols, r) for r in rows]
 
 
@@ -1310,7 +1243,7 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
 
     Tenta usar o cache pre-computado (KPI_SUMMARY ou ANO:KPI_SUMMARY) primeiro;
     se nao houver cache, recarrega perfil/fornecedores/servidores e roda
-    compute_cidade_kpis em runtime. Em CUSTOM range, sempre recomputa live.
+    compute_cidade_kpis em runtime. Um intervalo CUSTOM pode coincidir com a foto publicada.
 
     Adiciona `score_canonical` (= perfil.risco_score = MV mv_municipio_pb_kpi_score
     = mesmo valor do mapa coropletico). Frontend usa quando filtro de data
@@ -1319,43 +1252,33 @@ def _kpi_summary_payload(municipio: str, payload: MunicipioPayload) -> dict:
     (que reflete o periodo).
     """
     periodo = _get_periodo(payload)
-    if periodo in ("", "ANO", "12M"):
-        cached = read_web_cache("KPI_SUMMARY", municipio, periodo=periodo)
-        if cached:
-            cols, rows = cached
-            if rows and rows[0]:
-                blob = rows[0][0]
-                if isinstance(blob, str):
-                    import json as _json
-                    summary = _json.loads(blob)
-                elif isinstance(blob, dict):
-                    summary = blob
-                else:
-                    summary = None
-                if summary is not None:
-                    # score_canonical = mv_municipio_pb_kpi_score.risco_score_unificado,
-                    # period-independent (mesmo valor exibido no mapa). Sempre
-                    # carregar do PERFIL all-time, pois ANO/12M PERFIL tem
-                    # risco_score=NULL (PERFIL_MUNICIPIO_LIVE forca NULL). Falta
-                    # de score_canonical no cache pode acontecer em entries
-                    # legados (warm_cache antigo) ou se o all-time ainda nao
-                    # foi warmed. Refresh em runtime corrige sem precisar de
-                    # cache invalidate.
-                    if not summary.get("score_canonical"):
-                        try:
-                            alltime_cached = read_web_cache("PERFIL", municipio)
-                            if alltime_cached and alltime_cached[1]:
-                                alltime_cols, alltime_rows = alltime_cached
-                                alltime_dict = _row_to_json_dict(alltime_cols, alltime_rows[0])
-                                summary["score_canonical"] = alltime_dict.get("risco_score")
-                        except Exception:
-                            pass
-                    return summary
+    summary = _ler_perfil_ou_kpi("KPI_SUMMARY", municipio, payload, periodo)
+    if summary is not None:
+        if summary.get("score_canonical") is None:
+            historico = read_web_cache("PERFIL", municipio)
+            if historico and historico[1]:
+                summary["score_canonical"] = _row_to_json_dict(historico[0], historico[1][0]).get("risco_score")
+        return summary
     perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
     canonical_mun = str(perfil.get("municipio") or municipio)
-    fornecedores = _load_fornecedores_for_kpis(canonical_mun, payload, periodo)
-    servidores = _load_servidores_for_kpis(canonical_mun, payload, periodo)
+    if periodo:
+        # Os TOP_* legados não comprovam datas. Em miss do resumo validado,
+        # recalcular com os limites solicitados, sem transformar erro em zero.
+        params = _date_params(payload)
+        try:
+            fc, fr = execute_query(TOP_FORNECEDORES_DATED, params, timeout_sec=TIMEOUT_QUERY_MEDIUM)
+            sc, sr = execute_query(TOP_SERVIDORES_RISCO_DATED, params, timeout_sec=TIMEOUT_QUERY_HEAVY)
+        except (UndefinedColumn, UndefinedTable, QueryCanceled) as exc:
+            raise _PeriodoIndisponivel from exc
+        sc, sr = _sanitize_top_servidores_cache(sc, sr)
+        fornecedores = [_row_to_json_dict(fc, r) for r in fr]
+        servidores = [_row_to_json_dict(sc, r) for r in sr]
+    else:
+        fornecedores = _top_historico_para_kpis("TOP_FORNECEDORES", canonical_mun, _load_top_fornecedores)
+        servidores = _top_historico_para_kpis("TOP_SERVIDORES", canonical_mun, _load_top_servidores)
     summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+    if periodo:
+        summary.update(periodo_inicio=payload.data_inicio, periodo_fim=payload.data_fim)
     # score_canonical = period-independent. Quando periodo != '', perfil local
     # vem de PERFIL_MUNICIPIO_LIVE com risco_score=NULL. Buscar do PERFIL
     # all-time (cache ou query) para manter consistencia com mapa.
@@ -1399,6 +1322,8 @@ async def get_kpis(municipio_path: str, payload: MunicipioPayload):
         return JSONResponse({"error": date_error}, status_code=400)
     try:
         summary = _kpi_summary_payload(municipio, payload)
+    except _PeriodoIndisponivel:
+        return JSONResponse({"error": "Indicadores do período indisponíveis."}, status_code=503)
     except Exception:
         logging.exception("kpis failed for municipio=%s", municipio)
         return JSONResponse({"error": "falha ao carregar indicadores"}, status_code=500)
@@ -1413,7 +1338,10 @@ async def get_perfil(payload: MunicipioPayload):
     if date_error:
         return JSONResponse({"error": date_error}, status_code=400)
     periodo = _get_periodo(payload)
-    perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+    try:
+        perfil = _load_perfil_for_kpis(municipio, payload, periodo) or {}
+    except _PeriodoIndisponivel:
+        return JSONResponse({"error": "Perfil do período indisponível."}, status_code=503)
     # Narrativa date-aware: o cliente substitui o HTML em #cityNarrative
     # quando o filtro muda, evitando que o texto fique desalinhado dos KPIs.
     narrative = build_narrative(perfil, get_pb_medias(), periodo=periodo) if perfil else None

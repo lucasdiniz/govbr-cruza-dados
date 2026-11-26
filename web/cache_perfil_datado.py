@@ -11,9 +11,13 @@ from web import warm_cache as warm
 
 
 CHAVES = [f"{p}:{q}" for p in ("ANO", "12M") for q in ("PERFIL", "KPI_SUMMARY")]
-SOMBRAS = [q + warm.SUFIXO_PERFIL_DATADO for q in CHAVES]
+SOMBRAS = [warm.sombra_perfil_datado(q) for q in CHAVES]
 DEPENDENCIAS = ["PERFIL", *(f"{p}:TOP_{q}" for p in ("ANO", "12M")
                             for q in ("FORNECEDORES", "SERVIDORES"))]
+
+
+def _assinatura(obj):
+    return hashlib.sha256(json.dumps(obj, ensure_ascii=False).encode()).hexdigest()
 
 
 def _estado(cur, dia, *, completo):
@@ -43,11 +47,9 @@ def _estado(cur, dia, *, completo):
     if {(q, m) for q, m, _, _ in sombras} != esperado or any(n != 1 for _, _, n, _ in sombras):
         raise ValueError("Sombras ausentes, residuais ou incompletas")
 
-    def assinatura(obj):
-        return hashlib.sha256(json.dumps(obj, ensure_ascii=False).encode()).hexdigest()
-
-    baseline = assinatura([dia.isoformat(), municipios, base])
-    return municipios, baseline, assinatura([baseline, sombras])
+    baseline = _assinatura([dia.isoformat(), municipios, base])
+    deps_sha = _assinatura([item for item in base if item[0] in DEPENDENCIAS])
+    return municipios, baseline, _assinatura([baseline, sombras]), deps_sha
 
 
 def preparar(conn):
@@ -55,7 +57,7 @@ def preparar(conn):
         raise ValueError("Defina WARM_REWARM_KEYS=ANO:PERFIL,12M:PERFIL")
     dia = warm._today_gmt3()
     with conn, conn.cursor() as cur:
-        municipios, inicial, _ = _estado(cur, dia, completo=False)
+        municipios, inicial, _, _ = _estado(cur, dia, completo=False)
     for periodo, params in warm._parametros_datados(dia).items():
         ok, falhas = warm._warm_query_across_munis(
             periodo + ":PERFIL", warm.PERFIL_MUNICIPIO_LIVE, municipios, params,
@@ -67,7 +69,7 @@ def preparar(conn):
         if falhas or ok != len(municipios):
             raise ValueError(f"{periodo}:KPI_SUMMARY incompleto; nenhuma promoção")
     with conn, conn.cursor() as cur:
-        _, final, manifesto = _estado(cur, warm._today_gmt3(), completo=True)
+        _, final, manifesto, _ = _estado(cur, warm._today_gmt3(), completo=True)
     if final != inicial:
         raise ValueError("Dia, cadastro, live ou dependências mudaram durante a preparação")
     return manifesto
@@ -93,27 +95,41 @@ def publicar(conn, operacao, manifesto):
         cur.execute("SET LOCAL TIME ZONE 'UTC'")
         cur.execute("LOCK TABLE web_cache IN SHARE ROW EXCLUSIVE MODE NOWAIT")
         if operacao == "promover":
-            _, _, atual = _estado(cur, warm._today_gmt3(), completo=True)
+            _, _, atual, deps_sha = _estado(cur, warm._today_gmt3(), completo=True)
             if atual != manifesto:
                 raise ValueError("Geração diferente da aprovada")
             # Sem IF NOT EXISTS: nunca sobrescrever a única inversa disponível.
             cur.execute("""
                 CREATE TABLE web_cache_perfil_reversao AS
-                SELECT %s::text AS manifesto, count(*) OVER () AS tamanho,
+                SELECT %s::text AS manifesto, %s::text AS deps_sha, count(*) OVER () AS tamanho,
                        to_jsonb(l) AS anterior,
                        to_jsonb(s) || jsonb_build_object('query_id', k.qid) AS publicada
-                FROM unnest(%s::text[]) k(qid)
-                JOIN web_cache s ON s.query_id = k.qid || %s
+                FROM unnest(%s::text[], %s::text[]) k(qid, sombra)
+                JOIN web_cache s ON s.query_id = k.sombra
                 LEFT JOIN web_cache l ON l.query_id = k.qid AND l.municipio = s.municipio
-            """, (manifesto, CHAVES, warm.SUFIXO_PERFIL_DATADO))
+            """, (manifesto, deps_sha, CHAVES, SOMBRAS))
             cur.execute("DELETE FROM web_cache WHERE query_id = ANY(%s)", (CHAVES,))
             cur.execute("""
-                UPDATE web_cache SET query_id = k.qid FROM unnest(%s::text[]) k(qid)
-                WHERE query_id = k.qid || %s
-            """, (CHAVES, warm.SUFIXO_PERFIL_DATADO))
+                UPDATE web_cache SET query_id = k.qid FROM unnest(%s::text[], %s::text[]) k(qid, sombra)
+                WHERE query_id = k.sombra
+            """, (CHAVES, SOMBRAS))
             _conferir_imagem(cur, manifesto)
         elif operacao == "reverter":
             _conferir_imagem(cur, manifesto)
+            # Escopo da inversa, não o dia/cadastro corrente. A mesma leitura
+            # sob lock protege ausência, conteúdo e reescrita das dependências.
+            cur.execute("""
+                SELECT query_id, municipio, row_count,
+                       encode(sha256(convert_to(to_jsonb(c)::text, 'UTF8')), 'hex')
+                FROM web_cache c WHERE query_id = ANY(%s) AND municipio IN
+                    (SELECT publicada->>'municipio' FROM web_cache_perfil_reversao)
+                ORDER BY query_id, municipio
+            """, (DEPENDENCIAS,))
+            deps_sha = _assinatura(cur.fetchall())
+            cur.execute("SELECT bool_and(deps_sha IS NOT DISTINCT FROM %s) FROM web_cache_perfil_reversao",
+                        (deps_sha,))
+            if not cur.fetchone()[0]:
+                raise ValueError("Dependências do KPI alteradas; reversão bloqueada")
             cur.execute("""
                 DELETE FROM web_cache c USING web_cache_perfil_reversao b
                 WHERE c.query_id = b.publicada->>'query_id' AND c.municipio = b.publicada->>'municipio'
