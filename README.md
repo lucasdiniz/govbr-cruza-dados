@@ -402,7 +402,7 @@ Comece pela [arquitetura](docs/architecture.md), depois siga pro guia específic
 - [`docs/web-guide.md`](docs/web-guide.md) — como adicionar query/rota/template/componente MD3
 - [`docs/queries-guide.md`](docs/queries-guide.md) — como adicionar Q## (header, EXPLAIN, índices)
 - [`docs/mv-guide.md`](docs/mv-guide.md) — como adicionar MV (camadas L1/L2/L3)
-- [`docs/cache.md`](docs/cache.md) — `web_cache` + shadow rewarm zero-downtime
+- [`docs/cache.md`](docs/cache.md) — `web_cache`, shadow rewarm e publicação manual reversível do perfil por competência
 
 ### Operações
 

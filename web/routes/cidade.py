@@ -189,14 +189,14 @@ def _date_params(payload: MunicipioPayload) -> dict:
     params = {"municipio": _normalize_municipio(payload.municipio)}
     if payload.data_inicio:
         inicio = date.fromisoformat(payload.data_inicio)
-        params["data_inicio"] = payload.data_inicio
+        params["data_inicio"] = inicio.isoformat()
         params["ano_inicio"] = inicio.year
-        params["ano_mes_inicio"] = payload.data_inicio[:7]
+        params["ano_mes_inicio"] = inicio.isoformat()[:7]
     if payload.data_fim:
         fim = date.fromisoformat(payload.data_fim)
-        params["data_fim"] = payload.data_fim
+        params["data_fim"] = fim.isoformat()
         params["ano_fim"] = fim.year
-        params["ano_mes_fim"] = payload.data_fim[:7]
+        params["ano_mes_fim"] = fim.isoformat()[:7]
     return params
 
 
@@ -466,9 +466,10 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
     # formulacao por contagem de empenhos (nunca apresenta contagem como valor).
     pct_valor_sem_licitacao = perfil.get("pct_valor_sem_licitacao")
     risco_score = perfil.get("risco_score")
-    pct_folha = perfil.get("pct_folha_receita") or 0
+    pct_folha = perfil.get("pct_folha_receita")
 
     is_filtered = bool(periodo)
+    por_competencia = is_filtered and perfil.get("competencia_receita_inicio") is not None
     if periodo == "ANO":
         year = _today_gmt3().year
         period_label_citizen = f"Em <strong>{year}</strong> (ate hoje), "
@@ -544,13 +545,15 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
         sl_txt += "."
         frag_citizen.append(sl_txt)
 
-    # Peso da folha sobre a arrecadacao municipal (so faz sentido all-time, ja que
-    # receita_arrecadada e total_folha vem da MV anual e nao seguem o filtro de periodo).
-    if pct_folha and not is_filtered:
+    if pct_folha is not None and (not is_filtered or por_competencia):
         frag_citizen.append(
             f" A folha de servidores consome <strong>{_fmt_pct(pct_folha)}</strong> "
             f"do que a prefeitura arrecada."
         )
+    elif por_competencia:
+        frag_citizen.append(" A parcela da arrecadação usada na folha está indisponível.")
+    if por_competencia:
+        frag_citizen.append(" A folha e a arrecadação somam os valores disponíveis de cada mês, mesmo que o filtro cubra só alguns dias.")
 
     # risco_score vem da MV mv_municipio_pb_risco (all-time). Omitir quando
     # filtrado para nao confundir o usuario com uma metrica fora de escala.
@@ -592,8 +595,12 @@ def build_narrative(perfil: dict, medias: dict | None = None, periodo: str = "")
             + med_suffix
             + "."
         )
-    if pct_folha:
+    if pct_folha is not None:
         frag_auditor.append(f" Folha/receita: {_fmt_pct(pct_folha)}.")
+    elif is_filtered:
+        frag_auditor.append(" Folha/receita: indisponível.")
+    if por_competencia:
+        frag_auditor.append(" Folha e receita por competência mensal, sem rateio por dia.")
     if risco_score is not None and not is_filtered:
         frag_auditor.append(
             f" <a href=\"#relatorio\">Risco composto: {float(risco_score):.0f}/100</a>"
@@ -910,27 +917,20 @@ async def _render_cidade(request: Request, municipio: str):
         cached_ano = read_web_cache("PERFIL", canonical_mun, periodo="ANO")
         if cached_ano:
             ano_cols, ano_rows = cached_ano
-            if ano_rows:
+            if ano_rows and ano_rows[0]:
                 ano = _row_to_dict(ano_cols, ano_rows[0])
-                applied = False
+                perfil_periodo = "ANO"
+                # NULL (ou coluna ausente no cache legado) não autoriza herdar
+                # um valor histórico sob o rótulo "Ano atual".
                 for fld in (
                     "qtd_empenhos", "total_empenhado", "total_pago",
                     "qtd_fornecedores", "qtd_sem_licitacao", "pct_sem_licitacao",
                     "qtd_dezembro", "pct_dezembro", "pct_nao_executado",
                     "receita_arrecadada", "total_folha", "pct_folha_receita",
+                    "competencia_receita_inicio", "competencia_receita_fim",
+                    "total_pago_licitavel", "total_pago_sem_licitacao", "pct_valor_sem_licitacao",
                 ):
-                    if fld in ano and ano[fld] is not None:
-                        perfil[fld] = ano[fld]
-                        applied = True
-                if applied:
-                    perfil_periodo = "ANO"
-                    # % por valor tambem precisa ser do ANO. Copia mesmo se
-                    # ausente/NULL (cache ANO antigo): build_narrative cai para
-                    # a formulacao por contagem em vez de rotular o valor
-                    # all-time como "Em <ano>".
-                    for fld in ("total_pago_licitavel", "total_pago_sem_licitacao",
-                                "pct_valor_sem_licitacao"):
-                        perfil[fld] = ano.get(fld)
+                    perfil[fld] = ano.get(fld)
     except Exception:
         pass
 
@@ -1175,7 +1175,7 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
     """Retorna todos os dados do cache de uma vez para o municipio.
 
     periodo: '' para all-time, 'ANO' para ano atual, '12M' para ultimos 12 meses.
-    Busca todos os rows e filtra por prefixo, com fallback.
+    Filtra por prefixo, sem fallback e sem ler sombras não publicadas.
     """
     municipio = _normalize_municipio(municipio_path)
     result = {}
@@ -1185,7 +1185,8 @@ async def batch_cache(municipio_path: str, periodo: str = ""):
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT query_id, columns, rows, row_count FROM web_cache WHERE municipio = %s",
+                    "SELECT query_id, columns, rows, row_count FROM web_cache "
+                    "WHERE municipio = %s AND right(query_id, length('__pending')) <> '__pending'",
                     (municipio,),
                 )
                 prefix = f"{periodo}:" if periodo else ""
