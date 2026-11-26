@@ -1,0 +1,80 @@
+name: Verificar metadados de restore no Azure
+
+on: workflow_dispatch
+permissions: {}
+
+jobs:
+  verificar:
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      AZURE_CORE_COLLECT_TELEMETRY: '0'
+    steps:
+      - name: Autenticar sessao federada
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2 usado pelo deploy
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Conferir disco de dados e protecao da VM
+        env:
+          GRUPO: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          DISCO: ${{ secrets.AZURE_DATA_DISK_NAME }}
+          VM: ${{ secrets.AZURE_VM_NAME }}
+        shell: python3 -I {0}
+        run: |
+          import json
+          import os
+          import re
+          import subprocess
+
+          def consulta(*args):
+              p = subprocess.run(["az", *args, "--only-show-errors", "-o", "json"],
+                                 capture_output=True, timeout=90)
+              if p.returncode:
+                  raise ValueError("Consulta de metadados recusada ou indisponível")
+              return json.loads(p.stdout) if p.stdout.strip() else None
+
+          def resumir(disco, copias):
+              if not isinstance(disco, dict) or not disco.get("id") or not isinstance(copias, list):
+                  raise ValueError("Resposta de inventário incompleta")
+              origem = disco["id"].lower()
+              uid = (disco.get("uid") or "").lower()
+              datas = []
+              for c in copias:
+                  if (c.get("origem") or "").lower() != origem:
+                      continue
+                  if uid and c.get("uid") and c["uid"].lower() != uid:
+                      continue
+                  if c.get("estado") == "Succeeded":
+                      data = str(c.get("data") or "")[:10]
+                      if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data):
+                          raise ValueError("Snapshot sem data válida")
+                      datas.append(data)
+              return len(datas), max(datas, default="nenhuma")
+
+          grupo, disco, vm = (os.environ[n] for n in ("GRUPO", "DISCO", "VM"))
+          falha = False
+          try:
+              alvo = consulta("disk", "show", "-g", grupo, "-n", disco, "--query", "{id:id,uid:uniqueId}")
+              copias = consulta("snapshot", "list", "-g", grupo, "--query",
+                                "[].{origem:creationData.sourceResourceId,uid:creationData.sourceUniqueId,"
+                                "estado:provisioningState,data:timeCreated}")
+              n, dia = resumir(alvo, copias)
+              print(f"RESTORE_AZURE snapshots_diretos={n} data_utc={dia}")
+          except (ValueError, subprocess.TimeoutExpired):
+              print("RESTORE_AZURE snapshots_diretos=inconclusivo")
+              falha = True
+          try:
+              ref = consulta("backup", "protection", "check-vm", "-g", grupo, "--vm", vm)
+              if ref is not None and not isinstance(ref, dict):
+                  raise ValueError("Formato de referência desconhecido")
+              print("RESTORE_AZURE protecao_vm=" + ("referenciada" if ref else "sem_referencia"))
+          except (ValueError, subprocess.TimeoutExpired):
+              print("RESTORE_AZURE protecao_vm=inconclusivo")
+              falha = True
+          raise SystemExit(1 if falha else 0)

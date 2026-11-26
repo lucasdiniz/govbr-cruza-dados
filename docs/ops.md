@@ -281,6 +281,14 @@ no diretório documentado, sem SSH, secrets, `sudo`, SQL ou leitura do conteúdo
 Um candidato **não** comprova backup consistente nem restore ensaiado. Ausência
 de candidato não exclui snapshots Azure, backups externos ou links simbólicos.
 
+[`inventario-restore-azure.yml`](../.github/workflows/inventario-restore-azure.yml)
+consulta pelo OIDC existente, em runner hospedado no GitHub, snapshots diretos
+do disco no grupo configurado e referência de proteção Azure Backup da VM.
+Não lê blobs, não cria recursos, não restaura/dispara backups e não abre SSH.
+Somente a contagem, data e estado agregados são emitidos. Uma referência ao
+cofre não prova que exista ponto íntegro; um inventário vazio neste escopo
+não exclui cópias em outros grupos/cofres ou sob outra política de retenção.
+
 **Status atual: pendente.** Não há estratégia documentada de backup/restore validada em produção. Este é um gap operacional A4.
 
 Sugestões a formalizar:
