@@ -52,3 +52,12 @@ def test_snapshot_do_mesmo_nome_nao_prova_mesma_origem():
     assert resumir(disco, []) == (0, "nenhuma")
     with pytest.raises(ValueError):
         resumir({}, [])
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    (b"(AuthorizationFailed) /recurso/privado", "sem_permissao"),
+    (b"(MissingSubscriptionRegistration) recurso", "provedor_indisponivel"),
+    (b"erro desconhecido /recurso/privado", "erro_cli"),
+])
+def test_classifica_falha_sem_reproduzir_a_resposta(texto, esperado):
+    assert _funcoes("inventario-restore-azure.yml")["categoria_cli"](texto) == esperado
