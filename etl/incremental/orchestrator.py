@@ -20,6 +20,7 @@ Fluxo por bucket:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -58,9 +59,9 @@ class BucketRun:
     total_deleted: int = 0
 
 
-def _bucket_token(source: str, table: str, bucket_id: str) -> uuid.UUID:
-    """Determinístico via uuid5 — mesmo bucket sempre gera mesmo token."""
-    return uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}/{table}/{bucket_id}")
+def _bucket_token(source: str, table: str, bucket_id: str, objetos=(), spec_hash=None) -> uuid.UUID:
+    chave = json.dumps([source, table, bucket_id, spec_hash, sorted(objetos)], separators=(",", ":"))
+    return uuid.uuid5(uuid.NAMESPACE_DNS, chave)
 
 
 def _registrar_fase(conn, run_id, spec, caminho, seq, inicio, resultado):
@@ -74,6 +75,7 @@ def _registrar_fase(conn, run_id, spec, caminho, seq, inicio, resultado):
         rows_streamed=resultado.rows_streamed, rows_inserted=resultado.rows_inserted,
         rows_updated=resultado.rows_updated, rows_failed=resultado.rows_failed,
         rows_skipped_dup=resultado.rows_skipped_dup, rows_skipped_stale=resultado.rows_skipped_stale,
+        rows_conflict_diff_payload=resultado.rows_conflict_diff_payload,
         rows_rejected_null_key=resultado.rows_rejected_null_key,
         rows_coerced_null=resultado.rows_coerced_null, spec_hash=spec.spec_hash,
         csv_header_hash=resultado.csv_header_hash, error_message=resultado.error,
@@ -234,7 +236,7 @@ def run_incremental_for_source(
                     raise RunFencedError(f"run {run_id} fenced mid-bucket")
 
                 bucket_run = BucketRun(bucket_id=bucket_id)
-                bucket_token = _bucket_token(spec.source, spec.table, bucket_id)
+                bucket_token = bucket_info["token"]
 
                 if bucket_download_failed:
                     logger.error(
@@ -270,11 +272,8 @@ def run_incremental_for_source(
                             run_id=run_id, bucket_token=bucket_token,
                         )
                         file_result = _incremental_load(
-                            spec, ctx, csv_path, file_sequence=seq, bucket_id=bucket_id,
+                            spec, ctx, csv_path, file_sequence=seq, bucket_id=bucket_id, progresso=file_result,
                         )
-                        if only_buckets and file_result.status == "success" and not file_result.rows_streamed:
-                            file_result.status = "failed"
-                            file_result.error = "Arquivo solicitado vazio ou placeholder"
                         if file_result.status == "success":
                             # Fase e pendência de publicação têm o mesmo COMMIT
                             # que o arquivo. Nunca perder a pendência num retry sem delta.
@@ -310,8 +309,10 @@ def run_incremental_for_source(
                     except Exception as e:
                         main_raw.rollback()
                         logger.error("Arquivo %s não aplicado (%s)", csv_path.name, type(e).__name__)
-                        file_result = LoadResult(status="failed", error=type(e).__name__,
-                                                 arquivo_sha256=file_result.arquivo_sha256)
+                        file_result = LoadResult(
+                            status="failed", error=f"{file_result.error or 'confirmação da fase'}: {type(e).__name__}",
+                            rows_streamed=file_result.rows_streamed, rows_failed=file_result.rows_failed,
+                            csv_header_hash=file_result.csv_header_hash, arquivo_sha256=file_result.arquivo_sha256)
                     if file_result.status != "success":
                         _registrar_fase(lock_raw, run_id, spec, csv_path, seq, started, file_result)
                     all_staging_to_drop.extend(drop_staging(drop_raw, *dict.fromkeys(file_result.staging_tables)))
@@ -507,9 +508,8 @@ def _build_buckets(
             expected_files = [p.name for p in files_on_disk]
 
         # 1. Download phase per file (if url_for_bucket defined)
-        bucket_changed = False
-        all_not_modified = True
-        download_skipped_count = 0
+        objetos = {}
+        condicionais = []
         download_failed_count = 0
 
         if spec.url_for_bucket is not None:
@@ -520,12 +520,7 @@ def _build_buckets(
 
             if not url_pairs:
                 download_failed_count += 1
-
-            for url, fname in url_pairs:
-                dest = data_dir / fname
-                # Replace (ADR-0015) sempre re-baixa: o arquivo vira a verdade
-                # do bucket, entao nao pode ser um cache antigo (304).
-                force = bid in tail_set or spec.bucket_replace is not None
+            def obter(url, fname, *, integral):
                 try:
                     dr = download_and_log(
                         etl_conn=etl_conn,
@@ -535,8 +530,8 @@ def _build_buckets(
                         table=spec.table,
                         bucket_id=bid,
                         url=url,
-                        dest_path=dest,
-                        force_refetch=force,
+                        dest_path=data_dir / fname,
+                        force_refetch=integral,
                         membros_esperados=tuple(expected_files) if len(url_pairs) == 1 else (),
                     )
                     download_summary.append({
@@ -544,18 +539,34 @@ def _build_buckets(
                         "status": dr.status, "changed": dr.content_changed,
                         "bytes": dr.bytes_downloaded,
                     })
-                    if dr.status == "downloaded":
-                        all_not_modified = False
-                        if dr.content_changed:
-                            bucket_changed = True
-                    elif dr.status == "not_modified":
-                        download_skipped_count += 1
-                    elif dr.status == "failed":
-                        all_not_modified = False
-                        download_failed_count += 1
+                    if dr.status in ("downloaded", "not_modified") and dr.content_sha256:
+                        objetos[url] = dr.content_sha256
+                        return dr.status
                 except Exception as e:
-                    logger.warning("download error for %s: %s", url, e)
+                    logger.warning("Falha ao confirmar download de %s: %s", fname, type(e).__name__)
+                return "failed"
+
+            for url, fname in url_pairs:
+                status = obter(url, fname, integral=bid in tail_set or spec.bucket_replace is not None)
+                if status == "not_modified":
+                    condicionais.append((url, fname))
+                elif status != "downloaded":
                     download_failed_count += 1
+
+        def token():
+            return _bucket_token(spec.source, spec.table, bid, objetos.items(), spec.spec_hash)
+
+        skip_reason = None
+        if condicionais and not download_failed_count:
+            wm = etl_db.get_watermark(govbr_conn, source=spec.source, table=spec.table)
+            if (len(condicionais) == len(url_pairs) and spec.bucket_replace is None
+                    and wm and str(wm["bucket_token"]) == str(token())):
+                skip_reason = "fonte 304 e versão integral já confirmada"
+            else:
+                # O 304 confirma o objeto remoto, nunca o CSV presente no disco.
+                for url, fname in condicionais:
+                    if obter(url, fname, integral=True) != "downloaded":
+                        download_failed_count += 1
 
         # 2. Re-enumerate files on disk after potential downloads
         files_on_disk_now = []
@@ -565,28 +576,11 @@ def _build_buckets(
                 files_on_disk_now.append(p)
         membros_ausentes = len(files_on_disk_now) != len(expected_files)
 
-        # 3. Determine skip
-        # Skip só com confirmação da fonte (304) e marca correspondente.
-        skip_reason = None
-        if (not bucket_changed and not download_failed_count and spec.bucket_replace is None
-                and bid not in tail_set
-                and download_skipped_count and all_not_modified):
-            try:
-                wm = etl_db.get_watermark(govbr_conn, source=spec.source, table=spec.table)
-                if wm is not None and wm["bucket_token"] is not None:
-                    expected_token = _bucket_token(spec.source, spec.table, bid)
-                    if str(wm["bucket_token"]) == str(expected_token):
-                        skip_reason = (
-                            f"bucket_token matches and no download change "
-                            f"({download_skipped_count} not_modified)"
-                        )
-            except Exception as e:
-                logger.warning("get_watermark failed: %s", e)
-
         result.append({
             "bucket_id": bid,
             "files": files_on_disk_now,
             "skip_reason": skip_reason,
+            "token": token(),
             "download_failed": download_failed_count > 0 or (membros_ausentes and not skip_reason),
         })
 

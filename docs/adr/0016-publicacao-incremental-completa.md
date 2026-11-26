@@ -22,9 +22,19 @@ após erro do ADR-0015; suas guardas e backups continuam necessários.
 A aplicação pode ficar desatualizada até que a lacuna seja reconciliada;
 consultas diretas à base podem ver os commits anteriores. O artefato do
 agendador não é publicado se o runner falhar. Conferir os arquivos confirmados,
-marca, DLQ e `etl_cache_invalidation_queue` antes da retomada. A fila não
+marca, DLQ e `etl_cache_invalidation_queue` antes da retomada. A marca de
+ingestão BF não é promovida pelo sucesso de um deploy de outra fonte. O
+agendador consulta uma publicação BF bem-sucedida cujo escopo inclua a
+competência informada; um artefato global legado não é prova desse escopo.
+A fila não
 reverte uma MV ou um cache já promovido. Falha de comunicação no COMMIT
 exige inspeção da fase persistida, não presumir rollback.
 
 Não reclassificar como dado válido uma linha antes rejeitada sem testar
 o contrato de identidade correspondente, nem recalcular `_nk_md5` em massa.
+
+Um 304 só dispensa a carga quando o token da aplicação corresponde à spec,
+ao bucket e aos hashes dos objetos confirmados pela fonte. Token legado ou
+ausente exige GET integral mesmo com CSV de nome idêntico em disco. O custo
+desse primeiro ciclo e da comparação de payload em conflitos de chave
+natural precisa ser medido em clone, com o mesmo volume da carga real.

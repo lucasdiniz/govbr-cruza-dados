@@ -38,7 +38,7 @@ from .parser import SchemaDriftError, _dlq_insert, stream_csv_to_staging, valida
 from .replace import GUARD_PREFIX, ReplaceGuardError, apply_bucket_replace
 from .spec import DedupeStrategy, LoaderSpec
 from .staging import (
-    build_typed_select, build_upsert_sql, copy_temp_to_staging,
+    build_target_projection, build_typed_select, build_upsert_sql, copy_temp_to_staging,
     create_staging_raw, staging_name,
 )
 
@@ -61,6 +61,7 @@ class LoadResult:
     rows_updated: int = 0
     rows_skipped_dup: int = 0
     rows_skipped_stale: int = 0
+    rows_conflict_diff_payload: int = 0
     rows_failed: int = 0
     rows_rejected_null_key: int = 0
     rows_coerced_null: int = 0
@@ -141,6 +142,7 @@ def _incremental_load(
     *,
     file_sequence: int,
     bucket_id: str,
+    progresso: Optional[LoadResult] = None,
 ) -> LoadResult:
     """Pipeline de carga de 1 arquivo CSV. Module-private."""
     if not csv_path.exists():
@@ -149,33 +151,25 @@ def _incremental_load(
     # Resolve spec para bucket (suporta schema drift histórico)
     spec = _resolve_spec_for_bucket(spec, bucket_id)
 
-    def _empty_success(reason: str, csv_header_hash: str = "", staging=None) -> LoadResult:
-        # Replace por bucket (ADR-0015): arquivo vazio/placeholder NAO e
-        # "bucket sem linhas" — e publicacao quebrada. Falha (nao remove nada).
-        if spec.bucket_replace is not None:
-            return LoadResult(
-                status="failed",
-                csv_header_hash=csv_header_hash,
-                staging_tables=staging or [],
-                error=f"{GUARD_PREFIX} G4: {spec.table} bucket {bucket_id} — {reason}; replace nao aplicado",
-            )
+    def _vazio(reason: str, csv_header_hash: str = "", staging=None) -> LoadResult:
+        prefixo = f"{GUARD_PREFIX} G4: " if spec.bucket_replace is not None else ""
         return LoadResult(
-            status="success",
-            rows_streamed=0,
+            status="failed",
+            error=f"{prefixo}{spec.table} bucket {bucket_id}: {reason}",
             csv_header_hash=csv_header_hash,
             staging_tables=staging or [],
         )
 
     # Step 0: skip empty files (source publica 0-byte placeholders em alguns meses)
     if csv_path.stat().st_size == 0:
-        return _empty_success("arquivo de 0 bytes")
+        return _vazio("arquivo de 0 bytes")
 
     # Step 0b: skip HTML placeholder pages ("Arquivo Sendo Processado")
     try:
         with open(csv_path, "rb") as _fchk:
             _head = _fchk.read(64)
         if _head.lstrip().startswith(b"<!DOCTYPE") or _head.lstrip().startswith(b"<html"):
-            return _empty_success("arquivo e pagina HTML (placeholder)")
+            return _vazio("arquivo e pagina HTML (placeholder)")
     except Exception:
         pass
 
@@ -190,7 +184,7 @@ def _incremental_load(
                 content = f.read(2048)
             if not content.strip() or content.count(b"\n") <= 1:
                 # File tem só header (ou nada) — não é dados reais
-                return _empty_success("arquivo so com cabecalho")
+                return _vazio("arquivo so com cabecalho")
         except Exception:
             pass
         return LoadResult(status="failed", error=str(e))
@@ -211,6 +205,10 @@ def _incremental_load(
         for bloco in iter(lambda: fonte.read(1024 * 1024), b""):
             digest.update(bloco)
     arquivo_sha256 = digest.hexdigest()
+    if progresso is not None:
+        progresso.arquivo_sha256 = arquivo_sha256
+        progresso.csv_header_hash = csv_hash
+        progresso.error = "pré-parser"
     pp = stream_csv_to_staging(
         csv_path, spec, ctx.dlq,
         run_id=ctx.run_id, source=spec.source, table=spec.table,
@@ -218,6 +216,10 @@ def _incremental_load(
     )
     rows_streamed = pp.valid_count + pp.rejected_count
     rows_failed_streaming = pp.rejected_count
+    if progresso is not None:
+        progresso.rows_streamed = rows_streamed
+        progresso.rows_failed = rows_failed_streaming
+        progresso.error = "COPY"
 
     # Step 5: COPY temp → staging RAW
     try:
@@ -227,7 +229,7 @@ def _incremental_load(
         ):
             raise RuntimeError("Arquivo mudou durante a leitura; versão não confirmada")
         if not rows_streamed:
-            return _empty_success("arquivo sem linhas", csv_hash, staging_tables)
+            return _vazio("arquivo sem linhas", csv_hash, staging_tables)
         copiadas = copy_temp_to_staging(ctx.main, stg_raw, pp.temp_path, [*spec.columns, "_registro_origem"])
         if copiadas != pp.valid_count:
             raise RuntimeError(f"Balanço do COPY divergente: válidas={pp.valid_count}, copiadas={copiadas}")
@@ -239,6 +241,8 @@ def _incremental_load(
 
     # Step 6+7+8: build typed → CREATE TABLE staging_typed AS SELECT ...
     typed_sql = build_typed_select(spec, stg_raw)
+    if progresso is not None:
+        progresso.error = "tipagem e validação"
     with ctx.main.cursor() as cur:
         cur.execute(f"CREATE TABLE {stg_typed} AS {typed_sql}")
 
@@ -281,6 +285,8 @@ def _incremental_load(
     _check_fence(ctx)
 
     # Step 13: UPSERT
+    if progresso is not None:
+        progresso.error = "upsert e paridade"
     upsert_sql = build_upsert_sql(spec, stg_final, bucket_id=bucket_id)
     rows_inserted = 0
     rows_updated = 0
@@ -296,6 +302,23 @@ def _incremental_load(
     restantes = copiadas - rows_inserted - rows_updated
     if restantes < 0 or (spec.dedupe_strategy == DedupeStrategy.APPEND and restantes):
         raise RuntimeError("Balanço do upsert divergente")
+    if restantes and not spec.nk_synthetic_md5 and spec.dedupe_strategy == DedupeStrategy.UPSERT_DO_NOTHING:
+        # A chave natural pode conflitar com outro pagamento. Após o INSERT,
+        # cada ocorrência precisa de um espelho completo na live nesta TX.
+        exprs, colunas = build_target_projection(spec, bucket_id=bucket_id)
+        proj = ", ".join(f"{e} AS {c}" for e, c in zip(exprs, colunas))
+        nk = [spec.column_renames.get(c, c) for c in spec.natural_key]
+        chaves = " AND ".join(f"t.{c}=s.{c}" for c in nk)
+        iguais = " AND ".join(f"t.{c} IS NOT DISTINCT FROM s.{c}" for c in colunas)
+        with ctx.main.cursor() as cur:
+            cur.execute(f"""SELECT count(*) FROM (SELECT {proj} FROM {stg_final}) s
+                WHERE NOT EXISTS (SELECT FROM {spec.target_schema}.{spec.table} t WHERE {chaves} AND {iguais})""")
+            divergentes = cur.fetchone()[0]
+        if divergentes:
+            return LoadResult(status="partial", rows_streamed=rows_streamed, rows_failed=divergentes,
+                              rows_conflict_diff_payload=divergentes, arquivo_sha256=arquivo_sha256,
+                              csv_header_hash=csv_hash, staging_tables=staging_tables,
+                              error="Conflito de chave natural sem payload equivalente; arquivo não aplicado")
 
     # Step 13b: replace por bucket (ADR-0015) — mesma transação do upsert.
     rows_deleted = 0

@@ -382,10 +382,10 @@ def test_arquivo_vazio_ou_so_cabecalho_falha_em_replace(tmp_path):
     html.write_bytes(b"<!DOCTYPE html><html>Arquivo Sendo Processado</html>")
     res = _incremental_load(DESPESA, None, html, file_sequence=1, bucket_id="2026")
     assert res.status == "failed" and "G4" in res.error
-    # Spec acumulativa mantem o comportamento antigo (sucesso vazio).
+    # Ausência de registros não comprova competência íntegra nem em append-only.
     acumulativa = dataclasses.replace(DESPESA, bucket_replace=None)
     res = _incremental_load(acumulativa, None, vazio, file_sequence=1, bucket_id="2026")
-    assert res.status == "success"
+    assert res.status == "failed"
 
 
 def test_linha_com_municipio_vazio_e_mantida(clean):

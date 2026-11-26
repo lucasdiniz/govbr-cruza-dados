@@ -8,7 +8,8 @@ Quando download bem-sucedido:
 - sha256 do conteúdo computado streaming
 - Se sha256 mudou vs etl_download_log.content_sha256 → invalidate_bucket_token
 
-Resumable: download para `<dest>.partial`; rename atômico só quando completo.
+O arquivo `.partial` é temporário; sem validador forte do fragmento, um
+novo GET começa do zero. Nunca concatenar bytes de publicações diferentes.
 
 Requests com User-Agent e timeout. Erros HTTP 5xx → marca failed; conditional
 GET 304 → marca not_modified.
@@ -137,38 +138,21 @@ def conditional_download(
 
     req = Request(url, headers=headers, method="GET")
 
-    # Resumable: se .partial existe, tentar Range
-    resume_from = 0
-    if partial_path.exists() and not force_refetch:
-        size = partial_path.stat().st_size
-        if size > 0:
-            resume_from = size
-            req.add_header("Range", f"bytes={resume_from}-")
-
     try:
         with urlopen(req, timeout=timeout) as resp:
             status_code = resp.status
+            if status_code != 200 or resp.headers.get("Content-Range") is not None:
+                return DownloadResult(status="failed", content_changed=False, content_sha256=None,
+                                      bytes_downloaded=0, error="Resposta não contém o objeto completo")
             new_etag = resp.headers.get("ETag")
             new_lm = resp.headers.get("Last-Modified")
             content_length = resp.headers.get("Content-Length")
             cl_int = int(content_length) if content_length else None
 
-            # 304 só vem como HTTPError em urllib
-            # 200/206 → leitura
-            mode = "ab" if (status_code == 206 and resume_from > 0) else "wb"
             sha = hashlib.sha256()
 
-            # Se mode='ab', reuse hash do partial
-            if mode == "ab":
-                with open(partial_path, "rb") as exist_f:
-                    while True:
-                        c = exist_f.read(CHUNK_SIZE)
-                        if not c:
-                            break
-                        sha.update(c)
-
             bytes_dl = 0
-            with open(partial_path, mode) as out_f:
+            with open(partial_path, "wb") as out_f:
                 while True:
                     chunk = resp.read(CHUNK_SIZE)
                     if not chunk:
@@ -269,7 +253,7 @@ def conditional_download(
             )
 
     except HTTPError as e:
-        if e.code == 304:
+        if e.code == 304 and not force_refetch and prev_sha and (prev_etag or prev_lm):
             logger.info("not_modified %s (304)", dest_path.name)
             return DownloadResult(
                 status="not_modified",

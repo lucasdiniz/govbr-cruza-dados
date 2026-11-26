@@ -296,8 +296,11 @@ Causas típicas:
 Um arquivo com rejeição de leitura ou chave nula não aplica nem as suas
 linhas válidas. A fase registra `rows_streamed` (válidas + rejeitadas do
 pré-parser), `rows_failed` (todas as rejeições) e `rows_rejected_null_key`
-(subconjunto, não somar duas vezes). No `ON CONFLICT DO NOTHING`, `rows_skipped_dup`
-conta conflitos pela chave adotada, não certifica igualdade de cada payload.
+(subconjunto, não somar duas vezes). Em `DO NOTHING` por chave natural,
+havendo conflitos, cada ocorrência precisa ter um espelho dos campos
+projetados no destino; `rows_conflict_diff_payload` conta as divergentes e
+o arquivo inteiro é revertido. Nas chaves sintéticas vale a equivalência
+do hash da spec, não uma afirmação de igualdade byte a byte do CSV.
 As novas referências de arquivo na fase e na DLQ têm o formato
 `caminho#sha256=<SHA-256 do CSV>`; a posição na DLQ é a do **registro
 lógico**, não a linha física em CSV multilinha. O SHA do ZIP, quando existe,

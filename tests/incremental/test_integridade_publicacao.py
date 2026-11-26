@@ -11,6 +11,28 @@ from etl.incremental import db, orchestrator, runner
 from etl.incremental.spec import CursorStrategy, DedupeStrategy, LoaderSpec
 
 
+@pytest.mark.parametrize("status", [200, 206])
+def test_fragmento_sem_versao_nao_compoe_publicacao(tmp_path, monkeypatch, status):
+    import io
+    from etl.incremental import download
+    destino = tmp_path / "fonte.csv"
+    destino.write_bytes(b"publicada")
+    (tmp_path / "fonte.csv.partial").write_bytes(b"fragmento de outra versao")
+    conteudo = b"arquivo completo" if status == 200 else b"final"
+    resposta = io.BytesIO(conteudo)
+    resposta.status = status
+    resposta.headers = {"Content-Length": str(len(conteudo))}
+    def abrir(req, **kw):
+        assert not req.has_header("Range")
+        return resposta
+    monkeypatch.setattr(download, "urlopen", abrir)
+    monkeypatch.setattr(download, "_read_existing_sha", lambda *a, **k: (None, None, None))
+    res = download.conditional_download(govbr_conn=None, run_id=uuid.uuid4(), source="teste",
+        table="teste", bucket_id="2026", url="https://example.invalid/fonte.csv", dest_path=destino)
+    assert destino.read_bytes() == (conteudo if status == 200 else b"publicada")
+    assert res.status == ("downloaded" if status == 200 else "failed")
+
+
 def test_zip_com_membro_errado_nao_reaproveita_csv_antigo(tmp_path, monkeypatch):
     import io
     import zipfile
@@ -132,6 +154,72 @@ def test_bucket_solicitado_ausente_bloqueia_escopo(recorte):
     arquivo("2025", "a;2025;11,00\n")
     assert executar("2025","2026")["status"] == "failed"
     assert ler(f"SELECT count(*) FROM {t}") == [(0,)]
+
+
+def test_vazio_sem_filtro_nao_avanca_ao_seguinte(recorte, tmp_path):
+    t, executar, ler, arquivo = recorte
+    (tmp_path / "2025.csv").write_bytes(b"")
+    arquivo("2026", "a;2026;9,00\n")
+    assert executar()["status"] == "failed"
+    assert ler(f"SELECT count(*) FROM {t}") == [(0,)]
+    assert not ler("SELECT last_value FROM etl_watermark WHERE table_name=%s", (t,))
+
+
+def test_parser_distingue_multilinha_fechada_de_eof(recorte):
+    t, executar, ler, arquivo = recorte
+    arquivo("2025", '"a\nb";2025;11,00\n')
+    assert executar("2025")["status"] == "success"
+    arquivo("2026", 'a;2026;"7,00\nb;2026;9,00\n')
+    assert executar("2026")["status"] == "failed"
+    assert ler(f"SELECT count(*),sum(valor)*100 FROM {t}") == [(1,1100)]
+
+
+def test_conflito_financeiro_nao_e_duplicata(recorte):
+    t, executar, ler, arquivo = recorte
+    arquivo("2025", "a;2025;11,00\na;2025;12,00\n")
+    res = executar("2025")
+    assert res["status"] == "failed"
+    assert ler("SELECT rows_conflict_diff_payload,rows_skipped_dup FROM etl_phase_log WHERE run_id=%s",
+               (str(res["run_id"]),)) == [(1,0)]
+    assert ler(f"SELECT count(*) FROM {t}") == [(0,)]
+
+
+def test_sha_e_contagem_persistem_quando_copy_falha(recorte, monkeypatch):
+    from etl.incremental import loader
+    t, executar, ler, arquivo = recorte
+    sha = arquivo("2025", "a;2025;11,00\n")
+    def falhar(*args):
+        raise ValueError("COPY simulado")
+    with monkeypatch.context() as m:
+        m.setattr(loader, "copy_temp_to_staging", falhar)
+        res = executar("2025")
+    assert res["status"] == "failed"
+    assert ler("SELECT right(file_path,64),rows_streamed,rows_inserted,error_message FROM etl_phase_log WHERE run_id=%s",
+               (str(res["run_id"]),)) == [(sha,1,0,"COPY: ValueError")]
+    novo = arquivo("2025", "a;2025;12,00\n")
+    res = executar("2025")
+    assert novo != sha and res["status"] == "success"
+    assert ler("SELECT right(file_path,64) FROM etl_phase_log WHERE run_id=%s", (str(res["run_id"]),)) == [(novo,)]
+
+
+@pytest.mark.parametrize("com_cache", [False, True])
+def test_304_sem_versao_aplicada_rebaixa_o_membro(com_cache, tmp_path, monkeypatch):
+    from etl.incremental.download import DownloadResult
+    from etl.incremental.specs.bolsa_familia import SPEC
+    (tmp_path / "202610_NovoBolsaFamilia.csv").write_text("V1") if com_cache else None
+    chamadas = []
+    def obter(**kw):
+        chamadas.append(kw["force_refetch"])
+        if not kw["force_refetch"]:
+            return DownloadResult("not_modified",False,"e"*64,0)
+        (tmp_path / "202610_NovoBolsaFamilia.csv").write_text("V2")
+        return DownloadResult("downloaded",True,"e"*64,1)
+    monkeypatch.setattr(orchestrator, "download_and_log", obter)
+    monkeypatch.setattr(db, "get_watermark", lambda *a, **k: {"bucket_token":uuid.uuid4()})
+    b, = orchestrator._build_buckets(SPEC,tmp_path,only_buckets=["2026-10"],refetch_recent=0,
+                                     run_id=uuid.uuid4(),etl_conn=None,govbr_conn=None,summary={})
+    assert chamadas == [False, True] and b["skip_reason"] is None
+    assert b["files"][0].read_text() == "V2"
 
 
 @pytest.mark.parametrize("estado", ["partial", "aborted", "failed"])

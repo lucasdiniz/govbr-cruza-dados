@@ -147,7 +147,7 @@ def _escrever_tsv(csv_path, spec, dlq_conn, run_id, source, table, arquivo_sha25
                 # Use a wrapper que strip NULs (CSV files BR sometimes have stray NUL bytes)
                 line_iter = (line.replace("\x00", "") for line in in_f)
                 reader = csv.reader(line_iter, delimiter=spec.csv_delimiter,
-                                    quotechar=spec.csv_quotechar, strict=False)
+                                    quotechar=spec.csv_quotechar, strict=True)
                 try:
                     next(reader)
                 except StopIteration:

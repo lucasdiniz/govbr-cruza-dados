@@ -2273,6 +2273,9 @@ jobs:
       # Só entregar marca ao agendador depois das etapas de publicação.
       - name: "ETL: Exportar watermarks (agendador)"
         if: success() && inputs.etl_phase == 'incremental'
+        env:
+          ESCOPO_PUBLICADO: ${{ inputs.incremental_only }}
+          BUCKETS_PUBLICADOS: ${{ inputs.incremental_only_buckets }}
         run: |
           set -euo pipefail
           cd ${{ env.PROJECT_DIR }}
@@ -2281,7 +2284,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/etl-watermarks"
           PGPASSWORD="$PASS" psql -X -v ON_ERROR_STOP=1 -U govbr -d govbr -Atc "
             SELECT COALESCE(json_object_agg(source || '.' || table_name, last_value), '{}'::json)
-            FROM etl_watermark" > "$RUNNER_TEMP/etl-watermarks/watermarks.json"
+            FROM etl_watermark" | jq --arg specs "$ESCOPO_PUBLICADO" --arg buckets "$BUCKETS_PUBLICADOS" '
+              with_entries(select(.key as $k | $specs == "" or ($specs|split(",")|index($k)) != null))
+              | with_entries(select(.key != "bolsa_familia.bolsa_familia" or $buckets == "" or
+                  (.value as $m | ($buckets|split(",")|map(gsub("-"; ""))|index($m)) != null)))
+            ' > "$RUNNER_TEMP/etl-watermarks/watermarks.json"
 
       - name: "ETL: Publicar artifact de watermarks"
         if: success() && inputs.etl_phase == 'incremental'
