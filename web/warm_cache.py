@@ -1459,6 +1459,8 @@ def main():
         # PB + empresas + empresas_municipios + licitacoes + cidade_resumo.
         # Garante que KPI_SUMMARY (derived) ja foi computado contra o
         # shadow de PERFIL antes do swap dos deps.
+        if os.environ.get("WARM_EXIGIR_COMPLETO") == "1" and (fail_p + fail_e + fail_em + fail_l + fail_r):
+            raise RuntimeError("Warm incremental incompleto: promoção das chaves em sombra bloqueada")
         _swap_all_pending_shadows(verbose=True)
         # Reset tracking pra eventual proximo ciclo (mode --loop).
         _shadow_results.clear()
@@ -1468,6 +1470,8 @@ def main():
         # MVs que ja devem estar no estado final (qids SITEMAP_XML nao
         # participam de shadow swap). PR #85 + rebase 2026-05-19.
         ok_sm, fail_sm, skip_sm = _warm_sitemaps_phase()
+        if os.environ.get("WARM_EXIGIR_COMPLETO") == "1" and fail_sm:
+            raise RuntimeError("Warm incremental incompleto: falha no sitemap após as fases municipais")
         return (
             ok_p + ok_e + ok_em + ok_l + ok_r + ok_sm,
             fail_p + fail_e + fail_em + fail_l + fail_r + fail_sm,

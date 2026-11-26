@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -33,9 +34,7 @@ import psycopg2
 
 from . import db as etl_db
 from .conn import IncrementalLoadContext
-from .parser import (
-    SchemaDriftError, stream_csv_to_staging, validate_csv_header,
-)
+from .parser import SchemaDriftError, _dlq_insert, stream_csv_to_staging, validate_csv_header
 from .replace import GUARD_PREFIX, ReplaceGuardError, apply_bucket_replace
 from .spec import DedupeStrategy, LoaderSpec
 from .staging import (
@@ -60,6 +59,8 @@ class LoadResult:
     rows_streamed: int = 0
     rows_inserted: int = 0
     rows_updated: int = 0
+    rows_skipped_dup: int = 0
+    rows_skipped_stale: int = 0
     rows_failed: int = 0
     rows_rejected_null_key: int = 0
     rows_coerced_null: int = 0
@@ -67,6 +68,7 @@ class LoadResult:
     replace_stats: Optional[dict] = None
     new_watermark: Optional[str] = None
     csv_header_hash: Optional[str] = None
+    arquivo_sha256: Optional[str] = None
     staging_tables: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -202,22 +204,33 @@ def _incremental_load(
 
     create_staging_raw(ctx.main, spec, stg_raw)
 
-    # Step 4: pre-parser CSV → temp file + DLQ
+    # A identidade da versão usada na DLQ deve existir antes da primeira rejeição.
+    antes = csv_path.stat()
+    digest = hashlib.sha256()
+    with csv_path.open("rb") as fonte:
+        for bloco in iter(lambda: fonte.read(1024 * 1024), b""):
+            digest.update(bloco)
+    arquivo_sha256 = digest.hexdigest()
     pp = stream_csv_to_staging(
         csv_path, spec, ctx.dlq,
         run_id=ctx.run_id, source=spec.source, table=spec.table,
-        bucket_id=str(file_sequence),
+        bucket_id=bucket_id, arquivo_sha256=arquivo_sha256,
     )
-    rows_streamed = pp.valid_count
+    rows_streamed = pp.valid_count + pp.rejected_count
     rows_failed_streaming = pp.rejected_count
-
-    if rows_streamed == 0 and rows_failed_streaming == 0:
-        # Empty file
-        return _empty_success("arquivo sem linhas", csv_hash, staging_tables)
 
     # Step 5: COPY temp → staging RAW
     try:
-        copy_temp_to_staging(ctx.main, stg_raw, pp.temp_path, spec.columns)
+        depois = csv_path.stat()
+        if (antes.st_ino, antes.st_dev, antes.st_ctime_ns, antes.st_size) != (
+            depois.st_ino, depois.st_dev, depois.st_ctime_ns, depois.st_size
+        ):
+            raise RuntimeError("Arquivo mudou durante a leitura; versão não confirmada")
+        if not rows_streamed:
+            return _empty_success("arquivo sem linhas", csv_hash, staging_tables)
+        copiadas = copy_temp_to_staging(ctx.main, stg_raw, pp.temp_path, [*spec.columns, "_registro_origem"])
+        if copiadas != pp.valid_count:
+            raise RuntimeError(f"Balanço do COPY divergente: válidas={pp.valid_count}, copiadas={copiadas}")
     finally:
         try:
             pp.temp_path.unlink()
@@ -237,7 +250,7 @@ def _incremental_load(
     if spec.bucket_replace is not None:
         rows_rejected_null_key = 0
     else:
-        rows_rejected_null_key = _move_nk_null_to_dlq(spec, ctx, stg_typed, csv_path)
+        rows_rejected_null_key = _registrar_nk_nula(spec, ctx, stg_typed, f"{csv_path}#sha256={arquivo_sha256}")
 
     # Step 8: build staging_final (POC: alias for now if no derived_columns)
     # Derived columns na FORMA literal/SQL acontece no INSERT INTO target via
@@ -250,25 +263,19 @@ def _incremental_load(
     with ctx.main.cursor() as cur:
         cur.execute(f"ANALYZE {stg_final}")
 
-    # Step 10+11: count failures
-    # Hard failures (streaming): col_count_mismatch, encoding_error, csv_parse_error.
-    #   Estes indicam dados corrompidos, abort run.
-    # Soft failures (NK NULL): row tem NK insuficiente para target uniquidade.
-    #   Estes são esperados em prod (legacy data quality issues); enviam pra DLQ
-    #   mas NÃO abortam load — UPSERT continua com rows válidos.
-    if rows_failed_streaming > 0:
+    # Durante a contenção não mudar a identidade histórica. Rejeição não
+    # autoriza upsert parcial nem avanço da marca; a DLQ sobrevive ao rollback.
+    if rows_failed_streaming or rows_rejected_null_key:
         return LoadResult(
             status="partial",
             rows_streamed=rows_streamed,
-            rows_failed=rows_failed_streaming,
+            rows_failed=rows_failed_streaming + rows_rejected_null_key,
             rows_rejected_null_key=rows_rejected_null_key,
             csv_header_hash=csv_hash,
+            arquivo_sha256=arquivo_sha256,
             staging_tables=staging_tables,
-            error=f"streaming failures={rows_failed_streaming} > 0; target not modified",
+            error=f"Arquivo não aplicado: rejeições de leitura={rows_failed_streaming}, NK={rows_rejected_null_key}",
         )
-
-    # NK NULL rejections: log mas continue UPSERT
-    total_failed = rows_rejected_null_key
 
     # Step 12: fence check 2
     _check_fence(ctx)
@@ -285,6 +292,10 @@ def _incremental_load(
             row = cur.fetchone()
             rows_inserted = int(row[0]) if row[0] is not None else 0
             rows_updated = int(row[1]) if row[1] is not None else 0
+
+    restantes = copiadas - rows_inserted - rows_updated
+    if restantes < 0 or (spec.dedupe_strategy == DedupeStrategy.APPEND and restantes):
+        raise RuntimeError("Balanço do upsert divergente")
 
     # Step 13b: replace por bucket (ADR-0015) — mesma transação do upsert.
     rows_deleted = 0
@@ -324,39 +335,25 @@ def _incremental_load(
         rows_streamed=rows_streamed,
         rows_inserted=rows_inserted,
         rows_updated=rows_updated,
+        rows_skipped_dup=restantes if spec.dedupe_strategy == DedupeStrategy.UPSERT_DO_NOTHING else 0,
+        rows_skipped_stale=restantes if spec.dedupe_strategy == DedupeStrategy.UPSERT_DO_UPDATE else 0,
         rows_failed=0,
         rows_deleted=rows_deleted,
         replace_stats=replace_stats,
         new_watermark=new_watermark,
         csv_header_hash=csv_hash,
+        arquivo_sha256=arquivo_sha256,
         staging_tables=staging_tables,
     )
 
 
-def _move_nk_null_to_dlq(
+def _registrar_nk_nula(
     spec: LoaderSpec,
     ctx: IncrementalLoadContext,
     stg_typed: str,
-    csv_path: Path,
+    csv_path: str,
 ) -> int:
-    """Single-SQL DELETE WHERE NK NULL em staging, escrevendo cada row em DLQ.
-
-    NOTA: NK em staging usa nomes do CSV (não target). Colunas derivadas
-    (ano_arquivo) NÃO existem em staging — são adicionadas no INSERT INTO target.
-    Skipamos derived cols no NULL check.
-
-    Audit: cada row deletada vai pra etl_rejected_rows com reason='NK_NULL'
-    via ctx.dlq (autocommit conn). Permite reconstrução posterior das rows
-    perdidas e auditoria de qualidade da fonte.
-
-    File path: usa csv_path real (não staging table name) pra que cross-run
-    dedup via idx_etl_rejected_dedupe (source, table_name, file_path,
-    line_number, raw_line_hash) realmente funcione.
-
-    Failure mode: se DLQ insert falhar para QUALQUER row, raise para abortar
-    a phase. Garante P3 (auditabilidade): nenhuma row é deletada de staging
-    sem trace correspondente em etl_rejected_rows.
-    """
+    """Conta ocorrências (não chaves distintas). A staging inteira reverte se houver rejeições."""
     # Filter NK cols to only those that exist in staging (i.e., not derived).
     # Reverse of column_renames pra mapear target → CSV name se necessário.
     target_to_csv = {v: k for k, v in spec.column_renames.items()}
@@ -373,55 +370,17 @@ def _move_nk_null_to_dlq(
 
     nk_null_pred = " OR ".join(f"{c} IS NULL" for c in staging_nk_cols)
 
-    import hashlib
     import json
 
-    with ctx.main.cursor() as cur:
-        # Capture rows about to be deleted, ORDER BY ctid for stable ordering
-        # so line_number is deterministic across runs (otherwise dedup index
-        # in idx_etl_rejected_dedupe wouldn't fire on retry).
-        cur.execute(
-            f"""SELECT * FROM {stg_typed} WHERE {nk_null_pred} ORDER BY ctid"""
-        )
-        bad_rows = cur.fetchall()
-        col_names = [d[0] for d in cur.description]
-
-    if bad_rows:
-        # Write to DLQ first; only DELETE from staging if ALL DLQ inserts succeed.
-        # Per-row try/except + log-and-continue would silently lose audit trail
-        # on partial DLQ failure (P3 violation). Fail-fast and let the run
-        # operator investigate.
-        with ctx.dlq.cursor() as dlq_cur:
-            for row_idx, row in enumerate(bad_rows):
-                raw_repr = json.dumps(
-                    dict(zip(col_names, [str(v) if v is not None else None for v in row])),
-                    ensure_ascii=False, default=str,
-                )[:8000]
-                raw_hash = hashlib.sha256(raw_repr.encode("utf-8")).hexdigest()
-                # line_number stable per row content: hash truncated to bigint.
-                # Avoids collision with real CSV line numbers (positive bigint range).
-                stable_line = -int(raw_hash[:15], 16)  # negative → distinct namespace
-                dlq_cur.execute(
-                    """INSERT INTO etl_rejected_rows
-                       (run_id, source, table_name, file_path, line_number,
-                        raw_line, raw_line_hash, reason)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT DO NOTHING""",
-                    (str(ctx.run_id), spec.source, spec.table,
-                     str(csv_path), stable_line,
-                     raw_repr, raw_hash, "NK_NULL"),
-                )
-
-    with ctx.main.cursor() as cur:
-        cur.execute(f"DELETE FROM {stg_typed} WHERE {nk_null_pred}")
-        deleted = cur.rowcount
-
-    if deleted > 0:
-        logger.info(
-            "moved %d NK-NULL rows from %s to DLQ (reason=NK_NULL)",
-            deleted, stg_typed,
-        )
-    return deleted
+    qtd = 0
+    with ctx.main.cursor(name="rejeicoes_nk") as cur:
+        cur.execute(f"SELECT _registro_origem, {', '.join(spec.columns)} FROM {stg_typed} WHERE {nk_null_pred}")
+        for posicao, *campos in cur:
+            registro = {k.lower(): str(v) if v is not None else None for k, v in zip(spec.columns, campos)}
+            _dlq_insert(ctx.dlq, ctx.run_id, spec.source, spec.table, csv_path, posicao,
+                        json.dumps(registro, ensure_ascii=False), "NK_NULL")
+            qtd += 1
+    return qtd
 
 
 def _compute_new_watermark(

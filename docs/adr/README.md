@@ -35,6 +35,7 @@ veja [`docs/architecture.md`](../architecture.md).
 | ADR-0013 | [Zero-downtime no web (deploys + VM resize)](0013-zero-downtime-web.md) | Proposed | 2026-05-19 |
 | ADR-0014 | [NK sintética md5 para tabelas TCE-PB no ETL incremental](0014-tce-pb-incremental-nk.md) | Accepted | 2026-06-23 |
 | ADR-0015 | [Replace por bucket para os snapshots anuais do TCE-PB](0015-tce-pb-replace-por-bucket.md) | Accepted | 2026-10-21 |
+| ADR-0016 | [Publicação somente após escopo incremental completo](0016-publicacao-incremental-completa.md) | Proposed | 2026-11-26 |
 
 ## Convenções
 

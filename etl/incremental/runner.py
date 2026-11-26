@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -71,11 +72,7 @@ def _auto_bootstrap_if_needed(specs_to_run: dict, govbr_dsn: str) -> list:
     """
     import psycopg2
 
-    try:
-        from etl.incremental.bootstrap_watermark import _bootstrap_one
-    except ImportError:
-        logger.warning("bootstrap_watermark module not available; skipping auto-bootstrap")
-        return []
+    from etl.incremental.bootstrap_watermark import _bootstrap_one
 
     needs_bootstrap = []
     with psycopg2.connect(govbr_dsn) as conn:
@@ -135,7 +132,9 @@ def _replace_problems(key: str, spec, summary: dict) -> list[str]:
                 p.name for p, r in getattr(b, "files", [])
                 if getattr(r, "replace_stats", None) is None
             ]
-            if sem_replace:
+            if not getattr(b, "files", []):
+                problems.append(f"{key} bucket {b.bucket_id}: sem arquivo aplicado")
+            elif sem_replace:
                 problems.append(
                     f"{key} bucket {b.bucket_id}: sucesso com replace nao executado ({sem_replace[0]})"
                 )
@@ -198,26 +197,24 @@ def main():
 
     logger.info("Running %d specs: %s", len(specs_to_run), list(specs_to_run.keys()))
 
-    # Auto-bootstrap: any spec without etl_watermark row OR with NULL bootstrap
-    # fields gets bootstrapped automatically. Failed bootstraps remove that
-    # spec from the run to prevent mutating targets without baseline snapshot.
+    # O agendador combina anos TCE e meses BF no mesmo parâmetro.
+    escopos = {key: None for key in specs_to_run}
+    if args.only_buckets:
+        pedidos = {b.strip() for b in args.only_buckets.split(",")}
+        formatos = {"YEAR_WINDOW": r"\d{4}", "MONTH_WINDOW": r"\d{4}-(?:0[1-9]|1[0-2])",
+                    "SNAPSHOT": "snapshot"}
+        escopos = {key: sorted(b for b in pedidos if re.fullmatch(formatos[spec.cursor_strategy.value], b))
+                   for key, spec in specs_to_run.items()}
+        if not all(escopos.values()) or set().union(*escopos.values()) != pedidos:
+            logger.error("Escopo de buckets incompatível com as specs solicitadas")
+            return 2
+
     bootstrap_failed = _auto_bootstrap_if_needed(specs_to_run, args.govbr_dsn)
     if bootstrap_failed:
-        logger.error("Removing specs with failed bootstrap from this run: %s",
-                     bootstrap_failed)
-        for key in bootstrap_failed:
-            specs_to_run.pop(key, None)
-        if not specs_to_run:
-            logger.error("All specs failed bootstrap; aborting.")
-            return 3
+        logger.error("Bootstrap incompleto; nenhuma spec será aplicada: %s", bootstrap_failed)
+        return 3
 
     from etl.incremental.orchestrator import run_incremental_for_source
-
-    # Parse --only-buckets em lista (ou None se vazio)
-    only_buckets_list = None
-    if args.only_buckets:
-        only_buckets_list = [b.strip() for b in args.only_buckets.split(",") if b.strip()]
-        logger.info("Limiting to buckets: %s", only_buckets_list)
 
     runtime_deadline = time.monotonic() + args.max_runtime_s
     summaries = []
@@ -251,7 +248,7 @@ def main():
                 triggered_by=args.triggered_by,
                 commit_sha=args.commit_sha,
                 max_runtime_s=remaining_runtime_s,
-                only_buckets=only_buckets_list,
+                only_buckets=escopos[key],
             )
         except Exception as e:
             logger.exception("=== FAIL %s: %s ===", key, e)
@@ -265,6 +262,8 @@ def main():
         n_deleted = sum(getattr(b, "total_deleted", 0) for b in summary.get("buckets", []))
         logger.info("=== END %s status=%s buckets=%d/%d inserted=%d deleted=%d ===",
                     key, status, n_success, n_total, n_inserted, n_deleted)
+        if status != "success" or _replace_problems(key, spec, summary):
+            break
 
     # Final report
     print("\n" + "=" * 60)
@@ -281,7 +280,7 @@ def main():
         n_deleted = sum(getattr(b, "total_deleted", 0) for b in summary.get("buckets", []))
         deleted_str = f", -{n_deleted} rows" if n_deleted else ""
         print(f"  {marker} {key}: {status} ({n_success}/{n_buckets} buckets, +{n_inserted} rows{deleted_str})")
-        if status == "failed":
+        if status != "success":
             n_failed += 1
         replace_problems.extend(_replace_problems(key, specs_to_run.get(key), summary))
 

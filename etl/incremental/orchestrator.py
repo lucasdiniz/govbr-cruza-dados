@@ -63,6 +63,23 @@ def _bucket_token(source: str, table: str, bucket_id: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}/{table}/{bucket_id}")
 
 
+def _registrar_fase(conn, run_id, spec, caminho, seq, inicio, resultado):
+    referencia = str(caminho)
+    if resultado.arquivo_sha256:
+        referencia += f"#sha256={resultado.arquivo_sha256}"
+    return etl_db.insert_phase_log(
+        conn, run_id=run_id, attempt=1, source=spec.source, table=spec.table,
+        file_path=referencia, file_sequence=seq, status=resultado.status,
+        started_at=inicio, finished_at=datetime.now(),
+        rows_streamed=resultado.rows_streamed, rows_inserted=resultado.rows_inserted,
+        rows_updated=resultado.rows_updated, rows_failed=resultado.rows_failed,
+        rows_skipped_dup=resultado.rows_skipped_dup, rows_skipped_stale=resultado.rows_skipped_stale,
+        rows_rejected_null_key=resultado.rows_rejected_null_key,
+        rows_coerced_null=resultado.rows_coerced_null, spec_hash=spec.spec_hash,
+        csv_header_hash=resultado.csv_header_hash, error_message=resultado.error,
+    )
+
+
 class SchemaDriftError(RuntimeError):
     """Target schema mudou desde o bootstrap; abort para inspecao manual."""
 
@@ -203,13 +220,9 @@ def run_incremental_for_source(
                 govbr_conn=govbr_raw,
                 summary=summary,
             )
-            if not buckets:
-                logger.warning(
-                    "no buckets found for %s.%s in %s",
-                    spec.source, spec.table, data_dir,
-                )
-                final_status = "success"
-                return summary
+            faltantes = set(only_buckets or []) - {b["bucket_id"] for b in buckets}
+            if not buckets or faltantes:
+                raise ValueError(f"Nenhum bucket ou escopo incompleto; faltantes={sorted(faltantes)}")
 
             # 6. Process each bucket
             for bucket_info in buckets:
@@ -223,18 +236,15 @@ def run_incremental_for_source(
                 bucket_run = BucketRun(bucket_id=bucket_id)
                 bucket_token = _bucket_token(spec.source, spec.table, bucket_id)
 
-                # Replace (ADR-0015) só com o arquivo recém-baixado: nunca
-                # remover linhas com base num cache possivelmente velho.
-                if spec.bucket_replace is not None and bucket_download_failed:
+                if bucket_download_failed:
                     logger.error(
-                        "bucket %s/%s: download falhou — replace NAO executado "
-                        "(cache local pode estar desatualizado)",
+                        "bucket %s/%s: download incompleto; cache local não será aplicado",
                         spec.source, bucket_id,
                     )
                     bucket_run.total_failed = 1
                     summary["buckets"].append(bucket_run)
                     summary["total_failed"] += 1
-                    continue
+                    break
 
                 # SKIP bucket if download said no change AND token already matches
                 if bucket_skip_reason:
@@ -259,59 +269,52 @@ def run_incremental_for_source(
                             main=main, lock=lock, dlq=dlq,
                             run_id=run_id, bucket_token=bucket_token,
                         )
-                        try:
-                            file_result = _incremental_load(
-                                spec, ctx, csv_path, file_sequence=seq,
-                                bucket_id=bucket_id,
-                            )
-                            if file_result.status == "success":
-                                main_raw.commit()
-                            else:
-                                main_raw.rollback()
-                        except Exception:
+                        file_result = _incremental_load(
+                            spec, ctx, csv_path, file_sequence=seq, bucket_id=bucket_id,
+                        )
+                        if only_buckets and file_result.status == "success" and not file_result.rows_streamed:
+                            file_result.status = "failed"
+                            file_result.error = "Arquivo solicitado vazio ou placeholder"
+                        if file_result.status == "success":
+                            # Fase e pendência de publicação têm o mesmo COMMIT
+                            # que o arquivo. Nunca perder a pendência num retry sem delta.
+                            _registrar_fase(main_raw, run_id, spec, csv_path, seq, started, file_result)
+                            if file_result.rows_inserted or file_result.rows_updated or file_result.rows_deleted:
+                                with main_raw.cursor() as cur:
+                                    cur.execute(
+                                        "SELECT etl_admin.enqueue_cache_invalidation(%s,%s,%s,%s,%s,%s,%s)",
+                                        (str(run_id), spec.source, spec.table, bucket_id, file_result.rows_inserted,
+                                         file_result.rows_updated + file_result.rows_deleted, None),
+                                    )
+                            if seq == len(files) and spec.watermark_col:
+                                valores = [r.new_watermark for _, r in bucket_run.files] + [file_result.new_watermark]
+                                marca = _maior_marca(valores, spec.watermark_type)
+                                if marca is None and (only_buckets or file_result.rows_streamed):
+                                    raise ValueError("Arquivo sem watermark verificável")
+                                if marca is not None:
+                                    etl_db.set_watermark(
+                                        main_raw, run_id=run_id, source=spec.source, table=spec.table,
+                                        bucket_token=bucket_token, new_value=marca, watermark_type=spec.watermark_type,
+                                        actual_max=marca, actual_count=None,
+                                    )
+                            main_raw.commit()
+                        else:
                             main_raw.rollback()
-                            raise
                     except RunFencedError:
+                        main_raw.rollback()
                         raise
                     except (psycopg2.InterfaceError, psycopg2.OperationalError):
-                        logger.exception(
-                            "database connection lost while loading %s",
-                            csv_path,
-                        )
-                        raise
+                        # COMMIT pode ter sido confirmado pelo servidor. A fase
+                        # transacional é a evidência; não gravar "falhou" às cegas.
+                        raise RuntimeError("Conexão interrompida; conferir fase antes de retomar") from None
                     except Exception as e:
-                        logger.exception("error loading %s", csv_path)
-                        file_result = LoadResult(status="failed", error=str(e))
-                    finally:
-                        # Phase log row
-                        try:
-                            etl_db.insert_phase_log(
-                                lock_raw,
-                                run_id=run_id, attempt=1,
-                                source=spec.source, table=spec.table,
-                                file_path=str(csv_path), file_sequence=seq,
-                                status=file_result.status,
-                                started_at=started, finished_at=datetime.now(),
-                                rows_streamed=file_result.rows_streamed,
-                                rows_inserted=file_result.rows_inserted,
-                                rows_updated=file_result.rows_updated,
-                                rows_failed=file_result.rows_failed,
-                                rows_rejected_null_key=file_result.rows_rejected_null_key,
-                                rows_coerced_null=file_result.rows_coerced_null,
-                                spec_hash=spec.spec_hash,
-                                csv_header_hash=file_result.csv_header_hash,
-                                error_message=file_result.error,
-                            )
-                        except Exception as e:
-                            logger.warning("insert_phase_log failed: %s", e)
-
-                        # A transação do arquivo já terminou em commit/rollback.
-                        # Liberar raw/typed agora evita acumular dezenas de GB
-                        # até o fim de sources com muitos buckets, como BF.
-                        failed_drops = drop_staging(
-                            drop_raw, *dict.fromkeys(file_result.staging_tables)
-                        )
-                        all_staging_to_drop.extend(failed_drops)
+                        main_raw.rollback()
+                        logger.error("Arquivo %s não aplicado (%s)", csv_path.name, type(e).__name__)
+                        file_result = LoadResult(status="failed", error=type(e).__name__,
+                                                 arquivo_sha256=file_result.arquivo_sha256)
+                    if file_result.status != "success":
+                        _registrar_fase(lock_raw, run_id, spec, csv_path, seq, started, file_result)
+                    all_staging_to_drop.extend(drop_staging(drop_raw, *dict.fromkeys(file_result.staging_tables)))
 
                     bucket_run.files.append((csv_path, file_result))
                     bucket_run.total_streamed += file_result.rows_streamed
@@ -319,6 +322,8 @@ def run_incremental_for_source(
                     bucket_run.total_updated += file_result.rows_updated
                     bucket_run.total_failed += file_result.rows_failed
                     bucket_run.total_deleted += file_result.rows_deleted
+                    if file_result.status != "success":
+                        break
 
                 bucket_run.all_success = (
                     bool(bucket_run.files)
@@ -336,43 +341,8 @@ def run_incremental_for_source(
                 summary["total_failed"] += bucket_run.total_failed
                 summary["total_deleted"] += bucket_run.total_deleted
 
-                # 7. Set watermark APENAS se bucket completo
-                if bucket_run.all_success and spec.watermark_col:
-                    new_wm = _max_watermark_in_bucket(bucket_run, spec.watermark_type)
-                    if new_wm is not None:
-                        try:
-                            etl_db.set_watermark(
-                                lock_raw,
-                                run_id=run_id,
-                                source=spec.source,
-                                table=spec.table,
-                                bucket_token=bucket_token,
-                                new_value=new_wm,
-                                watermark_type=spec.watermark_type,
-                                actual_max=new_wm,
-                                actual_count=None,
-                            )
-                        except psycopg2.Error as e:
-                            logger.warning("set_watermark failed: %s", e)
-
-                # 8. Enqueue cache invalidation if rows changed (D17 hook)
-                if bucket_run.all_success and (
-                    bucket_run.total_inserted + bucket_run.total_updated
-                    + bucket_run.total_deleted > 0
-                ):
-                    try:
-                        with lock_raw.cursor() as cur:
-                            cur.execute(
-                                "SELECT etl_admin.enqueue_cache_invalidation(%s,%s,%s,%s,%s,%s,%s)",
-                                (
-                                    str(run_id), spec.source, spec.table, bucket_id,
-                                    bucket_run.total_inserted,
-                                    bucket_run.total_updated + bucket_run.total_deleted,
-                                    None,  # pattern: futuro hint para warm_cache
-                                ),
-                            )
-                    except psycopg2.Error as e:
-                        logger.warning("enqueue_cache_invalidation failed: %s", e)
+                if not bucket_run.all_success:
+                    break  # mês seguinte não pode encobrir lacuna na marca
 
             # All buckets processed
             partial_buckets = [b for b in summary["buckets"] if not b.all_success]
@@ -416,7 +386,9 @@ def run_incremental_for_source(
         try:
             etl_db.finish_run(lock_raw, run_id, status=final_status, error=error_msg)
         except Exception as e:
-            logger.warning("finish_run failed: %s", e)
+            final_status = "failed"
+            error_msg = f"Não foi possível confirmar o encerramento ({type(e).__name__})"
+            logger.error(error_msg)
 
         # Cleanup conns
         for c in (lock_raw, dlq_raw, govbr_raw, drop_raw):
@@ -515,7 +487,7 @@ def _build_buckets(
                     disk_buckets.append((bid, []))
                     bucket_ids_disk.append(bid)
         except Exception as e:
-            logger.warning("spec.enumerate_buckets() failed: %s", e)
+            raise RuntimeError("Falha ao enumerar competências") from e
 
     # Sort buckets ascending; refetch_recent applies to TAIL N
     disk_buckets.sort(key=lambda t: t[0])
@@ -544,8 +516,10 @@ def _build_buckets(
             try:
                 url_pairs = spec.url_for_bucket(bid)
             except Exception as e:
-                logger.warning("url_for_bucket(%s) failed: %s", bid, e)
-                url_pairs = []
+                raise RuntimeError(f"Falha ao identificar fonte do bucket {bid}") from e
+
+            if not url_pairs:
+                download_failed_count += 1
 
             for url, fname in url_pairs:
                 dest = data_dir / fname
@@ -563,6 +537,7 @@ def _build_buckets(
                         url=url,
                         dest_path=dest,
                         force_refetch=force,
+                        membros_esperados=tuple(expected_files) if len(url_pairs) == 1 else (),
                     )
                     download_summary.append({
                         "bucket": bid, "url": url,
@@ -588,17 +563,14 @@ def _build_buckets(
             p = data_dir / ef
             if p.exists():
                 files_on_disk_now.append(p)
-        if not files_on_disk_now:
-            files_on_disk_now = files_on_disk
+        membros_ausentes = len(files_on_disk_now) != len(expected_files)
 
         # 3. Determine skip
-        # Skip if: NO download was performed (no url_for_bucket OR all 304 OR no urls)
-        # AND bucket_token in etl_watermark already matches deterministic token
-        # AND not in refetch tail
+        # Skip só com confirmação da fonte (304) e marca correspondente.
         skip_reason = None
-        if (not bucket_changed
+        if (not bucket_changed and not download_failed_count and spec.bucket_replace is None
                 and bid not in tail_set
-                and (spec.url_for_bucket is None or all_not_modified)):
+                and download_skipped_count and all_not_modified):
             try:
                 wm = etl_db.get_watermark(govbr_conn, source=spec.source, table=spec.table)
                 if wm is not None and wm["bucket_token"] is not None:
@@ -615,23 +587,15 @@ def _build_buckets(
             "bucket_id": bid,
             "files": files_on_disk_now,
             "skip_reason": skip_reason,
-            # Mark download_failed whenever a refetch attempt failed, regardless
-            # of whether stale cached files exist. Processing the cache still
-            # happens (so older data is loadable), but bucket cannot advance to
-            # success/watermark-update until the source is healthy again. This
-            # prevents stuck buckets where source published v2 but our cache is
-            # v1 — we'd otherwise process v1 forever and never re-fetch.
-            "download_failed": download_failed_count > 0,
+            "download_failed": download_failed_count > 0 or (membros_ausentes and not skip_reason),
         })
 
     summary["downloads"] = download_summary
     return result
 
 
-def _max_watermark_in_bucket(bucket: BucketRun, watermark_type: str) -> Optional[str]:
-    """Retorna MAX watermark do bucket (type-aware via Python convert)."""
-    candidates = [r.new_watermark for _, r in bucket.files
-                  if r.new_watermark is not None]
+def _maior_marca(valores: list[Optional[str]], watermark_type: str) -> Optional[str]:
+    candidates = [v for v in valores if v is not None]
     if not candidates:
         return None
     if watermark_type == "integer":
