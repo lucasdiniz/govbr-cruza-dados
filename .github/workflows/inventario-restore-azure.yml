@@ -32,11 +32,24 @@ jobs:
           import re
           import subprocess
 
+          def categoria_cli(stderr):
+              # Não emitir a mensagem do ARM: pode conter IDs da conta e de recursos.
+              s = stderr.lower()
+              if any(t in s for t in (b"authorizationfailed", b"forbidden", b"not authorized",
+                                       b"does not have authorization")):
+                  return "sem_permissao"
+              if any(t in s for t in (b"missingsubscriptionregistration", b"noregisteredproviderfound",
+                                       b"is not registered", b"subscriptionnotregistered")):
+                  return "provedor_indisponivel"
+              if b"resourcenotfound" in s or b"resourcegroupnotfound" in s:
+                  return "recurso_nao_localizado"
+              return "erro_cli"
+
           def consulta(*args):
               p = subprocess.run(["az", *args, "--only-show-errors", "-o", "json"],
                                  capture_output=True, timeout=90)
               if p.returncode:
-                  raise ValueError("Consulta de metadados recusada ou indisponível")
+                  raise RuntimeError(categoria_cli(p.stderr))
               return json.loads(p.stdout) if p.stdout.strip() else None
 
           def resumir(disco, copias):
@@ -66,14 +79,23 @@ jobs:
                                 "estado:provisioningState,data:timeCreated}")
               n, dia = resumir(alvo, copias)
               print(f"RESTORE_AZURE snapshots_diretos={n} data_utc={dia}")
+          except RuntimeError as err:
+              print(f"RESTORE_AZURE snapshots_diretos=inconclusivo motivo={err}")
+              falha = True
           except (ValueError, subprocess.TimeoutExpired):
               print("RESTORE_AZURE snapshots_diretos=inconclusivo")
               falha = True
           try:
               ref = consulta("backup", "protection", "check-vm", "-g", grupo, "--vm", vm)
-              if ref is not None and not isinstance(ref, dict):
+              if ref is None or ref == [] or ref == {}:
+                  print("RESTORE_AZURE protecao_vm=sem_referencia")
+              elif isinstance(ref, dict) and ref:
+                  print("RESTORE_AZURE protecao_vm=referenciada")
+              else:
                   raise ValueError("Formato de referência desconhecido")
-              print("RESTORE_AZURE protecao_vm=" + ("referenciada" if ref else "sem_referencia"))
+          except RuntimeError as err:
+              print(f"RESTORE_AZURE protecao_vm=inconclusivo motivo={err}")
+              falha = True
           except (ValueError, subprocess.TimeoutExpired):
               print("RESTORE_AZURE protecao_vm=inconclusivo")
               falha = True
