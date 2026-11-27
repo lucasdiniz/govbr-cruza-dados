@@ -68,10 +68,10 @@ function _getPeriodo() {
     return 'CUSTOM';
 }
 
-function _buildBody(municipio, uf) {
+function _buildBody(municipio, uf, inicio = _dateInicio, fim = _dateFim) {
     const body = { municipio, uf: uf || _currentUf };
-    if (_dateInicio) body.data_inicio = _dateInicio;
-    if (_dateFim) body.data_fim = _dateFim;
+    if (inicio) body.data_inicio = inicio;
+    if (fim) body.data_fim = fim;
     return body;
 }
 
@@ -148,16 +148,14 @@ function _setLiveRefreshState(isBusy) {
     });
 }
 
-async function _handleDateApiError(response, fallbackMessage) {
-    let message = fallbackMessage || 'Nao foi possivel aplicar o filtro de periodo.';
-    try {
-        const data = await response.json();
-        if (data && data.error) message = data.error;
-    } catch {}
-    if (response.status === 400) {
-        _setDateFilterStatus(message, 'error');
-    }
-    return message;
+async function _lerDadosPeriodo(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Consulta de período indisponível (${res.status})`);
+    return res.json();
 }
 
 function _validateDateInputs() {

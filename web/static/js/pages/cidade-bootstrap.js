@@ -1,5 +1,6 @@
 // === pages/cidade-bootstrap.js ===
-async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
+async function bootstrapCityReport(municipio, uf, dataInicio, dataFim, inicial = false) {
+    if (_dateFilterBusy) return;
     uf = uf || 'PB';
     const nextInicio = dataInicio || null;
     const nextFim = dataFim || null;
@@ -7,15 +8,57 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         _setDateFilterStatus('Informe data inicial e final antes de filtrar.', 'error');
         return;
     }
-    _currentMunicipio = municipio;
-    _currentUf = uf;
-    _dateInicio = nextInicio;
-    _dateFim = nextFim;
+    _dateFilterBusy = true;
+    _setDateFilterButtonBusy(true);
+    if (inicial) {
+        // A foto do SSR já está visível antes de qualquer resposta assíncrona.
+        _currentMunicipio = municipio;
+        _currentUf = uf;
+        _dateInicio = nextInicio;
+        _dateFim = nextFim;
+        _syncDateFilterUI();
+    }
+    _setDateFilterStatus('Atualizando dados do período...');
+    _setLiveRefreshState(true);
+    let confirmou = false;
+    try {
+        const body = _buildBody(municipio, uf, nextInicio, nextFim);
+        const [perfil, indicadores] = await Promise.all([
+            _lerDadosPeriodo('/api/perfil', body),
+            _lerDadosPeriodo(`/api/kpis/${encodeURIComponent(municipio)}`, body),
+        ]);
+        const dadosPerfil = perfil?.perfil || perfil;
+        if (!dadosPerfil?.municipio || !Array.isArray(indicadores?.kpis)) {
+            throw new Error('Resposta incompleta para o período solicitado');
+        }
+        _currentMunicipio = municipio;
+        _currentUf = uf;
+        _dateInicio = nextInicio;
+        _dateFim = nextFim;
+        _setDateInputs(nextInicio, nextFim);
+        _syncDateFilterUI();
+        _exibirPerfilDoPeriodo(perfil);
+        _exibirKpisDoPeriodo(indicadores);
+        confirmou = true;
+        if (!inicial) _resetCityPanelsLoading();
+        const completo = await _carregarPaineisDoPeriodo(municipio, uf, _getPeriodo());
+        if (completo) _setDateFilterStatus(inicial ? '' : 'Filtro aplicado.');
+        else _setDateFilterStatus('Período atualizado, mas nem todos os painéis foram carregados.', 'error');
+    } catch (err) {
+        console.warn('Falha ao atualizar filtro de período', err);
+        _setDateInputs(_dateInicio, _dateFim);
+        _syncDateFilterUI();
+        _setDateFilterStatus(confirmou
+            ? 'Período atualizado, mas nem todos os painéis foram carregados.'
+            : 'Não foi possível atualizar. O período exibido foi mantido.', 'error');
+    } finally {
+        _dateFilterBusy = false;
+        _setDateFilterButtonBusy(false);
+        _setLiveRefreshState(false);
+    }
+}
 
-    const periodo = _getPeriodo();
-
-    _syncDateFilterUI();
-
+async function _carregarPaineisDoPeriodo(municipio, uf, periodo) {
     // Single batch request for everything (skip for CUSTOM — no cache)
     let batchData = {};
     if (periodo !== 'CUSTOM') {
@@ -31,21 +74,6 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         _loadHeatmap(municipio);
     }
 
-    // Hero/insights/KPI strip + narrativa SEMPRE refrescam apos o boot.
-    // Antes, isso era gated em `_isDateFiltered()`, mas como SSR agora pinta
-    // em ANO (default 'Ano atual'), clicar 'Tudo' (sem datas) deixava a hero
-    // e a KPI strip presas em ANO enquanto os paineis abaixo iam para
-    // all-time. Refrescar sempre garante consistencia em ambas as direcoes
-    // (ANO->Tudo e Tudo->ANO/Custom).
-    _setLiveRefreshState(true);
-    try {
-        // /api/perfil retorna perfil + narrativa, ambos respeitando o periodo.
-        await _refreshPerfilLive(municipio, uf);
-        // /api/kpis retorna kpi strip + concentracao + score unificado.
-        await _refreshKpisLive(municipio, uf);
-    } finally {
-        _setLiveRefreshState(false);
-    }
     // Sempre cabla cliques no card de top-5 concentracao (independente de filtro):
     // SSR ja renderizou a versao all-time, queremos que clique abra dialog.
     _wireConcentracaoClicks();
@@ -82,10 +110,10 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
         }
     }
 
-    if (panelPromises.length) await Promise.all(panelPromises);
+    let completo = (await Promise.all(panelPromises)).every(ok => ok !== false);
 
     const cards = Array.from(document.querySelectorAll('.finding-card[data-query]'));
-    if (!cards.length) return;
+    if (!cards.length) return completo;
 
     // Cards with cache: render instantly. Cards without: fetch individually.
     const uncachedCards = [];
@@ -114,6 +142,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 });
 
                 if (!response.ok) {
+                    completo = false;
                     countEl.textContent = 'Tempo excedido';
                     body.innerHTML = '<p class="text-sm text-muted">Esse bloco nao terminou a tempo nesta tentativa.</p>';
                     card.classList.remove('loading');
@@ -144,6 +173,7 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
                 initMobileDescriptions(body);
                 initClickableRows(body);
             } catch {
+                completo = false;
                 countEl.textContent = '—';
                 const countLabel = countEl.nextElementSibling;
                 if (countLabel) countLabel.style.display = 'none';
@@ -155,5 +185,5 @@ async function bootstrapCityReport(municipio, uf, dataInicio, dataFim) {
             updateSectionSummaries();
         });
     }
+    return completo;
 }
-

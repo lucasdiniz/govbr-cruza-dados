@@ -46,6 +46,24 @@ sequenceDiagram
 
 > **Cache-only by design:** rotas pesadas (`/api/cidade/q/*`) só leem `web_cache`; nunca tocam Postgres em request quente. Quem popula o cache é [`web/warm_cache.py`](../web/warm_cache.py). Detalhes em [cache.md](cache.md).
 
+**Período do perfil PB.** A despesa segue os dias de empenho. Receita e folha
+são mensais: somam os valores disponíveis de cada competência tocada pelas
+datas inclusivas, sem ratear por dia. A receita usa `mes_ano` (`MMYYYY`),
+apenas **Lançamento de Receita**, sem descontar Fundeb. É a mesma soma usada
+no percentual folha/receita. Receita zero ou ausente, ou folha ausente, torna
+o percentual indisponível; o HTML do ano não herda esse valor do histórico.
+Exemplo: em 26/11/2026, `12M` vai de 27/11/2025 a 26/11/2026: **13**
+competências (nov/2025 a nov/2026). `ANO` usa jan–nov/2026. Sem filtro, a
+leitura continua histórica, pela MV/cache sem prefixo. O resumo mensal de
+despesas (`/cidade/<slug>/AAAA-MM`) não mede essa receita nem seus centavos.
+Para folha, `YYYYMM` e `YYYY-MM` são equivalentes; meses inválidos não entram.
+As APIs exigem dias em `AAAA-MM-DD`. Nos dois presets, `PERFIL` e `KPI_SUMMARY`
+só atendem o cache hit se **ambos os limites diários** da linha corresponderem
+ao pedido. O HTML pode mostrar a última foto ANO com suas **datas reais**:
+se não termina hoje, não seleciona “Ano atual”. O bootstrap pede o intervalo
+exibido, não o ano do relógio. Se não há foto verificável, não preencher com
+all-time; ver a [ordem de publicação e reversão](cache.md#perfil-por-competência-preparação-aprovação-e-reversão).
+
 **Vínculos no diálogo de servidor:** `/api/servidor/detalhes` consolida o
 histórico por município, unidade gestora, matrícula, cargo e admissão.
 Municípios ausentes (`NULL`, vazio, `\N`, `-`) só usam o nome conhecido de

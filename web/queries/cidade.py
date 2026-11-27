@@ -150,6 +150,7 @@ WHERE r.municipio IS NOT NULL
 """
 
 PERFIL_MUNICIPIO_LIVE = """
+WITH despesa AS (
 SELECT %(municipio)s AS municipio,
        COUNT(*) AS qtd_empenhos,
        SUM(d.valor_empenhado) AS total_empenhado,
@@ -177,34 +178,49 @@ SELECT %(municipio)s AS municipio,
        NULL::bigint AS qtd_licitacoes,
        NULL::bigint AS qtd_proponente_unico,
        NULL::numeric AS pct_proponente_unico,
-       ROUND(100.0 * (1 - SUM(d.valor_pago) / NULLIF(SUM(d.valor_empenhado), 0)), 1) AS pct_nao_executado,
-       (SELECT SUM(valor) FROM tce_pb_receita
-        WHERE unaccent(municipio) = unaccent(%(municipio)s)
-          AND tipo_atualizacao_receita ILIKE 'Lançamento de Receita'
-          AND ano >= %(ano_inicio)s AND ano <= %(ano_fim)s
-       ) AS receita_arrecadada,
-       (SELECT SUM(valor_vantagem) FROM tce_pb_servidor
-        WHERE unaccent(municipio) = unaccent(%(municipio)s)
-          AND ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
-          AND ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')
-       ) AS total_folha,
-       (SELECT ROUND(100.0 * COALESCE(
-            (SELECT SUM(valor_vantagem) FROM tce_pb_servidor
-             WHERE unaccent(municipio) = unaccent(%(municipio)s)
-               AND ano_mes >= REPLACE(%(ano_mes_inicio)s, '-', '')
-               AND ano_mes <= REPLACE(%(ano_mes_fim)s, '-', '')), 0)
-          / NULLIF(
-            (SELECT SUM(valor) FROM tce_pb_receita
-             WHERE unaccent(municipio) = unaccent(%(municipio)s)
-               AND tipo_atualizacao_receita ILIKE 'Lançamento de Receita'
-               AND ano >= %(ano_inicio)s AND ano <= %(ano_fim)s), 0), 1)
-       ) AS pct_folha_receita,
-       NULL::numeric AS risco_score
+       ROUND(100.0 * (1 - SUM(d.valor_pago) / NULLIF(SUM(d.valor_empenhado), 0)), 1) AS pct_nao_executado
 FROM tce_pb_despesa d
 WHERE d.municipio = %(municipio)s
   AND d.data_empenho >= %(data_inicio)s
   AND d.data_empenho <= %(data_fim)s
   AND d.valor_empenhado > 0
+), receita AS (
+    SELECT SUM(valor) AS receita_arrecadada FROM tce_pb_receita
+    WHERE unaccent(municipio) = unaccent(%(municipio)s)
+      AND tipo_atualizacao_receita ILIKE 'Lançamento de Receita'
+      -- MMYYYY não é ordenável. Comparar por igualdade inclui só competências
+      -- válidas, inclusive os meses das duas pontas, sem rateio diário.
+      AND mes_ano IN (
+          SELECT to_char(mes, 'MMYYYY')
+          FROM generate_series(date_trunc('month', %(data_inicio)s::timestamp),
+                               %(data_fim)s::timestamp, interval '1 month') AS meses(mes)
+      )
+), folha AS (
+    SELECT SUM(valor_vantagem) AS total_folha FROM tce_pb_servidor
+    WHERE unaccent(municipio) = unaccent(%(municipio)s)
+      AND ano_mes ~ '^[0-9]{4}-?(0[1-9]|1[0-2])$'
+      AND replace(ano_mes, '-', '') BETWEEN replace(%(ano_mes_inicio)s, '-', '')
+                                        AND replace(%(ano_mes_fim)s, '-', '')
+)
+SELECT despesa.*, receita_arrecadada, total_folha,
+       ROUND(100.0 * total_folha / NULLIF(receita_arrecadada, 0), 1) AS pct_folha_receita,
+       NULL::numeric AS risco_score,
+       %(ano_mes_inicio)s::text AS competencia_receita_inicio,
+       %(ano_mes_fim)s::text AS competencia_receita_fim,
+       %(data_inicio)s::text AS periodo_inicio, %(data_fim)s::text AS periodo_fim
+FROM despesa CROSS JOIN receita CROSS JOIN folha
+"""
+
+# Só a preparação privada usa a consulta sem esta guarda. Na leitura pública,
+# a própria consulta verifica a publicação no mesmo snapshot (inclusive CUSTOM).
+# Um miss de um dos perfis ainda tem o outro como testemunha da aprovação.
+PERFIL_MUNICIPIO_PUBLICADO = PERFIL_MUNICIPIO_LIVE + """
+WHERE EXISTS (
+    SELECT 1 FROM web_cache
+    WHERE municipio = %(municipio)s AND query_id IN ('ANO:PERFIL', '12M:PERFIL')
+      AND columns @> '["periodo_inicio","periodo_fim","competencia_receita_inicio"]'::jsonb
+      AND row_count = 1
+)
 """
 
 HEATMAP_MENSAL = """

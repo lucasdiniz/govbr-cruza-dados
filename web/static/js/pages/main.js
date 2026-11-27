@@ -106,23 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Date filter handlers
     _initDateInputsBr();
-    const runDateRefresh = async (message, refreshFn) => {
-        if (_dateFilterBusy) return;
-        _dateFilterBusy = true;
-        _setDateFilterButtonBusy(true);
-        _setDateFilterStatus(message || 'Atualizando dados do periodo...');
-        try {
-            await refreshFn();
-            const statusEl = document.getElementById('dateFilterStatus');
-            if (!statusEl?.classList.contains('color-red')) _setDateFilterStatus('Filtro aplicado.');
-        } catch (err) {
-            console.warn('Falha ao atualizar filtro de periodo', err);
-            _setDateFilterStatus('Nao foi possivel atualizar os dados agora.', 'error');
-        } finally {
-            _dateFilterBusy = false;
-            _setDateFilterButtonBusy(false);
-        }
-    };
     const applyDateFilter = () => {
         const range = _validateDateInputs();
         if (!range) return;
@@ -134,11 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 municipio: _currentMunicipio || '',
             });
         }
-        runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
-            _setDateInputs(range.inicio, range.fim);
-            _resetCityPanelsLoading();
-            await bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
-        });
+        bootstrapCityReport(_currentMunicipio, _currentUf, range.inicio, range.fim);
     };
     document.getElementById('btnFiltrarData')?.addEventListener('click', applyDateFilter);
     ['dateInicio', 'dateFim'].forEach((id) => {
@@ -156,11 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 municipio: _currentMunicipio || '',
             });
         }
-        runDateRefresh('Voltando para todo o historico...', async () => {
-            _setDateInputs('', '');
-            _resetCityPanelsLoading();
-            await bootstrapCityReport(_currentMunicipio, _currentUf);
-        });
+        bootstrapCityReport(_currentMunicipio, _currentUf);
     });
 
     document.querySelectorAll('[data-date-preset]').forEach((btn) => {
@@ -175,15 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     municipio: _currentMunicipio || '',
                 });
             }
-            runDateRefresh('Atualizando dados para o periodo selecionado...', async () => {
-                _setDateInputs(inicio, fim);
-                _resetCityPanelsLoading();
-                if (preset === 'all') {
-                    await bootstrapCityReport(_currentMunicipio, _currentUf);
-                    return;
-                }
-                await bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
-            });
+            bootstrapCityReport(_currentMunicipio, _currentUf, inicio, fim);
         });
     });
 });

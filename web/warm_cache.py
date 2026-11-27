@@ -182,6 +182,13 @@ def _skip_mode_label() -> str:
 # leem apenas live (query_id sem sufixo); only o warm le shadow via
 # _effective_qid.
 SHADOW_SUFFIX = "__pending"
+# Não reutilizar as sombras revisadas no swap genérico (nem o contrário).
+
+
+def sombra_perfil_datado(qid: str) -> str:
+    # Único ":" na primeira posição: nem o batch legado (prefixo + ":",
+    # ou sem ":" para all-time) alcança esta chave. Reset LIKE '%__pending' também não.
+    return ":p1b_" + qid.replace(":", "_")
 
 # Patterns de query_id em modo shadow (match EXATO de qid ou base). Vazio = sem shadow.
 REWARM_KEYS = {
@@ -194,6 +201,12 @@ REWARM_KEYS = {
 CACHE_DEPENDENCY_GRAPH: dict[str, list[str]] = {
     "KPI_SUMMARY": ["PERFIL", "TOP_FORNECEDORES", "TOP_SERVIDORES"],
 }
+
+
+def _somente_perfil_datado() -> bool:
+    perfis = {"ANO:PERFIL", "12M:PERFIL"}
+    return perfis <= REWARM_KEYS <= (perfis | {"ANO:KPI_SUMMARY", "12M:KPI_SUMMARY"})
+
 
 # Tracking dos resultados de queries que estavam em shadow durante esta
 # execucao do warm. qid (logical, sem __pending) → (ok, fail). Usado no
@@ -247,7 +260,9 @@ def _effective_qid(query_id: str) -> str:
     Em modo shadow: anexa SHADOW_SUFFIX. Live rows (sem sufixo) continuam
     sendo servidos pelo cruza-web ate o swap final.
     """
-    return f"{query_id}{SHADOW_SUFFIX}" if _is_shadow_for(query_id) else query_id
+    if not _is_shadow_for(query_id):
+        return query_id
+    return sombra_perfil_datado(query_id) if _somente_perfil_datado() else query_id + SHADOW_SUFFIX
 
 
 def _record_shadow_result(query_id: str, ok: int, fail: int) -> None:
@@ -709,9 +724,9 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
             missing: list[str] = []
             if _is_shadow_for(perfil_qid) and not (perfil_cache and perfil_cache[1]):
                 missing.append("PERFIL")
-            if _is_shadow_for(forn_qid) and not forn_cache:
+            if (_is_shadow_for(forn_qid) or _somente_perfil_datado()) and not forn_cache:
                 missing.append("TOP_FORNECEDORES")
-            if _is_shadow_for(serv_qid) and not serv_cache:
+            if (_is_shadow_for(serv_qid) or _somente_perfil_datado()) and not serv_cache:
                 missing.append("TOP_SERVIDORES")
             if missing:
                 if verbose:
@@ -734,6 +749,20 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
             scols, srows = serv_cache
             servidores = [_row_to_dict(scols, r) for r in srows]
         summary = compute_cidade_kpis(perfil, fornecedores, servidores)
+        if _somente_perfil_datado() and prefix:
+            # TOP_* não registra os limites no cache legado. A data do novo
+            # perfil, sozinha, não prova que o KPI tirado desses TOPs é do período.
+            params = _parametros_datados(date.fromisoformat(perfil["periodo_fim"]))[periodo]
+            if params["data_inicio"] != perfil["periodo_inicio"]:
+                raise ValueError("Limites do perfil divergentes do preset")
+            params["municipio"] = mun
+            fc, fr = _execute(conn, TOP_FORNECEDORES_DATED, params, TIMEOUT_TOP_FORN)
+            sc, sr = _execute(conn, TOP_SERVIDORES_RISCO_DATED, params, TIMEOUT_TOP_SERV)
+            referencia = compute_cidade_kpis(perfil, [_row_to_dict(fc, r) for r in fr],
+                                             [_row_to_dict(sc, r) for r in sr])
+            if summary != referencia:
+                raise ValueError("KPI das dependências diverge do intervalo do perfil")
+            summary.update({k: perfil[k] for k in ("periodo_inicio", "periodo_fim")})
         # score_canonical = mv_municipio_pb_kpi_score.risco_score_unificado, mesmo
         # valor exibido no mapa coropletico. Eh uma metrica all-time da reputacao
         # do municipio, period-independent. Para periodos ANO/12M, o PERFIL local
@@ -745,6 +774,8 @@ def _compute_and_cache_kpi_summary(conn, mun: str, periodo: str, verbose: bool):
         score_canonical = perfil.get("risco_score") if not prefix else None
         if score_canonical is None and prefix:
             alltime_perfil_cache = _read_cache(conn, _effective_qid("PERFIL"), mun)
+            if _somente_perfil_datado() and not (alltime_perfil_cache and alltime_perfil_cache[1]):
+                return False
             if alltime_perfil_cache and alltime_perfil_cache[1]:
                 alltime_perfil = _row_to_dict(alltime_perfil_cache[0], alltime_perfil_cache[1][0])
                 score_canonical = alltime_perfil.get("risco_score")
@@ -1034,12 +1065,14 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     cycle_ok = cycle_fail = 0
 
     # 1. PERFIL — alimenta KPI_SUMMARY (dependencia)
-    perfil_sql = PERFIL_MUNICIPIO_LIVE if is_dated else PERFIL_MUNICIPIO
-    ok, fail = _warm_query_across_munis(
-        f"{prefix}PERFIL", perfil_sql, municipios, extra_params, TIMEOUT_PERFIL_LIVE, verbose,
-    )
-    cycle_ok += ok
-    cycle_fail += fail
+    # ANO/12M pertencem à publicação coordenada, inclusive em miss, cron
+    # sem REWARM_KEYS e rebuild. Nunca materializar metade da geração.
+    if not is_dated:
+        ok, fail = _warm_query_across_munis(
+            "PERFIL", PERFIL_MUNICIPIO, municipios, extra_params, TIMEOUT_PERFIL_LIVE, verbose,
+        )
+        cycle_ok += ok
+        cycle_fail += fail
 
     # 2. TOP_FORNECEDORES — alimenta KPI_SUMMARY
     forn_sql = TOP_FORNECEDORES_DATED if is_dated else TOP_FORNECEDORES
@@ -1058,9 +1091,10 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     cycle_fail += fail
 
     # 4. KPI_SUMMARY — depende dos 3 acima
-    ok, fail = _warm_kpi_summary_across_munis(municipios, phase_name, verbose)
-    cycle_ok += ok
-    cycle_fail += fail
+    if not is_dated:
+        ok, fail = _warm_kpi_summary_across_munis(municipios, phase_name, verbose)
+        cycle_ok += ok
+        cycle_fail += fail
 
     # 5. HEATMAP — apenas all-time
     if not is_dated:
@@ -1088,23 +1122,7 @@ def _warm_phase(phase_name: str, municipios: list[str], all_queries: list,
     return cycle_ok, cycle_fail
 
 
-def warm_cycle_pb(municipios: list[str], verbose: bool = True):
-    """Processa um ciclo completo com loop invertido (query->muni).
-
-    Estrategia: para cada fase (ANO, 12M, all-time), iteramos QUERIES e
-    paralelizamos sobre munis. Isso melhora cache locality vs o loop
-    original (muni->query) — apos a primeira muni, indexes/tables
-    relevantes ja estao quentes no shared_buffers/host cache.
-    """
-    # Garante schema da tabela de cache em conexao dedicada (curta).
-    bootstrap = psycopg2.connect(DSN)
-    bootstrap.autocommit = False
-    _ensure_cache_table(bootstrap)
-    bootstrap.close()
-
-    all_queries = list(CIDADE_QUERIES.values())
-
-    today = _today_gmt3()
+def _parametros_datados(today: date) -> dict:
     ano_params_base = {
         "data_inicio": f"{today.year}-01-01",
         "data_fim": today.isoformat(),
@@ -1126,17 +1144,29 @@ def warm_cycle_pb(municipios: list[str], verbose: bool = True):
         "ano_mes_fim": today.strftime("%Y-%m"),
     }
 
+    return {"ANO": ano_params_base, "12M": params_12m_base}
+
+
+def warm_cycle_pb(municipios: list[str], verbose: bool = True):
+    """Processa um ciclo completo com loop invertido (query->muni)."""
+    bootstrap = psycopg2.connect(DSN)
+    bootstrap.autocommit = False
+    _ensure_cache_table(bootstrap)
+    bootstrap.close()
+
+    all_queries = list(CIDADE_QUERIES.values())
+    periodos = _parametros_datados(_today_gmt3())
     # Fase 1: ANO atual — prioritario porque o frontend usa "ano atual" como
     # filtro padrao, gerando mais cache hits.
     # IMPORTANTE: usar prefix "ANO" (sem ano), porque eh o que o frontend espera
     # ler em web/db.py e web/routes/cidade.py. O ano em si vai nos params.
     ano_ok, ano_fail = _warm_phase(
-        "ANO", municipios, all_queries, ano_params_base, verbose,
+        "ANO", municipios, all_queries, periodos["ANO"], verbose,
     )
 
     # Fase 2: ultimos 12 meses, usado pelo preset frequente do frontend.
     m12_ok, m12_fail = _warm_phase(
-        "12M", municipios, all_queries, params_12m_base, verbose,
+        "12M", municipios, all_queries, periodos["12M"], verbose,
     )
 
     # Fase 3: all-time (sem prefixo, sem params de data).
@@ -1411,6 +1441,9 @@ def main():
         help="Usado com --cleanup-orphan-empresa: so loga contagem sem deletar.",
     )
     args = parser.parse_args()
+
+    if _somente_perfil_datado() and not args.cleanup_orphan_empresa:
+        parser.error("Use web.cache_perfil_datado para preparar e aprovar as quatro chaves juntas.")
 
     # Standalone cleanup: nao dispara warm, sai apos limpar.
     if args.cleanup_orphan_empresa:

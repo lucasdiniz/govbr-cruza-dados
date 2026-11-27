@@ -256,7 +256,7 @@ Panorama de transparencia de {{ municipio }} - PB.
 
 <details class="date-filter-bar" id="dateFilterBar">
     <summary class="date-filter-summary">
-        <span class="date-filter-current" id="dateFilterCurrent">Per&iacute;odo: ano atual</span>
+        <span class="date-filter-current" id="dateFilterCurrent">Per&iacute;odo: {{ default_data_inicio }} a {{ default_data_fim }}</span>
         <span class="date-filter-action">Alterar per&iacute;odo</span>
     </summary>
     <div class="date-filter-panel" role="group" aria-label="Filtro de periodo">
@@ -272,7 +272,7 @@ Panorama de transparencia de {{ municipio }} - PB.
         </div>
         <div class="date-filter-presets" role="group" aria-label="Atalhos de periodo">
             <md-filter-chip label="Tudo" data-date-preset="all"></md-filter-chip>
-            <md-filter-chip label="Ano atual" selected data-date-preset="current-year"></md-filter-chip>
+            <md-filter-chip label="Ano atual"{% if ano_atual %} selected{% endif %} data-date-preset="current-year"></md-filter-chip>
             <md-filter-chip label="12 meses" data-date-preset="last-12m"></md-filter-chip>
             <md-text-button id="btnLimparData" style="display:none">Limpar</md-text-button>
         </div>
@@ -630,7 +630,8 @@ document.addEventListener("DOMContentLoaded", () => {
         {{ perfil.municipio|tojson }},
         {{ (display_uf or 'PB')|tojson }},
         {{ default_data_inicio|tojson }},
-        {{ default_data_fim|tojson }}
+        {{ default_data_fim|tojson }},
+        true
     ).finally(() => {
         // Após bootstrap (mesmo se algum painel falhou), tenta abrir dialog
         // a partir de ?d=...&d_*=... na URL (deep-link compartilhavel).

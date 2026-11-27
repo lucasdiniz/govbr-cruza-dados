@@ -65,19 +65,111 @@ sequenceDiagram
         PG-->>UI: rows ANTIGOS — live intacto
     end
 
-    alt fail == 0 para TODAS as qids em shadow
+    alt existem qids elegiveis
         W->>PG: BEGIN
         W->>PG: UPSERT live ← pending — atômico, todos qids
         W->>PG: DELETE __pending rows
         W->>PG: COMMIT
         Note over UI,PG: readers passam a ver NOVOS<br/>todos os qids simultaneamente
-    else fail diferente de zero em qualquer qid
+    else nenhuma qid elegivel
         W->>W: ABORT swap
-        Note over PG: live ANTIGO mantido<br/>__pending será descartado no próximo deploy<br/>via Reset shadow rows step
+        Note over PG: live ANTIGO mantido
     end
 ```
 
-Os comentários canônicos do mecanismo estão em [`web/warm_cache.py:94-178`](../web/warm_cache.py).
+Os comentários canônicos do mecanismo estão em [`web/warm_cache.py`](../web/warm_cache.py).
+O swap genérico é atômico **entre as chaves elegíveis**; uma chave com falha pode
+ficar de fora. Ele não mantém geração anterior. Não usá-lo para a correção abaixo.
+
+## Perfil por competência: preparação, aprovação e reversão
+
+Procedimento **manual**, primeiro em clone datado. Não é etapa de deploy.
+O alvo é o produto de **todo o cadastro não nulo** de `mv_municipio_pb_risco`
+por quatro chaves: `ANO:PERFIL`, `12M:PERFIL` e os respectivos `KPI_SUMMARY`.
+Nada de `PERFIL` sem prefixo, `drop_cache`, invalidação geral ou `etl_phase=sql`.
+O warm genérico **desta versão** não escreve essas quatro chaves, nem em
+cron/rebuild com cache miss. Os demais resultados (inclusive all-time)
+continuam no ciclo habitual. `TRUNCATE`, invalidações por substring, escritores
+antigos e mudanças das fontes não obedecem ao lock deste módulo.
+Após alterações nas fontes ou nos TOPs, coordenar nova preparação e aprovação;
+o cron genérico não atualiza os quatro resultados publicados.
+
+1. Identificar responsável, SHA do código, snapshot das fontes, horário de
+   Brasília, escopo municipal esperado e limites de latência/locks. Confirmar
+   que ETL, refresh, warm e reset/invalidação não estão ativos nem serão
+   disparados até o fim. O advisory lock do comando serializa **só** outros
+   comandos deste módulo. **Não é seguro publicar com o cron ativo.** Sem
+   controle da fila e de todos os produtores, não iniciar. Verificar o plano
+   com volume representativo, espaço e permissões (incluindo `CREATE TABLE`
+   para a inversa). As leituras web já devem ocultar `__pending`.
+2. `WARM_REWARM_KEYS=ANO:PERFIL,12M:PERFIL python -m web.cache_perfil_datado preparar`
+   escreve só as quatro sombras (`:p1b_ANO_PERFIL`, `:p1b_12M_PERFIL`,
+   `:p1b_ANO_KPI_SUMMARY`, `:p1b_12M_KPI_SUMMARY`). Não casam com o reset
+   `LIKE '%__pending'`, nem com os prefixos públicos, inclusive no batch
+   legado. Exige dependências live presentes (`PERFIL`
+   histórico e `TOP_*` dos dois períodos); lista vazia é diferente de chave
+   ausente. Não aceita sombra residual: após falha, investigar e, com autorização,
+   descartar **apenas** as quatro chaves privadas exatas antes de recomeçar.
+   Para não atribuir o período de um perfil novo a TOPs antigos, a preparação
+   compara o KPI derivado do cache com o recalculado pelas duas consultas TOP
+   nos mesmos dias. Divergência bloqueia o lote; não reescreve os TOPs. Orçar
+   também essas leituras (duas por período/município) e a duração até a virada do dia.
+   Falha de município ou mudança na baseline não emite manifesto aprovado.
+3. Guardar o SHA-256 emitido, dia e limites dos dois períodos. O hash identifica
+   os dados, **não certifica a paridade**. Conferir os pares município/chave
+   (faltas e sobras), comparar valores e percentuais em sombra com os agregados
+   da publicação fixada e o KPI derivado. Conferir janeiro, novembro e o
+   controle 2025; no drill de **despesa**, igualar `ano` da rota, verificar
+   `ano_arquivo` separadamente e não inferir centavos do HTML. Ensaiar as
+   quatro leituras (`/api/perfil`, `/api/kpis`, batch e HTML) em clone e a
+   inversa. Não promover com diferença inexplicada ou sem segunda aprovação.
+4. `python -m web.cache_perfil_datado promover SHA256_APROVADO` revalida o mesmo
+   dia, cadastro, conteúdo das dependências, live e sombras sob lock de escrita
+   de `web_cache` (`NOWAIT`; leitores continuam). Salva **na mesma transação**
+   a pré-imagem de cada par, inclusive ausência, e a imagem publicada em
+   `web_cache_perfil_reversao`, fora da tabela servida. Só então promove o
+   conjunto. A tabela de reversão não pode preexistir. O hash inclui timestamps:
+   até a reescrita do mesmo valor pede nova conferência. Se o custo de hash/lock
+   não couber no orçamento em clone, não liberar. Requests com vários SELECTs
+   podem atravessar o commit; a atomicidade é da geração no banco.
+5. Se necessário e autorizado, `python -m web.cache_perfil_datado reverter SHA256_APROVADO`.
+   Mesmo em outro dia, verifica a pós-imagem **e** a assinatura das cinco
+   dependências por município do escopo original, antes de qualquer escrita.
+   Restaura os valores e
+   timestamps anteriores e remove só pares que antes não existiam. Se outra
+   escrita interveio, parar e reconciliar, não forçar. Após estabilização,
+   arquivar a tabela de inversa com acesso restrito, verificar restauração e
+   só então liberar o nome para outra geração. **Reverter código não restaura
+   cache**. A inversa restaura as linhas, não o comportamento dos binários antigos.
+
+**Compatibilidade e ordem de exposição.** Preparar e revisar a sombra fora do
+tráfego com os escritores parados. Coordenar aprovação, promoção e troca dos
+leitores; se não for possível separar código instalado de código servindo
+tráfego, exigir janela de manutenção. Não há promessa de zero downtime: o
+novo SSR e as APIs datadas recusam (`503`) fotos legadas sem limites comprovados,
+inclusive depois de uma inversa para o legado. Manter a versão anterior do
+leitor disponível para esse rollback. All-time explícito continua disponível.
+O batch omite só `PERFIL`/`KPI_SUMMARY` quando não são do preset solicitado;
+as demais chaves mantêm o contrato legado. Em cache miss/CUSTOM a SQL pública
+só lê as tabelas financeiras se houver um perfil datado publicado **daquele
+município**; somente a preparação pode calculá-lo antes disso. Se ambos os
+perfis forem invalidados será necessária nova publicação. Revalidar também as
+rotas com os consumidores e limites de latência do clone antes de expor.
+
+O readiness do manifesto estático não cobre esta transição. Antes de abrir
+tráfego no leitor novo, exigir 200 no HTML de cidade, perfil, KPIs e batch e
+conferir o intervalo e os indicadores nas quatro respostas. Ensaiar também
+o dia seguinte ao da foto: o intervalo congelado vira `CUSTOM` e a abertura
+pode trocar uma leitura em lote por chamadas por painel. Medir a latência
+e o custo no clone; não chamar essas chaves de “até hoje” para ganhar cache.
+Na inversa, não reabrir o tráfego com o leitor novo sobre as linhas legadas.
+
+Para repetir o teste offline, usar PG16 descartável com `listen_addresses=''`,
+socket único em diretório privado, porta de socket `54160`, usuário `p1b_teste`,
+base `p1b_test` e `P1B_TEST_SOCKET` apontando para esse diretório. Executar
+`python -m pytest -q tests/test_perfil_competencia.py` e parar o cluster ao fim.
+As fixtures não chamam o site. Exercitam os workers e o caminho de cron
+somente no schema sintético desse socket.
 
 ## 3 modos de atualização
 
@@ -130,7 +222,7 @@ curl -X POST https://transparenciapb.org/api/cache/invalidate \
 ## Caveats
 
 - **Swap exige `fail == 0`** para essa qid. Uma única falha em qualquer município aborta o swap dessa qid; rows `__pending` ficam até o próximo deploy executar a etapa "Reset shadow rows".
-- **Atomicity all-or-nothing:** o swap final é uma única transação cobrindo todas as qids elegíveis — readers nunca vêem derived NOVO + source VELHO. Em troca, basta uma qid falhar para abortar o swap **inteiro** desse ciclo.
+- **Atomicidade do swap genérico:** erro durante a transação desfaz todos os seus UPSERTs. Falha ocorrida **antes**, no preparo, só tira a qid afetada da lista elegível.
 - **Sem TTL automático:** cache não expira sozinho. Refresh acontece quando `deploy.yml` é executado com `rewarm_cache_keys`. Não há cron de rewarm automático (ainda).
 - **`web_cache` cresce com dated:** cada Q## com `sql_full_dated` registra pelo menos all-time + ano-atual (`ANO:`), dobrando linhas. PB: ~223 munis × N queries × 2 variantes.
 - **Cobertura mínima 80%** antes de `expose_empresa_sitemap=enable` no deploy — gate manual no `deploy.yml`.
