@@ -92,11 +92,12 @@ def test_runner_trata_bucket_replace_falho_como_erro():
         bucket_id="2026", all_success=False,
         files=[(Path("x.csv"), SimpleNamespace(error="GUARDA_REPLACE G3: ..."))],
     )
-    ok = SimpleNamespace(bucket_id="2025", all_success=True, files=[])
+    ok = SimpleNamespace(bucket_id="2025", all_success=True,
+                         files=[(Path("d.csv"), SimpleNamespace(replace_stats={"removidas": 0}))])
     summary = {"status": "partial", "buckets": [ok, falho]}
     problems = _replace_problems("tce_pb.tce_pb_despesa", DESPESA, summary)
     assert problems == ["tce_pb.tce_pb_despesa bucket 2026: GUARDA_REPLACE G3: ..."]
-    # Spec sem replace: bucket falho segue a regra antiga (partial nao falha).
+    # O diagnóstico de replace não se aplica a specs append-only.
     assert _replace_problems("x.y", dataclasses.replace(DESPESA, bucket_replace=None), summary) == []
     # Download falho (sem arquivo processado) tambem e erro.
     sem_arquivo = SimpleNamespace(bucket_id="2024", all_success=False, files=[])
@@ -381,10 +382,10 @@ def test_arquivo_vazio_ou_so_cabecalho_falha_em_replace(tmp_path):
     html.write_bytes(b"<!DOCTYPE html><html>Arquivo Sendo Processado</html>")
     res = _incremental_load(DESPESA, None, html, file_sequence=1, bucket_id="2026")
     assert res.status == "failed" and "G4" in res.error
-    # Spec acumulativa mantem o comportamento antigo (sucesso vazio).
+    # Ausência de registros não comprova competência íntegra nem em append-only.
     acumulativa = dataclasses.replace(DESPESA, bucket_replace=None)
     res = _incremental_load(acumulativa, None, vazio, file_sequence=1, bucket_id="2026")
-    assert res.status == "success"
+    assert res.status == "failed"
 
 
 def test_linha_com_municipio_vazio_e_mantida(clean):

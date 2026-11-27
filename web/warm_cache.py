@@ -311,6 +311,8 @@ def _swap_all_pending_shadows(verbose: bool = True) -> tuple[int, int]:
                 flush=True,
             )
 
+    if os.environ.get("WARM_EXIGIR_COMPLETO") == "1" and (aborted or skipped_zero):
+        raise RuntimeError("Warm incremental incompleto: sombra parcial ou vazia")
     if not swappable:
         if verbose:
             print("--- Shadow swap done: 0 swapped ---", flush=True)
@@ -345,6 +347,8 @@ def _swap_all_pending_shadows(verbose: bool = True) -> tuple[int, int]:
                         (qid, shadow_qid),
                     )
                     promoted = cur.rowcount
+                    if os.environ.get("WARM_EXIGIR_COMPLETO") == "1" and promoted != _shadow_results[qid][0]:
+                        raise RuntimeError("Quantidade de chaves em sombra divergente")
                     cur.execute(
                         f"DELETE FROM {CACHE_TABLE} WHERE query_id = %s",
                         (shadow_qid,),
@@ -1459,7 +1463,16 @@ def main():
         # PB + empresas + empresas_municipios + licitacoes + cidade_resumo.
         # Garante que KPI_SUMMARY (derived) ja foi computado contra o
         # shadow de PERFIL antes do swap dos deps.
-        _swap_all_pending_shadows(verbose=True)
+        estrito = os.environ.get("WARM_EXIGIR_COMPLETO") == "1"
+        if estrito and (fail_p + fail_e + fail_em + fail_l + fail_r):
+            raise RuntimeError("Warm incremental incompleto: promoção das chaves em sombra bloqueada")
+        if estrito:
+            ok_sm, fail_sm, skip_sm = _warm_sitemaps_phase()
+            if fail_sm:
+                raise RuntimeError("Sitemap incompleto; nenhuma sombra promovida")
+        _, retidas = _swap_all_pending_shadows(verbose=True)
+        if estrito and retidas:
+            raise RuntimeError("Promoção das sombras não confirmada")
         # Reset tracking pra eventual proximo ciclo (mode --loop).
         _shadow_results.clear()
         # Sitemaps sempre rodam por ULTIMO (rapido, ~30-60s pra ~40 entries)
@@ -1467,7 +1480,8 @@ def main():
         # cruza-web. Roda APOS shadow swap porque os counts() referenciam
         # MVs que ja devem estar no estado final (qids SITEMAP_XML nao
         # participam de shadow swap). PR #85 + rebase 2026-05-19.
-        ok_sm, fail_sm, skip_sm = _warm_sitemaps_phase()
+        if not estrito:
+            ok_sm, fail_sm, skip_sm = _warm_sitemaps_phase()
         return (
             ok_p + ok_e + ok_em + ok_l + ok_r + ok_sm,
             fail_p + fail_e + fail_em + fail_l + fail_r + fail_sm,

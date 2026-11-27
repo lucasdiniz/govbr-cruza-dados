@@ -292,6 +292,26 @@ Causas típicas:
 
 ## Observabilidade
 
+**Contenção de carga incompleta ([ADR-0016](adr/0016-publicacao-incremental-completa.md)).**
+Um arquivo com rejeição de leitura ou chave nula não aplica nem as suas
+linhas válidas. A fase registra `rows_streamed` (válidas + rejeitadas do
+pré-parser), `rows_failed` (todas as rejeições) e `rows_rejected_null_key`
+(subconjunto, não somar duas vezes). Em `DO NOTHING` por chave natural,
+havendo conflitos, cada ocorrência precisa ter um espelho dos campos
+projetados no destino; `rows_conflict_diff_payload` conta as divergentes e
+o arquivo inteiro é revertido. Nas chaves sintéticas vale a equivalência
+do hash da spec, não uma afirmação de igualdade byte a byte do CSV.
+As novas referências de arquivo na fase e na DLQ têm o formato
+`caminho#sha256=<SHA-256 do CSV>`; a posição na DLQ é a do **registro
+lógico**, não a linha física em CSV multilinha. O SHA do ZIP, quando existe,
+é do download e não deve ser comparado diretamente com o do membro.
+
+Uma fase confirmada e a pendência de invalidação são gravadas na transação
+do arquivo. Uma rejeição posterior não desfaz as anteriores; não promova o
+cache enquanto o escopo não fechar. Este passo não altera semântica de
+`NULL`, `_nk_md5` nem registros anteriores. Replay histórico exige reconciliar
+o conteúdo exato, inclusive zeros e marcadores legados, em clone.
+
 Três views consolidam o estado do framework (todas em `sql/29_etl_views.sql`):
 
 | View | Propósito |

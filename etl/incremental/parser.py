@@ -113,6 +113,7 @@ def stream_csv_to_staging(
     source: str,
     table: str,
     bucket_id: str,
+    arquivo_sha256: str,
 ) -> PreParseResult:
     """Streams CSV via csv.reader. Linhas válidas → temp tab-separated file
     para COPY. Linhas malformadas → DLQ.
@@ -121,27 +122,32 @@ def stream_csv_to_staging(
     """
     csv_header_hash = validate_csv_header(csv_path, spec)
 
-    expected_ncols = len(spec.columns)
-    valid_count = 0
-    rejected_count = 0
-    recovered_via_fallback = 0
-
     temp_fd, temp_name = tempfile.mkstemp(
         prefix=f"_stg_{spec.source}_{spec.table}_",
         suffix=".tsv",
     )
     temp_path = Path(temp_name)
+    try:
+        return _escrever_tsv(csv_path, spec, dlq_conn, run_id, source, table,
+                             arquivo_sha256, temp_fd, temp_path, csv_header_hash)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
 
+
+def _escrever_tsv(csv_path, spec, dlq_conn, run_id, source, table, arquivo_sha256,
+                  temp_fd, temp_path, csv_header_hash):
+    referencia = f"{csv_path}#sha256={arquivo_sha256}"
+    expected_ncols = len(spec.columns)
+    valid_count = rejected_count = recovered_via_fallback = 0
     try:
         with open(temp_fd, "w", encoding="utf-8", newline="") as out_f:
-            writer = csv.writer(out_f, delimiter="\t", quoting=csv.QUOTE_NONE,
-                                escapechar="\\")
-            in_f, _enc = _open_csv(csv_path, spec)
-            try:
+            writer = csv.writer(out_f, delimiter="\t", quoting=csv.QUOTE_NONE, escapechar="\\")
+            with _open_csv(csv_path, spec)[0] as in_f:
                 # Use a wrapper que strip NULs (CSV files BR sometimes have stray NUL bytes)
                 line_iter = (line.replace("\x00", "") for line in in_f)
                 reader = csv.reader(line_iter, delimiter=spec.csv_delimiter,
-                                    quotechar=spec.csv_quotechar, strict=False)
+                                    quotechar=spec.csv_quotechar, strict=True)
                 try:
                     next(reader)
                 except StopIteration:
@@ -156,7 +162,7 @@ def stream_csv_to_staging(
                         break
                     except csv.Error as e:
                         _dlq_insert(
-                            dlq_conn, run_id, source, table, str(csv_path),
+                            dlq_conn, run_id, source, table, referencia,
                             line_num, "<csv_parse_error>",
                             f"csv_error: {e!s}",
                         )
@@ -164,7 +170,7 @@ def stream_csv_to_staging(
                         continue
                     except UnicodeDecodeError as e:
                         _dlq_insert(
-                            dlq_conn, run_id, source, table, str(csv_path),
+                            dlq_conn, run_id, source, table, referencia,
                             line_num, "<encoding_error>",
                             f"encoding_error: {e!s}",
                         )
@@ -184,7 +190,7 @@ def stream_csv_to_staging(
                             recovered_via_fallback += 1
                         else:
                             _dlq_insert(
-                                dlq_conn, run_id, source, table, str(csv_path),
+                                dlq_conn, run_id, source, table, referencia,
                                 line_num, _join_row(row, spec.csv_delimiter),
                                 f"col_count_mismatch (expected {expected_ncols}, got {len(row)})",
                             )
@@ -195,7 +201,7 @@ def stream_csv_to_staging(
                     for v in row:
                         if v is not None and len(v) > spec.max_field_size:
                             _dlq_insert(
-                                dlq_conn, run_id, source, table, str(csv_path),
+                                dlq_conn, run_id, source, table, referencia,
                                 line_num, "<field_too_large>",
                                 f"field_too_large (>{spec.max_field_size})",
                             )
@@ -205,20 +211,18 @@ def stream_csv_to_staging(
                         rejected_count += 1
                         continue
 
-                    writer.writerow([_clean_for_tab(v) for v in row])
+                    writer.writerow([*(_clean_for_tab(v) for v in row), line_num])
                     valid_count += 1
-            finally:
-                in_f.close()
     except UnicodeDecodeError as e:
         _dlq_insert(
-            dlq_conn, run_id, source, table, str(csv_path),
+            dlq_conn, run_id, source, table, referencia,
             -1, f"<encoding_error_at_{e.start}>",
             f"encoding_error: {e!s}",
         )
         rejected_count += 1
     except csv.Error as e:
         _dlq_insert(
-            dlq_conn, run_id, source, table, str(csv_path),
+            dlq_conn, run_id, source, table, referencia,
             -1, "<csv_parse_error>",
             f"csv_error: {e!s}",
         )
@@ -313,8 +317,9 @@ def _dlq_insert(
                 (str(run_id), source, table, file_path, line_number,
                  raw_line[:8000], raw_hash, reason),
             )
-    except Exception as e:
-        logger.warning("DLQ insert failed: %s", e)
+    except Exception:
+        # DETAIL/CONTEXT do Postgres pode conter o conteúdo bruto da linha.
+        raise RuntimeError("Não foi possível registrar rejeição na DLQ") from None
 
 
 # ─── BR format conversion helpers (used in staging_typed SQL) ─────────────────

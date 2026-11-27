@@ -60,12 +60,10 @@ def staging_name(source: str, table: str, run_id, seq: int, kind: str, *, bucket
 def create_staging_raw(main: "MainTxConn", spec: "LoaderSpec", stg_qualified: str) -> None:
     """CREATE TABLE staging RAW com todas TEXT cols + metadata cols.
 
-    Metadata cols são adicionadas no fim:
-    - _line_num BIGINT (line number original do CSV)
-    - _raw_line TEXT (não armazenamos em raw, fica no DLQ se necessário)
+    _registro_origem preserva a posição lógica, mesmo com campos multilinha.
     """
     cols_def = ", ".join(f"{c} TEXT" for c in spec.columns)
-    sql = f"CREATE TABLE {stg_qualified} ({cols_def})"
+    sql = f"CREATE TABLE {stg_qualified} ({cols_def}, _registro_origem BIGINT NOT NULL)"
     with main.cursor() as cur:
         cur.execute(sql)
 
@@ -162,7 +160,7 @@ def build_typed_select(spec: "LoaderSpec", stg_raw: str) -> str:
         # Use CSV col name in staging (target rename happens at INSERT)
         parts.append(f"{expr} AS {col}")
 
-    return f"SELECT\n  " + ",\n  ".join(parts) + f"\nFROM {stg_raw}"
+    return f"SELECT\n  " + ",\n  ".join([*parts, "_registro_origem"]) + f"\nFROM {stg_raw}"
 
 
 def build_target_projection(spec: "LoaderSpec", *, bucket_id: str = None) -> tuple[list[str], list[str]]:

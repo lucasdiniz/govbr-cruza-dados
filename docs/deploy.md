@@ -313,11 +313,16 @@ incremental_only_buckets: "2026"   # sempre limite os anos: sem isso TODOS os an
 ([ADR-0015](adr/0015-tce-pb-replace-por-bucket.md)): o ano no banco passa a
 ser igual ao arquivo publicado (versões antigas vão para
 `<tabela>_removido`, com guardas). Um ano com guarda violada ou download falho
-faz o runner falhar; refresh das MVs **e warm** rodam mesmo assim para os anos
-que comitaram, e o job falha no último step ("ETL: Propagar falha do
-incremental"; a VM fica em B4, como em qualquer falha). O `run-name` fica `Deploy to Azure VM - incremental
+faz o runner falhar **antes** do refresh/warm (a VM pode ficar em B4).
+Arquivos anteriores podem ter comitado: conferir a fase e a fila de
+publicação antes de retomar. Rotas que consultam a base diretamente podem
+ver esses commits; uma falha não é rollback do deploy inteiro.
+O `run-name` fica `Deploy to Azure VM - incremental
 <specs> [<buckets>]` (usado pelo agendador). O step publica o artifact
-`etl-watermarks` (watermarks do banco) ao final.
+`etl-watermarks` (watermarks do banco) só ao final das etapas de publicação.
+O warm incremental exige zero falhas **reportadas pelo warmer**, mesmo
+abaixo do limite usual de 5%. Não equivale a uma troca atômica de todo o
+site: chaves fora de sombra são escritas ao longo do ciclo.
 
 **Warm**: incremental TCE-PB muda praticamente todas as chaves de cidade e
 empresa → use `warm_cache: true` + `warm_skip_hours: "0"` (rebuild em UPSERT,

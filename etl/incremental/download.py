@@ -8,7 +8,8 @@ Quando download bem-sucedido:
 - sha256 do conteúdo computado streaming
 - Se sha256 mudou vs etl_download_log.content_sha256 → invalidate_bucket_token
 
-Resumable: download para `<dest>.partial`; rename atômico só quando completo.
+O arquivo `.partial` é temporário; sem validador forte do fragmento, um
+novo GET começa do zero. Nunca concatenar bytes de publicações diferentes.
 
 Requests com User-Agent e timeout. Erros HTTP 5xx → marca failed; conditional
 GET 304 → marca not_modified.
@@ -94,6 +95,7 @@ def conditional_download(
     dest_path: Path,
     force_refetch: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
+    membros_esperados: tuple[str, ...] = (),
 ) -> DownloadResult:
     """Download com conditional GET via etl_download_log.
 
@@ -136,38 +138,21 @@ def conditional_download(
 
     req = Request(url, headers=headers, method="GET")
 
-    # Resumable: se .partial existe, tentar Range
-    resume_from = 0
-    if partial_path.exists() and not force_refetch:
-        size = partial_path.stat().st_size
-        if size > 0:
-            resume_from = size
-            req.add_header("Range", f"bytes={resume_from}-")
-
     try:
         with urlopen(req, timeout=timeout) as resp:
             status_code = resp.status
+            if status_code != 200 or resp.headers.get("Content-Range") is not None:
+                return DownloadResult(status="failed", content_changed=False, content_sha256=None,
+                                      bytes_downloaded=0, error="Resposta não contém o objeto completo")
             new_etag = resp.headers.get("ETag")
             new_lm = resp.headers.get("Last-Modified")
             content_length = resp.headers.get("Content-Length")
             cl_int = int(content_length) if content_length else None
 
-            # 304 só vem como HTTPError em urllib
-            # 200/206 → leitura
-            mode = "ab" if (status_code == 206 and resume_from > 0) else "wb"
             sha = hashlib.sha256()
 
-            # Se mode='ab', reuse hash do partial
-            if mode == "ab":
-                with open(partial_path, "rb") as exist_f:
-                    while True:
-                        c = exist_f.read(CHUNK_SIZE)
-                        if not c:
-                            break
-                        sha.update(c)
-
             bytes_dl = 0
-            with open(partial_path, mode) as out_f:
+            with open(partial_path, "wb") as out_f:
                 while True:
                     chunk = resp.read(CHUNK_SIZE)
                     if not chunk:
@@ -177,6 +162,9 @@ def conditional_download(
                     bytes_dl += len(chunk)
 
             content_sha = sha.hexdigest()
+            if cl_int is not None and bytes_dl != cl_int:
+                return DownloadResult(status="failed", content_changed=False, content_sha256=None,
+                                      bytes_downloaded=bytes_dl, error="Content-Length divergente")
 
             # Detect "Arquivo Sendo Processado" HTML page (server returns 200 OK
             # with HTML stub instead of CSV). Inspect the .partial file BEFORE
@@ -202,11 +190,6 @@ def conditional_download(
             except FileNotFoundError:
                 pass
 
-            # Atomic rename .partial → final
-            if dest_path.exists():
-                dest_path.unlink()
-            partial_path.rename(dest_path)
-
             # If source is a ZIP, extract to data_dir alongside. The framework's
             # file_pattern returns the inner CSV name; loader looks for that
             # CSV. Without extraction, CSV would be missing on fresh deploy
@@ -214,12 +197,19 @@ def conditional_download(
             if dest_path.suffix.lower() == ".zip":
                 try:
                     import zipfile
-                    with zipfile.ZipFile(dest_path) as zf:
+                    with zipfile.ZipFile(partial_path) as zf:
+                        membros = [Path(m.filename).name for m in zf.infolist() if not m.is_dir()]
+                        if any(membros.count(nome) != 1 for nome in membros_esperados):
+                            partial_path.unlink(missing_ok=True)
+                            return DownloadResult(status="failed", content_changed=False, content_sha256=None,
+                                                  bytes_downloaded=bytes_dl, error="Membro esperado ausente ou ambíguo")
                         # Extract atomically: extract to .partial dir then rename
                         for member in zf.infolist():
                             if member.is_dir():
                                 continue
                             inner_name = Path(member.filename).name  # strip dirs
+                            if membros_esperados and inner_name not in membros_esperados:
+                                continue
                             extract_target = dest_path.parent / inner_name
                             extract_partial = extract_target.with_suffix(
                                 extract_target.suffix + ".extracting"
@@ -230,14 +220,13 @@ def conditional_download(
                                     if not chunk:
                                         break
                                     dst.write(chunk)
-                            if extract_target.exists():
-                                extract_target.unlink()
-                            extract_partial.rename(extract_target)
+                            extract_partial.replace(extract_target)
                             logger.info(
                                 "extracted %s → %s (%.1f MB)",
                                 dest_path.name, inner_name, member.file_size / 1e6,
                             )
                 except zipfile.BadZipFile as e:
+                    partial_path.unlink(missing_ok=True)
                     logger.error("ZIP extraction failed for %s: %s", dest_path.name, e)
                     return DownloadResult(
                         status="failed",
@@ -247,10 +236,11 @@ def conditional_download(
                         error=f"ZIP extraction failed: {e}",
                     )
 
+            partial_path.replace(dest_path)
             content_changed = (prev_sha != content_sha)
             logger.info(
-                "downloaded %s (%.1f MB, sha256=%s..., changed=%s)",
-                dest_path.name, bytes_dl / 1e6, content_sha[:8], content_changed,
+                "downloaded %s (%.1f MB, sha256=%s, changed=%s)",
+                dest_path.name, bytes_dl / 1e6, content_sha, content_changed,
             )
             return DownloadResult(
                 status="downloaded",
@@ -263,7 +253,7 @@ def conditional_download(
             )
 
     except HTTPError as e:
-        if e.code == 304:
+        if e.code == 304 and not force_refetch and prev_sha and (prev_etag or prev_lm):
             logger.info("not_modified %s (304)", dest_path.name)
             return DownloadResult(
                 status="not_modified",
@@ -303,6 +293,7 @@ def download_and_log(
     url: str,
     dest_path: Path,
     force_refetch: bool = False,
+    membros_esperados: tuple[str, ...] = (),
 ) -> DownloadResult:
     """High-level: conditional_download + log + invalidate_bucket_token if changed.
 
@@ -319,11 +310,14 @@ def download_and_log(
         url=url,
         dest_path=dest_path,
         force_refetch=force_refetch,
+        membros_esperados=membros_esperados,
     )
 
     # Update etl_download_log
-    if result.status == "downloaded":
-        try:
+    # psycopg2 >= 2.9: o contexto abre uma transação inclusive em conexão
+    # autocommit. Nunca confirmar um novo ETag com token de aplicação antigo.
+    with etl_conn:
+        if result.status == "downloaded":
             etl_db.upsert_download_log_done(
                 etl_conn,
                 run_id=run_id,
@@ -337,8 +331,6 @@ def download_and_log(
                 content_length=result.content_length or result.bytes_downloaded,
                 content_sha256=result.content_sha256,
             )
-            etl_conn.commit()
-            # Se mudou, invalidate
             if result.content_changed and table is not None:
                 etl_db.invalidate_bucket_token(
                     etl_conn,
@@ -347,12 +339,7 @@ def download_and_log(
                     table=table,
                     reason=f"content_sha256 changed for bucket {bucket_id}",
                 )
-                etl_conn.commit()
-        except Exception as e:
-            logger.warning("upsert_download_log_done failed: %s", e)
-            etl_conn.rollback()
-    elif result.status in ("not_modified", "failed"):
-        try:
+        elif result.status in ("not_modified", "failed"):
             etl_db.upsert_download_log_check(
                 etl_conn,
                 run_id=run_id,
@@ -366,9 +353,5 @@ def download_and_log(
                 content_length=None,
                 status=result.status,
             )
-            etl_conn.commit()
-        except Exception as e:
-            logger.warning("upsert_download_log_check failed: %s", e)
-            etl_conn.rollback()
 
     return result

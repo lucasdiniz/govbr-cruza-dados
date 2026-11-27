@@ -169,6 +169,14 @@ def test_ciclo_completo_recente_mantem_todas_as_tabelas_em_dia(agendador):
     assert agendador["tce_devidas"](historico, agora, 2026, timedelta(days=28)) == []
 
 
+def test_sucesso_de_outra_fonte_nao_publica_marca_bf(agendador):
+    agora = datetime.now(timezone.utc)
+    escopo = agendador["escopo_bf_publicado"]
+    assert not escopo(ciclo(agora, 0, "dados_pb.pb_pagamento", "2026-10"))
+    assert not escopo(ciclo(agora, 2, agendador["BF_SPEC"], "2026-10", "failure"))
+    assert escopo(ciclo(agora, 30, agendador["BF_SPEC"], "2026,2026-09")) == {"202609"}
+
+
 @pytest.mark.parametrize("bf_novo", [False, True])
 def test_decisao_dispara_somente_tabelas_devidas_com_bf_opcional(agendador, bf_novo):
     proximo = preparar_decisao(agendador)

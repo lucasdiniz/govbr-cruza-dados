@@ -182,6 +182,15 @@ jobs:
                       devidas.append(spec)
               return devidas
 
+          def escopo_bf_publicado(run):
+              if run["status"] != "completed" or run["conclusion"] != "success":
+                  return set()
+              titulo = re.fullmatch(r"Deploy to Azure VM - incremental (\S+) \[([^\]]+)\]", run["displayTitle"])
+              if not titulo or not {BF_SPEC, "todas"}.intersection(titulo[1].split(",")):
+                  return set()
+              return {b.replace("-", "") for b in titulo[2].split(",")
+                      if b == "todos" or re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", b)}
+
           runs = json.loads(gh("run", "list", "-R", REPO, "-w", "deploy.yml", "-L", "100",
                                "--json", "databaseId,displayTitle,status,conclusion,createdAt"))
           busy = [r for r in runs if r["status"] != "completed"]
@@ -212,7 +221,10 @@ jobs:
 
           # ── Bolsa Familia ──
           bf_last = None
-          for r in incr[:20]:
+          for r in incr:
+              escopo_bf = escopo_bf_publicado(r)
+              if not escopo_bf:
+                  continue
               arts = json.loads(gh("api", f"repos/{REPO}/actions/runs/{r['databaseId']}/artifacts"))
               if not any(a["name"] == "etl-watermarks" and not a["expired"] for a in arts.get("artifacts", [])):
                   continue
@@ -220,7 +232,10 @@ jobs:
               gh("run", "download", str(r["databaseId"]), "-R", REPO, "-n", "etl-watermarks", "-D", d)
               with open(os.path.join(d, "watermarks.json")) as f:
                   wm = json.load(f)
-              bf_last = wm.get(BF_SPEC)
+              candidata = wm.get(BF_SPEC)
+              if not candidata or (candidata not in escopo_bf and "todos" not in escopo_bf):
+                  continue
+              bf_last = candidata
               print(f"BF: watermark {bf_last!r} (artifact do run {r['databaseId']})")
               break
           if not bf_last and os.environ.get("BF_BASELINE"):
