@@ -11,8 +11,8 @@
 --                         marcar in-place, para que todas as queries existentes
 --                         sobre `socio` continuem significando "socio atual".
 -- rfb_sync_estab_delta  : estabelecimentos inseridos/removidos ainda nao
---                         re-ligados (acumula entre tentativas; limpo apos o
---                         relink). Consumido por refresh_post_incremental --source rfb
+--                         re-ligados (acumula entre tentativas; a baixa só é
+--                         confirmada após relink, purga e MVs). Consumido pelo refresh RFB
 --                         para re-ligar/anular cnpj_basico nas tabelas PB de
 --                         forma direcionada (sem varrer 16M+ linhas inteiras).
 -- =============================================================================
@@ -21,12 +21,24 @@ CREATE TABLE IF NOT EXISTS rfb_sync_log (
     id              BIGSERIAL PRIMARY KEY,
     rfb_mes         CHAR(7) NOT NULL,              -- 'YYYY-MM' da publicacao RFB
     status          TEXT NOT NULL
-                    CHECK (status IN ('running', 'success', 'failed', 'aborted')),
+                    CONSTRAINT rfb_sync_log_status_v2
+                    CHECK (status IN ('running', 'success', 'failed', 'aborted', 'publicacao_pendente')),
     iniciado_em     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finalizado_em   TIMESTAMPTZ,
     stats           JSONB NOT NULL DEFAULT '{}'::jsonb,
     erro            TEXT
 );
+
+-- Migra apenas o contrato de status. Não reclassifica tentativas históricas.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_constraint WHERE conrelid = 'rfb_sync_log'::regclass
+                   AND conname = 'rfb_sync_log_status_v2') THEN
+        ALTER TABLE rfb_sync_log DROP CONSTRAINT rfb_sync_log_status_check,
+            ADD CONSTRAINT rfb_sync_log_status_v2
+            CHECK (status IN ('running', 'success', 'failed', 'aborted', 'publicacao_pendente'));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_rfb_sync_log_mes_status
     ON rfb_sync_log (rfb_mes, status);

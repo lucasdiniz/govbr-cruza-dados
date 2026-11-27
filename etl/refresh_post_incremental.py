@@ -31,6 +31,7 @@ import argparse
 import logging
 import sys
 import time
+from functools import wraps
 from pathlib import Path
 from typing import Callable
 
@@ -345,6 +346,35 @@ def populate_nk_md5_tce_pb(conn, batch_size: int = 100_000) -> None:
 # Refresh por source
 # ──────────────────────────────────────────────────────────────────────────
 
+def _com_barreira_rfb(funcao: Callable) -> Callable:
+    """Reserva a sessão até o fim do hook, inclusive entre os commits das MVs."""
+    @wraps(funcao)
+    def executar(conn):
+        from etl.rfb_sync import ADVISORY_LOCK_KEY, _mes_pendente
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", (ADVISORY_LOCK_KEY,))
+            if not cur.fetchone()[0]:
+                raise RuntimeError("sync ou refresh concorrente em andamento")
+        try:
+            # Instalações anteriores ao sync mensal não possuem o log.
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('rfb_sync_log') IS NOT NULL")
+                tem_log = cur.fetchone()[0]
+            if tem_log and _mes_pendente(conn):
+                raise RuntimeError("publicação RFB pendente; refresh avulso recusado")
+            funcao(conn)
+            conn.commit()
+        finally:
+            conn.rollback()
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (ADVISORY_LOCK_KEY,))
+            conn.commit()
+
+    return executar
+
+
+@_com_barreira_rfb
 def refresh_for_bolsa_familia(conn) -> None:
     """Refresh das MVs que dependem de bolsa_familia.
 
@@ -469,7 +499,7 @@ def _rebuild_servidor_tmp_after_tce_pb(conn) -> None:
     _run_sql(conn, "rebuild tmp servidor TCE-PB", sql)
 
 
-def _refresh_mv_adaptive(conn, mv: str) -> None:
+def _refresh_mv_adaptive(conn, mv: str, *, obrigatoria: bool = False) -> None:
     """REFRESH de uma MV escolhendo o modo certo:
       - CONCURRENTLY se a MV tem UNIQUE INDEX (zero-downtime);
       - REFRESH simples (lock ACCESS EXCLUSIVE breve) se NAO tem (ex.:
@@ -482,15 +512,17 @@ def _refresh_mv_adaptive(conn, mv: str) -> None:
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT 1 FROM pg_class WHERE relname = %s AND relkind = 'm'", (mv,)
+            "SELECT 1 FROM pg_class WHERE oid = to_regclass(%s) AND relkind = 'm'", (mv,)
         )
         if cur.fetchone() is None:
+            if obrigatoria:
+                raise RuntimeError(f"MV obrigatória ausente: {mv}")
             logger.warning("MV %s nao existe — skip refresh (drift?)", mv)
             return
         cur.execute(
             "SELECT bool_or(coalesce(i.indisunique, false)) "
             "FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid "
-            "WHERE c.relname = %s",
+            "WHERE c.oid = to_regclass(%s)",
             (mv,),
         )
         has_unique = bool(cur.fetchone()[0])
@@ -507,6 +539,7 @@ def _refresh_mv_adaptive(conn, mv: str) -> None:
                  f"REFRESH MATERIALIZED VIEW {mv}", autocommit=True)
 
 
+@_com_barreira_rfb
 def refresh_for_tce_pb(conn) -> None:
     """Refresh das MVs que dependem das tabelas TCE-PB (despesa/servidor/
     licitacao/receita), em ordem L1 -> L2.
@@ -557,11 +590,28 @@ RFB_LINKED_DOC_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
+def destinos_relink_ausentes(conn) -> list[str]:
+    """Consulta só o catálogo, inclusive quando o delta está vazio."""
+    destinos = {t: (doc, "cnpj_basico") for t, doc in RFB_LINKED_DOC_COLUMNS}
+    destinos["web_cache"] = ("query_id", "municipio")
+    destinos["rfb_sync_estab_delta"] = ("cnpj_completo", "mudanca", "rfb_mes")
+    ausentes = []
+    with conn.cursor() as cur:
+        for tabela, colunas in destinos.items():
+            cur.execute("""
+                SELECT a.attname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+                WHERE c.oid = to_regclass(%s) AND c.relkind IN ('r','p')
+                  AND a.attnum > 0 AND NOT a.attisdropped
+            """, (tabela,))
+            presentes = {r[0] for r in cur.fetchall()}
+            ausentes.extend(f"{tabela}.{c}" for c in colunas if c not in presentes)
+    return ausentes
+
+
 def relink_cnpj_basico_after_rfb(conn) -> dict[str, dict[str, int]]:
     """Mantem o invariante de cnpj_basico apos o sync RFB, de forma direcionada.
 
-    Idempotente: rfb_sync_estab_delta acumula entre tentativas e so eh limpo
-    no fim, depois que todos os UPDATEs (e o purge de cache) commitaram.
+    Idempotente: não consome o delta. A confirmação fica após o último refresh.
 
     Usa rfb_sync_estab_delta (estabelecimentos inseridos/removidos no ultimo
     sync) em vez de varrer cada tabela contra os 60M de estabelecimento:
@@ -570,24 +620,20 @@ def relink_cnpj_basico_after_rfb(conn) -> dict[str, dict[str, int]]:
     - removido: cnpj_basico anulado (mesma regra do sql/15a).
     """
     out: dict[str, dict[str, int]] = {}
+    ausentes = destinos_relink_ausentes(conn)
+    if ausentes:
+        raise RuntimeError(f"destinos de publicação RFB incompletos: {', '.join(ausentes)}")
     with conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('rfb_sync_estab_delta') IS NOT NULL")
-        if not cur.fetchone()[0]:
-            logger.warning("rfb_sync_estab_delta ausente — relink pulado")
-            return out
         cur.execute("SELECT COUNT(*) FROM rfb_sync_estab_delta")
-        if cur.fetchone()[0] == 0:
+        pendentes = cur.fetchone()[0]
+        if not pendentes:
             logger.info("relink cnpj_basico: delta vazio, nada a fazer")
             return out
-        cur.execute("SELECT COUNT(*) FROM rfb_sync_estab_delta")
-        logger.info("relink cnpj_basico: %d mudancas pendentes", cur.fetchone()[0])
+        logger.info("relink cnpj_basico: %d mudancas pendentes", pendentes)
     conn.commit()
 
     for table, doc in RFB_LINKED_DOC_COLUMNS:
         with conn.cursor() as cur:
-            cur.execute("SELECT to_regclass(%s) IS NOT NULL", (table,))
-            if not cur.fetchone()[0]:
-                continue
             cur.execute(
                 f"""
                 UPDATE {table} t SET cnpj_basico = LEFT(t.{doc}, 8)
@@ -616,11 +662,6 @@ def relink_cnpj_basico_after_rfb(conn) -> dict[str, dict[str, int]]:
 
     out["web_cache_removidos"] = {"linhas": _purge_cache_removed_estab(conn)}
 
-    # Delta consumido: so agora (relink + purge commitados) ele pode sumir.
-    # Se algo acima falhar, o delta fica para o proximo run.
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM rfb_sync_estab_delta")
-    conn.commit()
     return out
 
 
@@ -638,9 +679,6 @@ def _purge_cache_removed_estab(conn) -> int:
     EMPRESA_PERFIL_MUN = '<cnpj14>:<slug>'. Cache miss vira 410 na rota.
     """
     with conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('web_cache') IS NOT NULL")
-        if not cur.fetchone()[0]:
-            return 0
         cur.execute(
             """
             DELETE FROM web_cache w
@@ -666,6 +704,9 @@ def refresh_for_rfb(conn) -> None:
     mesmo do TCE-PB, incluindo o rebuild das _tmp_* de mv_servidor_pb_risco.
     Hard-fail como os demais hooks.
 
+    O chamador confirma a baixa do delta na transação final (junto com
+    rfb_sync_log no sync mensal).
+
     NOTA: mv_rede_pb (backing _tmp_rede_*) continua fora — mesma limitacao
     documentada em _TCE_PB_MVS_L1.
     """
@@ -677,16 +718,18 @@ def refresh_for_rfb(conn) -> None:
     relink_cnpj_basico_after_rfb(conn)
 
     for mv in _TCE_PB_MVS_L1:
-        _refresh_mv_adaptive(conn, mv)
+        _refresh_mv_adaptive(conn, mv, obrigatoria=True)
 
     _rebuild_servidor_tmp_after_tce_pb(conn)
 
     for mv in _TCE_PB_MVS_L2:
-        _refresh_mv_adaptive(conn, mv)
+        _refresh_mv_adaptive(conn, mv, obrigatoria=True)
 
     # Sitemap empresa x municipio: REFRESH (concorrente, ha UNIQUE INDEX) em
     # vez de etl.22_mv_sitemap, que faz DROP + CREATE com lock exclusivo.
-    _refresh_mv_adaptive(conn, "mv_empresa_municipio_pagantes")
+    _refresh_mv_adaptive(conn, "mv_empresa_municipio_pagantes", obrigatoria=True)
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM rfb_sync_estab_delta")
 
     total_dt = time.time() - total_t0
     logger.info("refresh_for_rfb: DONE em %.1fs (%.1f min)", total_dt, total_dt / 60)
@@ -698,7 +741,7 @@ def refresh_for_rfb(conn) -> None:
 
 SOURCE_REFRESH_FNS: dict[str, Callable] = {
     "bolsa_familia": refresh_for_bolsa_familia,
-    "rfb": refresh_for_rfb,
+    "rfb": _com_barreira_rfb(refresh_for_rfb),
     "tce_pb": refresh_for_tce_pb,
 }
 

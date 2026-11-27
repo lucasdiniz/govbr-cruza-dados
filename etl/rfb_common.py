@@ -13,19 +13,22 @@ tipadas da tabela final.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 from dataclasses import dataclass
 from pathlib import Path
 
 
-def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
+def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path, *, assinar_registro: bool = False) -> int:
     """
     Cria staging table UNLOGGED com N colunas TEXT.
     Usa Python csv reader para parsear corretamente campos com ; dentro de aspas,
     e normaliza para exatamente n_cols campos. Envia como TSV via COPY.
     """
-    col_defs = ", ".join(f"c{i} TEXT" for i in range(n_cols))
-    cols = ", ".join(f"c{i}" for i in range(n_cols))
+    assinatura = hashlib.sha256() if assinar_registro else None
+    campos = range(n_cols + int(assinar_registro))
+    col_defs = ", ".join(f"c{i} TEXT" for i in campos)
+    cols = ", ".join(f"c{i}" for i in campos)
 
     with conn.cursor() as cur:
         cur.execute(f"DROP TABLE IF EXISTS {staging_table}")
@@ -42,8 +45,15 @@ def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
 
     def _clean_lines(filepath):
         """Generator que le Latin-1, remove NUL bytes."""
-        with open(filepath, "r", encoding="latin-1", errors="replace") as f:
+        with open(filepath, "r", encoding="latin-1", newline="" if assinar_registro else None) as f:
             for line in f:
+                # Inclui todas as linhas físicas do registro CSV, antes de
+                # remover NUL, ajustar largura ou converter valores.
+                if assinatura is not None:
+                    assinatura.update(line.encode("latin-1"))
+                    # Só os bytes assinados são crus. Entregar ao csv.reader
+                    # as mesmas quebras universais do caminho legado (newline=None).
+                    line = line.replace("\r\n", "\n").replace("\r", "\n")
                 yield line.replace("\x00", "")
 
     reader = csv.reader(_clean_lines(filepath), delimiter=";", quotechar='"')
@@ -53,6 +63,9 @@ def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
             row = row[:n_cols]
         elif len(row) < n_cols:
             row = row + [""] * (n_cols - len(row))
+        if assinatura is not None:
+            row.append(assinatura.hexdigest())
+            assinatura = hashlib.sha256()
 
         # Escape para formato TEXT do PostgreSQL
         escaped = []
@@ -79,6 +92,7 @@ def staging_copy(conn, staging_table: str, n_cols: int, filepath: Path):
         with conn.cursor() as cur:
             cur.copy_expert(copy_sql, buf)
         conn.commit()
+    return count
 
 
 def _date(c: str) -> str:
@@ -107,9 +121,11 @@ class RfbTable:
     exprs: tuple[str, ...]    # expressoes SQL sobre c0..cN, mesma ordem de columns
     key: tuple[str, ...]      # chave natural (PK) — vazia para socio
 
-    def select_sql(self, staging: str) -> str:
+    def select_sql(self, staging: str, *, com_assinatura: bool = False) -> str:
         """SELECT tipado a partir da staging raw (inclui o filtro de linhas validas)."""
         body = ",\n    ".join(f"{e} AS {c}" for e, c in zip(self.exprs, self.columns))
+        if com_assinatura:
+            body += f", decode(c{self.n_cols}, 'hex') AS _origem"
         return (
             f"SELECT\n    {body}\nFROM {staging}\n"
             "WHERE LENGTH(TRIM(c0)) = 8 AND TRIM(c0) ~ '^\\d+$'"

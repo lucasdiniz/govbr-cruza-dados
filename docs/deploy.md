@@ -117,7 +117,7 @@ Definidos em [`../.github/workflows/deploy.yml`](../.github/workflows/deploy.yml
 | `mv_swap` | csv/string | vazio | Lista CSV de MVs para atomic swap zero-downtime (ex: `mv_empresa_pb`). Pra cada MV, lê `deploy/mv_updates/<mv>.sql` (com sufixo `_swap`). Roda após ETL phase, antes do warm. Permite atualizar UMA MV sem dropar todas (~1s downtime vs 1-2h do `etl_phase=sql`). Sanitizado para `[A-Za-z0-9_,]`. Veja [`mv-guide.md`](mv-guide.md#atualizando-uma-mv-existente-atomic-swap-zero-downtime). |
 | `run_normalize_fix` | boolean | `false` | Roda `sql/15a_fix_cnpj_basico_contamination.sql` (UPDATE retroativo anulando `cnpj_basico` contaminado por CPF padded) + `sql/15b_add_unique_index_mv_q67.sql` (pre-flight para `REFRESH CONCURRENTLY`). Idempotente, zero downtime (UPDATE não bloqueia SELECT). Veja [ADR-0007](adr/0007-etl-normalize-fix.md). |
 | `refresh_mvs` | csv/string | vazio | Lista CSV de MVs para `REFRESH MATERIALIZED VIEW CONCURRENTLY` (zero-downtime, requer UNIQUE INDEX). Caso típico: propagar fix de dados (`run_normalize_fix=true`) nas MVs sem dropar/recriar. Ordem importa: L1 antes de L2. Sanitizado `[A-Za-z0-9_,]`. |
-| `rfb_sync` | string | vazio | Sync mensal RFB/CNPJ (`etl.rfb_sync`): `latest` ou `YYYY-MM`; sufixo `:force` re-sincroniza mês já feito e **desliga os guards**. Força B4/Premium. Normalmente disparado por `rfb-sync-schedule.yml`. Ver [Sync mensal RFB](#sync-mensal-rfb). |
+| `rfb_sync` | string | vazio | Sync mensal RFB/CNPJ (`etl.rfb_sync`): `latest` ou `YYYY-MM`; `:force` reavalia mês já feito e ignora limites de remoção/encolhimento, não a barreira de integridade. Força B4/Premium. Ver [Sync mensal RFB](#sync-mensal-rfb). |
 
 ## Cenários típicos
 
@@ -286,6 +286,10 @@ warm_cache: true
 Exige cobertura mínima de 80% para `EMPRESA_PERFIL` e `EMPRESA_PERFIL_MUN`, cria drop-in systemd, reinicia `cruza-web`, valida sitemap e faz smoke E2E ([linhas 1287-1532](../.github/workflows/deploy.yml)).
 
 ### Sync mensal RFB
+
+**Rollout da pré-validação bloqueado:** antes de qualquer disparo ou mudança
+de agenda, ver as [condições de liberação no guia ETL](etl-guide.md#sync-mensal-rfb).
+O exemplo abaixo descreve os inputs existentes; não é autorização de carga.
 
 Atualiza `empresa`/`estabelecimento`/`simples`/`socio` com a publicação mensal da RFB (diff in-place, guards antes de qualquer escrita, lotes curtos — detalhes em [etl-guide.md](etl-guide.md#sync-mensal-rfb)):
 
